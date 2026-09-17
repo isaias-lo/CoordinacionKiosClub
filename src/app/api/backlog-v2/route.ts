@@ -3,7 +3,8 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
 import { fechaChile, fechaChileDe } from '@/lib/fechaChile';
 import {
-  pendientesDelDia, ruteadasParaOrigen, type PendienteBacklog,
+  pendientesDelDia, despachadasParaOrigen, aFechaPlanilla, desdeFechaPlanilla,
+  type PendienteBacklog,
 } from '@/features/despacho/rutas/utils/backlogSegundaVuelta';
 
 /**
@@ -34,38 +35,42 @@ export async function GET(request: NextRequest) {
     // Los manifiestos se miran hasta una semana ADELANTE: una 2ª vuelta se despacha después del día
     // de origen.
     //
-    // El tope de arriba se puso para esquivar 8 manifiestos con fecha 2099-12-31 que hacían figurar
-    // 11 tiendas como "despachadas" para siempre. Esas filas ya se borraron y ahora un `check` en
-    // `rutas_despacho` impide que vuelva a entrar una fecha así, pero el tope se queda: acota la
-    // consulta por sí mismo y no depende de que la base siga limpia.
+    // Se miran los despachos hasta una semana ADELANTE: una 2ª vuelta sale en un día posterior al
+    // de origen.
     const hasta = fechaChileDe(new Date(new Date(`${hoy}T00:00:00Z`).getTime() + 7 * 86400000));
+    // Control Despacho guarda la fecha en el formato de la planilla ("DD/MM/YYYY"), no en ISO.
+    const fechasPlanilla: string[] = [];
+    for (let t = new Date(`${desde}T00:00:00Z`); fechaChileDe(t) <= hasta; t = new Date(t.getTime() + 86400000)) {
+      fechasPlanilla.push(aFechaPlanilla(fechaChileDe(t)));
+    }
 
     const sb = supabaseServer();
-    const [sesion, rutas] = await Promise.all([
+    // Una tienda SALIÓ si quedó con patente en Control Despacho. Ese es el registro que deja cerrar
+    // un camión, y es el mismo dato que mira el coordinador. Las dos tablas: el Enrutador escribe
+    // las de RM en `despacho_rm` y las de región en `despacho_regiones` — mirar solo una dejaba a
+    // toda la ruta norte figurando como pendiente para siempre.
+    const conPatente = (tabla: 'despacho_rm' | 'despacho_regiones') =>
+      sb.from(tabla).select('fecha, cod, patente').in('fecha', fechasPlanilla).not('patente', 'is', null);
+
+    const [sesion, rm, reg] = await Promise.all([
       sb.from('despacho_sesion')
         .select('fecha, tienda_cod, fuente, pallets, bultos, contenedores, chocolates')
         .gte('fecha', desde).lt('fecha', hoy),
-      sb.from('rutas_despacho').select('id, fecha').gte('fecha', desde).lte('fecha', hasta),
+      conPatente('despacho_rm'),
+      conPatente('despacho_regiones'),
     ]);
     if (sesion.error) return NextResponse.json({ error: sesion.error.message }, { status: 500 });
-    if (rutas.error)  return NextResponse.json({ error: rutas.error.message },  { status: 500 });
-
-    const rutasArr = (rutas.data ?? []) as { id: number; fecha: string }[];
-    const fechaDeRuta = new Map(rutasArr.map(r => [r.id, r.fecha]));
-
-    // Cruce a mano por ruta_id (no hay FK, así que no se puede anidar).
-    const { data: tiendasRuta, error: errT } = rutasArr.length
-      ? await sb.from('ruta_tiendas').select('ruta_id, store_cod').in('ruta_id', rutasArr.map(r => r.id))
-      : { data: [], error: null };
-    if (errT) return NextResponse.json({ error: errT.message }, { status: 500 });
+    if (rm.error)     return NextResponse.json({ error: rm.error.message },     { status: 500 });
+    if (reg.error)    return NextResponse.json({ error: reg.error.message },    { status: 500 });
 
     const porFecha = new Map<string, string[]>();
-    for (const t of (tiendasRuta ?? []) as { ruta_id: number; store_cod: string }[]) {
-      const f = fechaDeRuta.get(t.ruta_id);
-      if (!f) continue;
-      porFecha.set(f, [...(porFecha.get(f) ?? []), t.store_cod]);
+    for (const f of [...(rm.data ?? []), ...(reg.data ?? [])] as { fecha: string; cod: string; patente: string | null }[]) {
+      if (!String(f.patente ?? '').trim()) continue;   // fila sin patente: esa tienda no salió
+      const iso = desdeFechaPlanilla(f.fecha);
+      if (!iso) continue;
+      porFecha.set(iso, [...(porFecha.get(iso) ?? []), f.cod]);
     }
-    const manifiestos = [...porFecha.entries()].map(([fecha, cods]) => ({ fecha, cods }));
+    const despachos = [...porFecha.entries()].map(([fecha, cods]) => ({ fecha, cods }));
 
     // Congelados NO entra: tiene su propio flujo y su propia pestaña.
     const cargaPorFecha = new Map<string, { cod: string; pallets: number; bultos: number; contenedores: number; chocolates: number }[]>();
@@ -79,10 +84,10 @@ export async function GET(request: NextRequest) {
 
     const pendientes: PendienteBacklog[] = [];
     for (const [fecha, filas] of cargaPorFecha) {
-      pendientes.push(...pendientesDelDia(filas, ruteadasParaOrigen(manifiestos, fecha), fecha));
+      pendientes.push(...pendientesDelDia(filas, despachadasParaOrigen(despachos, fecha), fecha));
     }
 
-    return NextResponse.json({ pendientes, desde, hoy, manifiestos: manifiestos.length });
+    return NextResponse.json({ pendientes, desde, hoy, diasConDespacho: despachos.length });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

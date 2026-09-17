@@ -19,6 +19,7 @@ import { normPatente } from './cierrePorVehiculo';
 
 export type TipoHallazgo =
   | 'sin-camion'
+  | 'sin-cerrar'
   | 'en-camion-apagado'
   | 'cerrado-sin-manifiesto'
   | 'sobre-capacidad'
@@ -106,6 +107,27 @@ export function preflightCierre(entrada: EntradaPreflight): Preflight {
       const pat = normPatente(patente);
       if (activas.has(pat) || yaCerradas.has(pat)) continue;
       for (const t of lista) varadas.push(`${t.c} (${patente})`);
+    }
+    // Camión PRENDIDO, con tiendas, y nunca cerrado. Era el hueco entre los tres avisos que ya
+    // había: no es "sin camión" (tiene uno), no es "camión apagado" (está prendido) y no es
+    // "cerrado sin manifiesto" (nunca se cerró). El 16/09 pasaron por ahí cuatro tiendas —01TPS,
+    // 02SCL y 06MQH en VRYL52, 37VIÑ en VYJL23—: no salieron, no quedaron registradas y tampoco
+    // entraron a la lista de 2ª vuelta, que solo guarda las tiendas SIN camión.
+    const sinCerrar: string[] = [];
+    for (const [patente, tiendas] of Object.entries(asignaciones)) {
+      const lista = (tiendas ?? []).filter(t => t?.c);
+      if (!lista.length) continue;
+      const pat = normPatente(patente);
+      if (!activas.has(pat) || yaCerradas.has(pat)) continue;   // apagado o ya cerrado: otro aviso
+      for (const t of lista) sinCerrar.push(`${t.c} (${patente})`);
+    }
+    if (sinCerrar.length) {
+      hallazgos.push({
+        tipo: 'sin-cerrar',
+        titulo: sinCerrar.length === 1 ? 'Una tienda está en un camión que no se cerró' : `${sinCerrar.length} tiendas están en camiones que no se cerraron`,
+        consecuencia: 'Ese camión no emitió manifiesto ni quedó en Control Despacho: esa carga no sale y tampoco pasa a 2ª vuelta.',
+        items: sinCerrar.sort(),
+      });
     }
     if (varadas.length) {
       hallazgos.push({

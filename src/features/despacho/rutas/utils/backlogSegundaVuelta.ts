@@ -69,30 +69,24 @@ export function pendientesDelDia(
 /**
  * Une lo calculado con lo que se guardó al cerrar el día.
  *
- * La regla es una sola y depende de si el día se CERRÓ:
+ * Lo GUARDADO manda: si alguien cerró el día y ajustó la lista, esa decisión no se pisa. El cálculo
+ * aporta lo que esa lista no puede cubrir — y ese hueco es real: al cerrar el día solo se guardan
+ * las tiendas SIN camión, así que una tienda asignada a un camión que nunca se cerró no entra en
+ * ninguna de las dos listas. El 16/09 así se perdieron cuatro (01TPS, 02SCL, 06MQH y 37VIÑ, en los
+ * camiones VRYL52 y VYJL23).
  *
- *   · día cerrado    → manda la lista guardada, y nada más. Al pulsar "Terminar día" el
- *                      coordinador decidió qué quedaba pendiente; el cálculo no tiene nada que
- *                      agregarle.
- *   · día sin cerrar → entra el cálculo. Es justamente el caso que este backlog vino a rescatar:
- *                      días que nadie cerró y cuya carga sobrante no quedaba en ninguna parte.
- *
- * El día que faltaba esa distinción, el 15/09 mostró 25 tiendas donde el cierre había guardado 5:
- * a las 5 reales se les sumaban 20 que el cálculo veía "sin manifiesto" porque, sencillamente,
- * todavía no se habían despachado. Un backlog que grita de más se deja de mirar, que es peor que
- * no tenerlo.
+ * Durante un tiempo esto descartó el cálculo en los días cerrados, para tapar los falsos positivos
+ * que producía preguntar por el manifiesto maestro. Ya no hace falta: con la pregunta correcta
+ * —¿tiene patente en Control Despacho?— el cálculo dejó de inventar pendientes, y taparlo solo
+ * servía para esconder las que sí lo eran.
  */
 export function unirBacklog(
   guardado: PendienteBacklog[],
   calculado: PendienteBacklog[],
-  diasCerrados: ReadonlySet<string> = new Set(),
 ): PendienteBacklog[] {
   const clave = (x: PendienteBacklog) => `${x.fechaOrigen}::${x.c}`;
   const vistos = new Set(guardado.map(clave));
-  return [
-    ...guardado,
-    ...calculado.filter(x => !vistos.has(clave(x)) && !diasCerrados.has(x.fechaOrigen)),
-  ];
+  return [...guardado, ...calculado.filter(x => !vistos.has(clave(x)))];
 }
 
 /** Texto del total, para la cabecera del tab. Vacío si no hay nada. */
@@ -105,26 +99,49 @@ export function textoBacklog(p: PendienteBacklog[]): string {
   return `${t} de ${d}`;
 }
 
-/** Un manifiesto, reducido a lo que el backlog necesita. */
-export interface ManifiestoRuteado { fecha: string; cods: string[] }
+/** Lo despachado un día: las tiendas que salieron, según Control Despacho. */
+export interface DespachoDelDia { fecha: string; cods: string[] }
+
+/** "DD/MM/YYYY" desde "YYYY-MM-DD". Control Despacho guarda la fecha en el formato de la planilla. */
+export function aFechaPlanilla(iso: string): string {
+  const [a, m, d] = String(iso ?? '').split('-');
+  return (a && m && d) ? `${d}/${m}/${a}` : '';
+}
+
+/** "YYYY-MM-DD" desde "DD/MM/YYYY". Vacío si no tiene esa forma. */
+export function desdeFechaPlanilla(ddmmaaaa: string): string {
+  const m = String(ddmmaaaa ?? '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+}
 
 /**
  * Los códigos que ya salieron para un día de origen: los de ESE día y los de cualquier día
  * POSTERIOR.
  *
- * Tiene un límite conocido: si una tienda tiene carga el lunes y el martes, y el jueves sale un
- * manifiesto, no hay forma de saber si cubrió la del lunes, la del martes o las dos — el manifiesto
- * no guarda de qué día venía la carga. Se asume que cubre ambas, que es el lado seguro: no
- * despachar de más.
+ * La pregunta que responde esto cambió, y es el corazón del arreglo. Antes era «¿tiene manifiesto
+ * MAESTRO guardado?», y esa es la pregunta equivocada: el manifiesto maestro es opcional. En la
+ * operación se imprimen los manifiestos POR TIENDA —que es lo que necesita el chofer— y el maestro
+ * muchas veces no. Medido el 15/09: de 28 tiendas con carga, 28 salieron según Control Despacho,
+ * pero solo 9 tenían fila de manifiesto maestro. Las otras 19 se contaban como pendientes sin serlo.
+ *
+ * La pregunta correcta es la que hace el coordinador cuando revisa: **¿tiene PATENTE en Control
+ * Despacho?**. Es el mismo hecho que «se cerró su camión», pero anotado tienda por tienda — y eso
+ * importa: el 16/09 los camiones se marcaron cerrados a las 19:50 y el tablero siguió cambiando
+ * hasta las 22:54, así que preguntar por el camión habría dado por salidas a tiendas que se le
+ * agregaron después.
+ *
+ * Sigue el límite conocido de siempre: si una tienda tiene carga el lunes y el martes y sale el
+ * jueves, no hay forma de saber cuál de las dos cubrió. Se asume que cubre ambas, que es el lado
+ * seguro: no despachar de más.
  */
-export function ruteadasParaOrigen(
-  manifiestos: ManifiestoRuteado[],
+export function despachadasParaOrigen(
+  despachos: DespachoDelDia[],
   fechaOrigen: string,
 ): Set<string> {
   const out = new Set<string>();
-  for (const m of manifiestos) {
-    if (m.fecha < fechaOrigen) continue;
-    for (const c of m.cods) {
+  for (const d of despachos) {
+    if (d.fecha < fechaOrigen) continue;
+    for (const c of d.cods) {
       const cod = String(c ?? '').trim().toUpperCase();
       if (cod) out.add(cod);
     }
