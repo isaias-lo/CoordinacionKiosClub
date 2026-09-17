@@ -26,7 +26,7 @@ import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
 import { sumarPesoMultiple } from '../../shared/sumarMultiple';
-import { unionRefs } from '../../shared/unifyPallets';
+import { finalizarSlotUnion } from '../../shared/finalizarSlotUnion';
 import { tipoBadge } from '../tipoTienda';
 import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
@@ -1181,6 +1181,17 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const newList = combinarEnLista(allItems, srcIdx, tgtIdx, merged);
     const renumbered = renumerarOrden(newList, i => seqDeSlot(tiendaCod, i.pickingSlotId));
     dispatch({ type: 'SET_ITEMS', tiendaCod, items: renumbered });
+    // Dos ítems se volvieron uno: la unidad absorbida ya no existe físicamente y su slot tampoco
+    // debe existir. Sin esto quedaba vivo, y todo lo que cuenta unidades —Seguimiento, Conteo de
+    // Flota— veía una de más; además el backfill le rearmaba una tarjeta vacía al reabrir la
+    // tienda. Es lo mismo que ya hacía "unificar"; combinar se había quedado sin hacerlo.
+    if (src.pickingSlotId && tgt.pickingSlotId && src.pickingSlotId !== tgt.pickingSlotId) {
+      void finalizarSlotUnion(src.pickingSlotId, tgt.pickingSlotId).then(r => {
+        if (!r.ok) showToast(`⚠ La unión quedó a medias (${r.error}) — revisá el pallet`, '#D32F2F');
+      });
+      logActividad({ accion: 'unificar', fuente: 'rmcosta', tiendaCod,
+        label: merged.orden, sourceLabel: tgt.orden, slotId: src.pickingSlotId });
+    }
     setCombineModal(null);
   };
 
@@ -1728,19 +1739,6 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // Fusiona las guías del source en el target (lee refs ANTES de borrar) y borra el slot del
   // source en la BD. Fire-and-forget: en el peor caso queda igual que hoy (sin fusión). El caché
   // local ya quitó el slot del source en iniciarUnionInline.
-  const finalizarSlotUnion = async (targetId: number, sourceId: number) => {
-    try {
-      const { data } = await supabase.from('picking_pallets').select('id, refs').in('id', [targetId, sourceId]);
-      const tRefs  = (data ?? []).find(d => d.id === targetId)?.refs as string | undefined;
-      const sRefs  = (data ?? []).find(d => d.id === sourceId)?.refs as string | undefined;
-      const merged = unionRefs(tRefs, sRefs);
-      if (merged && merged !== (tRefs ?? '')) {
-        await supabase.from('picking_pallets').update({ refs: merged }).eq('id', targetId);
-      }
-      await supabase.from('picking_pallets').delete().eq('id', sourceId);
-    } catch (e) { console.error('[finalizarSlotUnion]', e); }
-  };
-
   const absorbPickingSlotSant = (cod: string, type: 'p' | 'b' | 'c') => {
     setConsumedSlotsSant(prev => {
       const cur = prev[cod] || { p: 0, b: 0, c: 0 };

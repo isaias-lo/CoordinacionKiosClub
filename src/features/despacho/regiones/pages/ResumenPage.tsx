@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { finalizarSlotUnion } from '@/features/despacho/shared/finalizarSlotUnion';
 import { renumerarSalvoChocolate } from '@/features/despacho/shared/numeroCard';
 import { combinarEnLista } from '@/features/despacho/shared/combinarEnLista';
 import { GripVertical } from 'lucide-react';
@@ -148,6 +149,13 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
     // de los dos — la misma regla que usan los dos formularios, en un solo sitio.
     const merged: DispatchItem = { ...src, peso, alto, tipo: tipoMerge, guia, valor };
     dispatch({ type: 'UPDATE_ITEMS', tienda, items: renumber(combinarEnLista(list, srcIdx, tgtIdx, merged)) });
+    // La unidad absorbida deja de existir: su slot de picking también. Este flujo era el único de
+    // los tres que no lo borraba, así que dejaba un slot huérfano que nadie volvía a mirar.
+    if (src.pickingSlotId && tgt.pickingSlotId && src.pickingSlotId !== tgt.pickingSlotId) {
+      void finalizarSlotUnion(src.pickingSlotId, tgt.pickingSlotId).then(r => {
+        if (!r.ok) showToast(`⚠ La unión quedó a medias (${r.error}) — revisá el pallet`, '#D32F2F');
+      });
+    }
     setCombineModal(null);
     showToast('✓ Items combinados', '#16A34A');
   };
