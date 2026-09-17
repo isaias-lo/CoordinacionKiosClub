@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef, ReactNode } from 'react';
+import { esperaDePush } from '@/lib/esperaDePush';
 import { renumerarSalvoChocolate } from '@/features/despacho/shared/numeroCard';
 import type { AppState, DispatchItem, TipoContenido, TipoPaquete, PdfData } from '../types';
 import { useAuth } from '@/components/AuthProvider';
@@ -235,6 +236,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const pendingCatchupRef = useRef(false);                // [P9] remoto llegó durante push local → catch-up al terminar
   // [P5] Catch-up programado cuando un remoto cae dentro de la ventana de 3 s post-push.
   const ventanaCatchupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const vencimientoPushRef = useRef<number>(0);  // tope del debounce (ver lib/esperaDePush)
 
   // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
   useEffect(() => {
@@ -242,9 +244,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
 
     const handleRemote = (remoteState: unknown, updatedAt?: number) => {
-      // Block if local push is pending (debounce) or in-flight (async upsert).
-      // [P9] En vez de descartar, marcamos catch-up: al terminar el push re-consultamos y aplicamos.
-      if (debounceRef.current !== null || isPushingRef.current) { pendingCatchupRef.current = true; return; }
+      // Solo se difiere mientras el upsert está EN VUELO: aplicar una fusión a mitad de la escritura
+      // competiría con su `finally`. Un push meramente AGENDADO (el debounce) ya no bloquea nada.
+      //
+      // Esa era la causa de que se perdiera trabajo con varias personas: mientras tu equipo tenía un
+      // guardado pendiente, el cambio del compañero se descartaba — y después tu equipo escribía el
+      // blob COMPLETO, sin el pallet de él. La fila es una sola por día y gana el último que escribe,
+      // así que el ítem se borraba. Peor: para quien lo había ingresado, ese ítem estaba en su base y
+      // ya no venía en el remoto, así que el merge lo leía como "lo borró el otro" y se lo quitaba
+      // también. Medido el 16/09: de 78 unidades registradas, 16 hubo que reingresarlas.
+      //
+      // Fusionar acá es seguro: el corta-ecos de más abajo descarta el remoto que es nuestro propio
+      // push, y si lo local está limpio se adopta el remoto como nueva base (no se re-empuja).
+      if (isPushingRef.current) { pendingCatchupRef.current = true; return; }
       // Block for 3 s after push completes — Supabase propagation lag can cause stale remote to overwrite our data.
       // [P5] Pero NO se descarta: se PROGRAMA un catch-up para cuando la ventana expire. Antes era un
       // `return` seco y el cambio del compañero se perdía para siempre (el `pendingCatchupRef` de
@@ -384,11 +396,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // [P5] "¿Hay algo que empujar?" mira el payload COMPLETO (incluye fechaDespacho/registrado);
     // la BASE del merge y del corta-ecos se guarda aparte con `serializarBase`.
     const current = JSON.stringify(payload);
-    if (current === lastPushedFullRef.current) return;
+    if (current === lastPushedFullRef.current) { vencimientoPushRef.current = 0; return; }
 
+    // Debounce CON TOPE: se espera a que amaine, pero nunca más de 2,5 s desde el primer cambio
+    // pendiente. Sin el tope, ahora que cada fusión remota es un cambio de estado más, cinco
+    // personas empujando bastarían para que el push propio no saliera nunca.
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    const { espera, vencimiento } = esperaDePush(vencimientoPushRef.current, Date.now());
+    vencimientoPushRef.current = vencimiento;
     debounceRef.current = setTimeout(() => {
       debounceRef.current = null;
+      vencimientoPushRef.current = 0;
       // Mark a clear so handleRemote won't restore data for 30 s
       const isEmpty = Object.keys(payload.dispatch).length === 0 && Object.keys(payload.pdfData).length === 0;
       if (isEmpty) clearedAtRef.current = Date.now();
@@ -409,7 +427,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (pendingCatchupRef.current) { pendingCatchupRef.current = false; catchUpRef.current(); }
         });
       try { localStorage.setItem(REGIONES_KEY, JSON.stringify(state)); } catch {}
-    }, 2500);
+    }, espera);
 
     return () => {
       if (debounceRef.current) {
@@ -447,6 +465,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const current = JSON.stringify(payload);
     if (current === lastPushedFullRef.current) return;
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
+    vencimientoPushRef.current = 0;
     const prevPushed = lastPushedRef.current;
     const prevFull   = lastPushedFullRef.current;
     lastPushedRef.current     = serializarBase(payload);

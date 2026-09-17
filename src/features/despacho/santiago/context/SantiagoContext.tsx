@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useReducer, ReactNode, useEffect, useRef, useCallback } from 'react';
+import { esperaDePush } from '@/lib/esperaDePush';
 import type {
   SantiagoState, SantiagoItem, TiendaSantiago, RegimenCarga,
 } from '../types';
@@ -159,7 +160,8 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   const lastPushTimestampRef = useRef<number>(0); // pushedAt value included in last push payload
   const lastServerStampRef   = useRef<number>(0); // [C3/RC-6] updated_at (reloj SERVIDOR) del último push/adopción
   const catchUpRef        = useRef<() => void>(() => {}); // [P9] re-fetch + apply remoto (catch-up)
-  const pendingCatchupRef = useRef(false);                // [P9] remoto llegó durante push local → catch-up al terminar
+  const pendingCatchupRef = useRef(false);        // [P9] remoto llegó durante push local → catch-up al terminar
+  const vencimientoPushRef = useRef<number>(0);   // tope del debounce (ver lib/esperaDePush)
 
   // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
   useEffect(() => {
@@ -173,9 +175,11 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     });
 
     const handleRemote = (remoteState: unknown, updatedAt?: number) => {
-      // Block if local push is pending (debounce) or in-flight (async upsert).
-      // [P9] En vez de descartar, marcamos catch-up: al terminar el push re-consultamos y aplicamos.
-      if (debounceRef.current !== null || isPushingRef.current) { pendingCatchupRef.current = true; return; }
+      // Solo se difiere mientras el upsert está EN VUELO. Un push meramente AGENDADO (el debounce)
+      // ya no bloquea: descartar el cambio del compañero ahí era la causa de que se perdiera
+      // trabajo con varias personas — después este equipo escribía el blob COMPLETO, sin lo suyo,
+      // y la fila es una sola por día donde gana el último que escribe. Ver AppContext, misma nota.
+      if (isPushingRef.current) { pendingCatchupRef.current = true; return; }
       // Block for 30 s after an intentional RESET to prevent remote from restoring cleared data
       if (Date.now() - clearedAtRef.current < 30_000) return;
       // Reject data without an explicit sessionDate or from a different calendar day
@@ -276,10 +280,11 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     };
     // [P5] El chequeo de cambios mira el payload COMPLETO; la base del merge/corta-ecos va aparte.
     const current = JSON.stringify(payload);
-    if (current === lastPushedFullRef.current) return;
+    if (current === lastPushedFullRef.current) { vencimientoPushRef.current = 0; return; }
 
     const doPush = () => {
       debounceRef.current = null;
+      vencimientoPushRef.current = 0;
       // Mark a clear so handleRemote won't restore data for 30 s
       const isEmpty = Object.keys(payload.items).length === 0;
       if (isEmpty) clearedAtRef.current = Date.now();
@@ -301,13 +306,18 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...state, _savedAt: Date.now() })); } catch {}
     };
 
+    // Debounce CON TOPE: nunca más de 2,5 s desde el primer cambio pendiente. Sin él, ahora que
+    // cada fusión remota es un cambio de estado más, el tráfico ajeno podría posponer el push
+    // propio indefinidamente. Ver lib/esperaDePush.
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    const { espera, vencimiento } = esperaDePush(vencimientoPushRef.current, Date.now());
+    vencimientoPushRef.current = vencimiento;
     // `registrado` es un flag CRÍTICO: empujar INMEDIATO (sin el debounce de 2.5s). El usuario
     // suele ir a Inicio justo tras Registrar → eso desmonta el provider y el cleanup del debounce
     // solo guarda en localStorage (no empuja a Supabase), así que registrado=true no llegaba a la
     // BD y PendingDraftBanner mostraba "sin registrar" al día siguiente. Empujarlo ya evita la carrera.
     if (state.registrado) doPush();
-    else debounceRef.current = setTimeout(doPush, 2500);
+    else debounceRef.current = setTimeout(doPush, espera);
 
     return () => {
       if (debounceRef.current) {
@@ -329,6 +339,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     const current = JSON.stringify(payload);
     if (current === lastPushedFullRef.current) return;
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
+    vencimientoPushRef.current = 0;
     const prevPushed = lastPushedRef.current;
     const prevFull   = lastPushedFullRef.current;
     lastPushedRef.current     = serializarBaseSantiago(payload);
