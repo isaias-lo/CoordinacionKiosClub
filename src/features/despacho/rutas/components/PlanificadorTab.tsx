@@ -88,7 +88,7 @@ interface PlanRoute {
 }
 
 /** Badge de tipo (Mall/Strip/Street/…) + ventana horaria de una tienda. */
-function MetaTienda({ tienda }: { tienda?: TiendaInfo }) {
+function MetaTienda({ tienda, congelada }: { tienda?: TiendaInfo; congelada?: boolean }) {
   if (!tienda) return null;
   const tp = tipoTienda(tienda.tipo, tienda.d, tienda.z);
   const ventana = (tienda.v ?? '').trim();
@@ -99,8 +99,11 @@ function MetaTienda({ tienda }: { tienda?: TiendaInfo }) {
         {tp.label}
       </span>
       {ventana && (
-        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-kmuted">
-          <Clock size={10} aria-hidden="true" /> {ventana}
+        // El copo dice CUÁL ventana se está viendo. Sin él, un horario suelto en pantalla no se
+        // puede contrastar contra la planilla: son dos datos distintos para la misma tienda.
+        <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold ${congelada ? 'text-[#0E7490]' : 'text-kmuted'}`}
+          title={congelada ? 'Ventana de recepción de CONGELADOS' : 'Ventana de recepción de SECO'}>
+          {congelada ? <span aria-hidden="true">❄</span> : <Clock size={10} aria-hidden="true" />} {ventana}
         </span>
       )}
     </span>
@@ -401,6 +404,13 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   }), [routes, gps, startCoord, catalogoDe, horaSalida, servicioMin]);
 
   const activeComputed = routesComputed[activeIdx] ?? routesComputed[0];
+  // El catálogo TAL COMO SE MUESTRA: con la ventana que de verdad aplica a esta ruta.
+  //
+  // Ordenar por la ventana de congelados pero SEGUIR MOSTRANDO la de seco era peor que no tener la
+  // función: la ruta quedaba bien ordenada y la pantalla decía otra cosa. Y el semáforo del ETA se
+  // calculaba contra la de seco, así que marcaba en rojo llegadas que estaban perfectas — 19SUB
+  // cierra 10:00 en seco y 12:00 en congelados: llegar 10:34 salía como atraso y no lo era.
+  const tiendasVista = catalogoDe(activeComputed.carga);
   // Qué tiendas de la ruta NO tienen ventana de congelados propia y por lo tanto se están ordenando
   // con la de seco. Sin decirlo, parecería que el dato existe para todas.
   const sinVentanaCong = useMemo(
@@ -988,7 +998,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
                   <span className="text-[13px] font-semibold text-ktext">{t.cod}</span>
                   <span className="text-[12px] text-kmuted"> · {t.nombre}</span>
                   {t.comuna && <span className="block text-[11px] text-kmuted truncate">{t.comuna}</span>}
-                  <MetaTienda tienda={tiendas[t.cod]} />
+                  <MetaTienda tienda={tiendasVista[t.cod]} congelada={cargaActiva === 'congelados' && !!tiendas[t.cod]?.vCong?.trim()} />
                 </span>
               </button>
             );
@@ -1082,7 +1092,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
           {orderedCods.map((cod, i) => {
             const esDir = esParadaDireccion(cod);
             const eta = etasActive?.[i];
-            const estV: EstadoVentana | null = eta == null ? null : (esDir ? 'sin-ventana' : estadoVentana(eta, tiendas[cod]?.v));
+            const estV: EstadoVentana | null = eta == null ? null : (esDir ? 'sin-ventana' : estadoVentana(eta, tiendasVista[cod]?.v));
             return (
             <div key={cod} draggable
               onDragStart={() => setDragIdx(i)}
@@ -1104,15 +1114,15 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
                   <>
                     <span className="text-[13px] font-semibold text-ktext">{cod}</span>
                     <span className="text-[11px] text-kmuted"> · {nombre(cod)}{comuna(cod) ? ` · ${comuna(cod)}` : ''}</span>
-                    <MetaTienda tienda={tiendas[cod]} />
+                    <MetaTienda tienda={tiendasVista[cod]} congelada={cargaActiva === 'congelados' && !!tiendas[cod]?.vCong?.trim()} />
                   </>
                 )}
               </span>
               {eta != null && (
                 <span
-                  title={estV === 'tarde' ? `Llegás ~${minAHHMM(eta)} — DESPUÉS de la ventana (${tiendas[cod]?.v})`
-                    : estV === 'temprano' ? `Llegás ~${minAHHMM(eta)} — ANTES de que abra (${tiendas[cod]?.v})`
-                    : estV === 'ok' ? `Llegás ~${minAHHMM(eta)} — dentro de la ventana (${tiendas[cod]?.v})`
+                  title={estV === 'tarde' ? `Llegás ~${minAHHMM(eta)} — DESPUÉS de la ventana (${tiendasVista[cod]?.v})`
+                    : estV === 'temprano' ? `Llegás ~${minAHHMM(eta)} — ANTES de que abra (${tiendasVista[cod]?.v})`
+                    : estV === 'ok' ? `Llegás ~${minAHHMM(eta)} — dentro de la ventana (${tiendasVista[cod]?.v})`
                     : `Hora estimada de llegada ~${minAHHMM(eta)}`}
                   className={`inline-flex items-center gap-0.5 text-[10px] font-bold flex-shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 ${
                     estV === 'tarde' ? 'text-[#D42B2B] bg-[#D42B2B14]'
