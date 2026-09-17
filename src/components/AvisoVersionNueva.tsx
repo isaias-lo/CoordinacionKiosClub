@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw, X } from 'lucide-react';
-import { hayVersionNueva, VERSION_DESCONOCIDA } from '@/lib/versionApp';
+import { hayVersionNueva, debeMostrarAviso, VERSION_DESCONOCIDA, POSPONER_MS } from '@/lib/versionApp';
 
 /** Cada cuánto se le pregunta al servidor qué versión está publicada. */
 const CADA_MS = 5 * 60_000;
@@ -10,14 +10,20 @@ const CADA_MS = 5 * 60_000;
 /**
  * Aviso "hay una versión nueva" con botón para recargar.
  *
- * No recarga solo ni bloquea nada: quien está cargando una tienda decide cuándo. Solo aparece, y se
- * queda hasta que se recargue o se cierre. Además del ciclo cada 5 minutos, revisa al volver a la
- * pestaña — el caso típico es el equipo de Bodega que la deja abierta todo el día.
+ * No recarga solo ni bloquea nada: quien está cargando una tienda decide cuándo. Además del ciclo
+ * cada 5 minutos, revisa al volver a la pestaña — el caso típico es el equipo de Bodega que la deja
+ * abierta todo el día, y en el celular se dispara al desbloquear la pantalla.
+ *
+ * La X POSPONE media hora; no silencia. Cerrarlo para toda la sesión daba igual con un cambio de
+ * color, pero con el arreglo que evita que se borren los pallets entre compañeros significaba
+ * quedarse con el código viejo el resto del día —perdiendo trabajo— sin volver a enterarse.
  */
 export function AvisoVersionNueva() {
   const local = process.env.NEXT_PUBLIC_APP_VERSION;
   const [hayNueva, setHayNueva] = useState(false);
-  const [cerrado, setCerrado] = useState(false);
+  const [pospuestoHasta, setPospuestoHasta] = useState(0);
+  // Solo existe para volver a dibujar cuando vence el aplazamiento.
+  const [tic, setTic] = useState(0);
   // Una vez detectada, no se vuelve a preguntar: la respuesta ya no puede cambiar sin recargar.
   const yaDetectada = useRef(false);
 
@@ -46,9 +52,18 @@ export function AvisoVersionNueva() {
     return () => { vivo = false; clearInterval(id); document.removeEventListener('visibilitychange', alVolver); };
   }, [local]);
 
-  const recargar = useCallback(() => { window.location.reload(); }, []);
+  // Mientras está pospuesto, un temporizador lo trae de vuelta al vencer.
+  useEffect(() => {
+    if (!hayNueva || pospuestoHasta <= Date.now()) return;
+    const id = setTimeout(() => setTic(t => t + 1), pospuestoHasta - Date.now() + 100);
+    return () => clearTimeout(id);
+  }, [hayNueva, pospuestoHasta]);
 
-  if (!hayNueva || cerrado) return null;
+  const recargar = useCallback(() => { window.location.reload(); }, []);
+  const posponer = useCallback(() => { setPospuestoHasta(Date.now() + POSPONER_MS); }, []);
+
+  if (!debeMostrarAviso(hayNueva, pospuestoHasta, Date.now())) return null;
+  void tic;  // la dependencia real es el temporizador de abajo
 
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[1000] print:hidden max-w-[94vw]">
@@ -63,7 +78,7 @@ export function AvisoVersionNueva() {
           style={{ background: '#fff', color: '#1A2550' }}>
           <RefreshCw size={13} /> Recargar
         </button>
-        <button onClick={() => setCerrado(true)} aria-label="Cerrar aviso"
+        <button onClick={posponer} aria-label="Recordarme en 30 minutos" title="Recordarme en 30 minutos"
           className="cursor-pointer opacity-60 hover:opacity-100 transition-opacity flex-shrink-0">
           <X size={16} />
         </button>

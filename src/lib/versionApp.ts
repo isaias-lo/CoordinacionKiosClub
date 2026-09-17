@@ -21,3 +21,20 @@ export function hayVersionNueva(local: string | undefined | null, remota: string
   if (local === VERSION_DESCONOCIDA || remota === VERSION_DESCONOCIDA) return false;
   return local !== remota;
 }
+
+/** Cuánto se pospone el aviso al cerrarlo. No es "nunca más": vuelve. */
+export const POSPONER_MS = 30 * 60_000;
+
+/**
+ * ¿Se muestra el aviso ahora?
+ *
+ * La X lo POSPONE, no lo silencia. Antes lo cerraba para toda la sesión, y esa diferencia importa
+ * según qué se publicó: para un cambio de color da igual, pero para el arreglo que evita que se
+ * borren los pallets entre compañeros significaba quedarse con el código viejo el resto del día
+ * —perdiendo trabajo— sin volver a enterarse.
+ *
+ * Quien está cargando un camión lo saca de encima y sigue; quien lo olvidó, se entera igual.
+ */
+export function debeMostrarAviso(hayNueva: boolean, pospuestoHasta: number, ahora: number): boolean {
+  return hayNueva && ahora >= pospuestoHasta;
+}
