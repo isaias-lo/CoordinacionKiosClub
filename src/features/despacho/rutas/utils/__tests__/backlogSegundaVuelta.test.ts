@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { pendientesDelDia, unirBacklog, textoBacklog, ruteadasParaOrigen } from '../backlogSegundaVuelta';
+import { pendientesDelDia, unirBacklog, textoBacklog, despachadasParaOrigen,
+         aFechaPlanilla, desdeFechaPlanilla } from '../backlogSegundaVuelta';
 
 // El lunes 14/09 real: 9 tiendas registradas que no entraron a ningún manifiesto.
 const CARGA_14 = [
@@ -63,60 +64,43 @@ describe('qué cuenta como pendiente', () => {
   });
 });
 
-// El martes 15/09 real: el coordinador cerró el día y el cierre guardó CINCO tiendas. El tab
-// mostraba 25 porque el cálculo le sumaba 20 que todavía no se habían despachado.
-const GUARDADO_15 = [
-  { c: '23PEÑ', p: 5, b: 1, ch: 0, fechaOrigen: '2026-09-15' },
-  { c: '01TPS', p: 5, b: 2, ch: 0, fechaOrigen: '2026-09-15' },
-  { c: '13PIE', p: 4, b: 3, ch: 0, fechaOrigen: '2026-09-15' },
-  { c: '21NUC', p: 5, b: 6, ch: 0, fechaOrigen: '2026-09-15' },
-  { c: '40LIL', p: 3, b: 0, ch: 5, fechaOrigen: '2026-09-15' },
+// El jueves 17/09: el 16 se cerró y la lista guardada tenía SOLO las tiendas sin camión (05LP,
+// 13PIE). Las cuatro que estaban en camiones que nunca se cerraron —01TPS y 02SCL y 06MQH en
+// VRYL52, 37VIÑ en VYJL23— no entraron en esa lista ni en ningún despacho. Quedaron invisibles.
+const GUARDADO_16 = [
+  { c: '05LP',  p: 4, b: 4, ch: 5, fechaOrigen: '2026-09-16' },
+  { c: '13PIE', p: 4, b: 2, ch: 3, fechaOrigen: '2026-09-16' },
 ];
-const CALCULADO_15 = [
-  ...GUARDADO_15,
-  ...['10TRQ','11ILC','18FLO','24SPP','26ALC','27MCH','28TEM','29CFL','31TLC','34SMB',
-      '36CHL','38SP2','45EST','46TRE','48BRU','49PTA','56PZA','60PBL','75PUC','76PAN']
-    .map(c => ({ c, p: 2, b: 1, ch: 0, fechaOrigen: '2026-09-15' })),
+const CALCULADO_16 = [
+  ...GUARDADO_16,
+  { c: '01TPS', p: 6, b: 0, ch: 4, fechaOrigen: '2026-09-16' },
+  { c: '02SCL', p: 5, b: 0, ch: 5, fechaOrigen: '2026-09-16' },
+  { c: '06MQH', p: 2, b: 4, ch: 3, fechaOrigen: '2026-09-16' },
+  { c: '37VIÑ', p: 2, b: 3, ch: 0, fechaOrigen: '2026-09-16' },
 ];
 
-describe('el caso real del martes 15: el día se cerró y guardó 5', () => {
-  const cerrados = new Set(['2026-09-15']);
-
-  it('muestra las 5 del cierre, no las 25 del cálculo', () => {
-    const r = unirBacklog(GUARDADO_15, CALCULADO_15, cerrados);
-    expect(r).toHaveLength(5);
-    expect(r.map(x => x.c).sort()).toEqual(['01TPS', '13PIE', '21NUC', '23PEÑ', '40LIL']);
+describe('el caso real del 16: la lista del cierre no alcanza', () => {
+  it('el cálculo aporta las cuatro que el cierre no podía ver', () => {
+    const r = unirBacklog(GUARDADO_16, CALCULADO_16);
+    expect(r.map(x => x.c).sort()).toEqual(['01TPS', '02SCL', '05LP', '06MQH', '13PIE', '37VIÑ']);
   });
 
-  it('sin la marca de cierre vuelve a inflarse a 25 — es exactamente el bug', () => {
-    expect(unirBacklog(GUARDADO_15, CALCULADO_15, new Set())).toHaveLength(25);
-  });
-
-  it('conserva los conteos del cierre, no los del cálculo', () => {
-    const r = unirBacklog(GUARDADO_15, CALCULADO_15, cerrados);
-    expect(r.find(x => x.c === '40LIL')).toMatchObject({ p: 3, b: 0, ch: 5 });
+  it('lo guardado conserva sus conteos, no los pisa el cálculo', () => {
+    const conOtrosConteos = CALCULADO_16.map(x => ({ ...x, p: 99 }));
+    expect(unirBacklog(GUARDADO_16, conOtrosConteos).find(x => x.c === '05LP')?.p).toBe(4);
   });
 });
 
-describe('unirBacklog — cerrar el día congela la lista', () => {
-  const g = [{ c: 'A', p: 9, b: 9, ch: 9, fechaOrigen: 'd1' }];
-  const c = [{ c: 'A', p: 1, b: 1, ch: 1, fechaOrigen: 'd1' }, { c: 'B', p: 2, b: 0, ch: 0, fechaOrigen: 'd1' }];
-
-  it('día CERRADO: el cálculo no agrega nada, ni siquiera lo que no estaba guardado', () => {
-    expect(unirBacklog(g, c, new Set(['d1'])).map(x => x.c)).toEqual(['A']);
+describe('las fechas de Control Despacho', () => {
+  it('ida y vuelta entre ISO y el formato de la planilla', () => {
+    expect(aFechaPlanilla('2026-09-16')).toBe('16/09/2026');
+    expect(desdeFechaPlanilla('16/09/2026')).toBe('2026-09-16');
   });
 
-  it('día SIN cerrar: el cálculo entra — el rescate de los días que nadie cerró', () => {
-    expect(unirBacklog(g, c, new Set(['otro-dia'])).map(x => x.c).sort()).toEqual(['A', 'B']);
-  });
-
-  it('cerrar un día no afecta a los demás', () => {
-    const mixto = [...c, { c: 'C', p: 1, b: 0, ch: 0, fechaOrigen: 'd2' }];
-    expect(unirBacklog(g, mixto, new Set(['d1'])).map(x => x.c).sort()).toEqual(['A', 'C']);
-  });
-
-  it('un día cerrado SIN nada guardado queda vacío: se cerró y no quedó nada', () => {
-    expect(unirBacklog([], c, new Set(['d1']))).toEqual([]);
+  it('lo que no tiene esa forma no se inventa', () => {
+    expect(desdeFechaPlanilla('2026-09-16')).toBe('');
+    expect(desdeFechaPlanilla('')).toBe('');
+    expect(aFechaPlanilla('')).toBe('');
   });
 });
 
@@ -171,38 +155,38 @@ describe('ruteadasParaOrigen — el falso positivo que resucitaba despachadas', 
   ];
 
   it('una tienda despachada DÍAS DESPUÉS ya no es pendiente', () => {
-    const r = ruteadasParaOrigen(MANIF, '2026-09-09');
+    const r = despachadasParaOrigen(MANIF, '2026-09-09');
     for (const c of ['01TPS', '20CTC', '41ANA']) expect(r.has(c)).toBe(true);
   });
 
   it('las 11 del 09 dejan de aparecer', () => {
     const carga = ['01TPS','02SCL','05LP','13PIE','19SUB','20CTC','32BNV','35BN2','39PSB','41ANA','42ANP']
       .map(cod => ({ cod, pallets: 3, bultos: 1 }));
-    expect(pendientesDelDia(carga, ruteadasParaOrigen(MANIF, '2026-09-09'), '2026-09-09')).toEqual([]);
+    expect(pendientesDelDia(carga, despachadasParaOrigen(MANIF, '2026-09-09'), '2026-09-09')).toEqual([]);
   });
 
   it('del 10 quedan SOLO las 4 que de verdad no salieron', () => {
     const carga = ['04PDG','26ALC','30PHU','47PTV','50PTM','53VAL','57CAS','58TAM']
       .map(cod => ({ cod, pallets: 3, bultos: 1 }));
-    const r = pendientesDelDia(carga, ruteadasParaOrigen(MANIF, '2026-09-10'), '2026-09-10');
+    const r = pendientesDelDia(carga, despachadasParaOrigen(MANIF, '2026-09-10'), '2026-09-10');
     expect(r.map(x => x.c)).toEqual(['04PDG', '47PTV', '50PTM', '53VAL', '57CAS']);
   });
 
   it('un manifiesto ANTERIOR al día de origen no cuenta: esa carga es otra', () => {
-    const r = ruteadasParaOrigen([{ fecha: '2026-09-08', cods: ['01TPS'] }], '2026-09-09');
+    const r = despachadasParaOrigen([{ fecha: '2026-09-08', cods: ['01TPS'] }], '2026-09-09');
     expect(r.has('01TPS')).toBe(false);
   });
 
   it('el manifiesto del MISMO día sigue contando', () => {
-    expect(ruteadasParaOrigen([{ fecha: '2026-09-09', cods: ['01TPS'] }], '2026-09-09').has('01TPS')).toBe(true);
+    expect(despachadasParaOrigen([{ fecha: '2026-09-09', cods: ['01TPS'] }], '2026-09-09').has('01TPS')).toBe(true);
   });
 
   it('normaliza y descarta vacíos', () => {
-    const r = ruteadasParaOrigen([{ fecha: '2026-09-10', cods: [' 01tps ', '', null as unknown as string] }], '2026-09-09');
+    const r = despachadasParaOrigen([{ fecha: '2026-09-10', cods: [' 01tps ', '', null as unknown as string] }], '2026-09-09');
     expect([...r]).toEqual(['01TPS']);
   });
 
   it('sin manifiestos no hay nada ruteado', () => {
-    expect(ruteadasParaOrigen([], '2026-09-09').size).toBe(0);
+    expect(despachadasParaOrigen([], '2026-09-09').size).toBe(0);
   });
 });
