@@ -23,6 +23,7 @@ import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
 import { sumarPesoMultiple } from '../../shared/sumarMultiple';
 import { unionRefs } from '../../shared/unifyPallets';
+import { finalizarSlotUnion } from '../../shared/finalizarSlotUnion';
 import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
@@ -1626,19 +1627,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
   // Fusiona las guías del source en el target (lee refs ANTES de borrar) y borra el slot del
   // source en la BD. Fire-and-forget. El caché local ya quitó el slot del source arriba.
-  const finalizarSlotUnion = async (targetId: number, sourceId: number) => {
-    try {
-      const { data } = await supabase.from('picking_pallets').select('id, refs').in('id', [targetId, sourceId]);
-      const tRefs  = (data ?? []).find(d => d.id === targetId)?.refs as string | undefined;
-      const sRefs  = (data ?? []).find(d => d.id === sourceId)?.refs as string | undefined;
-      const merged = unionRefs(tRefs, sRefs);
-      if (merged && merged !== (tRefs ?? '')) {
-        await supabase.from('picking_pallets').update({ refs: merged }).eq('id', targetId);
-      }
-      await supabase.from('picking_pallets').delete().eq('id', sourceId);
-    } catch (e) { console.error('[finalizarSlotUnion]', e); }
-  };
-
   const absorbPickingSlot = (tiendaName: string, type: 'p' | 'b' | 'c' | 'ch') => {
     setConsumedPickingSlots(prev => {
       const cur = prev[tiendaName] || { p: 0, b: 0, c: 0, ch: 0 };
