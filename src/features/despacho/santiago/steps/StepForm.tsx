@@ -54,6 +54,7 @@ import { useDayRollover } from '@/hooks/useDayRollover';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { slotsSinTarjeta, slotsRepresentados } from '../../shared/slotsSinTarjeta';
+import { adopcionesPendientes } from '../../shared/adoptarItemRemoto';
 import { combinarEnLista } from '../../shared/combinarEnLista';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
@@ -123,6 +124,9 @@ interface FormRow {
   largo: string;
   ancho: string;
   saved?: boolean;
+  /** La persona escribió algo acá. Distinto de `!saved`, que solo dice que no se guardó EN ESTE
+   *  equipo: una tarjeta recién nacida en blanco no está tocada. */
+  tocada?: boolean;
   savedItem?: SantiagoItem;
   pickingSlotId?: number;  // FK a picking_pallets.id
   // [Unificar inline / sumar] La fila TARGET (P1) recién unificada o a la que se le sumó carga: el
@@ -1107,6 +1111,30 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentItems, currentTienda?.cod]);
 
+  /* Una tarjeta vacía e INTACTA adopta lo que cargó el compañero.
+     Sin esto quedaba muerta: la reconstrucción solo corre al entrar a la tienda, la reconciliación
+     salta las no guardadas y el backfill solo crea las que faltan. El ítem llegaba al estado en
+     segundos y la tarjeta seguía en blanco. Lo que la persona ya tocó no se toca (`puedeAdoptar`). */
+  useEffect(() => {
+    if (!currentTienda || !currentItems) return;
+    setFormRows(prev => {
+      const adopciones = adopcionesPendientes(prev, currentItems);
+      if (!adopciones.length) return prev;
+      const porFila = new Map(adopciones.map(a => [a.fila, a.item]));
+      return prev.map(r => {
+        const it = porFila.get(r);
+        if (!it) return r;
+        return {
+          ...r, tipo: it.tipo, contenido: it.contenido,
+          peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
+          largo: String(it.largo ?? ''), ancho: String(it.ancho ?? ''),
+          saved: true, savedItem: it,
+        };
+      });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentItems, currentTienda?.cod]);
+
   /* [Backfill de slots que llegan tarde] El fetch de picking_pallets es asíncrono; si al
      recargar la página la tienda ya está seleccionada, el rebuild (useLayoutEffect [cod]) corre
      ANTES de que lleguen los slots y no se re-dispara → faltan tarjetas (p. ej. el P2 no aparece
@@ -1221,7 +1249,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const updateRow = (id: string, field: keyof FormRow, value: string) =>
     setFormRows(prev => prev.map(r => {
       if (r.id !== id) return r;
-      const updated = { ...r, [field]: value };
+      // `tocada` marca que esto es de la persona: desde acá, nada remoto lo pisa.
+      const updated = { ...r, [field]: value, tocada: true };
       if (field === 'contenido') {
         // El autorrelleno es de la CAJA de chocolate, así que no aplica a un pallet: un pallet de
         // chocolate mide lo que mide el pallet. Antes esto miraba solo el contenido.
