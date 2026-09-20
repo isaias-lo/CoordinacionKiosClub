@@ -52,6 +52,7 @@ import type { PickingSlot } from '@/features/despacho/santiago/components/Pickin
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { slotsSinTarjeta, slotsRepresentados } from '../../shared/slotsSinTarjeta';
+import { adopcionesPendientes } from '../../shared/adoptarItemRemoto';
 import { combinarEnLista } from '../../shared/combinarEnLista';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
@@ -118,6 +119,9 @@ interface FormRow {
   guia: string;
   valor: string;
   saved?: boolean;
+  /** La persona escribió algo en esta tarjeta. Distinto de `!saved`, que solo dice que no se
+   *  guardó EN ESTE equipo: una tarjeta recién nacida en blanco no está tocada. */
+  tocada?: boolean;
   savedItem?: DispatchItem;
   pickingSlotId?: number;  // FK a picking_pallets.id para guardar dimensiones
   // [Unificar inline / sumar] La fila TARGET (P1) recién unificada o a la que se le sumó carga: el
@@ -466,6 +470,32 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     setFormRows(prev => {
       const next = reconcileSavedRows(prev, selectedItems);
       return next === prev ? prev : next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedItems, selectedTienda]);
+
+  /* Una tarjeta vacía e INTACTA adopta lo que cargó el compañero.
+     Sin esto quedaba muerta: la reconstrucción solo corre al entrar a la tienda, la reconciliación
+     salta las no guardadas y el backfill solo crea las que faltan. El ítem llegaba al estado en
+     segundos y la tarjeta seguía en blanco — medido el 17/09: nueve pallets pesados dos veces,
+     entre 13 y 80 minutos de diferencia. Lo que la persona ya tocó no se toca (ver `puedeAdoptar`). */
+  useEffect(() => {
+    if (!selectedTienda || !selectedItems) return;
+    setFormRows(prev => {
+      const adopciones = adopcionesPendientes(prev, selectedItems);
+      if (!adopciones.length) return prev;
+      const porFila = new Map(adopciones.map(a => [a.fila, a.item]));
+      return prev.map(r => {
+        const it = porFila.get(r);
+        if (!it) return r;
+        return {
+          ...r, pkg: it.pkg, tipo: it.tipo,
+          peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
+          ancho: String(it.ancho ?? ''), largo: String(it.largo ?? ''),
+          guia: it.guia || '', valor: it.valor ? String(it.valor) : '',
+          saved: true, savedItem: it,
+        };
+      });
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedItems, selectedTienda]);
@@ -1127,7 +1157,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const [dialogPkg, setDialogPkg] = useState<TipoPaquete | null>(null);
   const PKG_LABEL: Record<TipoPaquete, string> = { pallet: 'Pallet', box: 'Bulto', contenedor: 'Contenedor', chocolate: 'Chocolate' };
   const updateRow = (id: string, field: keyof FormRow, value: string) => {
-    setFormRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+    // `tocada` marca que esto es de la persona: desde acá, nada remoto lo pisa.
+    setFormRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value, tocada: true } : r));
   };
   const saveRow = async (row: FormRow, sinPesar = false) => {
     if (!selectedTienda) return;
