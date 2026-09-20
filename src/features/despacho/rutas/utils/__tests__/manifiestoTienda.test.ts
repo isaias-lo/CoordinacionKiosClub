@@ -164,3 +164,48 @@ describe('buildManifiestoTiendaHTML', () => {
     expect(html).toContain('Sin detalle de ítems etiquetados para esta tienda.');
   });
 });
+
+describe('la observación de la tienda se IMPRIME', () => {
+  // El caso que lo motivó: el MUT. "Luego de las 10:00 la entrega debe ser por la puerta trasera
+  // del mall" no es un horario, y hasta ahora no había dónde ponerlo — así que no le llegaba a
+  // quien maneja.
+  const NOTA = 'Luego de las 10:00 la entrega debe ser por la puerta trasera del mall.';
+
+  it('aparece en el manifiesto cuando viene del catálogo', () => {
+    const html = buildManifiestoTiendaHTML(
+      TIENDA, { n: 'El MUT', z: 'Corredor Oriente', v: '08:30-09:30', observacion: NOTA },
+      [item()], META);
+    expect(html).toContain(NOTA);
+    expect(html).toContain('Atención');
+  });
+
+  it('también si viene en la fila del manifiesto y no en el catálogo', () => {
+    const html = buildManifiestoTiendaHTML({ ...TIENDA, observacion: NOTA }, undefined, [item()], META);
+    expect(html).toContain(NOTA);
+  });
+
+  it('el catálogo manda sobre la fila: es el dato que se edita en Config', () => {
+    const html = buildManifiestoTiendaHTML(
+      { ...TIENDA, observacion: 'vieja' },
+      { n: 'El MUT', z: '', v: '', observacion: NOTA }, [item()], META);
+    expect(html).toContain(NOTA);
+    expect(html).not.toContain('vieja');
+  });
+
+  it('sin observación NO se imprime el bloque: no ensucia el papel de las 34 tiendas que no tienen', () => {
+    const html = buildManifiestoTiendaHTML(TIENDA, undefined, [item()], META);
+    expect(html).not.toContain('Atención');
+  });
+
+  it('una observación en blanco cuenta como sin observación', () => {
+    const html = buildManifiestoTiendaHTML({ ...TIENDA, observacion: '   ' }, undefined, [item()], META);
+    expect(html).not.toContain('Atención');
+  });
+
+  it('el texto se escapa: lo escribe una persona en Config y un < rompería el papel', () => {
+    const html = buildManifiestoTiendaHTML(
+      { ...TIENDA, observacion: 'Portón <2m> & "lateral"' }, undefined, [item()], META);
+    expect(html).toContain('Portón &lt;2m&gt; &amp; &quot;lateral&quot;');
+    expect(html).not.toContain('<2m>');
+  });
+});
