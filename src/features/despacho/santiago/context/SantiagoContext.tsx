@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useReducer, ReactNode, useEffect, useRef, useCallback } from 'react';
+import { debeConsultar, TICK_MS } from '@/lib/ritmoDePoll';
 import { esperaDePush } from '@/lib/esperaDePush';
 import type {
   SantiagoState, SantiagoItem, TiendaSantiago, RegimenCarga,
@@ -256,14 +257,20 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // Polling fallback every 15 s — ONLY fires when Realtime is disconnected (3 s was too aggressive)
+    // Respaldo: con el canal caído, cada 15 s. Con el canal SANO ya no se apaga — pasa a una vez
+    // por minuto, solo para detectar que el canal quedó mudo. Antes el respaldo se apagaba del
+    // todo mientras el canal dijera "conectado", y ese "conectado" solo cambia si el canal AVISA.
+    // La caída muda (reinicio del servidor de tiempo real, rebalanceo, throttle) dejaba al equipo
+    // ciego para siempre, y ciego se ve igual que "no pasó nada en bodega". Ver lib/ritmoDePoll.
+    let tickPoll = 0;
     const pollId = setInterval(async () => {
-      if (realtimeConnected) return;
+      tickPoll += 1;
+      if (!debeConsultar(realtimeConnected, tickPoll)) return;
       try {
         const m = await fetchSessionStateMeta('santiago');
         if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined);
       } catch {}
-    }, 15000);
+    }, TICK_MS);
 
     return () => { unsub(); clearInterval(pollId); };
   }, [userId]);
