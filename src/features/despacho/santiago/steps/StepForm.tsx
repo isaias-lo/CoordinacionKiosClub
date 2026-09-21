@@ -60,7 +60,7 @@ import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBo
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
-import { itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
+import { itemDeLaUnidad, fusionarConPrevio, esReingreso } from '../../shared/itemPorUnidad';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { fechaChile } from '@/lib/fechaChile';
@@ -1335,6 +1335,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     logActividad({ accion: 'registrar_item', fuente: 'rmcosta', tiendaCod: currentTienda.cod,
       tiendaNombre: currentTienda.tienda, label: savedItem.orden, peso: savedItem.peso, alto: savedItem.alto,
       contenido: savedItem.contenido, slotId });
+    // [Bodega · uso simultáneo] La unidad ya tenía un ítem pesado de verdad — alguien la volvió a
+    // pesar. El merge lo resuelve bien (no se duplica el ítem), pero el trabajo se hizo dos
+    // veces: registrarlo automáticamente evita depender de otra medición manual como la del 17/09.
+    if (esReingreso(previo)) {
+      logActividad({ accion: 'reingreso', fuente: 'rmcosta', tiendaCod: currentTienda.cod,
+        tiendaNombre: currentTienda.tienda, label: savedItem.orden, peso: savedItem.peso, alto: savedItem.alto,
+        pesoPrevio: previo!.peso, altoPrevio: previo!.alto, contenido: savedItem.contenido, slotId });
+    }
 
     // Sincronizar dimensiones en picking_pallets si el row tiene slot vinculado. Con las medidas
     // ya fusionadas: un "sin pesar" encima de un bulto pesado no le borra el peso en Picking.

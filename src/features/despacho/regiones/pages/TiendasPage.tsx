@@ -55,7 +55,7 @@ import { slotsSinTarjeta, slotsRepresentados } from '../../shared/slotsSinTarjet
 import { adopcionesPendientes } from '../../shared/adoptarItemRemoto';
 import { combinarEnLista } from '../../shared/combinarEnLista';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
-import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
+import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio, esReingreso } from '../../shared/itemPorUnidad';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaChile } from '@/lib/fechaChile';
@@ -1231,6 +1231,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     if (!sinPesar) showToast(`✓ ${item.orden} ${previo ? 'actualizado' : 'agregado'}`, '#16A34A');
     logActividad({ accion: 'registrar_item', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
       tiendaNombre: selectedTienda, label: ordenToLabel(item.orden), peso: item.peso, alto: item.alto, slotId });
+    // [Bodega · uso simultáneo] Ver el mismo punto en StepForm.tsx — la unidad ya tenía un ítem
+    // pesado de verdad y alguien la volvió a pesar. Registrarlo evita depender de otra medición
+    // manual como la del 17/09.
+    if (esReingreso(previo)) {
+      logActividad({ accion: 'reingreso', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
+        tiendaNombre: selectedTienda, label: ordenToLabel(item.orden), peso: item.peso, alto: item.alto,
+        pesoPrevio: previo!.peso, altoPrevio: previo!.alto, slotId });
+    }
 
     // Sincronizar dimensiones en picking_pallets — a esta altura slotId siempre existe (si
     // faltaba, se creó arriba o la función ya retornó). Con las medidas ya fusionadas: un "sin
