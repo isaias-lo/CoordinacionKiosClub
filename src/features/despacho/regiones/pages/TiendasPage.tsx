@@ -4,6 +4,7 @@ import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navigation, ChevronLeft, ClipboardList, User, Store, FileUp } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
+import { IndicadorCanalSano } from '../../shared/IndicadorCanalSano';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones, registrarTiendasBD, type TiendaBDRow, type TiendaIncompleta } from '../data/tiendas';
 import { avisoSendu } from '../data/senduCompletitud';
@@ -289,7 +290,7 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
 
 /* ── Main page ── */
 export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) {
-  const { state, dispatch, showToast, flushPending } = useApp();
+  const { state, dispatch, showToast, flushPending, canalSano } = useApp();
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const router = useRouter();
   const odooProgress = useOdooProgress();  // progreso de Odoo (punto gris/naranja/verde) — igual que Santiago
@@ -1708,7 +1709,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         onTouchEnd={isMobile ? onSheetDragEnd : undefined}>
         <div className="flex items-center justify-between">
           <div className="flex-1 min-w-0">
-            <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight truncate">{selectedTienda}</div>
+            <div className="flex items-center gap-2">
+              <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight truncate">{selectedTienda}</div>
+              <IndicadorCanalSano canalSano={canalSano} />
+            </div>
             <div className="font-mono text-[11px] text-white/50 mt-0.5">{tienda?.cod ? formatCod(tienda.cod) : ''} · {tienda?.calle} {tienda?.numero}</div>
           </div>
           <div className="flex gap-2.5 ml-2 flex-shrink-0">

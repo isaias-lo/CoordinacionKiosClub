@@ -3,6 +3,7 @@ import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Navigation, GripVertical, ClipboardList, User, Store, FileUp } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
+import { IndicadorCanalSano } from '../../shared/IndicadorCanalSano';
 import { useApp } from '../../../../context/AppContext';
 import { getTiendasSantiagoHoy, TIENDAS_SANTIAGO, getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import { formatCod, matchCodArchivo } from '../../rutas/utils/helpers';
@@ -294,13 +295,14 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
 /* ═══════════════════════════════════════
    FORM HEADER
 ═══════════════════════════════════════ */
-function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe, terminadaInfo, onToggleTerminada, sinPesarCount, sinGuardar, viendo }: {
+function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe, terminadaInfo, onToggleTerminada, sinPesarCount, sinGuardar, viendo, canalSano }: {
   tienda: TiendaSantiago; pallets: number; bultos: number; chocolates?: number; contenedores?: number; onBack: () => void;
   swipe?: { start: (e: React.TouchEvent) => void; move: (e: React.TouchEvent) => void; end: () => void };
   terminadaInfo?: TerminadaInfo; onToggleTerminada: (cod: string, terminada: boolean, por?: string) => void;
   sinPesarCount?: number;
   sinGuardar?: string | null;
   viendo?: ViendoInfo[];
+  canalSano: boolean;
 }) {
   const itemCount = pallets + bultos + chocolates + contenedores;
   return (
@@ -314,7 +316,10 @@ function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedore
           ←
         </button>
         <div className="flex-1 min-w-0">
-          <div className="font-barlow-condensed text-[18px] font-bold text-white leading-tight truncate">{tienda.tienda}</div>
+          <div className="flex items-center gap-2">
+            <div className="font-barlow-condensed text-[18px] font-bold text-white leading-tight truncate">{tienda.tienda}</div>
+            <IndicadorCanalSano canalSano={canalSano} />
+          </div>
           <div className="font-mono text-[10px] text-white/50">{formatCod(tienda.cod)} · {tienda.ventanaHoraria}</div>
         </div>
         <div className="flex gap-3 flex-shrink-0">
@@ -367,7 +372,7 @@ type StepFormProps = {
 
 export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: StepFormProps = {}) {
   const router = useRouter();
-  const { state, dispatch, flushPending } = useSantiago();
+  const { state, dispatch, flushPending, canalSano } = useSantiago();
   const { showToast } = useApp();
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const { currentTienda, items, regimen } = state;
@@ -2450,7 +2455,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} chocolates={tiendaChocolates} contenedores={tiendaContenedores} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} terminadaInfo={terminadas.get(currentTienda.cod)} onToggleTerminada={marcarTerminada}
           sinPesarCount={tiendaItems.filter(esSinPesar).length}
           sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[currentTienda.cod] ?? [], tiendaItems))}
-          viendo={viendoPorTienda.get(currentTienda.cod)} />
+          viendo={viendoPorTienda.get(currentTienda.cod)}
+          canalSano={canalSano} />
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           {(() => {
