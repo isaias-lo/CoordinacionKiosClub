@@ -427,7 +427,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const { dispatch: dispatchData, selectedTienda, fechaDespacho: _fechaDespacho, registrado } = state;
   // [Presencia] Quién más tiene cada tienda abierta AHORA — pedido 2026-09-09: "no saben quién
   // está haciendo qué". Efímero (Realtime Presence, no tabla): se resetea cuando todos se van.
-  const { viendoPorTienda } = usePresenciaTienda('regiones', selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? null) : null);
+  // [Presencia por pallet] `slotEnFoco` es la tarjeta cuyo peso/alto/etc. se está escribiendo
+  // ahora mismo — previene el reingreso EN VEZ de solo registrarlo después (ver logActividad
+  // 'reingreso' más abajo). Mismo criterio que StepForm.tsx.
+  const [slotEnFoco, setSlotEnFoco] = useState<number | null>(null);
+  const { viendoPorTienda, viendoPorSlot } = usePresenciaTienda('regiones', selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? null) : null, slotEnFoco);
+  // Salir de la tienda sin que el input llegue a hacer blur no debe dejar un slot "en foco"
+  // fantasma para la próxima tienda que se abra.
+  useEffect(() => { setSlotEnFoco(null); }, [selectedTienda]);
   useEffect(() => { setMergeSel(new Set()); setDupRow(null); }, [selectedTienda, registrado]);
   const fechaDespacho = _fechaDespacho ?? (() => {
     const d = new Date(); d.setDate(d.getDate() + 1);
@@ -1961,8 +1968,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               /* Active / unsaved card */
               const isChocRow = row.pkg === 'chocolate';
               const isContRow = row.pkg === 'contenedor';
+              // [Presencia por pallet] Al enfocar cualquier input de esta tarjeta, avisar que
+              // ESTA es la que se está escribiendo — no solo "estoy en la tienda".
+              const marcarEnFoco = () => row.pickingSlotId && setSlotEnFoco(row.pickingSlotId);
+              const quitarFoco = () => setSlotEnFoco(prev => prev === row.pickingSlotId ? null : prev);
               return (
-                <div key={row.id} className="bg-white rounded-lg border px-2 py-2" style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isContRow ? 'rgba(107,33,168,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
+                <div key={row.id} className="relative bg-white rounded-lg border px-2 py-2" style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isContRow ? 'rgba(107,33,168,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
+                  {row.pickingSlotId != null && <PresenciaBadge viendo={viendoPorSlot.get(row.pickingSlotId)} contexto="tarjeta" />}
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="font-barlow-condensed text-[15px] font-bold" style={{ color: rowColor.text }}>
                       {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[14px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
@@ -2004,13 +2016,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   <div className="grid grid-cols-2 gap-1 mb-1.5">
                     <div>
                       <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Peso{isChocRow ? ' (máx 25kg)' : ''}</label>
-                      <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)} placeholder="kg" inputMode="decimal"
+                      <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)}
+                        onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="kg" inputMode="decimal"
                         className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                     </div>
                     {!isChocRow && !isContRow && (
                       <div>
                         <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Alto</label>
-                        <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)} placeholder="cm" inputMode="decimal"
+                        <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)}
+                          onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="cm" inputMode="decimal"
                           max={row.pkg === 'pallet' ? MAX_ALTO_CM : undefined}
                           className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                         {row.pkg === 'pallet' && excedeAltoMax(parseFloat(row.alto) || 0) && (
@@ -2023,12 +2037,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     <div className="grid grid-cols-2 gap-1 mb-1.5">
                       <div>
                         <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Ancho</label>
-                        <input type="number" value={row.ancho} onChange={e => updateRow(row.id, 'ancho', e.target.value)} placeholder="cm" inputMode="decimal"
+                        <input type="number" value={row.ancho} onChange={e => updateRow(row.id, 'ancho', e.target.value)}
+                          onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="cm" inputMode="decimal"
                           className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                       </div>
                       <div>
                         <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Largo</label>
-                        <input type="number" value={row.largo} onChange={e => updateRow(row.id, 'largo', e.target.value)} placeholder="cm" inputMode="decimal"
+                        <input type="number" value={row.largo} onChange={e => updateRow(row.id, 'largo', e.target.value)}
+                          onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="cm" inputMode="decimal"
                           className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                       </div>
                     </div>
