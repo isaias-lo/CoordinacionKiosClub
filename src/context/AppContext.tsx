@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useReducer, useCallback, useEffect, useRef, ReactNode } from 'react';
+import { createContext, useContext, useReducer, useCallback, useEffect, useRef, useState, ReactNode } from 'react';
 import { debeConsultar, TICK_MS } from '@/lib/ritmoDePoll';
 import { esperaDePush } from '@/lib/esperaDePush';
 import { renumerarSalvoChocolate } from '@/features/despacho/shared/numeroCard';
@@ -185,6 +185,11 @@ interface AppContextValue {
   showToast: (msg: string, color?: string) => void;
   getStats: () => { pallets: number; bultos: number; contenedores: number; chocolates: number; tiendas: number };
   flushPending: () => void;
+  /** [Bodega · indicador visible] El canal de tiempo real puede quedar unido y mudo sin avisar
+   *  (reinicio/rebalanceo del servidor, throttle) — el respaldo por polling ya no se apaga en ese
+   *  caso (ver lib/ritmoDePoll.ts), pero hasta ahora nadie en pantalla se enteraba. `canalSano`
+   *  expone la misma señal que ya se rastreaba en un closure, para que un componente la muestre. */
+  canalSano: boolean;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -208,6 +213,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadInitialState);
   const { user } = useAuth();
   const userId = user?.id;
+  // [Bodega · indicador visible] Espeja el `realtimeConnected` de closure de más abajo, sin
+  // tocar la lógica que ya usa ese closure (el polling de respaldo) — esto es solo para que un
+  // componente pueda mostrarlo, nunca decide nada por sí mismo.
+  const [canalSano, setCanalSano] = useState(true);
 
   // Always-current ref so async callbacks never see stale state
   const stateRef        = useRef(state);
@@ -360,6 +369,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const unsub = subscribeToSessionState('regiones', userId, handleRemote, (connected) => {
       const reconnected = connected && !realtimeConnected;
       realtimeConnected = connected;
+      setCanalSano(connected); // solo espejo para UI — el closure de arriba sigue siendo la fuente que usa el polling
       // On (re)connect, fetch once to catch any change missed while the socket was down.
       if (reconnected) {
         fetchSessionStateMeta('regiones').then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
@@ -489,7 +499,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useVisibilityRefetch(() => catchUpRef.current(), flushPending);
 
   return (
-    <AppContext.Provider value={{ state, dispatch, showToast, getStats, flushPending }}>
+    <AppContext.Provider value={{ state, dispatch, showToast, getStats, flushPending, canalSano }}>
       {children}
     </AppContext.Provider>
   );

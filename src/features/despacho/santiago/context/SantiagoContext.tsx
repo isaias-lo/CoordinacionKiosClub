@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useReducer, ReactNode, useEffect, useRef, useCallback } from 'react';
+import { createContext, useContext, useReducer, ReactNode, useEffect, useRef, useCallback, useState } from 'react';
 import { debeConsultar, TICK_MS } from '@/lib/ritmoDePoll';
 import { esperaDePush } from '@/lib/esperaDePush';
 import type {
@@ -140,6 +140,10 @@ interface SantiagoContextValue {
   state: SantiagoState;
   dispatch: React.Dispatch<SantiagoAction>;
   flushPending: () => void;
+  /** [Bodega · indicador visible] Ver el mismo campo en AppContext.tsx — misma señal, mismo
+   *  motivo: el canal puede quedar unido y mudo sin avisar, y hasta ahora nadie en pantalla se
+   *  enteraba (el respaldo por polling ya no se apaga, pero seguía siendo invisible). */
+  canalSano: boolean;
 }
 
 const SantiagoContext = createContext<SantiagoContextValue | null>(null);
@@ -148,6 +152,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadState);
   const { user } = useAuth();
   const userId = user?.id;
+  const [canalSano, setCanalSano] = useState(true);
 
   // Always-current ref so async callbacks never see stale state
   const stateRef        = useRef(state);
@@ -251,6 +256,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     const unsub = subscribeToSessionState('santiago', userId, handleRemote, (connected) => {
       const reconnected = connected && !realtimeConnected;
       realtimeConnected = connected;
+      setCanalSano(connected); // solo espejo para UI — el closure de arriba sigue siendo la fuente que usa el polling
       // On (re)connect, fetch once to catch any change missed while the socket was down.
       if (reconnected) {
         fetchSessionStateMeta('santiago').then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
@@ -363,7 +369,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   useVisibilityRefetch(() => catchUpRef.current(), flushPending);
 
   return (
-    <SantiagoContext.Provider value={{ state, dispatch, flushPending }}>
+    <SantiagoContext.Provider value={{ state, dispatch, flushPending, canalSano }}>
       {children}
     </SantiagoContext.Provider>
   );
