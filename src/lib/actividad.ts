@@ -11,9 +11,14 @@ import { fechaChile } from './fechaChile';
  *
  * 'revertir' es el deshacer del snackbar. Sin ella la bitácora mentía: quedaba "Eliminó CH3" o
  * "Sumó CH3 a P1" aunque alguien lo hubiera revertido a los dos segundos.
+ *
+ * 'reingreso' — Bodega, uso simultáneo: la unidad YA tenía un ítem pesado de verdad y alguien
+ * volvió a pesarlo. El merge (`fusionarConPrevio`) ya lo resuelve bien (no se duplica el ítem),
+ * pero el trabajo SÍ se hizo dos veces — es justo lo que hubo que medir a mano el 17/09 (12
+ * reingresos con 5 personas). Esto lo registra solo, para no depender de otra medición manual.
  */
 export const ACCIONES_ACTIVIDAD = [
-  'registrar_item', 'editar_item', 'eliminar_item', 'unificar', 'sumar', 'registrar_dia', 'revertir',
+  'registrar_item', 'editar_item', 'eliminar_item', 'unificar', 'sumar', 'registrar_dia', 'revertir', 'reingreso',
 ] as const;
 
 export type AccionActividad = typeof ACCIONES_ACTIVIDAD[number];
@@ -32,6 +37,10 @@ export interface ActividadCtx {
   slotId?: number;
   // revertir: qué operación se deshizo.
   revierte?: 'suma' | 'borrado' | 'unificacion';
+  // reingreso: el peso/alto que YA estaba guardado antes de este guardado (para comparar contra
+  // `peso`/`alto`, que acá son los valores NUEVOS que se acaban de escribir).
+  pesoPrevio?: number;
+  altoPrevio?: number;
   // registrar_dia:
   tiendas?: number;
   pallets?: number;
@@ -84,6 +93,11 @@ export function buildActividadMensaje(accion: AccionActividad, ctx: ActividadCtx
       const zona = ctx.fuente === 'nacional' ? 'NACIONAL' : 'RM/Costa';
       return `Registró el despacho ${zona}${resumen}`;
     }
+    case 'reingreso': {
+      const antes   = ctx.pesoPrevio != null ? `${ctx.pesoPrevio}kg` : '?';
+      const ahora   = ctx.peso != null ? `${ctx.peso}kg` : '?';
+      return `Reingresó ${ctx.label ?? 'ítem'} — ya estaba pesado (${antes} → ${ahora})${en}`;
+    }
   }
 }
 
@@ -127,6 +141,7 @@ export function logActividad(input: LogActividadInput): void {
         peso: ctx.peso ?? null, alto: ctx.alto ?? null, contenido: ctx.contenido ?? null,
         slotId: ctx.slotId ?? null,
         tiendas: ctx.tiendas ?? null, pallets: ctx.pallets ?? null, bultos: ctx.bultos ?? null,
+        pesoPrevio: ctx.pesoPrevio ?? null, altoPrevio: ctx.altoPrevio ?? null,
       },
     };
     // Auth por cookie de sesión (verifyActor tiene fallback de cookie); keepalive para que

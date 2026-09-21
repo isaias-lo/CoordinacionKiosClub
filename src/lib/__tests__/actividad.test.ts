@@ -60,6 +60,12 @@ describe('buildActividadMensaje', () => {
     expect(buildActividadMensaje('editar_item', { fuente: 'rmcosta', label: 'P1' }))
       .toBe('Editó P1');
   });
+
+  it('reingreso muestra el peso anterior y el nuevo', () => {
+    expect(buildActividadMensaje('reingreso', {
+      fuente: 'rmcosta', tiendaCod: '33CON', label: 'B2', pesoPrevio: 24, peso: 24.5,
+    })).toBe('Reingresó B2 — ya estaba pesado (24kg → 24.5kg) en 33CON');
+  });
 });
 
 describe('buildActividadMensaje · revertir', () => {
