@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { numeroVisibleCard, ordenDeItem, renumerarOrden, renumerarOrdenNacional, claseNacional, etiquetaCard } from '../numeroCard';
+import { numeroVisibleCard, ordenDeItem, renumerarOrden, renumerarOrdenNacional, claseNacional, etiquetaCard, renumerarSalvoChocolate } from '../numeroCard';
 
 describe('numeroVisibleCard', () => {
   it('un CH muestra su seq, no su posición — es el número impreso en la caja', () => {
@@ -140,5 +140,50 @@ describe('renumerarOrdenNacional', () => {
     // sheetsRegiones.ordenSeq extrae los dígitos finales y arma CH{seq}{cod}{stamp}CH.
     const orden = renumerarOrdenNacional([n_('chocolate', 3)], seqDe)[0].orden;
     expect(orden.match(/(\d+)$/)![1]).toBe('3');
+  });
+});
+
+describe('renumerarSalvoChocolate — el renumerado del reducer de Nacional', () => {
+  const P = (orden: string) => ({ pkg: 'pallet', orden });
+  const B = (orden: string) => ({ pkg: 'box', orden });
+  const C = (orden: string) => ({ pkg: 'contenedor', orden });
+  const CH = (orden: string) => ({ pkg: 'chocolate', orden });
+
+  it('el bug: renumerar por posición hacía que el CH3 volviera a llamarse CH1', () => {
+    // Quedan el CH3 y el CH5 (los demás se sumaron a un pallet). Agregar cualquier otra cosa
+    // disparaba el renumerado del reducer y los reescribía como chocolate1 y chocolate2.
+    const r = renumerarSalvoChocolate([CH('chocolate3'), CH('chocolate5')]);
+    expect(r.map(i => i.orden)).toEqual(['chocolate3', 'chocolate5']);
+  });
+
+  it('pallets, bultos y contenedores SÍ se renumeran por posición', () => {
+    const r = renumerarSalvoChocolate([P('pallet7'), B('bulto9'), P('pallet2'), C('contenedor4')]);
+    expect(r.map(i => i.orden)).toEqual(['pallet1', 'bulto1', 'pallet2', 'contenedor1']);
+  });
+
+  it('mezclados: los chocolates se quedan quietos y el resto se compacta', () => {
+    const r = renumerarSalvoChocolate([P('pallet5'), CH('chocolate3'), B('bulto8'), CH('chocolate5')]);
+    expect(r.map(i => i.orden)).toEqual(['pallet1', 'chocolate3', 'bulto1', 'chocolate5']);
+  });
+
+  it('un chocolate SIN orden todavía cae a su posición entre los chocolates', () => {
+    const sinOrden: { pkg: string; orden?: string } = { pkg: 'chocolate' };
+    const r = renumerarSalvoChocolate([CH('chocolate3'), sinOrden]);
+    expect(r.map(i => i.orden)).toEqual(['chocolate3', 'chocolate2']);
+  });
+
+  it('al chocolate que conserva su número lo devuelve SIN copiarlo', () => {
+    const ch = CH('chocolate3');
+    expect(renumerarSalvoChocolate([ch])[0]).toBe(ch);
+  });
+
+  it('borrar un pallet compacta los pallets pero no mueve los chocolates', () => {
+    const antes = [P('pallet1'), P('pallet2'), CH('chocolate4'), P('pallet3')];
+    const despues = renumerarSalvoChocolate(antes.filter(i => i.orden !== 'pallet2'));
+    expect(despues.map(i => i.orden)).toEqual(['pallet1', 'chocolate4', 'pallet2']);
+  });
+
+  it('lista vacía', () => {
+    expect(renumerarSalvoChocolate([])).toEqual([]);
   });
 });

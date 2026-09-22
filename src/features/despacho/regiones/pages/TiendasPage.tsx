@@ -4,6 +4,7 @@ import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navigation, ChevronLeft, ClipboardList, User, Store, FileUp } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
+import { IndicadorCanalSano } from '../../shared/IndicadorCanalSano';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones, registrarTiendasBD, type TiendaBDRow, type TiendaIncompleta } from '../data/tiendas';
 import { avisoSendu } from '../data/senduCompletitud';
@@ -23,6 +24,7 @@ import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
 import { sumarPesoMultiple } from '../../shared/sumarMultiple';
 import { unionRefs } from '../../shared/unifyPallets';
+import { finalizarSlotUnion } from '../../shared/finalizarSlotUnion';
 import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
@@ -32,16 +34,17 @@ import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { useTiendaTerminada } from '../../shared/useTiendaTerminada';
 import { usePresenciaTienda, type ViendoInfo } from '../../shared/usePresenciaTienda';
 import { PresenciaBadge } from '../../shared/PresenciaBadge';
+import { MarcaSinPesar } from '../../shared/MarcaSinPesar';
 import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
-import { reconcileSavedRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
+import { reconciliarFormRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
 import { fechaISOLocal } from '../../shared/fechaLocal';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
-import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
+import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
 import { abreviaturaContenido, nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroVisibleCard, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional } from '@/features/despacho/shared/numeroCard';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
@@ -50,14 +53,15 @@ import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { PickingSlot } from '@/features/despacho/santiago/components/PickingSlotCards';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
-import { slotsSinTarjeta, slotsRepresentados } from '../../shared/slotsSinTarjeta';
+import { combinarEnLista } from '../../shared/combinarEnLista';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
-import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
+import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio, esReingreso } from '../../shared/itemPorUnidad';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaChile } from '@/lib/fechaChile';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
-import { STORE_CARD_BADGE as SCB, STORE_CARD_DONE_TEXT } from '../../shared/storeCardStyles';
+import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
+import { STORE_CARD_BADGE as SCB, claseTarjetaTienda, claseCodigoTienda, claseEtiquetaTerminada } from '../../shared/storeCardStyles';
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
@@ -90,7 +94,6 @@ type ConsumedSlots = Record<string, { p: number; b: number; c: number; ch: numbe
 const CONSUMED_SLOTS_KEY = `consumedPickingSlots_${_localDate}`;
 // Definición ÚNICA en shared/chocolate.ts — ver nota en StepForm.
 const CHOCOLATE_DIMS_R       = CHOCOLATE_DIMS_SHARED;
-const CHOCOLATE_DEFAULT_PESO = CHOCOLATE_PESO_DEFECTO;
 function loadConsumedSlots(): ConsumedSlots { try { return JSON.parse(localStorage.getItem(CONSUMED_SLOTS_KEY) || '{}'); } catch { return {}; } }
 function saveConsumedSlots(v: ConsumedSlots) { try { localStorage.setItem(CONSUMED_SLOTS_KEY, JSON.stringify(v)); } catch {} }
 
@@ -115,6 +118,9 @@ interface FormRow {
   guia: string;
   valor: string;
   saved?: boolean;
+  /** La persona escribió algo en esta tarjeta. Distinto de `!saved`, que solo dice que no se
+   *  guardó EN ESTE equipo: una tarjeta recién nacida en blanco no está tocada. */
+  tocada?: boolean;
   savedItem?: DispatchItem;
   pickingSlotId?: number;  // FK a picking_pallets.id para guardar dimensiones
   // [Unificar inline / sumar] La fila TARGET (P1) recién unificada o a la que se le sumó carga: el
@@ -153,6 +159,9 @@ interface GridCardProps {
   terminada?: boolean;
   /** [Presencia] Quién más tiene esta tienda abierta ahora. */
   viendo?: ViendoInfo[];
+  /** Unidades guardadas sin pesar. Se veía solo DENTRO de la tienda; ahora también desde la
+   *  grilla, que es donde se decide a cuál entrar. Ver `MarcaSinPesar`. */
+  sinPesarCount?: number;
   onSelect: () => void;
   onDragStart?: (e: React.DragEvent) => void;
   /** [Bug tablet 2026-09-09] El drag HTML5 nativo no dispara de forma confiable con touch — en una
@@ -161,7 +170,7 @@ interface GridCardProps {
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, onSelect, onDragStart, onAddToday, onRemoveFromToday }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, sinPesarCount, onSelect, onDragStart, onAddToday, onRemoveFromToday }: GridCardProps) {
   const t = TIENDAS[name];
   const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
   // Desconta los ya ingresados — ghost solo muestra los pendientes de picking
@@ -170,24 +179,18 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
   const remC  = Math.max(0, pickingC  - contenedorCount);
   const remCH = Math.max(0, pickingCH - chocolateCount);
   const hasGhost = remP > 0 || remB > 0 || remC > 0 || remCH > 0;
+  // El color dice "¿tiene guía?" y la etiqueta "¿está terminada?": antes las dos cosas se
+  // pintaban del mismo verde y marcar una tienda como terminada tapaba el estado de su guía.
+  const estadoCard = { activa: isActive, conGuia: !!hasPdf, terminada: !!terminada, deHoy: !!isToday };
   return (
     <div
       draggable={!!onDragStart}
       onDragStart={onDragStart}
       onClick={onSelect}
       className={`flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]
-        ${isActive
-          ? 'bg-[rgba(30,64,175,0.12)] border-2 border-[#1E40AF] shadow-sm'
-          : terminada
-          // [M-02] El verde va en el BORDE, no en todo el fondo (ver el mismo cambio en StepForm).
-          ? 'bg-[rgba(22,163,74,0.10)] border-2 border-[#15803D] shadow-sm'
-          : hasPdf
-          ? 'bg-[rgba(22,163,74,0.07)] border-2 border-success hover:bg-[rgba(22,163,74,0.12)]'
-          : isToday
-          ? 'bg-[rgba(30,64,175,0.04)] border border-[rgba(30,64,175,0.20)] hover:bg-[rgba(30,64,175,0.09)]'
-          : 'bg-white border border-border hover:bg-bg'
-        }`}>
+        ${claseTarjetaTienda(estadoCard)}`}>
       <PresenciaBadge viendo={viendo} />
+      <MarcaSinPesar sinPesar={sinPesarCount} />
       {isToday && onRemoveFromToday && (
         <button onClick={e => { e.stopPropagation(); onRemoveFromToday(); }}
           className="absolute top-0.5 right-0.5 w-6 h-6 flex items-center justify-center text-[14px] text-warn bg-[rgba(217,119,6,0.15)] hover:bg-[rgba(217,119,6,0.28)] rounded-full cursor-pointer border-none leading-none transition-colors"
@@ -200,7 +203,7 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       )}
       {/* [Contraste AA] `text-success` (#34C759) da ~2:1 sobre blanco — se usa el mismo verde
           oscurecido que ya usa Actividad para su badge "Ingresó" (#15803D, ~5:1). */}
-      <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${isActive ? 'text-[#1E40AF]' : terminada ? 'text-[#15803D]' : hasPdf ? STORE_CARD_DONE_TEXT : 'text-navy'}`}>
+      <div className={`font-barlow-condensed text-[15px] font-extrabold leading-none tracking-wide text-center ${claseCodigoTienda(estadoCard)}`}>
         {formatCod(t.cod)}
       </div>
       {/* [M-04] Dos líneas en vez de recortar: "BUENAVENTU…" y "BUENAVENTUR…" son tiendas
@@ -210,7 +213,7 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
         {t.name}
       </div>
       {terminada && (
-        <span className="text-[11px] font-extrabold text-[#15803D] tracking-wide uppercase mt-0.5">✓ Terminada</span>
+        <span className={`text-[11px] font-extrabold tracking-wide uppercase mt-0.5 ${claseEtiquetaTerminada(estadoCard)}`}>✓ Terminada</span>
       )}
       {(() => {
         const tb = tipoBadge(tipoCat);
@@ -289,7 +292,7 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
 
 /* ── Main page ── */
 export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) {
-  const { state, dispatch, showToast } = useApp();
+  const { state, dispatch, showToast, flushPending, canalSano } = useApp();
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const router = useRouter();
   const odooProgress = useOdooProgress();  // progreso de Odoo (punto gris/naranja/verde) — igual que Santiago
@@ -427,7 +430,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const { dispatch: dispatchData, selectedTienda, fechaDespacho: _fechaDespacho, registrado } = state;
   // [Presencia] Quién más tiene cada tienda abierta AHORA — pedido 2026-09-09: "no saben quién
   // está haciendo qué". Efímero (Realtime Presence, no tabla): se resetea cuando todos se van.
-  const { viendoPorTienda } = usePresenciaTienda('regiones', selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? null) : null);
+  // [Presencia por pallet] `slotEnFoco` es la tarjeta cuyo peso/alto/etc. se está escribiendo
+  // ahora mismo — previene el reingreso EN VEZ de solo registrarlo después (ver logActividad
+  // 'reingreso' más abajo). Mismo criterio que StepForm.tsx.
+  const [slotEnFoco, setSlotEnFoco] = useState<number | null>(null);
+  const { viendoPorTienda, viendoPorSlot } = usePresenciaTienda('regiones', selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? null) : null, slotEnFoco);
+  // Salir de la tienda sin que el input llegue a hacer blur no debe dejar un slot "en foco"
+  // fantasma para la próxima tienda que se abra.
+  useEffect(() => { setSlotEnFoco(null); }, [selectedTienda]);
   useEffect(() => { setMergeSel(new Set()); setDupRow(null); }, [selectedTienda, registrado]);
   const fechaDespacho = _fechaDespacho ?? (() => {
     const d = new Date(); d.setDate(d.getDate() + 1);
@@ -458,61 +468,52 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     pushCounts('regiones', counts, conocidas).catch(() => {});
   }, [dispatchData]);
 
-  /* Reconciliar formRows tras un merge remoto (eco de shared_session_state → LOAD_STATE):
-     el array de items de la tienda se reemplaza y renumberItems reescribe `orden`, pero el
-     useLayoutEffect (deps [selectedTienda]) NO se re-dispara → el `savedItem` de cada fila
-     queda obsoleto y "SUMAR A PALLET" deja de encontrar el item (UI congelada). Aquí sólo
-     refrescamos la referencia `savedItem` de las filas guardadas; las filas en progreso
-     (no guardadas) se preservan intactas. Deps: identidad del array de la tienda actual. */
+  /* Mantiene formRows al día mientras la tienda ya está abierta (todo lo que NO es "reconstruir
+     desde cero al entrar", que hace el useLayoutEffect de arriba). Antes eran tres useEffect
+     separados — reconciliar, adoptar, backfill — cada uno con su propia guarda. El bug medido el
+     17/09 (nueve pallets pesados dos veces, entre 13 y 80 minutos de diferencia) vivía en la
+     INTERACCIÓN entre ellos: una tarjeta vacía e intacta no calificaba para ninguno de los tres
+     por separado. `reconciliarFormRows` corre los tres en el orden que sí evita eso — ver su doc
+     en formRowsReconcile.ts. */
   const selectedItems = selectedTienda ? dispatchData[selectedTienda] : undefined;
+  const selectedSlotsFull = useMemo(
+    () => (selectedTienda ? (pickingSlotsFull[selectedTienda] ?? []) : []),
+    [selectedTienda, pickingSlotsFull],
+  );
   useEffect(() => {
     if (!selectedTienda || !selectedItems) return;
-    setFormRows(prev => {
-      const next = reconcileSavedRows(prev, selectedItems);
-      return next === prev ? prev : next;
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedItems, selectedTienda]);
-
-  /* [Backfill de slots que llegan tarde] El fetch de picking_pallets es asíncrono; si al
-     recargar la página la tienda ya está seleccionada, el rebuild corre ANTES de que lleguen los
-     slots y no se re-dispara → faltan tarjetas (el P2 no aparece hasta navegar y volver). Aquí
-     agregamos UNA fila por cada slot activo sin tarjeta, SIN tocar las filas existentes. */
-  useEffect(() => {
-    if (!selectedTienda) return;
-    const name = selectedTienda;
-    const fullSlots = pickingSlotsFull[name] ?? [];
-    if (fullSlots.length === 0) return;
     const PKG_MAP: Record<string, TipoPaquete> = { P: 'pallet', C: 'contenedor', B: 'box', CH: 'chocolate' };
     const mapCont = contenidoRegiones;
-    const cur = dispatchData[name] || [];
-    setFormRows(prev => {
-      // La regla (qué slot necesita tarjeta y cuál no) vive en `slotsSinTarjeta`, compartida con
-      // RM/Costa y con tests: era idéntica en los dos espejos y se arreglaba por separado.
-      const missing = slotsSinTarjeta(fullSlots, slotsRepresentados(prev), cur);
-      if (missing.length === 0) return prev;
-      const add: FormRow[] = missing.map(s => {
+    setFormRows(prev => reconciliarFormRows(
+      prev, selectedItems, selectedSlotsFull,
+      (row, it) => ({
+        ...row, pkg: it.pkg, tipo: it.tipo,
+        peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
+        ancho: String(it.ancho ?? ''), largo: String(it.largo ?? ''),
+        guia: it.guia || '', valor: it.valor ? String(it.valor) : '',
+        saved: true, savedItem: it,
+      }),
+      (s, saved) => {
         const pkg = PKG_MAP[s.tipo] ?? 'pallet';
-        const saved = cur.find(it => it.pickingSlotId === s.id);
-        if (saved) return {
-          id: `bk-saved-${s.id}`, pkg: saved.pkg, tipo: saved.tipo,
-          peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
-          ancho: String(saved.ancho ?? ''), largo: String(saved.largo ?? ''),
-          guia: saved.guia || '', valor: saved.valor ? String(saved.valor) : '',
-          saved: true, savedItem: saved, pickingSlotId: s.id,
-        };
-        return {
-          id: `bk-pick-${s.id}`, pkg, tipo: mapCont(s.contenido),
-          peso: s.peso_kg != null ? String(s.peso_kg) : '', alto: s.alto != null ? String(s.alto) : '',
-          ancho: s.ancho != null ? String(s.ancho) : (pkg === 'pallet' ? '100' : ''),
-          largo: s.largo != null ? String(s.largo) : (pkg === 'pallet' ? '120' : ''),
-          guia: '', valor: '', pickingSlotId: s.id,
-        };
-      });
-      return [...prev, ...add];
-    });
+        return saved
+          ? {
+              id: `bk-saved-${s.id}`, pkg: saved.pkg, tipo: saved.tipo,
+              peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
+              ancho: String(saved.ancho ?? ''), largo: String(saved.largo ?? ''),
+              guia: saved.guia || '', valor: saved.valor ? String(saved.valor) : '',
+              saved: true, savedItem: saved, pickingSlotId: s.id,
+            }
+          : {
+              id: `bk-pick-${s.id}`, pkg, tipo: mapCont(s.contenido),
+              peso: s.peso_kg != null ? String(s.peso_kg) : '', alto: s.alto != null ? String(s.alto) : '',
+              ancho: s.ancho != null ? String(s.ancho) : (pkg === 'pallet' ? '100' : ''),
+              largo: s.largo != null ? String(s.largo) : (pkg === 'pallet' ? '120' : ''),
+              guia: '', valor: '', pickingSlotId: s.id,
+            };
+      },
+    ));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickingSlotsFull, selectedTienda, dispatchData]);
+  }, [selectedItems, selectedTienda, selectedSlotsFull]);
 
   /* [Limpiar contador obsoleto] `consumedPickingSlots` era el mecanismo viejo para "consumir" un
      slot unificado. Ahora la unificación BORRA el slot, así que quedó obsoleto y un valor viejo
@@ -563,6 +564,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           peso_v: row.peso_v as number | null,
           picker_label: row.picker_label as string | null,
         });
+      }
+      // [RC-5] Lo recién creado que esta consulta todavía no ve. Sin esto, `load` reemplaza el
+      // mapa entero y el pallet recién agregado desaparece de la pantalla aunque exista en la base.
+      for (const { clave, slot } of faltantesEnLaConsulta(full, slotsRecienAgregados(), cod => codToName[cod])) {
+        if (!full[clave]) { full[clave] = []; slots[clave] = []; }
+        full[clave].push(slot);
+        slots[clave].push({ tipo: slot.tipo, contenido: slot.contenido });
       }
       setPickingSlots(slots);
       setPickingSlotsFull(full);
@@ -679,10 +687,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           return pool && pool.length ? pool.shift() : undefined;
         };
 
-        // Punto 2: chocolates de picking sin item guardado → auto-agregar como AGREGADOS (20 kg)
-        const chocToCreate: DispatchItem[] = [];
-        let chCount = existingItems.filter(i => i.pkg === 'chocolate').length;
-
         const rows: FormRow[] = [];
         baseSlotsR.forEach((s, i) => {
           const sid = (s as { id?: number }).id || 0;
@@ -693,24 +697,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           if (saved && slotPool && slotPool.length === 0) savedBySlot.delete(sid);
           if (!saved) saved = takeLeftover(pkg);
 
-          // 3) Chocolate sin guardar → materializar agregado con peso por defecto
-          if (!saved && pkg === 'chocolate') {
-            const newCh: DispatchItem = {
-              // `id` DETERMINISTA por slot: dos equipos que materializan el mismo chocolate generan
-              // la MISMA llave, así el merge por-ítem lo reconoce como uno solo. Antes el CH salía
-              // sin `id` y el reducer le estampaba uno local por dispositivo (`di-<ts>-<n>`), de modo
-              // que el mismo chocolate viajaba con llaves distintas y `mergeListaPorItem` lo
-              // duplicaba. (RM/Costa ya asignaba id acá — esto empareja el comportamiento.)
-              id: sid ? `ch-slot-${sid}` : `ch-${selectedTienda}-${chCount + 1}-${Date.now()}`,
-              orden: `chocolate${++chCount}`, tipo: mapearContenido(s.contenido), pkg: 'chocolate',
-              // Espejo del mismo arreglo en StepForm: el peso sale del slot de Picking si alguien
-              // lo pesó, y solo cae en la constante cuando nadie lo hizo.
-              peso: pesoChocolate(s), alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
-              guia: '', valor: 0, pickingSlotId: sid || undefined,
-            };
-            chocToCreate.push(newCh);
-            saved = newCh;
-          }
+          // El chocolate NO se auto-agrega: cae al formulario vacío como el bulto y el pallet.
+          // Mismo cambio que en StepForm — ver el comentario de allá para el por qué.
 
           if (saved) {
             // Un ítem guardado SIEMPRE se muestra como tarjeta (nunca vuelve a formulario)
@@ -748,17 +736,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           });
         });
         setFormRows(rows);
-
-        // Persistir en el estado los chocolates auto-agregados + reflejar peso en picking_pallets
-        if (chocToCreate.length > 0) {
-          dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: [...existingItems, ...chocToCreate] });
-          for (const ch of chocToCreate) {
-            if (!ch.pickingSlotId) continue;
-            supabase.from('picking_pallets').update({
-              peso_kg: ch.peso, alto: ch.alto, ancho: ch.ancho, largo: ch.largo,
-            }).eq('id', ch.pickingSlotId).then(({ error }) => { if (error) console.error('[picking_pallets update]', error.message); });
-          }
-        }
       } else if (existingItems.length === 0) {
         // No picking data — fall back to manual preset if set
         const preset = presets[selectedTienda];
@@ -778,7 +755,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               // `chocolate1` — y el mismo chocolate terminaba duplicado entre dispositivos.
               id: `ch-preset-${selectedTienda}-${i + 1}`,
               orden: `chocolate${i + 1}`, tipo: 'chocolate' as TipoContenido, pkg: 'chocolate' as TipoPaquete,
-              peso: 25, alto: 42, ancho: 56, largo: 80, guia: '', valor: 0,
+              peso: 0, alto: 42, ancho: 56, largo: 80, guia: '', valor: 0,
             })) });
           }
           setFormRows(rows);
@@ -1011,19 +988,19 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       const item: DispatchItem = {
         id: crypto.randomUUID(), // [E3b/C1] id estable compartido con la fila de formulario
         orden: `chocolate${chc}`, tipo: 'chocolate', pkg: 'chocolate',
-        peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
+        peso: 0, alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
         guia: '', valor: 0, pickingSlotId: slot?.id,
       };
       dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item });
       setFormRows(prev => [...prev, {
         id: `saved-chadd-${stamp}-${countOffset}`, pkg: 'chocolate', tipo: 'hogar',
-        peso: String(CHOCOLATE_DEFAULT_PESO), alto: String(CHOCOLATE_DIMS_R.alto),
+        peso: '', alto: String(CHOCOLATE_DIMS_R.alto),
         ancho: String(CHOCOLATE_DIMS_R.ancho), largo: String(CHOCOLATE_DIMS_R.largo),
         guia: '', valor: '', saved: true, savedItem: item, pickingSlotId: slot?.id,
       }]);
       if (slot?.id) {
         supabase.from('picking_pallets').update({
-          peso_kg: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
+          alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
         }).eq('id', slot.id).then(({ error }) => { if (error) console.error('[picking_pallets update]', error.message); });
       }
       showToast(`✓ ${item.orden} agregado`, '#16A34A');
@@ -1072,14 +1049,19 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   // `await` de cada llamada, así que la guarda ya está liberada en la siguiente vuelta.
   const addFormRow = async (pkg: TipoPaquete, existingSlot?: PickingSlot, countOffset = 0) => {
     const key = `${selectedTienda}:${pkg}`;
-    if (addingSlotRef.current.has(key)) return;
+    if (addingSlotRef.current.has(key)) {
+      // Salir mudo hacía que el segundo toque pareciera no haber pasado nada, y la reacción
+      // natural es volver a tocar. Decirlo convierte un silencio en una espera.
+      showToast('Agregando… espera un segundo', '#D97706');
+      return;
+    }
     addingSlotRef.current.add(key);
     try { await addFormRowInner(pkg, existingSlot, countOffset); }
     finally { addingSlotRef.current.delete(key); }
   };
 
   // [Duplicar bulto] Crea `cantidad` copias de un bulto guardado con su MISMO peso y medidas,
-  // agregadas al instante (mismo patrón que auto-agregar un chocolate). Solo para bultos (pkg 'box').
+  // agregadas al instante, sin pasar por el formulario. Solo para bultos (pkg 'box').
   const duplicarBulto = async (row: FormRow, cantidad: number) => {
     const src = row.savedItem;
     if (!src || !selectedTienda) return;
@@ -1119,7 +1101,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const [dialogPkg, setDialogPkg] = useState<TipoPaquete | null>(null);
   const PKG_LABEL: Record<TipoPaquete, string> = { pallet: 'Pallet', box: 'Bulto', contenedor: 'Contenedor', chocolate: 'Chocolate' };
   const updateRow = (id: string, field: keyof FormRow, value: string) => {
-    setFormRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+    // `tocada` marca que esto es de la persona: desde acá, nada remoto lo pisa.
+    setFormRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value, tocada: true } : r));
   };
   const saveRow = async (row: FormRow, sinPesar = false) => {
     if (!selectedTienda) return;
@@ -1158,11 +1141,16 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), slot] }));
     }
     const currentItems = dispatchData[selectedTienda] || [];
-    const pc  = currentItems.filter(i => i.pkg === 'pallet').length + 1;
-    const bc  = currentItems.filter(i => i.pkg === 'box').length + 1;
-    const cc  = currentItems.filter(i => i.pkg === 'contenedor').length + 1;
-    const chc = currentItems.filter(i => i.pkg === 'chocolate').length + 1;
-    const orden = row.pkg === 'pallet' ? `pallet${pc}` : isCont ? `contenedor${cc}` : isChoc ? `chocolate${chc}` : `bulto${bc}`;
+    // El número del CH sale de su `seq` —el que quedó IMPRESO en la etiqueta—, no de su posición.
+    // RM/Costa ya lo hacía así; acá se numeraba por posición, y el chocolate perdía su número en
+    // cuanto alguien borraba o sumaba a un vecino. Para las otras tres clases la posición sigue
+    // siendo la regla, y `numeroVisibleCard` la devuelve tal cual.
+    const pickingSlot = (pickingSlotsFull[selectedTienda] ?? []).find(s => s.id === slotId);
+    const clase = claseNacional(row.pkg);
+    const posicion = currentItems.filter(i => claseNacional(i.pkg) === clase).length + 1;
+    const orden = ordenNacional(clase, numeroVisibleCard({
+      esChocolate: clase === 'chocolate', posicion, seq: pickingSlot?.seq,
+    }));
     // Esta unidad ya puede tener ítem aunque la tarjeta diga "sin guardar": lo guardó otro equipo
     // mientras esta tarjeta estaba abierta. Entonces se completa ese ítem, no se agrega otro.
     const previo = itemDeLaUnidad(currentItems, slotId);
@@ -1177,7 +1165,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       const perItem = Math.round(pdfInfo.totalSum / newItems.length);
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: newItems.map((it, i) => ({ ...it, guia: pdfInfo.guias[i]?.num || '', valor: perItem })) });
     }
-    const pickingSlot = (pickingSlotsFull[selectedTienda] ?? []).find(s => s.id === slotId);
     const savedItem: DispatchItem = { ...item, id: previo?.id ?? crypto.randomUUID(), canonical_id: pickingSlot?.canonical_id ?? undefined };
     // `pickingSlotId` va SIEMPRE en la fila, no solo en el ítem: cuando el slot se creó recién acá
     // (el reintento de arriba), la fila se quedaba sin él. El backfill pregunta por los slots que
@@ -1188,6 +1175,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     if (!sinPesar) showToast(`✓ ${item.orden} ${previo ? 'actualizado' : 'agregado'}`, '#16A34A');
     logActividad({ accion: 'registrar_item', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
       tiendaNombre: selectedTienda, label: ordenToLabel(item.orden), peso: item.peso, alto: item.alto, slotId });
+    // [Bodega · uso simultáneo] Ver el mismo punto en StepForm.tsx — la unidad ya tenía un ítem
+    // pesado de verdad y alguien la volvió a pesar. Registrarlo evita depender de otra medición
+    // manual como la del 17/09.
+    if (esReingreso(previo)) {
+      logActividad({ accion: 'reingreso', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
+        tiendaNombre: selectedTienda, label: ordenToLabel(item.orden), peso: item.peso, alto: item.alto,
+        pesoPrevio: previo!.peso, altoPrevio: previo!.alto, slotId });
+    }
 
     // Sincronizar dimensiones en picking_pallets — a esta altura slotId siempre existe (si
     // faltaba, se creó arriba o la función ya retornó). Con las medidas ya fusionadas: un "sin
@@ -1615,19 +1610,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
   // Fusiona las guías del source en el target (lee refs ANTES de borrar) y borra el slot del
   // source en la BD. Fire-and-forget. El caché local ya quitó el slot del source arriba.
-  const finalizarSlotUnion = async (targetId: number, sourceId: number) => {
-    try {
-      const { data } = await supabase.from('picking_pallets').select('id, refs').in('id', [targetId, sourceId]);
-      const tRefs  = (data ?? []).find(d => d.id === targetId)?.refs as string | undefined;
-      const sRefs  = (data ?? []).find(d => d.id === sourceId)?.refs as string | undefined;
-      const merged = unionRefs(tRefs, sRefs);
-      if (merged && merged !== (tRefs ?? '')) {
-        await supabase.from('picking_pallets').update({ refs: merged }).eq('id', targetId);
-      }
-      await supabase.from('picking_pallets').delete().eq('id', sourceId);
-    } catch (e) { console.error('[finalizarSlotUnion]', e); }
-  };
-
   const absorbPickingSlot = (tiendaName: string, type: 'p' | 'b' | 'c' | 'ch') => {
     setConsumedPickingSlots(prev => {
       const cur = prev[tiendaName] || { p: 0, b: 0, c: 0, ch: 0 };
@@ -1652,12 +1634,16 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const mergedGuia  = [src.guia, tgt.guia].filter(Boolean).join(', ');
     const mergedValor = (src.valor ?? 0) + (tgt.valor ?? 0);
     const mergedTipo: TipoContenido  = src.tipo === tgt.tipo ? src.tipo : 'comida-hogar';
-    const survivors = items.filter((_, i) => i !== srcIdx && i !== tgtIdx);
-    let pc = 0, bc = 0;
-    const renumbered = survivors.map(it => ({ ...it, orden: it.pkg === 'pallet' ? `pallet${++pc}` : `bulto${++bc}` }));
-    const newOrden = src.pkg === 'pallet' ? `pallet${++pc}` : `bulto${++bc}`;
-    renumbered.push({ peso, alto, ancho: src.ancho, largo: src.largo, guia: mergedGuia, valor: mergedValor, tipo: mergedTipo, pkg: src.pkg, orden: newOrden });
-    dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumbered });
+    // El fusionado CONSERVA la identidad del source: `pickingSlotId` (lo que lo ata a la unidad
+    // física de Picking) y su `id`. Antes se armaba un objeto literal nuevo y los perdía: sin
+    // `pickingSlotId`, la llave de merge cae al id local del dispositivo y el mismo ítem se trata
+    // como dos al sincronizar con otro equipo. RM/Costa ya preservaba `...src`.
+    const merged: DispatchItem = { ...src, peso, alto, guia: mergedGuia, valor: mergedValor, tipo: mergedTipo };
+    // `renumberItems` respeta el `seq` del slot —el número IMPRESO en la etiqueta— y conoce los
+    // cuatro tipos. El contador local que había acá solo sabía de pallets y bultos, así que a un
+    // contenedor o a un chocolate de esa tienda le escribía `bultoN`.
+    dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda,
+      items: renumberItems(combinarEnLista(items, srcIdx, tgtIdx, merged)) });
     setCombineModal(null);
   };
 
@@ -1674,7 +1660,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         onTouchEnd={isMobile ? onSheetDragEnd : undefined}>
         <div className="flex items-center justify-between">
           <div className="flex-1 min-w-0">
-            <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight truncate">{selectedTienda}</div>
+            <div className="flex items-center gap-2">
+              <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight truncate">{selectedTienda}</div>
+              <IndicadorCanalSano canalSano={canalSano} />
+            </div>
             <div className="font-mono text-[11px] text-white/50 mt-0.5">{tienda?.cod ? formatCod(tienda.cod) : ''} · {tienda?.calle} {tienda?.numero}</div>
           </div>
           <div className="flex gap-2.5 ml-2 flex-shrink-0">
@@ -1927,8 +1916,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               /* Active / unsaved card */
               const isChocRow = row.pkg === 'chocolate';
               const isContRow = row.pkg === 'contenedor';
+              // [Presencia por pallet] Al enfocar cualquier input de esta tarjeta, avisar que
+              // ESTA es la que se está escribiendo — no solo "estoy en la tienda".
+              const marcarEnFoco = () => row.pickingSlotId && setSlotEnFoco(row.pickingSlotId);
+              const quitarFoco = () => setSlotEnFoco(prev => prev === row.pickingSlotId ? null : prev);
               return (
-                <div key={row.id} className="bg-white rounded-lg border px-2 py-2" style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isContRow ? 'rgba(107,33,168,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
+                <div key={row.id} className="relative bg-white rounded-lg border px-2 py-2" style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isContRow ? 'rgba(107,33,168,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
+                  {row.pickingSlotId != null && <PresenciaBadge viendo={viendoPorSlot.get(row.pickingSlotId)} contexto="tarjeta" />}
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="font-barlow-condensed text-[15px] font-bold" style={{ color: rowColor.text }}>
                       {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[14px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
@@ -1970,13 +1964,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   <div className="grid grid-cols-2 gap-1 mb-1.5">
                     <div>
                       <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Peso{isChocRow ? ' (máx 25kg)' : ''}</label>
-                      <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)} placeholder="kg" inputMode="decimal"
+                      <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)}
+                        onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="kg" inputMode="decimal"
                         className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                     </div>
                     {!isChocRow && !isContRow && (
                       <div>
                         <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Alto</label>
-                        <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)} placeholder="cm" inputMode="decimal"
+                        <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)}
+                          onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="cm" inputMode="decimal"
                           max={row.pkg === 'pallet' ? MAX_ALTO_CM : undefined}
                           className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                         {row.pkg === 'pallet' && excedeAltoMax(parseFloat(row.alto) || 0) && (
@@ -1989,12 +1985,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     <div className="grid grid-cols-2 gap-1 mb-1.5">
                       <div>
                         <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Ancho</label>
-                        <input type="number" value={row.ancho} onChange={e => updateRow(row.id, 'ancho', e.target.value)} placeholder="cm" inputMode="decimal"
+                        <input type="number" value={row.ancho} onChange={e => updateRow(row.id, 'ancho', e.target.value)}
+                          onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="cm" inputMode="decimal"
                           className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                       </div>
                       <div>
                         <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Largo</label>
-                        <input type="number" value={row.largo} onChange={e => updateRow(row.id, 'largo', e.target.value)} placeholder="cm" inputMode="decimal"
+                        <input type="number" value={row.largo} onChange={e => updateRow(row.id, 'largo', e.target.value)}
+                          onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="cm" inputMode="decimal"
                           className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                       </div>
                     </div>
@@ -2363,7 +2361,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   return (
                     <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]}
                       isActive={selectedTienda === t.name} isToday
-                      itemCount={cardItems.length}
+                      itemCount={cardItems.length} sinPesarCount={cardItems.filter(esSinPesar).length}
                       palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
                       contenedorCount={cardItems.filter(i => i.pkg === 'contenedor').length}
                       chocolateCount={cardItems.filter(i => i.pkg === 'chocolate').length}
@@ -2418,7 +2416,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     return (
                       <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]}
                         isActive={selectedTienda === t.name} isToday={false}
-                        itemCount={cardItems.length}
+                        itemCount={cardItems.length} sinPesarCount={cardItems.filter(esSinPesar).length}
                         palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
                         contenedorCount={cardItems.filter(i => i.pkg === 'contenedor').length}
                         chocolateCount={cardItems.filter(i => i.pkg === 'chocolate').length}
@@ -2491,7 +2489,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide">Manual / Cal</span>
             </button>
             <button
-              onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
+              onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); flushPending(); router.push('/despacho'); }}
               className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
               title="Ir al Enrutador">
               <Navigation size={16} />
@@ -2622,7 +2620,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             </button>
             <span className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-wide flex-1">Resumen</span>
             <button
-              onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); router.push('/despacho'); }}
+              onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); flushPending(); router.push('/despacho'); }}
               className="flex items-center gap-2 py-2 px-3 rounded cursor-pointer transition-all active:opacity-70"
               style={{ background: 'rgba(30,64,175,0.25)', border: '1px solid rgba(30,64,175,0.60)' }}>
               <Navigation size={13} color="#93C5FD" strokeWidth={2} />

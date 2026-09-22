@@ -105,7 +105,7 @@ function fromRuta(ruta: Ruta, idx: number, fecha: string, tiendas: Record<string
       // ('') = no se cargó ese dato para esta tienda → se cae a la de seco, mismo criterio que
       // ya documenta `TiendaInfo.vCong`.
       const ventana = ruta.v.refrigerado ? (info.vCong || info.v) : info.v;
-      return { store_cod: t.c, nombre: info.n, ventana, orden: i + 1, pallets: t.p, bultos: t.b, chocolates: ((t as { ch?: number }).ch ?? 0), contenedores: 0 };
+      return { store_cod: t.c, nombre: info.n, ventana, observacion: info.observacion, orden: i + 1, pallets: t.p, bultos: t.b, chocolates: ((t as { ch?: number }).ch ?? 0), contenedores: 0 };
     }),
     total_pallets:    ruta.ts.reduce((s, t) => s + t.p, 0),
     total_bultos:     ruta.ts.reduce((s, t) => s + t.b, 0),
@@ -134,7 +134,9 @@ function buildManifiestoHTML(m: ManifiestoData, supervisor: string, origin: stri
   const filas = m.tiendas.map(t =>
     `<tr>
       <td style="width:28px;text-align:center;color:#444;">${t.orden}</td>
-      <td><strong>${t.nombre}</strong> <span style="color:#555;font-size:10px;">(${t.store_cod})</span></td>
+      <td><strong>${esc(t.nombre)}</strong> <span style="color:#555;font-size:10px;">(${t.store_cod})</span>
+        ${t.observacion ? `<div style="font-size:9.5px;color:#B45309;font-weight:700;margin-top:2px;line-height:1.3">⚠ ${esc(t.observacion)}</div>` : ''}
+      </td>
       <td style="text-align:center;color:#333;">${t.ventana}</td>
       <td style="text-align:center;font-weight:700;">${t.pallets}</td>
       <td style="text-align:center;font-weight:700;">${t.bultos}</td>

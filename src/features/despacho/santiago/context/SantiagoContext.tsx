@@ -1,6 +1,8 @@
 'use client';
 
-import { createContext, useContext, useReducer, ReactNode, useEffect, useRef, useCallback } from 'react';
+import { createContext, useContext, useReducer, ReactNode, useEffect, useRef, useCallback, useState } from 'react';
+import { debeConsultar, TICK_MS } from '@/lib/ritmoDePoll';
+import { esperaDePush } from '@/lib/esperaDePush';
 import type {
   SantiagoState, SantiagoItem, TiendaSantiago, RegimenCarga,
 } from '../types';
@@ -138,6 +140,10 @@ interface SantiagoContextValue {
   state: SantiagoState;
   dispatch: React.Dispatch<SantiagoAction>;
   flushPending: () => void;
+  /** [Bodega · indicador visible] Ver el mismo campo en AppContext.tsx — misma señal, mismo
+   *  motivo: el canal puede quedar unido y mudo sin avisar, y hasta ahora nadie en pantalla se
+   *  enteraba (el respaldo por polling ya no se apaga, pero seguía siendo invisible). */
+  canalSano: boolean;
 }
 
 const SantiagoContext = createContext<SantiagoContextValue | null>(null);
@@ -146,6 +152,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadState);
   const { user } = useAuth();
   const userId = user?.id;
+  const [canalSano, setCanalSano] = useState(true);
 
   // Always-current ref so async callbacks never see stale state
   const stateRef        = useRef(state);
@@ -159,7 +166,8 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   const lastPushTimestampRef = useRef<number>(0); // pushedAt value included in last push payload
   const lastServerStampRef   = useRef<number>(0); // [C3/RC-6] updated_at (reloj SERVIDOR) del último push/adopción
   const catchUpRef        = useRef<() => void>(() => {}); // [P9] re-fetch + apply remoto (catch-up)
-  const pendingCatchupRef = useRef(false);                // [P9] remoto llegó durante push local → catch-up al terminar
+  const pendingCatchupRef = useRef(false);        // [P9] remoto llegó durante push local → catch-up al terminar
+  const vencimientoPushRef = useRef<number>(0);   // tope del debounce (ver lib/esperaDePush)
 
   // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
   useEffect(() => {
@@ -173,9 +181,11 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     });
 
     const handleRemote = (remoteState: unknown, updatedAt?: number) => {
-      // Block if local push is pending (debounce) or in-flight (async upsert).
-      // [P9] En vez de descartar, marcamos catch-up: al terminar el push re-consultamos y aplicamos.
-      if (debounceRef.current !== null || isPushingRef.current) { pendingCatchupRef.current = true; return; }
+      // Solo se difiere mientras el upsert está EN VUELO. Un push meramente AGENDADO (el debounce)
+      // ya no bloquea: descartar el cambio del compañero ahí era la causa de que se perdiera
+      // trabajo con varias personas — después este equipo escribía el blob COMPLETO, sin lo suyo,
+      // y la fila es una sola por día donde gana el último que escribe. Ver AppContext, misma nota.
+      if (isPushingRef.current) { pendingCatchupRef.current = true; return; }
       // Block for 30 s after an intentional RESET to prevent remote from restoring cleared data
       if (Date.now() - clearedAtRef.current < 30_000) return;
       // Reject data without an explicit sessionDate or from a different calendar day
@@ -246,20 +256,27 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     const unsub = subscribeToSessionState('santiago', userId, handleRemote, (connected) => {
       const reconnected = connected && !realtimeConnected;
       realtimeConnected = connected;
+      setCanalSano(connected); // solo espejo para UI — el closure de arriba sigue siendo la fuente que usa el polling
       // On (re)connect, fetch once to catch any change missed while the socket was down.
       if (reconnected) {
         fetchSessionStateMeta('santiago').then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
       }
     });
 
-    // Polling fallback every 15 s — ONLY fires when Realtime is disconnected (3 s was too aggressive)
+    // Respaldo: con el canal caído, cada 15 s. Con el canal SANO ya no se apaga — pasa a una vez
+    // por minuto, solo para detectar que el canal quedó mudo. Antes el respaldo se apagaba del
+    // todo mientras el canal dijera "conectado", y ese "conectado" solo cambia si el canal AVISA.
+    // La caída muda (reinicio del servidor de tiempo real, rebalanceo, throttle) dejaba al equipo
+    // ciego para siempre, y ciego se ve igual que "no pasó nada en bodega". Ver lib/ritmoDePoll.
+    let tickPoll = 0;
     const pollId = setInterval(async () => {
-      if (realtimeConnected) return;
+      tickPoll += 1;
+      if (!debeConsultar(realtimeConnected, tickPoll)) return;
       try {
         const m = await fetchSessionStateMeta('santiago');
         if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined);
       } catch {}
-    }, 15000);
+    }, TICK_MS);
 
     return () => { unsub(); clearInterval(pollId); };
   }, [userId]);
@@ -276,10 +293,11 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     };
     // [P5] El chequeo de cambios mira el payload COMPLETO; la base del merge/corta-ecos va aparte.
     const current = JSON.stringify(payload);
-    if (current === lastPushedFullRef.current) return;
+    if (current === lastPushedFullRef.current) { vencimientoPushRef.current = 0; return; }
 
     const doPush = () => {
       debounceRef.current = null;
+      vencimientoPushRef.current = 0;
       // Mark a clear so handleRemote won't restore data for 30 s
       const isEmpty = Object.keys(payload.items).length === 0;
       if (isEmpty) clearedAtRef.current = Date.now();
@@ -301,13 +319,18 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...state, _savedAt: Date.now() })); } catch {}
     };
 
+    // Debounce CON TOPE: nunca más de 2,5 s desde el primer cambio pendiente. Sin él, ahora que
+    // cada fusión remota es un cambio de estado más, el tráfico ajeno podría posponer el push
+    // propio indefinidamente. Ver lib/esperaDePush.
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    const { espera, vencimiento } = esperaDePush(vencimientoPushRef.current, Date.now());
+    vencimientoPushRef.current = vencimiento;
     // `registrado` es un flag CRÍTICO: empujar INMEDIATO (sin el debounce de 2.5s). El usuario
     // suele ir a Inicio justo tras Registrar → eso desmonta el provider y el cleanup del debounce
     // solo guarda en localStorage (no empuja a Supabase), así que registrado=true no llegaba a la
     // BD y PendingDraftBanner mostraba "sin registrar" al día siguiente. Empujarlo ya evita la carrera.
     if (state.registrado) doPush();
-    else debounceRef.current = setTimeout(doPush, 2500);
+    else debounceRef.current = setTimeout(doPush, espera);
 
     return () => {
       if (debounceRef.current) {
@@ -329,6 +352,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     const current = JSON.stringify(payload);
     if (current === lastPushedFullRef.current) return;
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
+    vencimientoPushRef.current = 0;
     const prevPushed = lastPushedRef.current;
     const prevFull   = lastPushedFullRef.current;
     lastPushedRef.current     = serializarBaseSantiago(payload);
@@ -345,7 +369,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   useVisibilityRefetch(() => catchUpRef.current(), flushPending);
 
   return (
-    <SantiagoContext.Provider value={{ state, dispatch, flushPending }}>
+    <SantiagoContext.Provider value={{ state, dispatch, flushPending, canalSano }}>
       {children}
     </SantiagoContext.Provider>
   );

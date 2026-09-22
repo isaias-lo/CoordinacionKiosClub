@@ -10,6 +10,9 @@ export interface TiendaManifiesto {
   store_cod: string;
   nombre: string;
   ventana: string;
+  /** Instrucción de entrega que no es un horario ("después de las 10:00, puerta trasera").
+   *  Se imprime: una nota que solo se ve en Config no le llega a quien maneja. */
+  observacion?: string;
   orden: number;
   pallets: number;
   bultos: number;
@@ -58,6 +61,11 @@ export function buildRecepcionQrUrl(params: {
     + (driveUrl ? `&drv=${encodeURIComponent(driveUrl)}` : '');
 }
 
+/** Escapa texto libre para interpolarlo en el HTML impreso sin romper el layout. */
+function escHtml(s: string): string {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
 export function buildManifiestoTiendaHTML(
   t: TiendaManifiesto,
   info: (TiendaInfo & { _parada?: boolean }) | undefined,
@@ -73,6 +81,8 @@ export function buildManifiestoTiendaHTML(
   // El día en que la carga LLEGA. Va aparte del armado porque no son el mismo día — y porque el
   // que recibe esto en la tienda necesita el de llegada, no el de armado.
   const salidaLabel = meta.fechaSalida ? dia(meta.fechaSalida) : '';
+  // La observación sale del catálogo si está, y si no de lo que venga en la fila del manifiesto.
+  const obs = (info?.observacion ?? t.observacion ?? '').trim();
   const nP  = items.filter(i => i.tipo === 'P').length;
   const nB  = items.filter(i => i.tipo === 'B').length;
   const nCH = items.filter(i => i.tipo === 'CH').length;
@@ -126,6 +136,7 @@ export function buildManifiestoTiendaHTML(
       <div class="mi"><label>Patente</label><span>${meta.patente}</span></div>
       <div class="mi"><label>Corredor</label><span>${info?.z ?? '—'}</span></div>
       <div class="mi"><label>Ventana horaria</label><span>${info?.v ?? t.ventana ?? '—'}</span></div>
+      ${obs ? `<div class="mi" style="grid-column:1/-1"><label>Atención</label><span style="color:#B45309;font-weight:700">${escHtml(obs)}</span></div>` : ''}
     </div>
   </div>
   <div class="tienda-hdr-qr">

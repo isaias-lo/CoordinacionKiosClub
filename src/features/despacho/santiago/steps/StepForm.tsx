@@ -1,8 +1,9 @@
 'use client';
-import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Navigation, GripVertical, ClipboardList, User, Store, FileUp } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
+import { IndicadorCanalSano } from '../../shared/IndicadorCanalSano';
 import { useApp } from '../../../../context/AppContext';
 import { getTiendasSantiagoHoy, TIENDAS_SANTIAGO, getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import { formatCod, matchCodArchivo } from '../../rutas/utils/helpers';
@@ -10,7 +11,7 @@ import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '.
 import { guideKey } from '../utils/guideKey';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
-import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_MAX, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
+import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_MAX } from '@/features/despacho/shared/chocolate';
 import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroVisibleCard, ordenDeItem, renumerarOrden, etiquetaCard } from '@/features/despacho/shared/numeroCard';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
@@ -26,11 +27,11 @@ import { pushCounts } from '../../../../lib/despachoSesion';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
 import { sumarPesoMultiple } from '../../shared/sumarMultiple';
-import { unionRefs } from '../../shared/unifyPallets';
+import { finalizarSlotUnion } from '../../shared/finalizarSlotUnion';
 import { tipoBadge } from '../tipoTienda';
 import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
-import { reconcileSavedRows, findItemForRow } from '../../shared/formRowsReconcile';
+import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { fechaISOLocal } from '../../shared/fechaLocal';
 import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
@@ -38,9 +39,10 @@ import { tipoCodeSantiago } from '../../shared/tipoCode';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { useTiendaTerminada, type TerminadaInfo } from '../../shared/useTiendaTerminada';
-import { STORE_CARD_BADGE as SCB, STORE_CARD_DONE_TEXT } from '../../shared/storeCardStyles';
+import { STORE_CARD_BADGE as SCB, claseTarjetaTienda, claseCodigoTienda, claseEtiquetaTerminada } from '../../shared/storeCardStyles';
 import { usePresenciaTienda, type ViendoInfo } from '../../shared/usePresenciaTienda';
 import { PresenciaBadge } from '../../shared/PresenciaBadge';
+import { MarcaSinPesar } from '../../shared/MarcaSinPesar';
 import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { supabase } from '../../../../lib/supabase';
@@ -53,11 +55,12 @@ import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
-import { slotsSinTarjeta, slotsRepresentados } from '../../shared/slotsSinTarjeta';
+import { combinarEnLista } from '../../shared/combinarEnLista';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
+import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
-import { itemDeLaUnidad, fusionarConPrevio } from '../../shared/itemPorUnidad';
+import { itemDeLaUnidad, fusionarConPrevio, esReingreso } from '../../shared/itemPorUnidad';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { fechaChile } from '@/lib/fechaChile';
@@ -102,7 +105,6 @@ const ESTADOS: EstadoItem[] = [
 // regiones/data/tiendas.ts y TiendasPage como CHOCOLATE_DIMS_R, esta última con los campos en
 // otro orden), y el peso por defecto en dos. Cambiar la caja obligaba a acordarse de los cinco.
 const CHOCOLATE_DIMS         = { ...CHOCOLATE_DIMS_SHARED, pesoMax: CHOCOLATE_PESO_MAX };
-const CHOCOLATE_DEFAULT_PESO = CHOCOLATE_PESO_DEFECTO;
 
 // Alias de códigos que llegan distintos en las guías PDF (campo "SEÑOR (ES)") vs el código real.
 // Ej.: BUENAVENTURA 2 es 35BN2, pero en la guía aparece como 35BNT.
@@ -121,6 +123,9 @@ interface FormRow {
   largo: string;
   ancho: string;
   saved?: boolean;
+  /** La persona escribió algo acá. Distinto de `!saved`, que solo dice que no se guardó EN ESTE
+   *  equipo: una tarjeta recién nacida en blanco no está tocada. */
+  tocada?: boolean;
   savedItem?: SantiagoItem;
   pickingSlotId?: number;  // FK a picking_pallets.id
   // [Unificar inline / sumar] La fila TARGET (P1) recién unificada o a la que se le sumó carga: el
@@ -149,7 +154,7 @@ interface ResumenEditState {
 function TiendaGridCard({
   t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
   despachoP, despachoB, despachoC, despachoCH, hasGuide, storeDoneOps = 0, storeTotalOps = 0,
-  tipoCat, terminada, viendo,
+  tipoCat, terminada, viendo, sinPesarCount,
   onSelect, onAddToday, onRemoveFromToday,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
@@ -163,6 +168,9 @@ function TiendaGridCard({
   terminada?: boolean;
   /** [Presencia] Quién más tiene esta tienda abierta ahora. */
   viendo?: ViendoInfo[];
+  /** Unidades guardadas sin pesar. Se veía solo DENTRO de la tienda; ahora también desde la
+   *  grilla, que es donde se decide a cuál entrar. Ver `MarcaSinPesar`. */
+  sinPesarCount?: number;
   onSelect: () => void;
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
@@ -177,24 +185,16 @@ function TiendaGridCard({
   const remB = Math.max(0, expB - boxCount);
   const remC = Math.max(0, expC - contenedorCount);
   const remCH = Math.max(0, expCH - chocolateCount);
+  // El color dice "¿tiene guía?" y la etiqueta "¿está terminada?": antes las dos cosas se
+  // pintaban del mismo verde y marcar una tienda como terminada tapaba el estado de su guía.
+  const estadoCard = { activa: isActive, conGuia: !!hasGuide, terminada: !!terminada, deHoy: !!isToday };
   return (
     <div
       onClick={onSelect}
       className={`flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]
-        ${isActive
-          ? 'bg-[rgba(30,64,175,0.12)] border-2 border-[#1E40AF] shadow-sm'
-          : terminada
-          // [M-02] El verde va en el BORDE, no en todo el fondo. Pintada entera, la tarjeta dejaba
-          // los chips (3P · 2B · CH) y el tipo de local sobre verde saturado, sin contraste — y
-          // con el día entero terminado, todas quedaban iguales y el color ya no distinguía nada.
-          ? 'bg-[rgba(22,163,74,0.10)] border-2 border-[#15803D] shadow-sm'
-          : hasGuide
-          ? 'bg-[rgba(22,163,74,0.07)] border-2 border-success active:bg-[rgba(22,163,74,0.12)]'
-          : isToday
-          ? 'bg-[rgba(30,64,175,0.04)] border border-[rgba(30,64,175,0.20)] active:bg-[rgba(30,64,175,0.09)]'
-          : 'bg-white border border-border active:bg-bg'
-        }`}>
+        ${claseTarjetaTienda(estadoCard)}`}>
       <PresenciaBadge viendo={viendo} />
+      <MarcaSinPesar sinPesar={sinPesarCount} />
       {isToday && onRemoveFromToday && (
         <button onClick={e => { e.stopPropagation(); onRemoveFromToday(); }}
           className="absolute top-0.5 right-0.5 w-6 h-6 flex items-center justify-center text-[14px] text-warn bg-[rgba(217,119,6,0.15)] hover:bg-[rgba(217,119,6,0.28)] rounded-full cursor-pointer border-none leading-none transition-colors"
@@ -207,7 +207,7 @@ function TiendaGridCard({
       )}
       {/* [Contraste AA] `text-success` (#34C759) da ~2:1 sobre blanco — se usa el mismo verde
           oscurecido que ya usa Actividad para su badge "Ingresó" (#15803D, ~5:1). */}
-      <div className={`font-barlow-condensed text-[16px] font-extrabold leading-none tracking-wide ${isActive ? 'text-[#1E40AF]' : terminada ? 'text-[#15803D]' : hasGuide ? STORE_CARD_DONE_TEXT : 'text-navy'}`}>
+      <div className={`font-barlow-condensed text-[16px] font-extrabold leading-none tracking-wide ${claseCodigoTienda(estadoCard)}`}>
         {formatCod(t.cod)}
       </div>
       {/* [M-04] Dos líneas en vez de recortar: "San Pedro …" y "San Pedro 1…" son tiendas
@@ -218,7 +218,7 @@ function TiendaGridCard({
         {t.tienda}
       </div>
       {terminada && (
-        <span className="text-[11px] font-extrabold text-[#15803D] tracking-wide uppercase mt-0.5">✓ Terminada</span>
+        <span className={`text-[11px] font-extrabold tracking-wide uppercase mt-0.5 ${claseEtiquetaTerminada(estadoCard)}`}>✓ Terminada</span>
       )}
       {(() => {
         const tb = tipoBadge(tipoCat);
@@ -297,13 +297,14 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
 /* ═══════════════════════════════════════
    FORM HEADER
 ═══════════════════════════════════════ */
-function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe, terminadaInfo, onToggleTerminada, sinPesarCount, sinGuardar, viendo }: {
+function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe, terminadaInfo, onToggleTerminada, sinPesarCount, sinGuardar, viendo, canalSano }: {
   tienda: TiendaSantiago; pallets: number; bultos: number; chocolates?: number; contenedores?: number; onBack: () => void;
   swipe?: { start: (e: React.TouchEvent) => void; move: (e: React.TouchEvent) => void; end: () => void };
   terminadaInfo?: TerminadaInfo; onToggleTerminada: (cod: string, terminada: boolean, por?: string) => void;
   sinPesarCount?: number;
   sinGuardar?: string | null;
   viendo?: ViendoInfo[];
+  canalSano: boolean;
 }) {
   const itemCount = pallets + bultos + chocolates + contenedores;
   return (
@@ -317,7 +318,10 @@ function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedore
           ←
         </button>
         <div className="flex-1 min-w-0">
-          <div className="font-barlow-condensed text-[18px] font-bold text-white leading-tight truncate">{tienda.tienda}</div>
+          <div className="flex items-center gap-2">
+            <div className="font-barlow-condensed text-[18px] font-bold text-white leading-tight truncate">{tienda.tienda}</div>
+            <IndicadorCanalSano canalSano={canalSano} />
+          </div>
           <div className="font-mono text-[10px] text-white/50">{formatCod(tienda.cod)} · {tienda.ventanaHoraria}</div>
         </div>
         <div className="flex gap-3 flex-shrink-0">
@@ -370,7 +374,7 @@ type StepFormProps = {
 
 export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: StepFormProps = {}) {
   const router = useRouter();
-  const { state, dispatch, flushPending } = useSantiago();
+  const { state, dispatch, flushPending, canalSano } = useSantiago();
   const { showToast } = useApp();
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const { currentTienda, items, regimen } = state;
@@ -378,7 +382,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const { terminadas, marcarTerminada } = useTiendaTerminada();  // marca manual "tienda terminada" (fase 1: solo marcador)
   // [Presencia] Quién más tiene cada tienda abierta AHORA — pedido 2026-09-09: "no saben quién
   // está haciendo qué". Efímero (Realtime Presence, no tabla): se resetea cuando todos se van.
-  const { viendoPorTienda } = usePresenciaTienda('nacional', currentTienda?.cod ?? null);
+  // [Presencia por pallet] `slotEnFoco` es la tarjeta cuyo peso/alto/etc. se está escribiendo
+  // ahora mismo (se marca al enfocar un input, se limpia al salir) — previene el reingreso EN VEZ
+  // de solo registrarlo después de que ya pasó (ver logActividad 'reingreso' en saveRow).
+  const [slotEnFoco, setSlotEnFoco] = useState<number | null>(null);
+  const { viendoPorTienda, viendoPorSlot } = usePresenciaTienda('nacional', currentTienda?.cod ?? null, slotEnFoco);
+  // Salir de la tienda (sin que el input llegue a hacer blur, p. ej. un botón de navegación) no
+  // debe dejar un slot "en foco" fantasma para la próxima tienda que se abra.
+  useEffect(() => { setSlotEnFoco(null); }, [currentTienda?.cod]);
   // [Aviso de conflicto 2026-09-09] SantiagoContext dispara este evento cuando el merge cross-
   // device detecta que DOS equipos cambiaron el MISMO ítem de forma distinta desde el último
   // sync — gana la copia local igual (nunca se pierde un cambio legítimo en silencio), pero
@@ -740,6 +751,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           picker_label: row.picker_label as string | null,
         });
       }
+      // [RC-5] Lo recién creado que esta consulta todavía no ve. Sin esto, `load` reemplaza el
+      // mapa entero y el pallet recién agregado desaparece de la pantalla aunque exista en la base.
+      for (const { clave, slot } of faltantesEnLaConsulta(full, slotsRecienAgregados(), cod => cod)) {
+        if (!full[clave]) { full[clave] = []; slots[clave] = []; }
+        full[clave].push(slot);
+        slots[clave].push({ tipo: slot.tipo, contenido: slot.contenido });
+      }
       setPickingSlots(slots);
       setPickingSlotsFull(full);
     };
@@ -969,10 +987,6 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           return pool && pool.length ? pool.shift() : undefined;
         };
 
-        // Punto 2: chocolates de picking sin item guardado → auto-agregar como AGREGADOS (20 kg)
-        const chocToCreate: SantiagoItem[] = [];
-        let chCount = existing.filter(i => i.tipo === 'Chocolate').length;
-
         const rows: FormRow[] = [];
         // Un row por cada slot P/B/C/CH: tarjeta guardada si ya se llenó, si no formulario vacío
         baseSlots.forEach((s, i) => {
@@ -984,21 +998,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           if (saved && slotPool && slotPool.length === 0) savedBySlot.delete(sid);
           if (!saved) saved = takeLeftover(tipo);
 
-          // 3) Chocolate sin guardar → materializar agregado con peso por defecto
-          if (!saved && tipo === 'Chocolate' && regimen) {
-            const newCh: SantiagoItem = {
-              id: `${currentTienda.cod}-chauto-${sid || i}-${Date.now()}`, tiendaCod: currentTienda.cod,
-              tipo: 'Chocolate', contenido: mapearCont(s.contenido),
-              // El peso sale del slot si alguien lo pesó en Picking; si no, el de siempre. Antes
-              // era SIEMPRE la constante, así que los 18 kg que alguien puso en la balanza se
-              // convertían en 20 al llegar acá.
-              peso: pesoChocolate(s), alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
-              pesoVolumetrico: 0, regimen, orden: `CH${++chCount}`, estado: ESTADO_DEFAULT,
-              pickingSlotId: sid || undefined,
-            };
-            chocToCreate.push(newCh);
-            saved = newCh;
-          }
+          // El chocolate NO se auto-agrega: cae al formulario vacío como el bulto y el pallet.
+          //
+          // Antes se materializaba acá mismo como tarjeta ya «Agregado», porque tenía peso conocido
+          // (20 kg) y medidas fijas: no había nada que escribir. Desde el 22/09/2026 el peso se toma
+          // en Bodega, así que saltearse el formulario dejaba a la persona sin dónde escribirlo —
+          // veía «Agregado» y tenía que apretar ✎ para corregir algo que nadie había cargado.
 
           if (saved) {
             // Un ítem guardado SIEMPRE se muestra como tarjeta (nunca vuelve a formulario)
@@ -1033,18 +1038,6 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           });
         }
         setFormRows(rows);
-
-        // Persistir en el estado los chocolates auto-agregados (una sola vez por visita)
-        if (chocToCreate.length > 0) {
-          dispatch({ type: 'SET_ITEMS', tiendaCod: currentTienda.cod, items: [...existing, ...chocToCreate] });
-          // Reflejar el peso por defecto en picking_pallets (Seguimiento/Enrutador)
-          for (const ch of chocToCreate) {
-            if (!ch.pickingSlotId) continue;
-            supabase.from('picking_pallets').update({
-              peso_kg: ch.peso, alto: ch.alto, ancho: ch.ancho, largo: ch.largo,
-            }).eq('id', ch.pickingSlotId).then(({ error }) => { if (error) console.error('[picking_pallets update]', error.message); });
-          }
-        }
       } else if (existing.length === 0) {
         const preset = presets[currentTienda.cod];
         if (preset) {
@@ -1061,7 +1054,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             const chocItems: SantiagoItem[] = Array.from({ length: chocPresetCount }, (_, i) => ({
               id: `ch-pre-${Date.now()}-${i}`, tiendaCod: currentTienda.cod,
               tipo: 'Chocolate' as TipoCargamento, contenido: 'Chocolate' as ContenidoSantiago,
-              peso: 25, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
+              peso: 0, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
               pesoVolumetrico: 0, regimen, orden: `CH${i + 1}`, estado: ESTADO_DEFAULT,
             }));
             dispatch({ type: 'SET_ITEMS', tiendaCod: currentTienda.cod, items: chocItems });
@@ -1091,32 +1084,19 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTienda?.cod]);
 
-  /* Reconciliar formRows tras un merge remoto (eco de shared_session_state → LOAD_STATE):
-     el array de items de la tienda se reemplaza y se renumera `orden`, pero el
-     useLayoutEffect (deps [currentTienda?.cod]) NO se re-dispara → el `savedItem` de cada
-     fila queda obsoleto y "SUMAR A PALLET" puede fallar (UI congelada). Aquí sólo
-     refrescamos la referencia `savedItem` de las filas guardadas; las filas en progreso
-     (no guardadas) se preservan intactas. Deps: identidad del array de la tienda actual. */
+  /* Mantiene formRows al día mientras la tienda ya está abierta (todo lo que NO es "reconstruir
+     desde cero al entrar", que hace el useLayoutEffect de arriba). Antes eran tres useEffect
+     separados — reconciliar, adoptar, backfill — cada uno con su propia guarda. El bug medido el
+     17/09 (nueve pallets pesados dos veces) vivía en la INTERACCIÓN entre ellos: una tarjeta
+     vacía e intacta no calificaba para ninguno de los tres por separado. `reconciliarFormRows`
+     corre los tres en el orden que sí evita eso — ver su doc en formRowsReconcile.ts. */
   const currentItems = currentTienda ? items[currentTienda.cod] : undefined;
+  const currentSlotsFull = useMemo(
+    () => (currentTienda ? (pickingSlotsFull[currentTienda.cod] ?? []) : []),
+    [currentTienda, pickingSlotsFull],
+  );
   useEffect(() => {
     if (!currentTienda || !currentItems) return;
-    setFormRows(prev => {
-      const next = reconcileSavedRows(prev, currentItems);
-      return next === prev ? prev : next;
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentItems, currentTienda?.cod]);
-
-  /* [Backfill de slots que llegan tarde] El fetch de picking_pallets es asíncrono; si al
-     recargar la página la tienda ya está seleccionada, el rebuild (useLayoutEffect [cod]) corre
-     ANTES de que lleguen los slots y no se re-dispara → faltan tarjetas (p. ej. el P2 no aparece
-     hasta navegar y volver). Aquí agregamos UNA fila por cada slot activo que aún no tenga
-     tarjeta, SIN tocar las filas existentes (no pisa lo que el usuario está escribiendo). */
-  useEffect(() => {
-    if (!currentTienda) return;
-    const cod = currentTienda.cod;
-    const fullSlots = pickingSlotsFull[cod] ?? [];
-    if (fullSlots.length === 0) return;
     const SANT_TIPO: Record<string, TipoCargamento> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate' };
     const mapC = (raw: string): ContenidoSantiago => {
       const c = (raw ?? '').toLowerCase();
@@ -1128,31 +1108,30 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       if (comida) return 'Comida';
       return 'Hogar';
     };
-    const cur = items[cod] || [];
-    setFormRows(prev => {
-      // La regla (qué slot necesita tarjeta y cuál no) vive en `slotsSinTarjeta`, compartida con
-      // Nacional y con tests: era idéntica en los dos espejos y se arreglaba por separado.
-      const missing = slotsSinTarjeta(fullSlots, slotsRepresentados(prev), cur);
-      if (missing.length === 0) return prev;
-      const add: FormRow[] = missing.map(s => {
-        const saved = cur.find(it => it.pickingSlotId === s.id);
-        if (saved) return {
-          id: `bk-saved-${s.id}`, tipo: saved.tipo, contenido: saved.contenido,
-          peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
-          largo: String(saved.largo ?? ''), ancho: String(saved.ancho ?? ''),
-          saved: true, savedItem: saved, pickingSlotId: s.id,
-        };
-        return {
-          id: `bk-pick-${s.id}`, tipo: SANT_TIPO[s.tipo] ?? 'Pallet', contenido: mapC(s.contenido),
-          peso: s.peso_kg != null ? String(s.peso_kg) : '', alto: s.alto != null ? String(s.alto) : '',
-          largo: s.largo != null ? String(s.largo) : '', ancho: s.ancho != null ? String(s.ancho) : '',
-          pickingSlotId: s.id,
-        };
-      });
-      return [...prev, ...add];
-    });
+    setFormRows(prev => reconciliarFormRows(
+      prev, currentItems, currentSlotsFull,
+      (row, it) => ({
+        ...row, tipo: it.tipo, contenido: it.contenido,
+        peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
+        largo: String(it.largo ?? ''), ancho: String(it.ancho ?? ''),
+        saved: true, savedItem: it,
+      }),
+      (s, saved) => saved
+        ? {
+            id: `bk-saved-${s.id}`, tipo: saved.tipo, contenido: saved.contenido,
+            peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
+            largo: String(saved.largo ?? ''), ancho: String(saved.ancho ?? ''),
+            saved: true, savedItem: saved, pickingSlotId: s.id,
+          }
+        : {
+            id: `bk-pick-${s.id}`, tipo: SANT_TIPO[s.tipo] ?? 'Pallet', contenido: mapC(s.contenido),
+            peso: s.peso_kg != null ? String(s.peso_kg) : '', alto: s.alto != null ? String(s.alto) : '',
+            largo: s.largo != null ? String(s.largo) : '', ancho: s.ancho != null ? String(s.ancho) : '',
+            pickingSlotId: s.id,
+          },
+    ));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickingSlotsFull, currentTienda?.cod, items]);
+  }, [currentItems, currentTienda?.cod, currentSlotsFull]);
 
   /* [Limpiar contador obsoleto] `consumedSlotsSant` era el mecanismo viejo para "consumir" un
      slot unificado (el fantasma "¿Con cuál fue unificado?"). Ahora la unificación BORRA el slot,
@@ -1176,12 +1155,22 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const contenido: ContenidoSantiago = src.contenido === tgt.contenido ? src.contenido : 'Mixto';
     const pesoVolumetrico = Math.round((alto * src.ancho * src.largo) / 5000);
     const merged: SantiagoItem = { ...src, id: `${tiendaCod}-${Date.now()}`, peso, alto, contenido, pesoVolumetrico };
-    const higher = Math.max(srcIdx, tgtIdx);
-    const lower  = Math.min(srcIdx, tgtIdx);
-    const newList = allItems.filter((_, i) => i !== higher && i !== lower);
-    newList.splice(lower, 0, merged);
+    // Misma regla que Nacional, en un solo sitio: el fusionado queda en la POSICIÓN del primero
+    // de los dos, no al final. (Acá ya era así; se comparte para que no vuelvan a divergir.)
+    const newList = combinarEnLista(allItems, srcIdx, tgtIdx, merged);
     const renumbered = renumerarOrden(newList, i => seqDeSlot(tiendaCod, i.pickingSlotId));
     dispatch({ type: 'SET_ITEMS', tiendaCod, items: renumbered });
+    // Dos ítems se volvieron uno: la unidad absorbida ya no existe físicamente y su slot tampoco
+    // debe existir. Sin esto quedaba vivo, y todo lo que cuenta unidades —Seguimiento, Conteo de
+    // Flota— veía una de más; además el backfill le rearmaba una tarjeta vacía al reabrir la
+    // tienda. Es lo mismo que ya hacía "unificar"; combinar se había quedado sin hacerlo.
+    if (src.pickingSlotId && tgt.pickingSlotId && src.pickingSlotId !== tgt.pickingSlotId) {
+      void finalizarSlotUnion(src.pickingSlotId, tgt.pickingSlotId).then(r => {
+        if (!r.ok) showToast(`⚠ La unión quedó a medias (${r.error}) — revisá el pallet`, '#D32F2F');
+      });
+      logActividad({ accion: 'unificar', fuente: 'rmcosta', tiendaCod,
+        label: merged.orden, sourceLabel: tgt.orden, slotId: src.pickingSlotId });
+    }
     setCombineModal(null);
   };
 
@@ -1211,7 +1200,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const updateRow = (id: string, field: keyof FormRow, value: string) =>
     setFormRows(prev => prev.map(r => {
       if (r.id !== id) return r;
-      const updated = { ...r, [field]: value };
+      // `tocada` marca que esto es de la persona: desde acá, nada remoto lo pisa.
+      const updated = { ...r, [field]: value, tocada: true };
       if (field === 'contenido') {
         // El autorrelleno es de la CAJA de chocolate, así que no aplica a un pallet: un pallet de
         // chocolate mide lo que mide el pallet. Antes esto miraba solo el contenido.
@@ -1296,6 +1286,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     logActividad({ accion: 'registrar_item', fuente: 'rmcosta', tiendaCod: currentTienda.cod,
       tiendaNombre: currentTienda.tienda, label: savedItem.orden, peso: savedItem.peso, alto: savedItem.alto,
       contenido: savedItem.contenido, slotId });
+    // [Bodega · uso simultáneo] La unidad ya tenía un ítem pesado de verdad — alguien la volvió a
+    // pesar. El merge lo resuelve bien (no se duplica el ítem), pero el trabajo se hizo dos
+    // veces: registrarlo automáticamente evita depender de otra medición manual como la del 17/09.
+    if (esReingreso(previo)) {
+      logActividad({ accion: 'reingreso', fuente: 'rmcosta', tiendaCod: currentTienda.cod,
+        tiendaNombre: currentTienda.tienda, label: savedItem.orden, peso: savedItem.peso, alto: savedItem.alto,
+        pesoPrevio: previo!.peso, altoPrevio: previo!.alto, contenido: savedItem.contenido, slotId });
+    }
 
     // Sincronizar dimensiones en picking_pallets si el row tiene slot vinculado. Con las medidas
     // ya fusionadas: un "sin pesar" encima de un bulto pesado no le borra el peso en Picking.
@@ -1729,19 +1727,6 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // Fusiona las guías del source en el target (lee refs ANTES de borrar) y borra el slot del
   // source en la BD. Fire-and-forget: en el peor caso queda igual que hoy (sin fusión). El caché
   // local ya quitó el slot del source en iniciarUnionInline.
-  const finalizarSlotUnion = async (targetId: number, sourceId: number) => {
-    try {
-      const { data } = await supabase.from('picking_pallets').select('id, refs').in('id', [targetId, sourceId]);
-      const tRefs  = (data ?? []).find(d => d.id === targetId)?.refs as string | undefined;
-      const sRefs  = (data ?? []).find(d => d.id === sourceId)?.refs as string | undefined;
-      const merged = unionRefs(tRefs, sRefs);
-      if (merged && merged !== (tRefs ?? '')) {
-        await supabase.from('picking_pallets').update({ refs: merged }).eq('id', targetId);
-      }
-      await supabase.from('picking_pallets').delete().eq('id', sourceId);
-    } catch (e) { console.error('[finalizarSlotUnion]', e); }
-  };
-
   const absorbPickingSlotSant = (cod: string, type: 'p' | 'b' | 'c') => {
     setConsumedSlotsSant(prev => {
       const cur = prev[cod] || { p: 0, b: 0, c: 0 };
@@ -1779,20 +1764,20 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       const stamp = Date.now();
       const item: SantiagoItem = {
         id: `${cod}-chadd-${stamp}-${countOffset}`, tiendaCod: cod, tipo: 'Chocolate', contenido: 'Chocolate',
-        peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
+        peso: 0, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
         pesoVolumetrico: 0, regimen, orden: `CH${chc}`, estado: ESTADO_DEFAULT,
         pickingSlotId: slot?.id,
       };
       dispatch({ type: 'ADD_ITEM', item });
       setFormRows(prev => [...prev, {
         id: `saved-chadd-${stamp}-${countOffset}`, tipo: 'Chocolate', contenido: 'Chocolate',
-        peso: String(CHOCOLATE_DEFAULT_PESO), alto: String(CHOCOLATE_DIMS.alto),
+        peso: '', alto: String(CHOCOLATE_DIMS.alto),
         largo: String(CHOCOLATE_DIMS.largo), ancho: String(CHOCOLATE_DIMS.ancho),
         saved: true, savedItem: item, pickingSlotId: slot?.id,
       }]);
       if (slot?.id) {
         supabase.from('picking_pallets').update({
-          peso_kg: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS.alto, ancho: CHOCOLATE_DIMS.ancho, largo: CHOCOLATE_DIMS.largo,
+          alto: CHOCOLATE_DIMS.alto, ancho: CHOCOLATE_DIMS.ancho, largo: CHOCOLATE_DIMS.largo,
         }).eq('id', slot.id).then(({ error }) => { if (error) console.error('[picking_pallets update]', error.message); });
       }
       showToast(`✓ ${item.orden} agregado`, '#16A34A');
@@ -1832,14 +1817,19 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const addingSlotRef = useRef<Set<string>>(new Set());
   const addFormRow = async (t: TipoCargamento, existingSlot?: PickingSlot, countOffset = 0) => {
     const key = `${currentTienda?.cod ?? ''}:${t}`;
-    if (addingSlotRef.current.has(key)) return;
+    if (addingSlotRef.current.has(key)) {
+      // Salir mudo hacía que el segundo toque pareciera no haber pasado nada, y la reacción
+      // natural es volver a tocar. Decirlo convierte un silencio en una espera.
+      showToast('Agregando… espera un segundo', '#D97706');
+      return;
+    }
     addingSlotRef.current.add(key);
     try { await addFormRowInner(t, existingSlot, countOffset); }
     finally { addingSlotRef.current.delete(key); }
   };
 
   // [Duplicar bulto] Crea `cantidad` copias de un bulto guardado con su MISMO peso y medidas,
-  // agregadas al instante (mismo patrón que auto-agregar un chocolate). Solo para bultos.
+  // agregadas al instante, sin pasar por el formulario. Solo para bultos.
   const duplicarBulto = async (row: FormRow, cantidad: number) => {
     const src = row.savedItem;
     if (!src || !currentTienda || !regimen) return;
@@ -1950,6 +1940,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                 <TiendaGridCard key={t.cod} t={t} tipoCat={tipoCatByCod[t.cod]}
                   isActive={currentTienda?.cod === t.cod} isToday
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
+                  sinPesarCount={tI.filter(esSinPesar).length}
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
@@ -1989,6 +1980,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                 <TiendaGridCard key={t.cod} t={t} tipoCat={tipoCatByCod[t.cod]}
                   isActive={currentTienda?.cod === t.cod} isToday={false}
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
+                  sinPesarCount={tI.filter(esSinPesar).length}
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
@@ -2419,7 +2411,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} chocolates={tiendaChocolates} contenedores={tiendaContenedores} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} terminadaInfo={terminadas.get(currentTienda.cod)} onToggleTerminada={marcarTerminada}
           sinPesarCount={tiendaItems.filter(esSinPesar).length}
           sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[currentTienda.cod] ?? [], tiendaItems))}
-          viendo={viendoPorTienda.get(currentTienda.cod)} />
+          viendo={viendoPorTienda.get(currentTienda.cod)}
+          canalSano={canalSano} />
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           {(() => {
@@ -2592,8 +2585,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               const isChocRow  = row.tipo === 'Bulto' && row.contenido === 'Chocolate';
               const isChocTipo = row.tipo === 'Chocolate';
               const isContRow  = row.tipo === 'Contenedor';
+              // [Presencia por pallet] Al enfocar cualquier input de esta tarjeta, avisar que
+              // ESTA es la que se está escribiendo — no solo "estoy en la tienda".
+              const marcarEnFoco = () => row.pickingSlotId && setSlotEnFoco(row.pickingSlotId);
+              const quitarFoco = () => setSlotEnFoco(prev => prev === row.pickingSlotId ? null : prev);
               return (
-                <div key={row.id} className={`bg-white rounded-xl border px-2 py-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
+                <div key={row.id} className={`relative bg-white rounded-xl border px-2 py-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
+                  {row.pickingSlotId != null && <PresenciaBadge viendo={viendoPorSlot.get(row.pickingSlotId)} contexto="tarjeta" />}
                   <div className="flex items-center justify-between mb-2">
                     <span className={`font-barlow-condensed text-[16px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>
                       {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[14px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
@@ -2633,6 +2631,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     <div>
                       <label className="text-[11px] text-text-3 uppercase block mb-0.5">peso</label>
                       <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)}
+                        onFocus={marcarEnFoco} onBlur={quitarFoco}
                         placeholder="kg" inputMode="decimal"
                         className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                     </div>
@@ -2640,6 +2639,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       <div>
                         <label className="text-[11px] text-text-3 uppercase block mb-0.5">alto</label>
                         <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)}
+                          onFocus={marcarEnFoco} onBlur={quitarFoco}
                           placeholder="cm" inputMode="decimal" max={MAX_ALTO_CM}
                           className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                         {excedeAltoMax(parseFloat(row.alto) || 0) && (
@@ -2654,6 +2654,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                         <div key={f}>
                           <label className="text-[11px] text-text-3 uppercase block mb-0.5">{f}</label>
                           <input type="number" value={row[f]} onChange={e => updateRow(row.id, f, e.target.value)}
+                            onFocus={marcarEnFoco} onBlur={quitarFoco}
                             placeholder="cm" inputMode="decimal"
                             className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                         </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { agregarSinDuplicar, fusionarConPrevio, itemDeLaUnidad } from '../itemPorUnidad';
+import { agregarSinDuplicar, fusionarConPrevio, itemDeLaUnidad, esReingreso } from '../itemPorUnidad';
 
 // Forma de un ítem de Bodega RM/Costa (SantiagoItem) reducida a lo que importa acá.
 interface Item {
@@ -89,5 +89,19 @@ describe('itemDeLaUnidad', () => {
 
   it('sin unidad no busca', () => {
     expect(itemDeLaUnidad([pesado(1, { pickingSlotId: undefined })], undefined)).toBeUndefined();
+  });
+});
+
+describe('esReingreso', () => {
+  it('false si la unidad no tenía ítem previo (alta nueva, no reingreso)', () => {
+    expect(esReingreso(undefined)).toBe(false);
+  });
+
+  it('false si lo previo era "sin pesar" — completar un placeholder no es trabajo duplicado', () => {
+    expect(esReingreso(sinPesar(1))).toBe(false);
+  });
+
+  it('true si lo previo ya estaba pesado de verdad — alguien va a volver a pesar lo mismo', () => {
+    expect(esReingreso(pesado(1))).toBe(true);
   });
 });

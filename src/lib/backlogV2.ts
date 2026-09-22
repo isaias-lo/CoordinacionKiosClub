@@ -13,7 +13,10 @@ import type { PendienteBacklog } from '@/features/despacho/rutas/utils/backlogSe
 /** Los pendientes deducidos de los últimos `dias` días, sin contar hoy. */
 export async function fetchBacklogCalculado(dias = 10): Promise<PendienteBacklog[]> {
   try {
-    const res = await fetch(`/api/backlog-v2?dias=${dias}`);
+    // `no-store`: un backlog cacheado es un backlog viejo, y se ve idéntico a uno correcto. Sin
+    // esto el navegador puede seguir mostrando el resultado de antes de un arreglo — pasó el 17/09,
+    // con la respuesta ya corregida en el servidor y la pantalla mostrando la vieja.
+    const res = await fetch(`/api/backlog-v2?dias=${dias}`, { cache: 'no-store' });
     if (!res.ok) { console.error('[backlogV2]', res.status); return []; }
     const json = await res.json() as { pendientes?: PendienteBacklog[] };
     return json.pendientes ?? [];

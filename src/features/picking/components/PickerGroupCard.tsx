@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import { Printer, RotateCcw, AlertTriangle, Package } from 'lucide-react';
-import { CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
 import { pesoTotalValido, avisoCantidad, type TipoCaja, type PesoTotalGuardado } from '../pesoTotal';
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord, SectionFilter } from '../picking-types';
@@ -278,7 +277,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                     {v?.ok
                       ? (n === 1 ? <>Se aplica a esta caja.</> : <>Se reparte entre las {n}: {String(v.porCaja).replace('.', ',')} kg por caja.</>)
                       : t === 'CH'
-                        ? <>Sin peso, Bodega usa {CHOCOLATE_PESO_DEFECTO} kg por chocolate como hasta ahora.</>
+                        ? <>Opcional: si no lo pesas acá, se pesa en Bodega.</>
                         : <>Pesa todas las cajas juntas y escribe el total: se reparte entre ellas.</>}
                   </div>
                 )}

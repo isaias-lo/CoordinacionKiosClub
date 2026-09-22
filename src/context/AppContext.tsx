@@ -1,6 +1,9 @@
 'use client';
 
-import { createContext, useContext, useReducer, useCallback, useEffect, useRef, ReactNode } from 'react';
+import { createContext, useContext, useReducer, useCallback, useEffect, useRef, useState, ReactNode } from 'react';
+import { debeConsultar, TICK_MS } from '@/lib/ritmoDePoll';
+import { esperaDePush } from '@/lib/esperaDePush';
+import { renumerarSalvoChocolate } from '@/features/despacho/shared/numeroCard';
 import type { AppState, DispatchItem, TipoContenido, TipoPaquete, PdfData } from '../types';
 import { useAuth } from '@/components/AuthProvider';
 import { pushSessionState, subscribeToSessionState, fetchSessionStateMeta, remotoEsMasViejo } from '@/lib/userSessionState';
@@ -60,14 +63,20 @@ function conId(item: DispatchItem): DispatchItem {
   return item.id ? item : { ...item, id: `di-${Date.now().toString(36)}-${(_idCounter++).toString(36)}` };
 }
 
+/**
+ * Renumera tras un alta o un borrado.
+ *
+ * Antes lo hacía por POSICIÓN para las cuatro clases, chocolates incluidos. Eso deshacía, en la
+ * acción siguiente, lo que el componente había calculado bien: el CH conserva el número que quedó
+ * IMPRESO en su etiqueta (`seq`), y el reducer se lo reescribía como si fuera uno más de la fila.
+ * Es el bug que `numeroCard` documenta en su cabecera —"el CH3 pasaba a llamarse CH1"— reapareciendo
+ * por la puerta de atrás.
+ *
+ * El reducer no puede ver el `seq` (vive en el estado del componente), pero no le hace falta:
+ * alcanza con NO tocar a los chocolates, que ya traen su número puesto.
+ */
 function renumber(items: DispatchItem[]): DispatchItem[] {
-  let pc = 1, bc = 1, cc = 1, chc = 1;
-  return items.map(i => conId(
-    i.pkg === 'pallet'     ? { ...i, orden: `pallet${pc++}` }
-    : i.pkg === 'contenedor' ? { ...i, orden: `contenedor${cc++}` }
-    : i.pkg === 'chocolate'  ? { ...i, orden: `chocolate${chc++}` }
-    : { ...i, orden: `bulto${bc++}` }
-  ));
+  return renumerarSalvoChocolate(items).map(conId);
 }
 
 function reducer(state: AppState, action: Action): AppState {
@@ -176,6 +185,11 @@ interface AppContextValue {
   showToast: (msg: string, color?: string) => void;
   getStats: () => { pallets: number; bultos: number; contenedores: number; chocolates: number; tiendas: number };
   flushPending: () => void;
+  /** [Bodega · indicador visible] El canal de tiempo real puede quedar unido y mudo sin avisar
+   *  (reinicio/rebalanceo del servidor, throttle) — el respaldo por polling ya no se apaga en ese
+   *  caso (ver lib/ritmoDePoll.ts), pero hasta ahora nadie en pantalla se enteraba. `canalSano`
+   *  expone la misma señal que ya se rastreaba en un closure, para que un componente la muestre. */
+  canalSano: boolean;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -199,6 +213,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadInitialState);
   const { user } = useAuth();
   const userId = user?.id;
+  // [Bodega · indicador visible] Espeja el `realtimeConnected` de closure de más abajo, sin
+  // tocar la lógica que ya usa ese closure (el polling de respaldo) — esto es solo para que un
+  // componente pueda mostrarlo, nunca decide nada por sí mismo.
+  const [canalSano, setCanalSano] = useState(true);
 
   // Always-current ref so async callbacks never see stale state
   const stateRef        = useRef(state);
@@ -228,6 +246,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const pendingCatchupRef = useRef(false);                // [P9] remoto llegó durante push local → catch-up al terminar
   // [P5] Catch-up programado cuando un remoto cae dentro de la ventana de 3 s post-push.
   const ventanaCatchupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const vencimientoPushRef = useRef<number>(0);  // tope del debounce (ver lib/esperaDePush)
 
   // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
   useEffect(() => {
@@ -235,9 +254,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
 
     const handleRemote = (remoteState: unknown, updatedAt?: number) => {
-      // Block if local push is pending (debounce) or in-flight (async upsert).
-      // [P9] En vez de descartar, marcamos catch-up: al terminar el push re-consultamos y aplicamos.
-      if (debounceRef.current !== null || isPushingRef.current) { pendingCatchupRef.current = true; return; }
+      // Solo se difiere mientras el upsert está EN VUELO: aplicar una fusión a mitad de la escritura
+      // competiría con su `finally`. Un push meramente AGENDADO (el debounce) ya no bloquea nada.
+      //
+      // Esa era la causa de que se perdiera trabajo con varias personas: mientras tu equipo tenía un
+      // guardado pendiente, el cambio del compañero se descartaba — y después tu equipo escribía el
+      // blob COMPLETO, sin el pallet de él. La fila es una sola por día y gana el último que escribe,
+      // así que el ítem se borraba. Peor: para quien lo había ingresado, ese ítem estaba en su base y
+      // ya no venía en el remoto, así que el merge lo leía como "lo borró el otro" y se lo quitaba
+      // también. Medido el 16/09: de 78 unidades registradas, 16 hubo que reingresarlas.
+      //
+      // Fusionar acá es seguro: el corta-ecos de más abajo descarta el remoto que es nuestro propio
+      // push, y si lo local está limpio se adopta el remoto como nueva base (no se re-empuja).
+      if (isPushingRef.current) { pendingCatchupRef.current = true; return; }
       // Block for 3 s after push completes — Supabase propagation lag can cause stale remote to overwrite our data.
       // [P5] Pero NO se descarta: se PROGRAMA un catch-up para cuando la ventana expire. Antes era un
       // `return` seco y el cambio del compañero se perdía para siempre (el `pendingCatchupRef` de
@@ -340,21 +369,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const unsub = subscribeToSessionState('regiones', userId, handleRemote, (connected) => {
       const reconnected = connected && !realtimeConnected;
       realtimeConnected = connected;
+      setCanalSano(connected); // solo espejo para UI — el closure de arriba sigue siendo la fuente que usa el polling
       // On (re)connect, fetch once to catch any change missed while the socket was down.
       if (reconnected) {
         fetchSessionStateMeta('regiones').then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
       }
     });
 
-    // Polling fallback every 15 s — ONLY fires while Realtime is disconnected.
-    // 3 s was too aggressive: frequent polls created race-condition windows after pushes.
+    // Respaldo: con el canal caído, cada 15 s. Con el canal SANO ya no se apaga — pasa a una vez
+    // por minuto, solo para detectar que el canal quedó mudo. Antes el respaldo se apagaba del
+    // todo mientras el canal dijera "conectado", y ese "conectado" solo cambia si el canal AVISA.
+    // La caída muda (reinicio del servidor de tiempo real, rebalanceo, throttle) dejaba al equipo
+    // ciego para siempre, y ciego se ve igual que "no pasó nada en bodega". Ver lib/ritmoDePoll.
+    let tickPoll = 0;
     const pollId = setInterval(async () => {
-      if (realtimeConnected) return;
+      tickPoll += 1;
+      if (!debeConsultar(realtimeConnected, tickPoll)) return;
       try {
         const m = await fetchSessionStateMeta('regiones');
         if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined);
       } catch {}
-    }, 15_000);
+    }, TICK_MS);
 
     return () => {
       unsub(); clearInterval(pollId);
@@ -365,18 +400,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Debounced push to Supabase (2.5 s after last change) + localStorage fallback.
   // The debounce window also throttles how often the full row is re-broadcast over Realtime
   // to every subscriber — a longer window means fewer rebroadcasts of the whole blob (egress).
-  // flushPending() + localStorage on unmount guarantee no data is lost on navigation.
+  // Al DESMONTAR (navegar fuera) el debounce pendiente se cancela. El cleanup guarda en
+  // localStorage —igual que RM/Costa— para no perder el trabajo en este equipo, pero NO empuja a
+  // Supabase: un push async durante el desmontaje no es confiable. Por eso quien navega llama
+  // `flushPending()` ANTES del router.push, y el cambio de visibilidad de la pestaña también lo
+  // dispara. (Este comentario decía que el desmontaje ya garantizaba las dos cosas; no era así:
+  // el cleanup solo hacía clearTimeout, sin guardar nada.)
   useEffect(() => {
     if (!isInitializedRef.current) return;
     const payload = { dispatch: state.dispatch, pdfData: state.pdfData, fechaDespacho: state.fechaDespacho, registrado: state.registrado };
     // [P5] "¿Hay algo que empujar?" mira el payload COMPLETO (incluye fechaDespacho/registrado);
     // la BASE del merge y del corta-ecos se guarda aparte con `serializarBase`.
     const current = JSON.stringify(payload);
-    if (current === lastPushedFullRef.current) return;
+    if (current === lastPushedFullRef.current) { vencimientoPushRef.current = 0; return; }
 
+    // Debounce CON TOPE: se espera a que amaine, pero nunca más de 2,5 s desde el primer cambio
+    // pendiente. Sin el tope, ahora que cada fusión remota es un cambio de estado más, cinco
+    // personas empujando bastarían para que el push propio no saliera nunca.
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    const { espera, vencimiento } = esperaDePush(vencimientoPushRef.current, Date.now());
+    vencimientoPushRef.current = vencimiento;
     debounceRef.current = setTimeout(() => {
       debounceRef.current = null;
+      vencimientoPushRef.current = 0;
       // Mark a clear so handleRemote won't restore data for 30 s
       const isEmpty = Object.keys(payload.dispatch).length === 0 && Object.keys(payload.pdfData).length === 0;
       if (isEmpty) clearedAtRef.current = Date.now();
@@ -397,9 +443,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (pendingCatchupRef.current) { pendingCatchupRef.current = false; catchUpRef.current(); }
         });
       try { localStorage.setItem(REGIONES_KEY, JSON.stringify(state)); } catch {}
-    }, 2500);
+    }, espera);
 
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+        // Guardado local sincrónico: lo que no alcanzó a empujarse no se pierde en este equipo.
+        try { localStorage.setItem(REGIONES_KEY, JSON.stringify(stateRef.current)); } catch {}
+      }
+    };
   }, [state.dispatch, state.pdfData, state.fechaDespacho, state.registrado]);
 
   const showToast = useCallback((msg: string, color?: string) => {
@@ -428,6 +481,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const current = JSON.stringify(payload);
     if (current === lastPushedFullRef.current) return;
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
+    vencimientoPushRef.current = 0;
     const prevPushed = lastPushedRef.current;
     const prevFull   = lastPushedFullRef.current;
     lastPushedRef.current     = serializarBase(payload);
@@ -445,7 +499,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useVisibilityRefetch(() => catchUpRef.current(), flushPending);
 
   return (
-    <AppContext.Provider value={{ state, dispatch, showToast, getStats, flushPending }}>
+    <AppContext.Provider value={{ state, dispatch, showToast, getStats, flushPending, canalSano }}>
       {children}
     </AppContext.Provider>
   );

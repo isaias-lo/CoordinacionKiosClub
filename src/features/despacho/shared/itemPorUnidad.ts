@@ -58,3 +58,15 @@ export function agregarSinDuplicar<T extends ItemConUnidad>(lista: T[], nuevo: T
 export function itemDeLaUnidad<T extends ItemConUnidad>(lista: T[], slotId: number | undefined): T | undefined {
   return slotId == null ? undefined : lista.find(i => i.pickingSlotId === slotId);
 }
+
+/**
+ * ¿Esto es un reingreso? — la unidad ya tenía un ítem pesado DE VERDAD (no un "sin pesar") antes
+ * de este guardado. `fusionarConPrevio` ya lo resuelve bien — no se duplica el ítem — pero la
+ * persona igual volvió a pesar algo que un compañero ya había cargado: es justo el trabajo
+ * duplicado que hubo que medir a mano el 17/09 (ver la cabecera de este archivo, y el commit que
+ * arregló la tarjeta vacía). Detectarlo automáticamente — para registrarlo en `actividad_bodega`
+ * — es lo que evita depender de otra medición manual la próxima vez.
+ */
+export function esReingreso<T extends ItemConUnidad>(previo: T | undefined): boolean {
+  return previo !== undefined && !esSinPesar(previo);
+}

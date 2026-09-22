@@ -233,7 +233,20 @@ describe('preflightCierre · camión apagado', () => {
     expect(r.hallazgos).toEqual([]);
   });
 
-  it('con todos los camiones activos no reporta nada', () => {
+  it('un camión activo y CERRADO no reporta nada', () => {
+    const r = preflightCierre({
+      fecha: '2026-09-05',
+      enElPool: ['A'],
+      asignaciones: { 'AA-11': [t('A')] },
+      conDatosDeBodega: ['A'],
+      patentesActivas: ['AA-11'],
+      cerradas: ['AA-11'],
+      manifiestos: [{ patente: 'AA-11' }],
+    });
+    expect(r.hallazgos).toEqual([]);
+  });
+
+  it('un camión activo SIN cerrar sí reporta: es el hueco por el que se perdieron 4 tiendas el 16/09', () => {
     const r = preflightCierre({
       fecha: '2026-09-05',
       enElPool: ['A'],
@@ -241,7 +254,19 @@ describe('preflightCierre · camión apagado', () => {
       conDatosDeBodega: ['A'],
       patentesActivas: ['AA-11'],
     });
-    expect(r.hallazgos).toEqual([]);
+    expect(r.hallazgos.map(h => h.tipo)).toEqual(['sin-cerrar']);
+    expect(r.hallazgos[0].items).toEqual(['A (AA-11)']);
+  });
+
+  it('no se duplica con el aviso de camión apagado: si está apagado, solo ese', () => {
+    const r = preflightCierre({
+      fecha: '2026-09-05',
+      enElPool: ['A'],
+      asignaciones: { 'AA-11': [t('A')] },
+      conDatosDeBodega: ['A'],
+      patentesActivas: [],
+    });
+    expect(r.hallazgos.map(h => h.tipo)).toEqual(['en-camion-apagado']);
   });
 
   // Es tan grave como una tienda sin camión: en los dos casos nadie la lleva.
