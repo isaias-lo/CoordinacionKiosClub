@@ -11,7 +11,7 @@ import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '.
 import { guideKey } from '../utils/guideKey';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
-import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_MAX } from '@/features/despacho/shared/chocolate';
+import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
 import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroVisibleCard, ordenDeItem, renumerarOrden, etiquetaCard } from '@/features/despacho/shared/numeroCard';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
@@ -105,7 +105,7 @@ const ESTADOS: EstadoItem[] = [
 // Definición ÚNICA en shared/chocolate.ts — estaba escrita en tres lugares (acá,
 // regiones/data/tiendas.ts y TiendasPage como CHOCOLATE_DIMS_R, esta última con los campos en
 // otro orden), y el peso por defecto en dos. Cambiar la caja obligaba a acordarse de los cinco.
-const CHOCOLATE_DIMS         = { ...CHOCOLATE_DIMS_SHARED, pesoMax: CHOCOLATE_PESO_MAX };
+const CHOCOLATE_DIMS         = { ...CHOCOLATE_DIMS_SHARED };
 
 // Alias de códigos que llegan distintos en las guías PDF (campo "SEÑOR (ES)") vs el código real.
 // Ej.: BUENAVENTURA 2 es 35BN2, pero en la guía aparece como 35BNT.
@@ -1261,7 +1261,6 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       pesoV = DIMS_SIN_PESAR.pesoVolumetrico;
     } else {
       p = parseFloat(row.peso); if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
-      if (isChocTipo && p > CHOCOLATE_DIMS.pesoMax) { showToast(`⚠ Chocolate máx ${CHOCOLATE_DIMS.pesoMax} kg`, '#D32F2F'); return; }
       a  = isCont ? CONTENEDOR_ALTO  : isChocTipo ? CHOCOLATE_DIMS.alto  : isChoc ? CHOCOLATE_BULTO_DIMS.alto  : (parseFloat(row.alto)  || 0);
       fL = row.tipo === 'Pallet' ? 120 : isCont ? CONTENEDOR_LARGO : isChocTipo ? CHOCOLATE_DIMS.largo : (isChoc ? CHOCOLATE_BULTO_DIMS.largo : (parseFloat(row.largo) || 0));
       fA = row.tipo === 'Pallet' ? 100 : isCont ? CONTENEDOR_ANCHO : isChocTipo ? CHOCOLATE_DIMS.ancho : (isChoc ? CHOCOLATE_BULTO_DIMS.ancho : (parseFloat(row.ancho) || 0));
@@ -2718,7 +2717,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   )}
                   {isChocTipo && (
                     <div className="mb-1.5 text-[11px] bg-[rgba(146,64,14,0.06)] border border-[rgba(146,64,14,0.15)] rounded px-1.5 py-1" style={{ color: '#92400E' }}>
-                      {CHOCOLATE_DIMS.largo}×{CHOCOLATE_DIMS.ancho}×{CHOCOLATE_DIMS.alto} cm · fijas · máx {CHOCOLATE_DIMS.pesoMax} kg
+                      {CHOCOLATE_DIMS.largo}×{CHOCOLATE_DIMS.ancho}×{CHOCOLATE_DIMS.alto} cm · fijas
                     </div>
                   )}
                   {/* UN solo botón: con peso guarda normal; sin peso ofrece "agregar sin pesar"

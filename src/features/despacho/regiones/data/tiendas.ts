@@ -1,4 +1,4 @@
-import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_MAX } from '@/features/despacho/shared/chocolate';
+import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
 import type { Tienda } from '../../../../types';
 import { MAX_ALTO_CM } from '../../shared/palletLimits';
 
@@ -181,11 +181,14 @@ export const CALENDARIO: Record<number, string[]> = {
 export const LIMITES = {
   pallet:    { pesoMax: 1000, altoMax: MAX_ALTO_CM, anchoMax: 130, largoMax: 130 },
   box:       { pesoMax: 500,  altoMax: 200,         anchoMax: 250, largoMax: 250 },
-  chocolate: { pesoMax: 25,   altoMax: 42,          anchoMax: 56,  largoMax: 80  },
+  // El tope de 25 kg era de NEGOCIO y se quitó el 22/09/2026: con la caja negra pesándose entera
+  // rechazaba pesos legítimos. Queda el mismo tope de cordura que el bulto, solo para atajar un
+  // tipeo (2500 en vez de 25) antes de que llegue al manifiesto.
+  chocolate: { pesoMax: 500,  altoMax: 42,          anchoMax: 56,  largoMax: 80  },
 };
 
 // Re-export por compatibilidad: la definición ÚNICA vive en shared/chocolate.ts.
-export const CHOCOLATE_DIMS = { ...CHOCOLATE_DIMS_SHARED, pesoMax: CHOCOLATE_PESO_MAX };
+export const CHOCOLATE_DIMS = { ...CHOCOLATE_DIMS_SHARED };
 
 export function getTodayCods(): string[] {
   const dow = new Date().getDay();

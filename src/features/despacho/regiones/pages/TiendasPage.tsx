@@ -1157,7 +1157,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     } else {
       p = parseFloat(row.peso);
       if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
-      if (isChoc && p > 25) { showToast('⚠ Chocolate máx 25 kg', '#D32F2F'); return; }
       a  = isCont ? 150 : isChoc ? 42  : (parseFloat(row.alto)  || 0);
       aw = row.pkg === 'pallet' ? 100 : isCont ? 80  : isChoc ? 56 : (parseFloat(row.ancho) || 0);
       l  = row.pkg === 'pallet' ? 120 : isCont ? 110 : isChoc ? 80 : (parseFloat(row.largo) || 0);
@@ -1843,7 +1842,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       </div>
                       {row.savedItem.pkg === 'box' && <div className="text-text-3">{row.savedItem.ancho}×{row.savedItem.largo}cm</div>}
                       {row.savedItem.pkg === 'contenedor' && <div className="text-text-3">80×110cm · alto 150cm — fijo</div>}
-                      {row.savedItem.pkg === 'chocolate' && <div className="text-text-3">56×80cm · máx 25kg</div>}
+                      {row.savedItem.pkg === 'chocolate' && <div className="text-text-3">56×80cm</div>}
                       {row.savedItem.pkg === 'pallet' && <div className="text-text-3">{row.savedItem.tipo === 'comida-hogar' ? 'Mixto' : row.savedItem.tipo === 'comida' ? 'Comida' : 'Hogar'}</div>}
                       {(() => {
                         const slot = row.pickingSlotId ? (pickingSlotsFull[selectedTienda ?? ''] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
@@ -2009,7 +2008,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   )}
                   <div className="grid grid-cols-2 gap-1 mb-1.5">
                     <div>
-                      <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Peso{isChocRow ? ' (máx 25kg)' : ''}</label>
+                      <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Peso</label>
                       <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)}
                         onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="kg" inputMode="decimal"
                         className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />

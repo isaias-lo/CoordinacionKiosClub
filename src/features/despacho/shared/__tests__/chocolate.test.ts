@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   pesoChocolate, dimsChocolate, pesoChocolateValido,
-  CHOCOLATE_DIMS, CHOCOLATE_PESO_MAX,
+  CHOCOLATE_DIMS,
 } from '../chocolate';
 import { sumPeso } from '../combineUtils';
 import { esSinPesar } from '../sinPesar';
@@ -89,19 +89,19 @@ describe('pesoChocolateValido — rechaza, no recorta', () => {
     expect(pesoChocolateValido('18.5')).toEqual({ ok: true, peso: 18.5 });
   });
 
-  it('el máximo entra; pasarse, no', () => {
-    expect(pesoChocolateValido(CHOCOLATE_PESO_MAX).ok).toBe(true);
-    expect(pesoChocolateValido(CHOCOLATE_PESO_MAX + 0.1).ok).toBe(false);
+  it('ya NO hay tope de 25 kg: un peso alto se acepta', () => {
+    // Quitado el 22/09/2026. Con la caja negra pesándose entera y descontándose la tara, ese
+    // techo rechazaba pesos legítimos.
+    expect(pesoChocolateValido(25).ok).toBe(true);
+    expect(pesoChocolateValido(30).ok).toBe(true);
+    expect(pesoChocolateValido(48).ok).toBe(true);
   });
 
-  it('30 kg se RECHAZA con mensaje, no se recorta a 25 en silencio', () => {
-    // Recortar convierte un error visible en un dato falso que nadie vuelve a revisar.
-    const r = pesoChocolateValido(30);
+  it('lo que NO es un peso se rechaza con mensaje, no se corrige en silencio', () => {
+    // Corregir convierte un error visible en un dato falso que nadie vuelve a revisar.
+    const r = pesoChocolateValido('mucho');
     expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.error).toContain('25');
-      expect(r.error).toContain('correcto');
-    }
+    if (!r.ok) expect(r.error).toContain('kg');
     expect(r).not.toHaveProperty('peso');
   });
 

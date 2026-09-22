@@ -5,16 +5,17 @@
 // Este módulo toma ese total y lo reparte, de forma que la SUMA dé exacto lo que marcó la balanza —
 // que es lo que importa aguas abajo: el peso de lo que sale en el camión, no el de cada caja suelta.
 
-import { CHOCOLATE_PESO_MAX } from '@/features/despacho/shared/chocolate';
 
 export type TipoCaja = 'CH' | 'CC' | 'CN';
 
 /**
- * Tope por caja, para atajar un error de tipeo o una caja que falta contar. Para el chocolate es el
- * de siempre (25 kg). Para las de congelado no hay un máximo de negocio conocido: es un tope de
- * cordura — nadie carga una caja de 60 kg a mano.
+ * Tope por caja, para atajar un error de tipeo o una caja que falta contar.
+ *
+ * Ninguno es un máximo de negocio: son topes de cordura — nadie carga a mano una caja de 60 kg.
+ * El chocolate tenía 25, que SÍ era de negocio, y se quitó el 22/09/2026: con la caja negra
+ * pesándose entera rechazaba pesos legítimos. Queda en el mismo tope de cordura que las demás.
  */
-const TOPE_POR_CAJA: Record<TipoCaja, number> = { CH: CHOCOLATE_PESO_MAX, CC: 60, CN: 60 };
+const TOPE_POR_CAJA: Record<TipoCaja, number> = { CH: 60, CC: 60, CN: 60 };
 
 const fmt = (n: number) => String(Math.round(n * 100) / 100).replace('.', ',');
 
