@@ -11,7 +11,7 @@ import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '.
 import { guideKey } from '../utils/guideKey';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
-import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_MAX } from '@/features/despacho/shared/chocolate';
+import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_MAX } from '@/features/despacho/shared/chocolate';
 import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroVisibleCard, ordenDeItem, renumerarOrden, etiquetaCard } from '@/features/despacho/shared/numeroCard';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
@@ -989,10 +989,6 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           return pool && pool.length ? pool.shift() : undefined;
         };
 
-        // Punto 2: chocolates de picking sin item guardado → auto-agregar como AGREGADOS (20 kg)
-        const chocToCreate: SantiagoItem[] = [];
-        let chCount = existing.filter(i => i.tipo === 'Chocolate').length;
-
         const rows: FormRow[] = [];
         // Un row por cada slot P/B/C/CH: tarjeta guardada si ya se llenó, si no formulario vacío
         baseSlots.forEach((s, i) => {
@@ -1004,21 +1000,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           if (saved && slotPool && slotPool.length === 0) savedBySlot.delete(sid);
           if (!saved) saved = takeLeftover(tipo);
 
-          // 3) Chocolate sin guardar → materializar agregado con peso por defecto
-          if (!saved && tipo === 'Chocolate' && regimen) {
-            const newCh: SantiagoItem = {
-              id: `${currentTienda.cod}-chauto-${sid || i}-${Date.now()}`, tiendaCod: currentTienda.cod,
-              tipo: 'Chocolate', contenido: mapearCont(s.contenido),
-              // El peso sale del slot si alguien lo pesó en Picking; si no, el de siempre. Antes
-              // era SIEMPRE la constante, así que los 18 kg que alguien puso en la balanza se
-              // convertían en 20 al llegar acá.
-              peso: pesoChocolate(s), alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
-              pesoVolumetrico: 0, regimen, orden: `CH${++chCount}`, estado: ESTADO_DEFAULT,
-              pickingSlotId: sid || undefined,
-            };
-            chocToCreate.push(newCh);
-            saved = newCh;
-          }
+          // El chocolate NO se auto-agrega: cae al formulario vacío como el bulto y el pallet.
+          //
+          // Antes se materializaba acá mismo como tarjeta ya «Agregado», porque tenía peso conocido
+          // (20 kg) y medidas fijas: no había nada que escribir. Desde el 22/09/2026 el peso se toma
+          // en Bodega, así que saltearse el formulario dejaba a la persona sin dónde escribirlo —
+          // veía «Agregado» y tenía que apretar ✎ para corregir algo que nadie había cargado.
 
           if (saved) {
             // Un ítem guardado SIEMPRE se muestra como tarjeta (nunca vuelve a formulario)
@@ -1053,18 +1040,6 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           });
         }
         setFormRows(rows);
-
-        // Persistir en el estado los chocolates auto-agregados (una sola vez por visita)
-        if (chocToCreate.length > 0) {
-          dispatch({ type: 'SET_ITEMS', tiendaCod: currentTienda.cod, items: [...existing, ...chocToCreate] });
-          // Reflejar el peso por defecto en picking_pallets (Seguimiento/Enrutador)
-          for (const ch of chocToCreate) {
-            if (!ch.pickingSlotId) continue;
-            supabase.from('picking_pallets').update({
-              peso_kg: ch.peso, alto: ch.alto, ancho: ch.ancho, largo: ch.largo,
-            }).eq('id', ch.pickingSlotId).then(({ error }) => { if (error) console.error('[picking_pallets update]', error.message); });
-          }
-        }
       } else if (existing.length === 0) {
         const preset = presets[currentTienda.cod];
         if (preset) {
@@ -1894,7 +1869,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   };
 
   // [Duplicar bulto] Crea `cantidad` copias de un bulto guardado con su MISMO peso y medidas,
-  // agregadas al instante (mismo patrón que auto-agregar un chocolate). Solo para bultos.
+  // agregadas al instante, sin pasar por el formulario. Solo para bultos.
   const duplicarBulto = async (row: FormRow, cantidad: number) => {
     const src = row.savedItem;
     if (!src || !currentTienda || !regimen) return;
