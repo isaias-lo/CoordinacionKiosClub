@@ -370,7 +370,7 @@ type StepFormProps = {
 
 export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: StepFormProps = {}) {
   const router = useRouter();
-  const { state, dispatch, flushPending, canalSano } = useSantiago();
+  const { state, dispatch, flushPending, canalSano, catchUp } = useSantiago();
   const { showToast } = useApp();
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const { currentTienda, items, regimen } = state;
@@ -900,6 +900,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
 
   const selectTienda = (t: TiendaSantiago) => {
     dispatch({ type: 'SELECT_TIENDA', payload: t });
+    // [Tarjeta "llena pero no guardada" al entrar] No esperar al próximo tick de polling (que se
+    // pausa en background) ni a que el usuario cambie de pestaña: al abrir la tienda es el momento
+    // en que más importa tener lo último que guardó un compañero.
+    catchUp();
     const existing = items[t.cod] || [];
     const hasManualPreset = presets[t.cod] &&
       (presets[t.cod].pallets > 0 || presets[t.cod].bultos > 0 || (presets[t.cod].contenedores ?? 0) > 0 || (presets[t.cod].chocolates ?? 0) > 0);
