@@ -668,7 +668,16 @@ ${bodies}
             {rutas.length} ruta{rutas.length !== 1 ? 's' : ''} · {fecha}
           </div>
         </div>
-        <button onClick={onClose}
+        <button onClick={() => {
+          // [Diagnóstico] Cerrar con rutas sin guardar es justo el escenario que deja al chofer
+          // sin verlas en /conductor-hub y a nadie enterado — el aviso persistente de abajo no
+          // sirve si la persona nunca vuelve a mirarlo porque ya cerró el panel.
+          const sinGuardar = manifiestos.filter((m, idx) => !(saved[idx] || m.id != null)).length;
+          if (sinGuardar > 0 && !window.confirm(
+            `${sinGuardar} ${sinGuardar === 1 ? 'ruta sin guardar' : 'rutas sin guardar'} — el chofer NO ${sinGuardar === 1 ? 'la' : 'las'} va a ver en /conductor-hub hasta que se guarde.\n\n¿Cerrar igual?`
+          )) return;
+          onClose();
+        }}
           className="w-9 h-9 rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors"
           style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}>
           ✕
