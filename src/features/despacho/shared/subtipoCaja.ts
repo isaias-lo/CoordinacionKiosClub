@@ -89,3 +89,76 @@ export function partirClave(clave: string): { tipo: string; subtipo: SubtipoCaja
   const t = (tipo ?? '').trim().toUpperCase();
   return t === 'CH' ? { tipo: 'CH', subtipo: subtipoDeCaja(sub) } : { tipo: t, subtipo: null };
 }
+
+// ── La tara de la caja negra ───────────────────────────────────────────────────────────────────
+//
+// La caja negra es RETORNABLE: vuelve al CD. Su peso no es mercadería, así que lo que tiene que
+// quedar registrado es lo que va adentro, no lo que marca la balanza.
+//
+// Quien pesa pone la caja entera en la balanza —no hay forma de pesar el contenido solo— así que
+// la resta la hace el sistema: se teclea 20,5 y queda 17.
+//
+// La caja de cartón NO tiene tara. No es un olvido: su tamaño varía, y con él su peso. Restarle
+// una constante sería inventar un número distinto para cada caja.
+//
+// ── Por qué la resta va al TECLEAR y no al guardar ─────────────────────────────────────────────
+//
+// Una tarjeta ya guardada se puede editar con el ✎. Si la resta viviera en el guardado, corregir
+// cualquier cosa volvería a restar: 17 → 13,5 → 10. La resta tiene que ocurrir exactamente una
+// vez, en el único momento en que existe un peso bruto: cuando la persona lo escribe.
+
+/** Lo que pesa la caja negra vacía, en kg. Es retornable: no cuenta como mercadería. */
+export const TARA_CAJA_NEGRA = 3.5;
+
+export type PesoNeto =
+  | { ok: true; neto: number; bruto: number; tara: number }
+  | { ok: false; error: string };
+
+/**
+ * El peso que queda registrado a partir del que marcó la balanza.
+ *
+ * Se RECHAZA lo que no llega a la tara, no se recorta a cero: si la balanza marca menos que la
+ * caja vacía, o alguien se equivocó de casilla o la caja no es la que dice. Guardar un 0 —o peor,
+ * un negativo— convierte un error visible en un dato falso que nadie va a volver a mirar. Mismo
+ * criterio que `pesoChocolateValido`.
+ *
+ * El redondeo a una décima evita que 20,6 − 3,5 quede en 17.099999999999998.
+ */
+export function pesoNetoCajaNegra(bruto: unknown, tara = TARA_CAJA_NEGRA): PesoNeto {
+  const n = typeof bruto === 'number' ? bruto : parseFloat(String(bruto ?? '').replace(',', '.'));
+  if (!Number.isFinite(n) || n <= 0) {
+    return { ok: false, error: 'Escribe el peso que marcó la balanza (ej. 20,5).' };
+  }
+  if (n <= tara) {
+    return {
+      ok: false,
+      error: `La caja negra vacía ya pesa ${String(tara).replace('.', ',')} kg. `
+           + `¿Son ${String(n).replace('.', ',')} kg lo que marcó la balanza?`,
+    };
+  }
+  return { ok: true, neto: Math.round((n - tara) * 10) / 10, bruto: n, tara };
+}
+
+// ── El par que mantiene la resta idempotente ───────────────────────────────────────────────────
+//
+// El formulario guarda el peso BRUTO (lo que marcó la balanza) y el ítem guarda el NETO. Entre los
+// dos hay que convertir en las dos direcciones, y la trampa está en la vuelta:
+//
+//   guardar        el formulario tiene el bruto → se resta la tara → el ítem queda neto
+//   reconstruir    el ítem tiene el neto → se SUMA la tara → el formulario vuelve a mostrar bruto
+//
+// Sin la suma de vuelta, reabrir la tienda y volver a guardar restaría otra vez: 17 → 13,5 → 10.
+// Editar con el ✎ no tiene ese problema —la fila conserva lo tecleado— pero reconstruir sí, y es
+// lo que pasa cada vez que alguien entra a la tienda.
+
+/** Lo que se guarda en el ítem, a partir de lo que hay en el formulario. */
+export function pesoParaGuardar(bruto: number, subtipo: SubtipoCaja, tara = TARA_CAJA_NEGRA): number {
+  if (subtipo !== 'negra') return bruto;
+  return Math.round((bruto - tara) * 10) / 10;
+}
+
+/** Lo que se muestra en el formulario, a partir de lo guardado. El inverso exacto del anterior. */
+export function pesoParaMostrar(neto: number, subtipo: SubtipoCaja, tara = TARA_CAJA_NEGRA): number {
+  if (subtipo !== 'negra') return neto;
+  return Math.round((neto + tara) * 10) / 10;
+}

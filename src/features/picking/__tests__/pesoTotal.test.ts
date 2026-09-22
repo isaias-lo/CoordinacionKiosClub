@@ -49,13 +49,19 @@ describe('pesoTotalValido', () => {
     expect(pesoTotalValido('abc', 5, 'CH').ok).toBe(false);
   });
 
-  it('un chocolate no puede promediar más de 25 kg: probablemente falta contar cajas', () => {
-    const r = pesoTotalValido('300', 10, 'CH');   // 30 kg c/u
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/30 kg por caja/);
+  it('el chocolate ya NO tiene tope de 25 kg: 30 por caja es posible', () => {
+    // Quitado el 22/09/2026. La caja negra se pesa entera y se le descuenta la tara, así que ese
+    // techo rechazaba pesos legítimos.
+    expect(pesoTotalValido('300', 10, 'CH').ok).toBe(true);
   });
 
-  it('las cajas de congelado tienen su propio tope de cordura, no el del chocolate', () => {
+  it('pero sigue el tope de CORDURA, el mismo de las otras cajas: ataja un tipeo', () => {
+    const r = pesoTotalValido('3000', 10, 'CH');   // 300 kg por caja: nadie la levanta
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/300 kg por caja/);
+  });
+
+  it('las cajas de congelado conservan el suyo', () => {
     expect(pesoTotalValido('300', 10, 'CC').ok).toBe(true);    // 30 kg c/u: posible
     expect(pesoTotalValido('3000', 10, 'CN').ok).toBe(false);  // 300 kg c/u: no
   });

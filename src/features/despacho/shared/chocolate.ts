@@ -29,9 +29,6 @@
 /** Medidas oficiales de la caja de chocolate, en cm. Una sola definición para todo el sistema. */
 export const CHOCOLATE_DIMS = { alto: 42, largo: 80, ancho: 56 } as const;
 
-/** Tope de seguridad de la caja, en kg. */
-export const CHOCOLATE_PESO_MAX = 25;
-
 /** Lo mínimo que hace falta saber de un slot para sacarle el peso. */
 interface SlotConPeso { peso_kg?: number | null }
 
@@ -59,17 +56,17 @@ export function dimsChocolate(): { alto: number; largo: number; ancho: number } 
 /**
  * ¿Es un peso aceptable para un chocolate?
  *
- * Se RECHAZA, no se recorta en silencio: si alguien escribió 30, lo más probable es que se haya
- * equivocado de casilla o de unidad, y guardarle un 25 sin avisar convierte un error visible en
- * un dato falso que nadie va a volver a revisar.
+ * Ya NO hay tope de 25 kg (quitado el 22/09/2026, a pedido del coordinador): con la caja negra
+ * pesándose entera y descontándose la tara, ese techo rechazaba pesos legítimos. Lo único que se
+ * rechaza es lo que no es un peso.
+ *
+ * Se RECHAZA, no se recorta en silencio: guardar un número corregido sin avisar convierte un
+ * error visible en un dato falso que nadie va a volver a revisar.
  */
 export function pesoChocolateValido(v: unknown): { ok: true; peso: number } | { ok: false; error: string } {
   const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
   if (!Number.isFinite(n) || n <= 0) {
     return { ok: false, error: 'Escribe el peso en kg (ej. 18,5).' };
-  }
-  if (n > CHOCOLATE_PESO_MAX) {
-    return { ok: false, error: `El chocolate no puede pesar más de ${CHOCOLATE_PESO_MAX} kg. ¿Escribiste el peso correcto?` };
   }
   return { ok: true, peso: n };
 }
