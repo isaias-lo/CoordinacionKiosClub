@@ -488,7 +488,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   /* Mantiene formRows al día mientras la tienda ya está abierta (todo lo que NO es "reconstruir
      desde cero al entrar", que hace el useLayoutEffect de arriba). Antes eran tres useEffect
      separados — reconciliar, adoptar, backfill — cada uno con su propia guarda. El bug medido el
-     17/09 (nueve pallets pesados dos veces, entre 13 y 80 minutos de diferencia) vivía en la
+     17/09 (10 de 48 unidades pesadas dos veces, con brechas de 0 a 44 minutos) vivía en la
      INTERACCIÓN entre ellos: una tarjeta vacía e intacta no calificaba para ninguno de los tres
      por separado. `reconciliarFormRows` corre los tres en el orden que sí evita eso — ver su doc
      en formRowsReconcile.ts. */

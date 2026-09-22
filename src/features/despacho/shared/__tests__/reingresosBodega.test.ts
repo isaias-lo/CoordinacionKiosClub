@@ -1,160 +1,147 @@
 import { describe, it, expect } from 'vitest';
-import { reingresosDelDia, medirDia, medirDias, type EventoBodega } from '../reingresosBodega';
+import { repetidosDelDia, medirDia, medirDias, type RegistroBodega } from '../reingresosBodega';
 
 const D = '2026-09-17';
-let n = 0;
-/** Un evento. `hora` en "HH:MM:SS" del día D. */
-const ev = (event_type: string, store_cod: string, hora: string, extra: Partial<EventoBodega> = {}): EventoBodega => ({
-  date: D, event_type, store_cod, tipo: 'PA', pallet_id: ++n,
-  created_at: `${D}T${hora}-03:00`, ...extra,
+const reg = (
+  slotId: number | null, actor: string, hora: string,
+  peso: number | null = 100, tienda = '04PDG',
+): RegistroBodega => ({
+  fecha: D, tienda, actor, slotId, peso, createdAt: `${D}T${hora}-03:00`,
 });
 
-describe('un reingreso es una baja seguida de un alta en la misma tienda y tipo', () => {
-  it('eliminar y volver a crear cuenta uno, con su brecha', () => {
-    const r = reingresosDelDia([ev('eliminar', '04PDG', '21:17:20'), ev('crear', '04PDG', '21:22:20')]);
-    expect(r).toEqual([{ tienda: '04PDG', tipo: 'PA', minutos: 5 }]);
+describe('el caso real que destapó la medición mal hecha', () => {
+  // 17/09: el slot 13938 (59EGN, P1, 193,5 kg) lo registró Sebastián a las 10:33:32 y otra
+  // persona a las 10:33:49. Mismo slot, mismo peso, 17 segundos, dos personas.
+  const caso = [
+    reg(13938, 'Sebastian Jimenez', '10:33:32', 193.5, '59EGN'),
+    reg(13938, 'Isaias Lozada',     '10:33:49', 193.5, '59EGN'),
+  ];
+
+  it('lo cuenta como trabajo rehecho', () => {
+    expect(repetidosDelDia(caso)).toEqual([{ clase: 'rehecho', tienda: '59EGN', minutos: 0 }]);
   });
 
-  it('el caso real del 15/09: borrado y recreado 5 segundos después', () => {
-    const r = reingresosDelDia([ev('eliminar', '04PDG', '21:17:20'), ev('crear', '04PDG', '21:17:25')]);
-    expect(r).toHaveLength(1);
-    expect(r[0].minutos).toBe(0);
-  });
-
-  it('crear sin una baja antes es trabajo nuevo, no reingreso', () => {
-    expect(reingresosDelDia([ev('crear', '04PDG', '08:00:00'), ev('crear', '04PDG', '08:05:00')])).toEqual([]);
-  });
-
-  it('eliminar sin un alta después es una baja definitiva, no reingreso', () => {
-    expect(reingresosDelDia([ev('crear', '04PDG', '08:00:00'), ev('eliminar', '04PDG', '08:05:00')])).toEqual([]);
+  it('es UNA unidad, no dos', () => {
+    expect(medirDia(D, caso).unidades).toBe(1);
   });
 });
 
-describe('el ámbito del emparejamiento', () => {
-  it('no cruza tiendas', () => {
-    expect(reingresosDelDia([ev('eliminar', '04PDG', '08:00:00'), ev('crear', '09LEO', '08:01:00')])).toEqual([]);
+describe('rehacer no es lo mismo que corregir', () => {
+  it('otra persona con el MISMO peso: se pesó dos veces', () => {
+    const r = repetidosDelDia([reg(1, 'Ana', '10:00:00', 83), reg(1, 'Beto', '10:06:00', 83)]);
+    expect(r[0].clase).toBe('rehecho');
   });
 
-  it('no cruza tipos', () => {
-    const e = [ev('eliminar', '04PDG', '08:00:00'), ev('crear', '04PDG', '08:01:00', { tipo: 'CH' })];
-    expect(reingresosDelDia(e)).toEqual([]);
+  it('otra persona con OTRO peso: corrigió un dato, es trabajo útil', () => {
+    const r = repetidosDelDia([reg(1, 'Ana', '10:00:00', 83), reg(1, 'Beto', '10:06:00', 91)]);
+    expect(r[0].clase).toBe('corregido');
   });
 
-  it('el código de tienda se normaliza antes de agrupar', () => {
-    const e = [ev('eliminar', ' 04pdg ', '08:00:00'), ev('crear', '04PDG', '08:01:00')];
-    expect(reingresosDelDia(e)).toHaveLength(1);
-  });
-});
-
-describe('restaurar cancela la baja: volvió con su id, nadie la tecleó de nuevo', () => {
-  it('la baja restaurada no se empareja con el alta siguiente', () => {
-    const e: EventoBodega[] = [
-      { ...ev('eliminar', '04PDG', '08:00:00'), pallet_id: 777 },
-      { ...ev('restaurar', '04PDG', '08:02:00'), pallet_id: 777 },
-      ev('crear', '04PDG', '08:30:00'),
-    ];
-    expect(reingresosDelDia(e)).toEqual([]);
+  it('la MISMA persona: está editando lo suyo, no es duplicado entre dos', () => {
+    const r = repetidosDelDia([reg(1, 'Ana', '10:00:00', 83), reg(1, 'Ana', '10:06:00', 83)]);
+    expect(r[0].clase).toBe('repetidoMismaPersona');
   });
 
-  it('un restaurar de OTRO pallet no cancela la baja pendiente', () => {
-    const e: EventoBodega[] = [
-      { ...ev('eliminar', '04PDG', '08:00:00'), pallet_id: 777 },
-      { ...ev('restaurar', '04PDG', '08:02:00'), pallet_id: 999 },
-      ev('crear', '04PDG', '08:30:00'),
-    ];
-    expect(reingresosDelDia(e)).toHaveLength(1);
+  it('el nombre se compara sin espacios ni mayúsculas', () => {
+    const r = repetidosDelDia([reg(1, 'Ana Pérez', '10:00:00'), reg(1, '  ana pérez ', '10:06:00')]);
+    expect(r[0].clase).toBe('repetidoMismaPersona');
+  });
+
+  it('un peso ausente no se confunde con un peso igual', () => {
+    const r = repetidosDelDia([reg(1, 'Ana', '10:00:00', null), reg(1, 'Beto', '10:06:00', 83)]);
+    expect(r[0].clase).toBe('corregido');
   });
 });
 
-describe('emparejado FIFO: la primera que desapareció es la primera que vuelve', () => {
-  it('dos bajas y dos altas se emparejan en orden de llegada', () => {
-    const e = [
-      ev('eliminar', '04PDG', '08:00:00'), ev('eliminar', '04PDG', '08:10:00'),
-      ev('crear',    '04PDG', '08:20:00'), ev('crear',    '04PDG', '08:30:00'),
-    ];
-    expect(reingresosDelDia(e).map(r => r.minutos)).toEqual([20, 20]);
+describe('qué cuenta y qué no', () => {
+  it('un solo registro por unidad no es nada', () => {
+    expect(repetidosDelDia([reg(1, 'Ana', '10:00:00'), reg(2, 'Beto', '10:05:00')])).toEqual([]);
   });
 
-  it('LIFO escondería el caso grave; FIFO no', () => {
-    // Con LIFO la primera brecha sería 1 minuto y el problema de 60 min quedaría tapado.
-    const e = [
-      ev('eliminar', '04PDG', '08:00:00'), ev('eliminar', '04PDG', '08:59:00'),
-      ev('crear',    '04PDG', '09:00:00'),
-    ];
-    expect(reingresosDelDia(e)[0].minutos).toBe(60);
+  it('no cruza unidades distintas', () => {
+    expect(repetidosDelDia([reg(1, 'Ana', '10:00:00'), reg(2, 'Beto', '10:00:30')])).toEqual([]);
   });
 
-  it('los eventos se ordenan por hora aunque lleguen desordenados', () => {
-    const e = [ev('crear', '04PDG', '08:30:00'), ev('eliminar', '04PDG', '08:00:00')];
-    expect(reingresosDelDia(e)).toHaveLength(1);
+  it('una fila sin slot se descarta: no hay con qué emparejarla', () => {
+    expect(repetidosDelDia([reg(null, 'Ana', '10:00:00'), reg(null, 'Beto', '10:06:00')])).toEqual([]);
+  });
+
+  it('el tercer registro se compara contra el PRIMERO, no contra el anterior', () => {
+    // Lo que se quiere saber es si se rehizo la carga original, no si hubo una cadena de ediciones.
+    const r = repetidosDelDia([
+      reg(1, 'Ana',  '10:00:00', 83),
+      reg(1, 'Beto', '10:05:00', 83),
+      reg(1, 'Caro', '10:20:00', 83),
+    ]);
+    expect(r.map(x => x.clase)).toEqual(['rehecho', 'rehecho']);
+    expect(r.map(x => x.minutos)).toEqual([5, 20]);
+  });
+
+  it('ordena por hora aunque lleguen desordenados', () => {
+    const r = repetidosDelDia([reg(1, 'Beto', '10:06:00'), reg(1, 'Ana', '10:00:00')]);
+    expect(r[0].clase).toBe('rehecho');   // Ana fue la primera
+    expect(r[0].minutos).toBe(6);
   });
 });
 
 describe('medirDia', () => {
   const dia = () => medirDia(D, [
-    ev('crear', '04PDG', '08:00:00'), ev('crear', '04PDG', '08:01:00'),
-    ev('crear', '09LEO', '08:02:00'), ev('crear', '09LEO', '08:03:00'),
-    ev('eliminar', '04PDG', '09:00:00'), ev('crear', '04PDG', '09:00:30'),   // 0 min
-    ev('eliminar', '09LEO', '10:00:00'), ev('crear', '09LEO', '10:05:00'),   // 5 min
-    ev('eliminar', '09LEO', '11:00:00'), ev('crear', '09LEO', '11:40:00'),   // 40 min
+    reg(1, 'Ana',  '09:00:00', 100), reg(2, 'Ana', '09:01:00', 100),
+    reg(3, 'Beto', '09:02:00', 100), reg(4, 'Beto', '09:03:00', 100, '09LEO'),
+    reg(1, 'Beto', '09:00:30', 100),                    // rehecho, 0 min
+    reg(2, 'Beto', '09:06:00', 100),                    // rehecho, 5 min
+    reg(4, 'Ana',  '10:03:00', 100, '09LEO'),           // rehecho, 60 min
+    reg(3, 'Ana',  '09:30:00', 175),                    // corregido (otro peso)
   ]);
 
-  it('cuenta altas, bajas y reingresos', () => {
+  it('el denominador son unidades distintas, no registros', () => {
     const d = dia();
-    expect({ creados: d.creados, eliminados: d.eliminados, reingresos: d.reingresos })
-      .toEqual({ creados: 7, eliminados: 3, reingresos: 3 });
+    expect({ unidades: d.unidades, registros: d.registros }).toEqual({ unidades: 4, registros: 8 });
   });
 
-  it('el porcentaje se mide sobre lo creado', () => {
-    expect(dia().porcentaje).toBe(43);            // 3 de 7
+  it('separa rehecho de corregido', () => {
+    const d = dia();
+    expect({ rehecho: d.rehecho, corregido: d.corregido }).toEqual({ rehecho: 3, corregido: 1 });
   });
 
-  it('separa las brechas: segundos es churn de sincronía, minutos es alguien rehaciéndolo', () => {
+  it('el porcentaje se mide sobre las unidades', () => {
+    expect(dia().porcentaje).toBe(75);            // 3 de 4
+  });
+
+  it('separa las brechas: segundos es ruido de sincronía, minutos es alguien rehaciéndolo', () => {
     expect(dia().brechas).toEqual({ hastaUnMinuto: 1, hastaDiezMinutos: 1, masDeDiezMinutos: 1 });
   });
 
-  it('ordena las tiendas por cuántos reingresos tuvieron', () => {
-    expect(dia().tiendas).toEqual([{ cod: '09LEO', reingresos: 2 }, { cod: '04PDG', reingresos: 1 }]);
+  it('ordena las tiendas por cuánto se rehizo', () => {
+    expect(dia().tiendas).toEqual([{ cod: '04PDG', rehecho: 2 }, { cod: '09LEO', rehecho: 1 }]);
   });
 
-  it('un día sin altas no divide por cero', () => {
+  it('un día sin unidades no divide por cero', () => {
     expect(medirDia(D, []).porcentaje).toBe(0);
   });
 
-  it('solo mira los eventos de SU fecha', () => {
-    const otroDia = { ...ev('crear', '04PDG', '08:00:00'), date: '2026-09-16' };
-    expect(medirDia(D, [otroDia]).creados).toBe(0);
+  it('solo mira los registros de SU fecha', () => {
+    const otro = { ...reg(1, 'Ana', '09:00:00'), fecha: '2026-09-16' };
+    expect(medirDia(D, [otro]).unidades).toBe(0);
   });
 });
 
 describe('casos de borde', () => {
-  it('una fecha ilegible no inventa un par', () => {
-    const e: EventoBodega[] = [
-      { ...ev('eliminar', '04PDG', '08:00:00'), created_at: 'no es una fecha' },
-      ev('crear', '04PDG', '08:30:00'),
+  it('una hora ilegible en el primer registro descarta la unidad', () => {
+    const e: RegistroBodega[] = [
+      { ...reg(1, 'Ana', '10:00:00'), createdAt: 'no es una fecha' },
+      reg(1, 'Beto', '10:06:00'),
     ];
-    expect(reingresosDelDia(e)).toEqual([]);
+    expect(repetidosDelDia(e)).toEqual([]);
   });
 
-  it('tienda o tipo nulos se agrupan sin romper', () => {
-    const e: EventoBodega[] = [
-      { ...ev('eliminar', '04PDG', '08:00:00'), store_cod: null, tipo: null },
-      { ...ev('crear', '04PDG', '08:05:00'), store_cod: null, tipo: null },
-    ];
-    expect(reingresosDelDia(e)).toHaveLength(1);
-  });
-
-  it('un tipo de evento desconocido se ignora', () => {
-    const e = [ev('eliminar', '04PDG', '08:00:00'), ev('imprimir', '04PDG', '08:01:00'), ev('crear', '04PDG', '08:02:00')];
-    expect(reingresosDelDia(e)).toHaveLength(1);
+  it('un actor nulo no rompe la comparación', () => {
+    const r = repetidosDelDia([reg(1, 'Ana', '10:00:00'), { ...reg(1, 'x', '10:06:00'), actor: null }]);
+    expect(r).toHaveLength(1);
   });
 
   it('medirDias devuelve el más reciente primero', () => {
-    const e = [
-      { ...ev('crear', '04PDG', '08:00:00'), date: '2026-09-15' },
-      { ...ev('crear', '04PDG', '08:00:00'), date: '2026-09-17' },
-      { ...ev('crear', '04PDG', '08:00:00'), date: '2026-09-16' },
-    ];
+    const e = ['2026-09-15', '2026-09-17', '2026-09-16'].map((f, i) => ({ ...reg(i + 1, 'Ana', '09:00:00'), fecha: f }));
     expect(medirDias(e).map(d => d.fecha)).toEqual(['2026-09-17', '2026-09-16', '2026-09-15']);
   });
 });
