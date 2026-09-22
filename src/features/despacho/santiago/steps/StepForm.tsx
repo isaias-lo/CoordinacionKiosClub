@@ -1122,7 +1122,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   /* Mantiene formRows al día mientras la tienda ya está abierta (todo lo que NO es "reconstruir
      desde cero al entrar", que hace el useLayoutEffect de arriba). Antes eran tres useEffect
      separados — reconciliar, adoptar, backfill — cada uno con su propia guarda. El bug medido el
-     17/09 (nueve pallets pesados dos veces) vivía en la INTERACCIÓN entre ellos: una tarjeta
+     17/09 (10 de 48 unidades pesadas dos veces) vivía en la INTERACCIÓN entre ellos: una tarjeta
      vacía e intacta no calificaba para ninguno de los tres por separado. `reconciliarFormRows`
      corre los tres en el orden que sí evita eso — ver su doc en formRowsReconcile.ts. */
   const currentItems = currentTienda ? items[currentTienda.cod] : undefined;

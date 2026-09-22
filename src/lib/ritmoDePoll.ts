@@ -13,8 +13,10 @@
 // pierde del lado del servidor). Ahí nadie avisa nada: el estado sigue en "conectado" para
 // siempre, el respaldo sigue apagado para siempre, y el equipo queda ciego para siempre.
 //
-// Y ciego se ve igual que "no pasó nada en bodega". Medido el 17/09: nueve pallets cargados dos
-// veces, con 13 a 80 minutos de diferencia, nueve de ellos en el MISMO equipo.
+// Y ciego se ve igual que "no pasó nada en bodega". Medido el 17/09 sobre `actividad_bodega`:
+// de 48 unidades cargadas, 10 las pesó una segunda persona obteniendo el MISMO peso — trabajo
+// hecho dos veces. Las brechas van de 0 a 44 minutos, y 5 pasan de los 10, que es demasiado para
+// ser un choque de sincronía: es alguien que no vio lo que ya estaba cargado.
 //
 // Por eso el respaldo deja de apagarse. Sigue siendo barato cuando el canal anda —una consulta por
 // minuto en vez de cuatro— pero garantiza un piso: lo peor que puede pasar es enterarse un minuto

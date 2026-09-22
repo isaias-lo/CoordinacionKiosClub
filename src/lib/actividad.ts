@@ -14,8 +14,8 @@ import { fechaChile } from './fechaChile';
  *
  * 'reingreso' — Bodega, uso simultáneo: la unidad YA tenía un ítem pesado de verdad y alguien
  * volvió a pesarlo. El merge (`fusionarConPrevio`) ya lo resuelve bien (no se duplica el ítem),
- * pero el trabajo SÍ se hizo dos veces — es justo lo que hubo que medir a mano el 17/09 (12
- * reingresos con 5 personas). Esto lo registra solo, para no depender de otra medición manual.
+ * pero el trabajo SÍ se hizo dos veces — es justo lo que hubo que medir a mano el 17/09: 10 de
+ * 48 unidades. Esto lo registra solo, para no depender de otra medición manual.
  */
 export const ACCIONES_ACTIVIDAD = [
   'registrar_item', 'editar_item', 'eliminar_item', 'unificar', 'sumar', 'registrar_dia', 'revertir', 'reingreso',

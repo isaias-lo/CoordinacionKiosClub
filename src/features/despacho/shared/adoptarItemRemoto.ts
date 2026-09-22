@@ -1,9 +1,9 @@
 // Una tarjeta vacía deja de tapar lo que cargó el compañero. Puro y testeable.
 //
-// El problema, medido el 17/09 con 5 personas: nueve veces alguien volvió a pesar y cargar un
-// pallet que otro ya había cargado, entre 13 y 80 minutos después. El ítem del compañero estaba en
-// el estado compartido desde el primer segundo — lo que nunca llegaba era el repintado de la
-// tarjeta.
+// El problema, medido el 17/09 sobre `actividad_bodega`: de 48 unidades cargadas, 10 las volvió a
+// pesar otra persona obteniendo el MISMO peso, de 0 a 44 minutos después (5 de ellas a más de 10
+// minutos, que es demasiado para un choque de sincronía). El ítem del compañero estaba en el estado
+// compartido desde el primer segundo — lo que nunca llegaba era el repintado de la tarjeta.
 //
 // Por qué: hay tres efectos que tocan `formRows` y los tres se desentienden de una tarjeta vacía.
 //

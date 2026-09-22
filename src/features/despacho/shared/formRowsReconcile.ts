@@ -137,7 +137,7 @@ export function sameStableItem(
  * (todo lo que NO es "reconstruir desde cero al entrar"), en un solo paso.
  *
  * Antes vivían como tres `useEffect` separados, cada uno con su propia guarda, en los dos
- * espejos (Santiago y Regiones) por separado. El bug medido el 17/09 (nueve pallets pesados
+ * espejos (Santiago y Regiones) por separado. El bug medido el 17/09 (10 de 48 unidades pesadas
  * dos veces) vivía exactamente en la INTERACCIÓN entre ellos: una tarjeta vacía e intacta no
  * calificaba para ninguno de los tres por separado (`adoptarItemRemoto.ts` explica el porqué
  * de cada guarda). Consolidar el ORDEN en un solo lugar, en vez de confiar en que tres efectos
