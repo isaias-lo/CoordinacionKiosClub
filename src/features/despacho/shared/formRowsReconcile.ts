@@ -1,3 +1,6 @@
+import { adopcionesPendientes, type FilaAdoptable } from './adoptarItemRemoto';
+import { slotsSinTarjeta, slotsRepresentados, type SlotParaTarjeta } from './slotsSinTarjeta';
+
 /**
  * Reconciliación de formRows con el estado (dispatchData / items) tras un merge remoto.
  *
@@ -127,4 +130,67 @@ export function sameStableItem(
   const ka = stableItemKey(a);
   const kb = stableItemKey(b);
   return ka !== '' && ka === kb;
+}
+
+/**
+ * Los tres efectos que mantienen `formRows` al día mientras la tienda ya está abierta
+ * (todo lo que NO es "reconstruir desde cero al entrar"), en un solo paso.
+ *
+ * Antes vivían como tres `useEffect` separados, cada uno con su propia guarda, en los dos
+ * espejos (Santiago y Regiones) por separado. El bug medido el 17/09 (nueve pallets pesados
+ * dos veces) vivía exactamente en la INTERACCIÓN entre ellos: una tarjeta vacía e intacta no
+ * calificaba para ninguno de los tres por separado (`adoptarItemRemoto.ts` explica el porqué
+ * de cada guarda). Consolidar el ORDEN en un solo lugar, en vez de confiar en que tres efectos
+ * con deps distintos disparen en la secuencia correcta, es lo que evita que un cuarto caso
+ * borde vuelva a colarse igual.
+ *
+ * Orden (importa):
+ *  1. `reconcileSavedRows` — refresca `savedItem` de las filas ya guardadas.
+ *  2. Adopción — una fila vacía e intacta (`puedeAdoptar`) toma el item remoto de su mismo
+ *     slot, si ya llegó. Corre DESPUÉS del paso 1 para no adoptar algo que el paso 1 ya iba a
+ *     reconciliar como propio, y ANTES del backfill para que ese slot cuente como representado
+ *     y no reciba una tarjeta duplicada.
+ *  3. Backfill (`slotsSinTarjeta`) — una fila nueva por cada slot que, tras los pasos 1 y 2,
+ *     sigue sin ninguna tarjeta.
+ *
+ * Pura: cada paso usa el patrón "mismo array si no hay cambios", así que si nada cambió en
+ * ninguno de los tres, `reconciliarFormRows` devuelve la MISMA referencia que recibió — quien
+ * llame con `setFormRows(prev => reconciliarFormRows(prev, ...))` no fuerza un re-render de más.
+ *
+ * `aplicarItem` y `construirFila` quedan a cargo de quien llama porque ahí SÍ difieren los dos
+ * espejos: Santiago describe una fila con `tipo`+`contenido`, Regiones con `pkg`+`tipo`+`guia`+
+ * `valor`. Esta función no sabe ni necesita saber esa diferencia.
+ */
+export function reconciliarFormRows<
+  Item extends { pickingSlotId?: number; id?: string; orden?: string },
+  Row extends ReconcilableRow<Item> & FilaAdoptable,
+  Slot extends SlotParaTarjeta = SlotParaTarjeta,
+>(
+  rows: Row[],
+  items: Item[],
+  slots: readonly Slot[],
+  aplicarItem: (row: Row, item: Item) => Row,
+  construirFila: (slot: Slot, itemGuardado?: Item) => Row,
+): Row[] {
+  let next = reconcileSavedRows(rows, items);
+
+  const adopciones = adopcionesPendientes(next, items);
+  if (adopciones.length > 0) {
+    const porFila = new Map(adopciones.map(a => [a.fila, a.item]));
+    next = next.map(row => {
+      const item = porFila.get(row);
+      return item ? aplicarItem(row, item) : row;
+    });
+  }
+
+  const missing = slotsSinTarjeta(slots, slotsRepresentados(next), items);
+  if (missing.length > 0) {
+    const nuevas = missing.map(slot => {
+      const guardado = items.find(it => it.pickingSlotId === slot.id);
+      return construirFila(slot, guardado);
+    });
+    next = [...next, ...nuevas];
+  }
+
+  return next;
 }

@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Navigation, GripVertical, ClipboardList, User, Store, FileUp } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
@@ -31,7 +31,7 @@ import { finalizarSlotUnion } from '../../shared/finalizarSlotUnion';
 import { tipoBadge } from '../tipoTienda';
 import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
-import { reconcileSavedRows, findItemForRow } from '../../shared/formRowsReconcile';
+import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { fechaISOLocal } from '../../shared/fechaLocal';
 import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
@@ -55,8 +55,6 @@ import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
-import { slotsSinTarjeta, slotsRepresentados } from '../../shared/slotsSinTarjeta';
-import { adopcionesPendientes } from '../../shared/adoptarItemRemoto';
 import { combinarEnLista } from '../../shared/combinarEnLista';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
@@ -1086,56 +1084,19 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTienda?.cod]);
 
-  /* Reconciliar formRows tras un merge remoto (eco de shared_session_state → LOAD_STATE):
-     el array de items de la tienda se reemplaza y se renumera `orden`, pero el
-     useLayoutEffect (deps [currentTienda?.cod]) NO se re-dispara → el `savedItem` de cada
-     fila queda obsoleto y "SUMAR A PALLET" puede fallar (UI congelada). Aquí sólo
-     refrescamos la referencia `savedItem` de las filas guardadas; las filas en progreso
-     (no guardadas) se preservan intactas. Deps: identidad del array de la tienda actual. */
+  /* Mantiene formRows al día mientras la tienda ya está abierta (todo lo que NO es "reconstruir
+     desde cero al entrar", que hace el useLayoutEffect de arriba). Antes eran tres useEffect
+     separados — reconciliar, adoptar, backfill — cada uno con su propia guarda. El bug medido el
+     17/09 (nueve pallets pesados dos veces) vivía en la INTERACCIÓN entre ellos: una tarjeta
+     vacía e intacta no calificaba para ninguno de los tres por separado. `reconciliarFormRows`
+     corre los tres en el orden que sí evita eso — ver su doc en formRowsReconcile.ts. */
   const currentItems = currentTienda ? items[currentTienda.cod] : undefined;
+  const currentSlotsFull = useMemo(
+    () => (currentTienda ? (pickingSlotsFull[currentTienda.cod] ?? []) : []),
+    [currentTienda, pickingSlotsFull],
+  );
   useEffect(() => {
     if (!currentTienda || !currentItems) return;
-    setFormRows(prev => {
-      const next = reconcileSavedRows(prev, currentItems);
-      return next === prev ? prev : next;
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentItems, currentTienda?.cod]);
-
-  /* Una tarjeta vacía e INTACTA adopta lo que cargó el compañero.
-     Sin esto quedaba muerta: la reconstrucción solo corre al entrar a la tienda, la reconciliación
-     salta las no guardadas y el backfill solo crea las que faltan. El ítem llegaba al estado en
-     segundos y la tarjeta seguía en blanco. Lo que la persona ya tocó no se toca (`puedeAdoptar`). */
-  useEffect(() => {
-    if (!currentTienda || !currentItems) return;
-    setFormRows(prev => {
-      const adopciones = adopcionesPendientes(prev, currentItems);
-      if (!adopciones.length) return prev;
-      const porFila = new Map(adopciones.map(a => [a.fila, a.item]));
-      return prev.map(r => {
-        const it = porFila.get(r);
-        if (!it) return r;
-        return {
-          ...r, tipo: it.tipo, contenido: it.contenido,
-          peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
-          largo: String(it.largo ?? ''), ancho: String(it.ancho ?? ''),
-          saved: true, savedItem: it,
-        };
-      });
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentItems, currentTienda?.cod]);
-
-  /* [Backfill de slots que llegan tarde] El fetch de picking_pallets es asíncrono; si al
-     recargar la página la tienda ya está seleccionada, el rebuild (useLayoutEffect [cod]) corre
-     ANTES de que lleguen los slots y no se re-dispara → faltan tarjetas (p. ej. el P2 no aparece
-     hasta navegar y volver). Aquí agregamos UNA fila por cada slot activo que aún no tenga
-     tarjeta, SIN tocar las filas existentes (no pisa lo que el usuario está escribiendo). */
-  useEffect(() => {
-    if (!currentTienda) return;
-    const cod = currentTienda.cod;
-    const fullSlots = pickingSlotsFull[cod] ?? [];
-    if (fullSlots.length === 0) return;
     const SANT_TIPO: Record<string, TipoCargamento> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate' };
     const mapC = (raw: string): ContenidoSantiago => {
       const c = (raw ?? '').toLowerCase();
@@ -1147,31 +1108,30 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       if (comida) return 'Comida';
       return 'Hogar';
     };
-    const cur = items[cod] || [];
-    setFormRows(prev => {
-      // La regla (qué slot necesita tarjeta y cuál no) vive en `slotsSinTarjeta`, compartida con
-      // Nacional y con tests: era idéntica en los dos espejos y se arreglaba por separado.
-      const missing = slotsSinTarjeta(fullSlots, slotsRepresentados(prev), cur);
-      if (missing.length === 0) return prev;
-      const add: FormRow[] = missing.map(s => {
-        const saved = cur.find(it => it.pickingSlotId === s.id);
-        if (saved) return {
-          id: `bk-saved-${s.id}`, tipo: saved.tipo, contenido: saved.contenido,
-          peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
-          largo: String(saved.largo ?? ''), ancho: String(saved.ancho ?? ''),
-          saved: true, savedItem: saved, pickingSlotId: s.id,
-        };
-        return {
-          id: `bk-pick-${s.id}`, tipo: SANT_TIPO[s.tipo] ?? 'Pallet', contenido: mapC(s.contenido),
-          peso: s.peso_kg != null ? String(s.peso_kg) : '', alto: s.alto != null ? String(s.alto) : '',
-          largo: s.largo != null ? String(s.largo) : '', ancho: s.ancho != null ? String(s.ancho) : '',
-          pickingSlotId: s.id,
-        };
-      });
-      return [...prev, ...add];
-    });
+    setFormRows(prev => reconciliarFormRows(
+      prev, currentItems, currentSlotsFull,
+      (row, it) => ({
+        ...row, tipo: it.tipo, contenido: it.contenido,
+        peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
+        largo: String(it.largo ?? ''), ancho: String(it.ancho ?? ''),
+        saved: true, savedItem: it,
+      }),
+      (s, saved) => saved
+        ? {
+            id: `bk-saved-${s.id}`, tipo: saved.tipo, contenido: saved.contenido,
+            peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
+            largo: String(saved.largo ?? ''), ancho: String(saved.ancho ?? ''),
+            saved: true, savedItem: saved, pickingSlotId: s.id,
+          }
+        : {
+            id: `bk-pick-${s.id}`, tipo: SANT_TIPO[s.tipo] ?? 'Pallet', contenido: mapC(s.contenido),
+            peso: s.peso_kg != null ? String(s.peso_kg) : '', alto: s.alto != null ? String(s.alto) : '',
+            largo: s.largo != null ? String(s.largo) : '', ancho: s.ancho != null ? String(s.ancho) : '',
+            pickingSlotId: s.id,
+          },
+    ));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickingSlotsFull, currentTienda?.cod, items]);
+  }, [currentItems, currentTienda?.cod, currentSlotsFull]);
 
   /* [Limpiar contador obsoleto] `consumedSlotsSant` era el mecanismo viejo para "consumir" un
      slot unificado (el fantasma "¿Con cuál fue unificado?"). Ahora la unificación BORRA el slot,

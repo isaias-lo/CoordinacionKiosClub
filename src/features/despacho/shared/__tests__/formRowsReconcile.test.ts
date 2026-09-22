@@ -4,8 +4,11 @@ import {
   reconcileSavedRows,
   findItemForRow,
   sameStableItem,
+  reconciliarFormRows,
   type ReconcilableRow,
 } from '../formRowsReconcile';
+import type { FilaAdoptable } from '../adoptarItemRemoto';
+import type { SlotParaTarjeta } from '../slotsSinTarjeta';
 
 /* ── Modelos mínimos que imitan Regiones (DispatchItem: orden, pkg, sin id) y
    Santiago (SantiagoItem: id + orden). ────────────────────────────────────── */
@@ -13,6 +16,7 @@ type RegItem = { pkg: string; orden: string; peso: number; pickingSlotId?: numbe
 type SantItem = { id: string; orden: string; peso: number; pickingSlotId?: number };
 
 type Row<Item> = ReconcilableRow<Item> & { pkg?: string; peso?: string };
+type AdoptableRow<Item> = Row<Item> & FilaAdoptable;
 
 describe('stableItemKey', () => {
   it('prefiere pickingSlotId sobre id y orden', () => {
@@ -166,5 +170,97 @@ describe('findItemForRow — encuentra el pallet correcto tras un renumber', () 
     const found = findItemForRow(ctx, { savedItem: saved });
     expect(found?.id).toBe('CDMTG-9');
     expect(found?.orden).toBe('P2');
+  });
+});
+
+/* ── reconciliarFormRows: reconcile + adopción + backfill en un solo paso ──
+   Los tres efectos que antes vivían separados (con sus propias deps) en los dos espejos. */
+describe('reconciliarFormRows', () => {
+  const slot = (id: number, tipo = 'P', contenido: string | null = 'hogar'): SlotParaTarjeta => ({ id, tipo, contenido });
+
+  // Helpers que imitan lo que cada espejo hace en su callback (simplificado: solo peso).
+  const aplicarItem = (row: AdoptableRow<RegItem>, item: RegItem): AdoptableRow<RegItem> => ({
+    ...row, peso: String(item.peso), saved: true, savedItem: item,
+  });
+  const construirFila = (s: SlotParaTarjeta, guardado?: RegItem): AdoptableRow<RegItem> =>
+    guardado
+      ? { id: `bk-saved-${s.id}`, peso: String(guardado.peso), saved: true, savedItem: guardado, pickingSlotId: s.id }
+      : { id: `bk-pick-${s.id}`, peso: '', pickingSlotId: s.id };
+
+  it('sin cambios en ningún paso → misma referencia (no fuerza re-render)', () => {
+    const item: RegItem = { pkg: 'pallet', orden: 'pallet1', peso: 10, pickingSlotId: 5 };
+    const rows: AdoptableRow<RegItem>[] = [{ id: 'r', saved: true, savedItem: item, pickingSlotId: 5 }];
+    const out = reconciliarFormRows(rows, [item], [slot(5)], aplicarItem, construirFila);
+    expect(out).toBe(rows);
+  });
+
+  it('solo reconcile: refresca savedItem sin adoptar ni crear filas', () => {
+    const stale: RegItem = { pkg: 'pallet', orden: 'pallet1', peso: 10, pickingSlotId: 5 };
+    const fresh: RegItem = { pkg: 'pallet', orden: 'pallet3', peso: 25, pickingSlotId: 5 };
+    const rows: AdoptableRow<RegItem>[] = [{ id: 'r', saved: true, savedItem: stale, pickingSlotId: 5 }];
+    const out = reconciliarFormRows(rows, [fresh], [slot(5)], aplicarItem, construirFila);
+    expect(out).toHaveLength(1);
+    expect(out[0].savedItem).toBe(fresh);
+  });
+
+  it('solo adopción: fila vacía e intacta adopta el item remoto de su mismo slot', () => {
+    const item: RegItem = { pkg: 'pallet', orden: 'pallet1', peso: 33, pickingSlotId: 5 };
+    const blank: AdoptableRow<RegItem> = { id: 'row-blank', peso: '', pickingSlotId: 5 };
+    const out = reconciliarFormRows([blank], [item], [slot(5)], aplicarItem, construirFila);
+    expect(out).toHaveLength(1);
+    expect(out[0].saved).toBe(true);
+    expect(out[0].peso).toBe('33');
+    expect(out[0].id).toBe('row-blank'); // mismo id de fila, no una fila nueva
+  });
+
+  it('fila TOCADA no adopta (la persona está escribiendo) y no se duplica', () => {
+    const item: RegItem = { pkg: 'pallet', orden: 'pallet1', peso: 33, pickingSlotId: 5 };
+    const touched: AdoptableRow<RegItem> = { id: 'row-touched', peso: '12', pickingSlotId: 5, tocada: true };
+    const out = reconciliarFormRows([touched], [item], [slot(5)], aplicarItem, construirFila);
+    expect(out).toHaveLength(1); // ni adopta ni agrega una segunda tarjeta para el mismo slot
+    expect(out[0]).toBe(touched);
+    expect(out[0].peso).toBe('12'); // lo que la persona escribió sigue intacto
+  });
+
+  it('solo backfill: slot sin ninguna fila representada → crea una nueva', () => {
+    const out = reconciliarFormRows<RegItem, AdoptableRow<RegItem>>([], [], [slot(7)], aplicarItem, construirFila);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe('bk-pick-7');
+    expect(out[0].pickingSlotId).toBe(7);
+  });
+
+  it('backfill construye la fila ya guardada cuando el item llegó antes que la tarjeta', () => {
+    const item: RegItem = { pkg: 'pallet', orden: 'pallet1', peso: 40, pickingSlotId: 7 };
+    const out = reconciliarFormRows<RegItem, AdoptableRow<RegItem>>([], [item], [slot(7)], aplicarItem, construirFila);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe('bk-saved-7');
+    expect(out[0].saved).toBe(true);
+  });
+
+  it('regresión del bug del 17/09: la adopción evita que el backfill duplique la tarjeta', () => {
+    // Tarjeta vacía e intacta para el slot 5 YA existe (llegó antes que el item del compañero).
+    const item: RegItem = { pkg: 'pallet', orden: 'pallet1', peso: 33, pickingSlotId: 5 };
+    const blank: AdoptableRow<RegItem> = { id: 'row-blank', peso: '', pickingSlotId: 5 };
+    const out = reconciliarFormRows([blank], [item], [slot(5)], aplicarItem, construirFila);
+    // Sin el orden correcto (adopción ANTES del backfill) esto daría 2 filas para el slot 5.
+    expect(out).toHaveLength(1);
+    expect(out[0].peso).toBe('33');
+  });
+
+  it('los tres pasos a la vez: refresca una guardada, adopta una vacía y crea la que falta', () => {
+    const staleSaved: RegItem = { pkg: 'pallet', orden: 'pallet1', peso: 10, pickingSlotId: 1 };
+    const freshSaved: RegItem = { pkg: 'pallet', orden: 'pallet1', peso: 15, pickingSlotId: 1 };
+    const toAdopt: RegItem = { pkg: 'bulto', orden: 'bulto1', peso: 8, pickingSlotId: 2 };
+    const savedRow: AdoptableRow<RegItem> = { id: 'r1', saved: true, savedItem: staleSaved, pickingSlotId: 1 };
+    const blankRow: AdoptableRow<RegItem> = { id: 'row-blank', peso: '', pickingSlotId: 2 };
+    // Slot 3 no tiene ninguna fila todavía → debe backfillearse.
+    const out = reconciliarFormRows(
+      [savedRow, blankRow], [freshSaved, toAdopt],
+      [slot(1), slot(2), slot(3, 'B')], aplicarItem, construirFila,
+    );
+    expect(out).toHaveLength(3);
+    expect(out.find(r => r.id === 'r1')?.savedItem).toBe(freshSaved);
+    expect(out.find(r => r.id === 'row-blank')?.peso).toBe('8');
+    expect(out.some(r => r.id === 'bk-pick-3')).toBe(true);
   });
 });
