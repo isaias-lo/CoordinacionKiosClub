@@ -1966,8 +1966,25 @@ export default function RutasScreen() {
   // Casi todos los incidentes de estas semanas —40LIL sin patente, los registros dobles, los
   // manifiestos perdidos— se detectan mirando lo mismo que el resumen de cierre, un segundo antes
   // de escribir. No bloquea nada: el coordinador puede registrar igual (ver `PreflightCierrePanel`).
-  function handleListoPorHoy() {
+  async function handleListoPorHoy() {
     const registrado = [...sesionRowsRef.current.keys()];
+    // Los manifiestos se RELEEN acá, no se usan los del montaje.
+    //
+    // El efecto que los carga depende solo de `fecha`, así que se consulta una vez al abrir el
+    // Enrutador y nunca más. Entre eso y apretar "Listo por hoy" pasa la jornada entera, y cada
+    // camión que se cierra guarda el suyo. La lista seguía siendo la del principio —vacía si ese
+    // día todavía no se había cerrado nada— y el chequeo acusaba de "cerrado sin manifiesto" a
+    // TODOS los camiones cerrados. Pasó el 22/09 con seis, y los seis estaban guardados.
+    //
+    // Releer cubre además lo que se cerró desde otro equipo, que el montaje tampoco vería.
+    let manifiestos = manifiestosGuardados;
+    try {
+      const r = await fetch(`/api/rutas-despacho?fecha=${encodeURIComponent(fecha)}`);
+      if (r.ok) {
+        const j = await r.json();
+        if (Array.isArray(j?.data)) { manifiestos = j.data as ManifiestoGuardado[]; setManifiestosGuardados(manifiestos); }
+      }
+    } catch { /* si la relectura falla se usa lo último que se sabía: mejor que acusar en falso */ }
     setPreflight(preflightCierre({
       fecha,
       enElPool: codsEnPool(calT),
@@ -1976,7 +1993,7 @@ export default function RutasScreen() {
       // La capacidad sale de la flota del día: sin ella el chequeo no corre, en vez de inventarse.
       capacidades: Object.fromEntries(flota.map(v => [v.p, v.c])),
       cerradas: cerradasV1Ref.current,
-      manifiestos: manifiestosGuardados,
+      manifiestos,
       // Apagar un camión no saca sus tiendas del tablero, pero sí impide que emita manifiesto:
       // esa carga no sale y hasta acá nada lo decía.
       patentesActivas: flota.filter(v => v.on).map(v => v.p),

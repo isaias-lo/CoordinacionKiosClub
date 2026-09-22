@@ -90,6 +90,22 @@ describe('preflightCierre', () => {
     expect(r.hallazgos.find(x => x.tipo === 'cerrado-sin-manifiesto')?.items).toEqual(['CD-2']);
   });
 
+  it('el caso del 22/09: seis cerrados y seis manifiestos ⇒ ni un hallazgo', () => {
+    // Ese día el aviso acusó a los seis, y los seis estaban guardados. La función estaba bien: el
+    // llamador le pasaba la lista del montaje, de cuando todavía no se había cerrado nada. Este
+    // test fija que con datos frescos no hay nada que reportar.
+    const patentes = ['TYKK42', 'RZBL80', 'RGZJ70', 'VSDR91', 'PTFZ21', 'VXSX43'];
+    const r = preflightCierre({
+      fecha: '2026-09-22',
+      enElPool: [],
+      asignaciones: Object.fromEntries(patentes.map((p, i) => [p, [t(`T${i}`)]])),
+      conDatosDeBodega: patentes.map((_, i) => `T${i}`),
+      cerradas: patentes,
+      manifiestos: patentes.map(patente => ({ patente })),
+    });
+    expect(r.hallazgos.find(x => x.tipo === 'cerrado-sin-manifiesto')).toBeUndefined();
+  });
+
   it('un camión cerrado con su manifiesto guardado no se reporta', () => {
     const r = preflightCierre({
       fecha: '2026-09-03',
