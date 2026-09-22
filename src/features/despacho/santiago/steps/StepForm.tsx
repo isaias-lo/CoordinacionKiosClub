@@ -32,6 +32,7 @@ import { tipoBadge } from '../tipoTienda';
 import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
+import { buscarPalletPorNumero } from '../../shared/buscarPalletPorNumero';
 import { fechaISOLocal } from '../../shared/fechaLocal';
 import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
@@ -419,6 +420,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
 
   /* Search */
   const [search, setSearch] = useState('');
+  // [Buscar por número de pallet] `focoPallet` = pickingSlotId al que hay que saltar en cuanto su
+  // tarjeta exista en el DOM (recién se abrió la tienda, formRows tarda un tick en reconstruirse).
+  // `resaltado` es el destello visual una vez que el salto ya ocurrió — se apaga solo.
+  const [focoPallet, setFocoPallet] = useState<number | null>(null);
+  const [resaltado,  setResaltado]  = useState<number | null>(null);
 
 
   /* Combine items (drag-to-merge) — form view */
@@ -451,6 +457,20 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const [pickingSlots,         setPickingSlots]          = useState<Record<string, { tipo: string; contenido: string }[]>>({});
   const [pickingSlotsFull,     setPickingSlotsFull]      = useState<Record<string, PickingSlot[]>>({});
   const [consumedSlotsSant,    setConsumedSlotsSant]     = useState<ConsumedSlotsS>(() => typeof window === 'undefined' ? {} : loadConsumedSlotsS());
+
+  // [Buscar por número de pallet] Salta y resalta la tarjeta en cuanto exista en el DOM. Reintenta
+  // solo (deps en formRows) mientras formRows se sigue reconstruyendo tras abrir la tienda.
+  useEffect(() => {
+    if (focoPallet == null) return;
+    const el = document.getElementById(`pallet-card-${focoPallet}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const id = focoPallet;
+    setFocoPallet(null);
+    setResaltado(id);
+    const t = setTimeout(() => setResaltado(prev => (prev === id ? null : prev)), 2500);
+    return () => clearTimeout(t);
+  }, [focoPallet, formRows]);
 
   const [showTodas, setShowTodas] = useState(false);
 
@@ -832,6 +852,17 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const filteredCodSet  = new Set(filtered.map(t => t.cod));
   const todayList  = allTodayCods.map(c => tiendaByCod[c]).filter((t): t is TiendaSantiago => !!t && filteredCodSet.has(t.cod));
   const othersList = filtered.filter(t => !allTodayCods.includes(t.cod));
+  // [Buscar por número de pallet] Si `search` es puramente numérico y calza con un pickingSlotId
+  // activo de CUALQUIER tienda (no solo las que pasan el filtro RM/Costa), se ofrece saltar
+  // directo — la persona tiene el número en la mano (etiqueta física), no el nombre de la tienda.
+  const palletEncontrado = buscarPalletPorNumero(pickingSlotsFull, search);
+  const tiendaDelPallet  = palletEncontrado ? tiendaByCod[palletEncontrado.claveTienda] : undefined;
+  const saltarAPallet = () => {
+    if (!palletEncontrado || !tiendaDelPallet) return;
+    setSearch('');
+    setFocoPallet(palletEncontrado.slot.id);
+    selectTienda(tiendaDelPallet);
+  };
 
   const allItems           = Object.values(items).flat();
   const statP              = allItems.filter(i => i.tipo === 'Pallet').length;
@@ -2593,8 +2624,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               // ESTA es la que se está escribiendo — no solo "estoy en la tienda".
               const marcarEnFoco = () => row.pickingSlotId && setSlotEnFoco(row.pickingSlotId);
               const quitarFoco = () => setSlotEnFoco(prev => prev === row.pickingSlotId ? null : prev);
+              // [Buscar por número de pallet] `id` para que el salto directo la encuentre con
+              // scrollIntoView; el resaltado es el destello temporal tras el salto.
+              const esResaltada = row.pickingSlotId != null && row.pickingSlotId === resaltado;
               return (
-                <div key={row.id} className={`relative bg-white rounded-xl border px-2 py-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
+                <div key={row.id} id={row.pickingSlotId != null ? `pallet-card-${row.pickingSlotId}` : undefined}
+                  className={`relative bg-white rounded-xl border px-2 py-2.5 transition-shadow ${esResaltada ? 'ring-2 ring-[#1E40AF] ring-offset-2' : ''} ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
                   {row.pickingSlotId != null && <PresenciaBadge viendo={viendoPorSlot.get(row.pickingSlotId)} contexto="tarjeta" />}
                   <div className="flex items-center justify-between mb-2">
                     <span className={`font-barlow-condensed text-[16px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>
@@ -2938,9 +2973,32 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         </div>
 
         <div className="px-3 pt-2 pb-2.5 bg-bg border-b border-border flex-shrink-0">
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar tienda…"
-            className="w-full bg-white border border-border rounded-btn px-3 py-2.5 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] placeholder:text-text-3 transition-all" />
+          <div className="relative">
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar tienda o Nº de pallet…"
+              className="w-full bg-white border border-border rounded-btn px-3 py-2.5 pr-9 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] placeholder:text-text-3 transition-all" />
+            {search && (
+              <button onClick={() => setSearch('')} aria-label="Borrar búsqueda"
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-text-3 hover:bg-bg-2 cursor-pointer border-none bg-transparent text-[15px]">
+                ✕
+              </button>
+            )}
+          </div>
+          {palletEncontrado && tiendaDelPallet && (
+            <button onClick={saltarAPallet}
+              className="w-full mt-2 flex items-center gap-2.5 bg-white border-2 border-[#1E40AF] rounded-btn px-3 py-2.5 text-left cursor-pointer active:scale-[0.98] transition-all">
+              <span className="text-[18px] shrink-0">📦</span>
+              <span className="flex-1 min-w-0">
+                <span className="block font-barlow-condensed text-[15px] font-bold text-navy">
+                  Pallet #{palletEncontrado.slot.id}
+                </span>
+                <span className="block text-[11px] text-text-3 truncate">
+                  {tiendaDelPallet.tienda} ({tiendaDelPallet.cod})
+                </span>
+              </span>
+              <span className="text-[12px] font-bold text-[#1E40AF] shrink-0">Ir →</span>
+            </button>
+          )}
           <div className="flex gap-2 mt-2">
             {([
               { id: 'rm'    as const, label: 'RM',    active_bg: 'bg-[#1E40AF] border-[#1E40AF]' },

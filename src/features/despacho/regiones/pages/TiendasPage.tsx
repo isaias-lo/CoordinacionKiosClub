@@ -38,6 +38,7 @@ import { MarcaSinPesar } from '../../shared/MarcaSinPesar';
 import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconciliarFormRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
+import { buscarPalletPorNumero } from '../../shared/buscarPalletPorNumero';
 import { fechaISOLocal } from '../../shared/fechaLocal';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
@@ -327,6 +328,22 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const [pickingSlotsFull,      setPickingSlotsFull]      = useState<Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]>>({});
   const [consumedPickingSlots, setConsumedPickingSlots] = useState<ConsumedSlots>(() => typeof window === 'undefined' ? {} : loadConsumedSlots());
   const [formRows,              setFormRows]              = useState<FormRow[]>([]);
+  // [Buscar por número de pallet] `focoPallet` = pickingSlotId al que hay que saltar en cuanto su
+  // tarjeta exista en el DOM (recién se abrió la tienda, formRows tarda un tick en reconstruirse).
+  // `resaltado` es el destello visual una vez que el salto ya ocurrió — se apaga solo.
+  const [focoPallet, setFocoPallet] = useState<number | null>(null);
+  const [resaltado,  setResaltado]  = useState<number | null>(null);
+  useEffect(() => {
+    if (focoPallet == null) return;
+    const el = document.getElementById(`pallet-card-${focoPallet}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const id = focoPallet;
+    setFocoPallet(null);
+    setResaltado(id);
+    const t = setTimeout(() => setResaltado(prev => (prev === id ? null : prev)), 2500);
+    return () => clearTimeout(t);
+  }, [focoPallet, formRows]);
   const [tipoCatByCod,          setTipoCatByCod]          = useState<Record<string, string>>({}); // tipo del catálogo para el badge
   const [showMobileResumen, setShowMobileResumen]  = useState(false);
   const [showCalManual,     setShowCalManual]      = useState(false);
@@ -798,6 +815,20 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const today  = filtered.filter(t =>  allTodayCods.includes(t.cod))
     .sort((a, b) => allTodayCods.indexOf(a.cod) - allTodayCods.indexOf(b.cod));
   const others = filtered.filter(t => !allTodayCods.includes(t.cod));
+  // [Buscar por número de pallet] Si `search` es puramente numérico y calza con un pickingSlotId
+  // activo de CUALQUIER tienda, se ofrece saltar directo — la persona tiene el número en la mano
+  // (etiqueta física), no el nombre de la tienda. `pickingSlotsFull` está indexado por NOMBRE acá.
+  const palletEncontrado = buscarPalletPorNumero(pickingSlotsFull, search);
+  const tiendaDelPallet  = palletEncontrado ? TIENDAS[palletEncontrado.claveTienda] : undefined;
+  const saltarAPallet = () => {
+    if (!palletEncontrado || !tiendaDelPallet) return;
+    setSearch('');
+    setFocoPallet(palletEncontrado.slot.id);
+    // No usar `select()`: es un toggle y si la tienda ya estaba abierta la cerraría en vez de
+    // saltar dentro de ella. Acá siempre hay que ABRIRLA (o dejarla abierta si ya lo estaba).
+    dispatch({ type: 'SET_TIENDA', payload: tiendaDelPallet.name });
+    catchUp();
+  };
 
   const allDispatchItems = Object.values(dispatchData).flat();
   const statP = allDispatchItems.filter(i => i.pkg === 'pallet').length;
@@ -1927,8 +1958,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               // ESTA es la que se está escribiendo — no solo "estoy en la tienda".
               const marcarEnFoco = () => row.pickingSlotId && setSlotEnFoco(row.pickingSlotId);
               const quitarFoco = () => setSlotEnFoco(prev => prev === row.pickingSlotId ? null : prev);
+              // [Buscar por número de pallet] `id` para que el salto directo la encuentre con
+              // scrollIntoView; el resaltado es el destello temporal tras el salto.
+              const esResaltada = row.pickingSlotId != null && row.pickingSlotId === resaltado;
               return (
-                <div key={row.id} className="relative bg-white rounded-lg border px-2 py-2" style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isContRow ? 'rgba(107,33,168,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
+                <div key={row.id} id={row.pickingSlotId != null ? `pallet-card-${row.pickingSlotId}` : undefined}
+                  className={`relative bg-white rounded-lg border px-2 py-2 transition-shadow ${esResaltada ? 'ring-2 ring-[#1E40AF] ring-offset-2' : ''}`}
+                  style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isContRow ? 'rgba(107,33,168,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
                   {row.pickingSlotId != null && <PresenciaBadge viendo={viendoPorSlot.get(row.pickingSlotId)} contexto="tarjeta" />}
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="font-barlow-condensed text-[15px] font-bold" style={{ color: rowColor.text }}>
@@ -2302,9 +2338,32 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
         {/* Search */}
         <div className="px-2 py-2 bg-bg border-b border-border flex-shrink-0">
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar…"
-            className="w-full bg-white border border-border rounded-btn px-2.5 py-2 text-text font-barlow text-[15px] outline-none transition-all focus:border-[#1E40AF] placeholder:text-text-3" />
+          <div className="relative">
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar tienda o Nº de pallet…"
+              className="w-full bg-white border border-border rounded-btn px-2.5 py-2 pr-9 text-text font-barlow text-[15px] outline-none transition-all focus:border-[#1E40AF] placeholder:text-text-3" />
+            {search && (
+              <button onClick={() => setSearch('')} aria-label="Borrar búsqueda"
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-text-3 hover:bg-bg-2 cursor-pointer border-none bg-transparent text-[15px]">
+                ✕
+              </button>
+            )}
+          </div>
+          {palletEncontrado && tiendaDelPallet && (
+            <button onClick={saltarAPallet}
+              className="w-full mt-2 flex items-center gap-2.5 bg-white border-2 border-[#1E40AF] rounded-btn px-3 py-2.5 text-left cursor-pointer active:scale-[0.98] transition-all">
+              <span className="text-[18px] shrink-0">📦</span>
+              <span className="flex-1 min-w-0">
+                <span className="block font-barlow-condensed text-[15px] font-bold text-navy">
+                  Pallet #{palletEncontrado.slot.id}
+                </span>
+                <span className="block text-[11px] text-text-3 truncate">
+                  {tiendaDelPallet.name} ({tiendaDelPallet.cod})
+                </span>
+              </span>
+              <span className="text-[12px] font-bold text-[#1E40AF] shrink-0">Ir →</span>
+            </button>
+          )}
         </div>
 
         {/* [P7] Tiendas traídas de la BD que aún no tienen los datos de envío de Sendu (region_sendu,
