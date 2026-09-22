@@ -9,9 +9,16 @@ import { avisoSinPesar } from './avisoSinPesar';
  * ya divergió una vez entre los dos archivos —por eso existe `storeCardStyles.ts`— y una marca
  * copiada dos veces es exactamente la forma en que vuelve a pasar.
  *
- * Va en la esquina inferior izquierda, no en la superior: ahí se apoya `PresenciaBadge` con
- * `z-10`. El detalle de por qué, y por qué las otras dos esquinas tampoco sirven, está en
- * `avisoSinPesar.ts`.
+ * ── Por qué va ARRIBA a la izquierda ──────────────────────────────────────────────────────────
+ *
+ * Primero se puso abajo, para esquivar a `PresenciaBadge`, que se apoya en la esquina superior
+ * izquierda. Fue un mal cambio: abajo el borde lo cruza `StoreProgressBar` a lo ancho, así que la
+ * marca se montaba sobre la barra de progreso SIEMPRE. Se cambió un choque ocasional —el avatar
+ * aparece solo mientras otra persona tiene la tienda abierta— por uno permanente.
+ *
+ * Arriba, la marca convive con el avatar: `PresenciaBadge` va en `z-10` y esta en `z-[5]`, así que
+ * si los dos coinciden el avatar queda encima, con su borde blanco separándolos. Es un momento
+ * breve y además es el momento en que alguien está trabajando esa tienda.
  *
  * La tarjeta que la contiene tiene que ser `relative` (las dos lo son).
  */
@@ -25,8 +32,10 @@ export function MarcaSinPesar({ sinPesar }: { sinPesar?: number }) {
       // #C2410C y no un naranja más vivo: en blanco sobre este fondo el texto da ~5:1, y a 10 px
       // en negrita eso es el piso para que se lea en la tablet del CD. Mismo criterio de contraste
       // que ya aplica `storeCardStyles.ts` al resto de la tarjeta.
-      className="absolute bottom-0 left-0 z-[5] flex items-center gap-[2px] h-[15px] pl-[5px] pr-[6px] bg-[#C2410C] text-white text-[10px] font-extrabold leading-none tabular-nums select-none pointer-events-none"
-      style={{ borderRadius: '0 8px 0 11px' }}
+      className="absolute top-0 left-0 z-[5] flex items-center gap-[2px] h-[16px] pl-[5px] pr-[6px] bg-[#C2410C] text-white text-[10px] font-extrabold leading-none tabular-nums select-none pointer-events-none"
+      // El radio de arriba a la izquierda calza con el de la tarjeta (`rounded-xl`); el de abajo a
+      // la derecha le da el corte diagonal que la despega del contenido centrado.
+      style={{ borderRadius: '11px 0 8px 0' }}
     >
       <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor"
         strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

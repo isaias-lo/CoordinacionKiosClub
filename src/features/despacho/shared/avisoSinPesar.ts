@@ -7,17 +7,7 @@
 // El caso que importa es el que se ve peor: una tienda marcada TERMINADA que todavía tiene
 // unidades sin pesar. Terminada y completa parecen lo mismo desde afuera, y no lo son.
 //
-// ── Por qué la marca va en la esquina INFERIOR izquierda ──────────────────────────────────────
-//
-// El diseño la puso arriba a la izquierda, pero esa esquina está ocupada: `PresenciaBadge` se
-// apoya ahí (`-top-1.5 -left-1.5`, un avatar de 18 px con `z-10`) y taparía casi la mitad. Y no
-// es una colisión rara: la presencia aparece justo cuando otra persona tiene la tienda abierta,
-// que es el momento en que más importa ver lo que falta.
-//
-// Las otras esquinas tampoco estaban libres: arriba a la derecha vive el botón +/× del
-// calendario, y el borde de abajo lo cruza `StoreProgressBar` a lo ancho. Queda la esquina
-// inferior izquierda, por debajo de la barra: 15 px de alto entran en el padding de la tarjeta
-// sin empujar nada.
+// Dónde se dibuja, y por qué arriba a la izquierda, está en `MarcaSinPesar.tsx`.
 
 export interface AvisoSinPesar {
   /** Lo que se dibuja en la marca. Un número, o `9+` cuando no entra. */
