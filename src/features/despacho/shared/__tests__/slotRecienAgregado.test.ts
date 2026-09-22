@@ -6,7 +6,7 @@ import {
 import type { PickingSlot } from '../../santiago/components/PickingSlotCards';
 
 const slot = (id: number, tipo = 'P'): PickingSlot => ({
-  id, tipo, contenido: 'hogar', seq: 1, canonical_id: null,
+  id, tipo, subtipo: null, contenido: 'hogar', seq: 1, canonical_id: null,
   peso_kg: null, alto: null, largo: null, ancho: null, peso_v: null, picker_label: 'Bodega',
 });
 const reciente = (id: number, cod = '04PDG'): SlotRecienAgregado => ({ storeCod: cod, slot: slot(id) });

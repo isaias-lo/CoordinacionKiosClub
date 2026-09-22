@@ -46,6 +46,8 @@ import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
+import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo,
+         TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
 import { abreviaturaContenido, nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroVisibleCard, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional } from '@/features/despacho/shared/numeroCard';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
@@ -518,7 +520,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         return saved
           ? {
               id: `bk-saved-${s.id}`, pkg: saved.pkg, tipo: saved.tipo,
-              peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
+              // Vuelve como BRUTO: la caja negra guarda el neto y rearmar la fila con ese número
+              // haría que volver a guardar restara la tara otra vez (17 → 13,5 → 10).
+              peso: String(saved.pkg === 'chocolate'
+                ? pesoParaMostrar(Number(saved.peso ?? 0), subtipoDeCaja(s.subtipo))
+                : (saved.peso ?? '')),
+              alto: String(saved.alto ?? ''),
               ancho: String(saved.ancho ?? ''), largo: String(saved.largo ?? ''),
               guia: saved.guia || '', valor: saved.valor ? String(saved.valor) : '',
               saved: true, savedItem: saved, pickingSlotId: s.id,
@@ -561,7 +568,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const load = async () => {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('id,store_cod,tipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,picker_label,is_active')
+        .select('id,store_cod,tipo,subtipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,picker_label,is_active')
         .eq('date', dateStr)
         .eq('is_active', true)
         .order('id', { ascending: true });
@@ -577,6 +584,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         slots[name].push({ tipo: (row.tipo as string) || 'P', contenido: (row.contenido as string) || 'hogar' });
         full[name].push({
           id: row.id as number, tipo: (row.tipo as string) || 'P',
+          subtipo: row.subtipo as string | null,
           contenido: (row.contenido as string) || 'hogar',
           seq: row.seq as number | null, canonical_id: row.canonical_id as string | null,
           peso_kg: row.peso_kg as number | null, alto: row.alto as number | null,
@@ -674,7 +682,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
       const fullSlotsR = pickingSlotsFullRef.current[selectedTienda] ?? [];
       const baseSlotsRRaw = fullSlotsR.length > 0 ? fullSlotsR : slots.map(s => ({
-        id: 0, tipo: s.tipo, contenido: s.contenido, seq: null, canonical_id: null,
+        id: 0, tipo: s.tipo, subtipo: null, contenido: s.contenido, seq: null, canonical_id: null,
         peso_kg: null, alto: null, largo: null, ancho: null, peso_v: null,
       }));
       // SECO excluye congelados: los slots CC/CN (contenido='congelados') no generan
@@ -724,7 +732,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             // Un ítem guardado SIEMPRE se muestra como tarjeta (nunca vuelve a formulario)
             rows.push({
               id: `saved-${sid || i}-${Date.now()}`, pkg: saved.pkg, tipo: saved.tipo,
-              peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
+              // Mismo motivo que arriba: el formulario muestra el bruto, el ítem guarda el neto.
+              peso: String(saved.pkg === 'chocolate'
+                ? pesoParaMostrar(Number(saved.peso ?? 0), subtipoDeCaja(s.subtipo))
+                : (saved.peso ?? '')),
+              alto: String(saved.alto ?? ''),
               ancho: String(saved.ancho ?? ''), largo: String(saved.largo ?? ''),
               guia: saved.guia || '', valor: saved.valor ? String(saved.valor) : '',
               saved: true, savedItem: saved, pickingSlotId: sid || saved.pickingSlotId,
@@ -1149,17 +1161,32 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     if (!selectedTienda) return;
     const isCont = row.pkg === 'contenedor';
     const isChoc = row.pkg === 'chocolate';
+    // De qué caja es. La negra tiene medidas fijas y tara; la de cartón ni una ni otra —su tamaño
+    // varía, así que no se le inventan medidas ni se le resta un peso constante. Espejo de StepForm.
+    const caja: SubtipoCaja | null = isChoc && selectedTienda
+      ? subtipoDeCaja((pickingSlotsFull[selectedTienda] ?? [])
+          .find(s => s.id === row.pickingSlotId)?.subtipo)
+      : null;
+    const medidasCaja = caja ? medidasDeCaja(caja) : null;
     let p: number, a: number, aw: number, l: number;
     if (sinPesar) {
       // "Agregar sin pesar": se guarda con dimensiones en 0 (marca "sin pesar"), sin pedir
       // peso/alto/largo/ancho ni pasar por validarDimensiones.
       p = DIMS_SIN_PESAR.peso; a = DIMS_SIN_PESAR.alto; aw = DIMS_SIN_PESAR.ancho; l = DIMS_SIN_PESAR.largo;
     } else {
-      p = parseFloat(row.peso);
-      if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
-      a  = isCont ? 150 : isChoc ? 42  : (parseFloat(row.alto)  || 0);
-      aw = row.pkg === 'pallet' ? 100 : isCont ? 80  : isChoc ? 56 : (parseFloat(row.ancho) || 0);
-      l  = row.pkg === 'pallet' ? 120 : isCont ? 110 : isChoc ? 80 : (parseFloat(row.largo) || 0);
+      if (caja === 'negra') {
+        // Se pesa ENTERA y vuelve al CD: se descuenta lo que pesa vacía. Se rechaza lo que no
+        // llega a la tara en vez de recortarlo a cero (ver `pesoNetoCajaNegra`).
+        const neto = pesoNetoCajaNegra(row.peso);
+        if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
+        p = neto.neto;
+      } else {
+        p = parseFloat(row.peso);
+        if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
+      }
+      a  = isCont ? 150 : isChoc ? (medidasCaja?.alto  ?? 0) : (parseFloat(row.alto)  || 0);
+      aw = row.pkg === 'pallet' ? 100 : isCont ? 80  : isChoc ? (medidasCaja?.ancho ?? 0) : (parseFloat(row.ancho) || 0);
+      l  = row.pkg === 'pallet' ? 120 : isCont ? 110 : isChoc ? (medidasCaja?.largo ?? 0) : (parseFloat(row.largo) || 0);
       // [Guardia 2026-09-09] `validarDimensiones` solo revisa el MÁXIMO, y solo cuando el valor no
       // es 0 — un campo vacío (`parseFloat('') || 0` → 0) pasaba de largo sin ningún aviso y el
       // pallet/bulto se guardaba con alto/ancho/largo en 0. Santiago (StepForm.tsx) ya tenía este
@@ -1842,7 +1869,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       </div>
                       {row.savedItem.pkg === 'box' && <div className="text-text-3">{row.savedItem.ancho}×{row.savedItem.largo}cm</div>}
                       {row.savedItem.pkg === 'contenedor' && <div className="text-text-3">80×110cm · alto 150cm — fijo</div>}
-                      {row.savedItem.pkg === 'chocolate' && <div className="text-text-3">56×80cm</div>}
+                      {row.savedItem.pkg === 'chocolate' && <div className="text-text-3">{etiquetaSubtipo(subtipoDeCaja(
+                        (selectedTienda ? (pickingSlotsFull[selectedTienda] ?? []) : []).find(s => s.id === row.pickingSlotId)?.subtipo))}</div>}
                       {row.savedItem.pkg === 'pallet' && <div className="text-text-3">{row.savedItem.tipo === 'comida-hogar' ? 'Mixto' : row.savedItem.tipo === 'comida' ? 'Comida' : 'Hogar'}</div>}
                       {(() => {
                         const slot = row.pickingSlotId ? (pickingSlotsFull[selectedTienda ?? ''] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
@@ -1955,6 +1983,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               }
               /* Active / unsaved card */
               const isChocRow = row.pkg === 'chocolate';
+              // De qué caja es esta fila, para el aviso de la tara y la etiqueta.
+              const cajaDeFila = isChocRow && selectedTienda
+                ? subtipoDeCaja((pickingSlotsFull[selectedTienda] ?? []).find(s => s.id === row.pickingSlotId)?.subtipo)
+                : null;
               const isContRow = row.pkg === 'contenedor';
               // [Presencia por pallet] Al enfocar cualquier input de esta tarjeta, avisar que
               // ESTA es la que se está escribiendo — no solo "estoy en la tienda".
@@ -2008,7 +2040,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   )}
                   <div className="grid grid-cols-2 gap-1 mb-1.5">
                     <div>
-                      <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Peso</label>
+                      <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">
+                        Peso{cajaDeFila === 'negra' && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(TARA_CAJA_NEGRA).replace('.', ',')} kg de caja</span>}
+                      </label>
                       <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)}
                         onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="kg" inputMode="decimal"
                         className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
