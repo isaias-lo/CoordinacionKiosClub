@@ -93,6 +93,24 @@ export function todayStr(): string {
 }
 
 /**
+ * ¿Hay que adelantar `fecha` porque cruzó medianoche mientras la pestaña seguía abierta? Pura y
+ * testeable — la decide `RutasScreen` en un chequeo periódico/de visibilidad.
+ *
+ * Caso real (VKDZ85, 2026-09-22): el Enrutador quedó abierto desde el día anterior, `fecha`
+ * arranca en `todayStr()` solo al montar y nadie la revisa de nuevo. El coordinador cerró un
+ * camión con el reloj real ya en el día nuevo, pero el tablero seguía en el viejo — la ruta se
+ * guardó (cuando se guarda) bajo esa fecha vieja, invisible para `/conductor-hub`.
+ *
+ * Solo adelanta si `fecha` seguía apuntando al "hoy" que se creía verdadero (`creidaVieja`): si
+ * alguien abrió a mano un día PASADO (el aviso de "días sin registrar" hace `setFecha(d)` con un
+ * `d` siempre anterior a hoy), esa elección no se pisa solo porque el reloj real avanzó.
+ */
+export function fechaTrasMedianoche(fecha: string, creidaVieja: string, realHoy: string): string {
+  if (realHoy === creidaVieja) return fecha; // no cruzó medianoche, nada que revisar
+  return fecha === creidaVieja ? realHoy : fecha;
+}
+
+/**
  * Convierte una fecha de despacho (DD/MM/YYYY o ISO YYYY-MM-DD) al stamp `DDMMYYYY` usado en los
  * ids del registro (ej. `R1<cod>04082026P`).
  *

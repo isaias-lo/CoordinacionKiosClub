@@ -20,7 +20,7 @@ import ParadasAdicionales, { type Parada } from './components/ParadasAdicionales
 import { TIENDAS_INICIAL, GPS_INICIAL, CD_INICIAL } from './data/tiendas';
 import { FLOTA_INICIAL } from './data/flota';
 import { CAL_INICIAL, DNOM } from './data/calendar';
-import { getDia, norm, todayStr, fechaTxt, poolPendiente } from './utils/helpers';
+import { getDia, norm, todayStr, fechaTxt, poolPendiente, fechaTrasMedianoche } from './utils/helpers';
 import { grupoArmada } from './utils/flujoArmada';
 import { grupoCongelados } from './utils/congeladosPool';
 import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/reconstruirAsignaciones';
@@ -237,6 +237,31 @@ export default function RutasScreen() {
   );
   const [supervisor, setSupervisor] = useState('');
   const [fecha,      setFecha]      = useState(todayStr);
+  // [Fecha atascada en "ayer"] `fecha` arranca en `todayStr()` una sola vez al montar y nadie la
+  // revisa de nuevo — si la pestaña queda abierta de un día para el otro (el puesto de despacho
+  // no se recarga), todo lo que se cierre/guarde esa mañana queda con la fecha vieja: invisible
+  // para /conductor-hub, que filtra por el día real. Caso real: VKDZ85, 2026-09-22.
+  // `useDayRollover()` (abajo) ya recarga la página al cruzar medianoche, pero depende de que el
+  // navegador dispare visibilitychange/focus — verificado en producción que eso puede no pasar.
+  // Este chequeo es el respaldo directo sobre `fecha`, con su propio intervalo (no depende de
+  // que el reload de arriba haya disparado): solo la adelanta si seguía apuntando al "hoy" viejo,
+  // nunca si alguien abrió a mano un día pasado (`fechaTrasMedianoche` explica la regla).
+  const creidaHoyRef = useRef(todayStr());
+  useEffect(() => {
+    const check = () => {
+      const real = todayStr();
+      setFecha(prev => fechaTrasMedianoche(prev, creidaHoyRef.current, real));
+      creidaHoyRef.current = real;
+    };
+    document.addEventListener('visibilitychange', check);
+    window.addEventListener('focus', check);
+    const id = setInterval(check, 60_000);
+    return () => {
+      document.removeEventListener('visibilitychange', check);
+      window.removeEventListener('focus', check);
+      clearInterval(id);
+    };
+  }, []);
   // Corrección manual del día de despacho. null = usar el calculado por `fechaSalida`. Existe
   // porque los feriados NO están modelados: el viernes 18/09/2026 es Fiestas Patrias y la regla
   // de "día hábil siguiente" lo daría por bueno.
