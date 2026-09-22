@@ -7,7 +7,7 @@ import { fechaChile } from '@/lib/fechaChile';
 
 // peso_kg/alto/largo/ancho/peso_v: las columnas ya existían, pero solo las escribía Bodega. Ahora
 // también viajan desde Picking, así que el cliente necesita verlas de vuelta al crear un slot.
-const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, contenido, section, refs, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v';
+const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, subtipo, contenido, section, refs, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v';
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
 // Auditoría de altas/bajas de pallets (fire-and-forget — no debe bloquear la respuesta).
@@ -88,6 +88,7 @@ export async function POST(request: NextRequest) {
       state_key:    body.state_key,
       picker_label: body.picker_label,
       tipo:         body.tipo,
+      subtipo:      body.subtipo ?? null,
       contenido:    body.contenido ?? 'hogar',
       section:      body.section ?? null,
       refs:         body.refs ?? '',

@@ -5,7 +5,7 @@ import { Printer, RotateCcw, AlertTriangle, Package } from 'lucide-react';
 import { pesoTotalValido, avisoCantidad, type TipoCaja, type PesoTotalGuardado } from '../pesoTotal';
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord, SectionFilter } from '../picking-types';
-import { tiposDeUnidad } from '../tiposUnidad';
+import { tiposDeUnidad, type ClaveUnidad } from '../tiposUnidad';
 import { mensajeReimpresion } from '../reimpresion';
 import { idsDeSeleccion } from '../seleccionImpresion';
 import { STATE_INFO, sanitizeForBarcode, buildCanonicalId, todayISO } from '../picking-utils';
@@ -31,7 +31,9 @@ interface Props {
   displayName: string;
   palletsByTipo: Record<string, number>;
   onNameChange: (v: string) => void;
-  onTipoPalletsChange: (tipo: PickerType, n: number) => void;
+  /** Recibe la CLAVE de unidad (`CH:negra`, `CH:carton`, o el tipo pelado), no el tipo. Quien
+   *  llama la parte con `partirClave` antes de tocar la base. Ver `subtipoCaja.ts`. */
+  onTipoPalletsChange: (clave: ClaveUnidad, n: number) => void;
   onRefreshOp: (op: PickingOperation) => void;
   onPrint: () => void;
   refreshingId: number | null;
@@ -94,7 +96,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
 
   const [selectedIndices, setSelectedIndices]             = useState<Set<number>>(new Set());
   // Confirm inline al decrementar un pallet que ya fue impreso
-  const [pendingDecrementTipo, setPendingDecrementTipo]   = useState<PickerType | null>(null);
+  const [pendingDecrementTipo, setPendingDecrementTipo]   = useState<ClaveUnidad | null>(null);
 
   const toggleIndex = (i: number) => {
     setSelectedIndices(prev => {
@@ -290,18 +292,21 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
             <label className="text-[11px] font-medium text-slate-400 block mb-2">Unidades a despachar</label>
             <div className="flex gap-2">
               {([
-                { tipo: 'P'  as PickerType, label: 'Pallets'       },
-                { tipo: 'C'  as PickerType, label: 'Contenedores'  },
-                { tipo: 'B'  as PickerType, label: 'Bultos'        },
-                { tipo: 'CH' as PickerType, label: 'Chocolates'    },
-                { tipo: 'CC' as PickerType, label: 'Caja Cartón'   },
-                { tipo: 'CN' as PickerType, label: 'Caja Negra'    },
+                { tipo: 'P'         as ClaveUnidad, sigla: 'P',  label: 'Pallets'      },
+                { tipo: 'C'         as ClaveUnidad, sigla: 'C',  label: 'Contenedores' },
+                { tipo: 'B'         as ClaveUnidad, sigla: 'B',  label: 'Bultos'       },
+                // El chocolate se abre en sus dos cajas: la negra mide siempre igual, la de cartón
+                // varía y por eso Bodega no le pide medidas. Las dos se guardan como tipo 'CH'.
+                { tipo: 'CH:negra'  as ClaveUnidad, sigla: 'CH', label: 'Caja Negra'   },
+                { tipo: 'CH:carton' as ClaveUnidad, sigla: 'CH', label: 'Caja Cartón'  },
+                { tipo: 'CC'        as ClaveUnidad, sigla: 'CC', label: 'Caja Cartón'  },
+                { tipo: 'CN'        as ClaveUnidad, sigla: 'CN', label: 'Caja Negra'   },
               ])
               // Misma regla que el formulario del encargado manual (tiposUnidad.ts): Congelados solo
               // cajas, Chocolates solo P/CH, Aseo y Hogar sin CH — y un tipo que YA tiene unidades se
               // muestra igual, para que nunca quede una unidad en la base que nadie pueda ver ni quitar.
               .filter(({ tipo }) => tiposDeUnidad(!!isCongelados, sectionFilter ?? 'all', palletsByTipo).includes(tipo))
-              .map(({ tipo, label }) => {
+              .map(({ tipo, sigla, label }) => {
                 const count  = palletsByTipo[tipo] ?? 0;
                 const active = count > 0;
                 return (
@@ -312,7 +317,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                       background: '#fff',
                     }}>
                     <div className="text-center leading-none">
-                      <div className="text-[14px] font-extrabold" style={{ color: active ? 'var(--color-info)' : '#64748B' }}>{tipo}</div>
+                      <div className="text-[14px] font-extrabold" style={{ color: active ? 'var(--color-info)' : '#64748B' }}>{sigla}</div>
                       <div className="text-[10px] mt-0.5" style={{ color: active ? '#475569' : '#94A3B8' }}>{label}</div>
                     </div>
                     <div className="flex items-center gap-1 w-full justify-center">
