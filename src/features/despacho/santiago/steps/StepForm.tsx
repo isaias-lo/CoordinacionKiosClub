@@ -181,7 +181,10 @@ function TiendaGridCard({
   const expB     = despachoB ?? 0;
   const expC     = despachoC ?? 0;
   const expCH    = despachoCH ?? 0;
-  // Desconta los ya ingresados — ghost solo muestra los pendientes de picking
+  // Desconta los ya ingresados: el badge punteado muestra SOLO lo que Picking imprimió y Bodega
+  // todavía no pesó. Es una señal distinta de la marca de esquina (`MarcaSinPesar`), que cuenta lo
+  // que SÍ se cargó pero quedó guardado sin peso. Las dos dicen "falta pesar" y son cosas
+  // distintas: esto es el flujo normal del día; aquello es la excepción que hay que perseguir.
   const remP = Math.max(0, expP - palletCount);
   const remB = Math.max(0, expB - boxCount);
   const remC = Math.max(0, expC - contenedorCount);
@@ -236,10 +239,10 @@ function TiendaGridCard({
           fondo/borde punteado tenue como señal de "pendiente", pero el texto va sólido y AA. */}
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
         {/* Ghost badges: picking pendiente (desconta los ya ingresados) */}
-        {remP > 0 && <span title="Pallets pendientes de picking" className={`text-[11px] font-bold ${SCB.pallet.textCls} px-1.5 py-0.5 rounded leading-none border border-dashed ${SCB.pallet.ghostBorderCls}`} style={{ background: SCB.pallet.ghostBg }}>{remP}P</span>}
-        {remB > 0 && <span title="Bultos pendientes de picking" className={`text-[11px] font-bold ${SCB.bulto.textCls} px-1.5 py-0.5 rounded leading-none border border-dashed ${SCB.bulto.ghostBorderCls}`} style={{ background: SCB.bulto.ghostBg }}>{remB}B</span>}
-        {remC > 0 && <span title="Contenedores pendientes de picking" className={`text-[11px] font-bold ${SCB.contenedor.textCls} px-1.5 py-0.5 rounded leading-none border border-dashed ${SCB.contenedor.ghostBorderCls}`} style={{ background: SCB.contenedor.ghostBg }}>{remC}C</span>}
-        {remCH > 0 && <span title="Chocolates pendientes de picking" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none border border-dashed" style={{ color: SCB.chocolate.color, background: SCB.chocolate.ghostBg, borderColor: SCB.chocolate.ghostBorderColor }}>{remCH}CH</span>}
+        {remP > 0 && <span title="Pallets que Picking ya imprimió y falta pesar en Bodega" className={`text-[11px] font-bold ${SCB.pallet.textCls} px-1.5 py-0.5 rounded leading-none border border-dashed ${SCB.pallet.ghostBorderCls}`} style={{ background: SCB.pallet.ghostBg }}>{remP}P</span>}
+        {remB > 0 && <span title="Bultos que Picking ya imprimió y falta pesar en Bodega" className={`text-[11px] font-bold ${SCB.bulto.textCls} px-1.5 py-0.5 rounded leading-none border border-dashed ${SCB.bulto.ghostBorderCls}`} style={{ background: SCB.bulto.ghostBg }}>{remB}B</span>}
+        {remC > 0 && <span title="Contenedores que Picking ya imprimió y falta pesar en Bodega" className={`text-[11px] font-bold ${SCB.contenedor.textCls} px-1.5 py-0.5 rounded leading-none border border-dashed ${SCB.contenedor.ghostBorderCls}`} style={{ background: SCB.contenedor.ghostBg }}>{remC}C</span>}
+        {remCH > 0 && <span title="Chocolates que Picking ya imprimió y falta pesar en Bodega" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none border border-dashed" style={{ color: SCB.chocolate.color, background: SCB.chocolate.ghostBg, borderColor: SCB.chocolate.ghostBorderColor }}>{remCH}CH</span>}
         {/* Solid badges: items ingresados en despacho */}
         {palletCount     > 0 && <span title="Pallets" className={`text-[11px] font-bold ${SCB.pallet.textCls} px-1.5 py-0.5 rounded leading-none`} style={{ background: SCB.pallet.bg }}>{palletCount}P</span>}
         {boxCount        > 0 && <span title="Bultos" className={`text-[11px] font-bold ${SCB.bulto.textCls} px-1.5 py-0.5 rounded leading-none`} style={{ background: SCB.bulto.bg }}>{boxCount}B</span>}
