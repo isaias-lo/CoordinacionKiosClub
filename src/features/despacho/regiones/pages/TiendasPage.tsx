@@ -44,7 +44,7 @@ import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
-import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
+import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
 import { abreviaturaContenido, nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroVisibleCard, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional } from '@/features/despacho/shared/numeroCard';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
@@ -96,7 +96,6 @@ type ConsumedSlots = Record<string, { p: number; b: number; c: number; ch: numbe
 const CONSUMED_SLOTS_KEY = `consumedPickingSlots_${_localDate}`;
 // Definición ÚNICA en shared/chocolate.ts — ver nota en StepForm.
 const CHOCOLATE_DIMS_R       = CHOCOLATE_DIMS_SHARED;
-const CHOCOLATE_DEFAULT_PESO = CHOCOLATE_PESO_DEFECTO;
 function loadConsumedSlots(): ConsumedSlots { try { return JSON.parse(localStorage.getItem(CONSUMED_SLOTS_KEY) || '{}'); } catch { return {}; } }
 function saveConsumedSlots(v: ConsumedSlots) { try { localStorage.setItem(CONSUMED_SLOTS_KEY, JSON.stringify(v)); } catch {} }
 
@@ -824,7 +823,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               // `chocolate1` — y el mismo chocolate terminaba duplicado entre dispositivos.
               id: `ch-preset-${selectedTienda}-${i + 1}`,
               orden: `chocolate${i + 1}`, tipo: 'chocolate' as TipoContenido, pkg: 'chocolate' as TipoPaquete,
-              peso: 25, alto: 42, ancho: 56, largo: 80, guia: '', valor: 0,
+              peso: 0, alto: 42, ancho: 56, largo: 80, guia: '', valor: 0,
             })) });
           }
           setFormRows(rows);
@@ -1057,19 +1056,19 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       const item: DispatchItem = {
         id: crypto.randomUUID(), // [E3b/C1] id estable compartido con la fila de formulario
         orden: `chocolate${chc}`, tipo: 'chocolate', pkg: 'chocolate',
-        peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
+        peso: 0, alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
         guia: '', valor: 0, pickingSlotId: slot?.id,
       };
       dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item });
       setFormRows(prev => [...prev, {
         id: `saved-chadd-${stamp}-${countOffset}`, pkg: 'chocolate', tipo: 'hogar',
-        peso: String(CHOCOLATE_DEFAULT_PESO), alto: String(CHOCOLATE_DIMS_R.alto),
+        peso: '', alto: String(CHOCOLATE_DIMS_R.alto),
         ancho: String(CHOCOLATE_DIMS_R.ancho), largo: String(CHOCOLATE_DIMS_R.largo),
         guia: '', valor: '', saved: true, savedItem: item, pickingSlotId: slot?.id,
       }]);
       if (slot?.id) {
         supabase.from('picking_pallets').update({
-          peso_kg: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
+          alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
         }).eq('id', slot.id).then(({ error }) => { if (error) console.error('[picking_pallets update]', error.message); });
       }
       showToast(`✓ ${item.orden} agregado`, '#16A34A');

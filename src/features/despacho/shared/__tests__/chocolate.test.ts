@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   pesoChocolate, dimsChocolate, pesoChocolateValido,
-  CHOCOLATE_DIMS, CHOCOLATE_PESO_MAX, CHOCOLATE_PESO_DEFECTO,
+  CHOCOLATE_DIMS, CHOCOLATE_PESO_MAX,
 } from '../chocolate';
 import { sumPeso } from '../combineUtils';
+import { esSinPesar } from '../sinPesar';
 
 describe('pesoChocolate — respeta a quien pesó', () => {
   it('usa el peso del slot cuando alguien lo pesó', () => {
@@ -12,22 +13,30 @@ describe('pesoChocolate — respeta a quien pesó', () => {
     expect(pesoChocolate({ peso_kg: 25 })).toBe(25);
   });
 
-  it('sin peso cae en el de siempre, así nada cambia para quien no pesa', () => {
-    expect(pesoChocolate({ peso_kg: null })).toBe(CHOCOLATE_PESO_DEFECTO);
-    expect(pesoChocolate({})).toBe(CHOCOLATE_PESO_DEFECTO);
-    expect(pesoChocolate(null)).toBe(CHOCOLATE_PESO_DEFECTO);
-    expect(pesoChocolate(undefined)).toBe(CHOCOLATE_PESO_DEFECTO);
+  it('sin peso devuelve 0: el chocolate queda SIN PESAR, para que se pese en Bodega', () => {
+    // El respaldo de 20 kg se quitó el 22/09/2026. Con él, un chocolate sin pesar entraba con un
+    // peso inventado y quedaba indistinguible de uno pesado de verdad.
+    expect(pesoChocolate({ peso_kg: null })).toBe(0);
+    expect(pesoChocolate({})).toBe(0);
+    expect(pesoChocolate(null)).toBe(0);
+    expect(pesoChocolate(undefined)).toBe(0);
   });
 
-  it('el 0 es "sin pesar", NO cero kilos', () => {
+  it('el 0 del slot también es "sin pesar", NO cero kilos', () => {
     // Una balanza en cero es una balanza que nadie usó. Misma lectura que sinPesar.ts.
-    expect(pesoChocolate({ peso_kg: 0 })).toBe(CHOCOLATE_PESO_DEFECTO);
+    expect(pesoChocolate({ peso_kg: 0 })).toBe(0);
   });
 
   it('un valor corrupto no se propaga como peso', () => {
-    expect(pesoChocolate({ peso_kg: NaN })).toBe(CHOCOLATE_PESO_DEFECTO);
-    expect(pesoChocolate({ peso_kg: -5 })).toBe(CHOCOLATE_PESO_DEFECTO);
-    expect(pesoChocolate({ peso_kg: Infinity })).toBe(CHOCOLATE_PESO_DEFECTO);
+    expect(pesoChocolate({ peso_kg: NaN })).toBe(0);
+    expect(pesoChocolate({ peso_kg: -5 })).toBe(0);
+    expect(pesoChocolate({ peso_kg: Infinity })).toBe(0);
+  });
+
+  it('lo que devuelve para un chocolate sin pesar satisface esSinPesar', () => {
+    // El punto entero del cambio: el chocolate tiene que poder aparecer como pendiente.
+    expect(esSinPesar({ peso: pesoChocolate({}) })).toBe(true);
+    expect(esSinPesar({ peso: pesoChocolate({ peso_kg: 18 }) })).toBe(false);
   });
 });
 
@@ -52,11 +61,19 @@ describe('sumar un CH a un pallet acumula el peso REAL', () => {
     const ch2 = pesoChocolate({ peso_kg: 16.5 });
     expect(sumPeso(ch1, ch2)).toBe(34.5);
     // Antes los dos entraban como 20 y el pallet decía 40 — 5,5 kg de más.
-    expect(sumPeso(ch1, ch2)).not.toBe(CHOCOLATE_PESO_DEFECTO * 2);
+    expect(sumPeso(ch1, ch2)).not.toBe(40);   // 2 × los 20 kg del respaldo que ya no existe
   });
 
-  it('un chocolate sin pesar sigue aportando el valor de siempre', () => {
-    expect(sumPeso(pesoChocolate({ peso_kg: 18 }), pesoChocolate({}))).toBe(38);
+  it('un chocolate sin pesar no aporta kilos inventados al pallet', () => {
+    // Antes sumaba 38 (18 + los 20 del respaldo). Ahora suma 18: el segundo chocolate no está
+    // pesado, y el pallet no puede decir que pesa algo que nadie puso en la balanza.
+    expect(sumPeso(pesoChocolate({ peso_kg: 18 }), pesoChocolate({}))).toBe(18);
+  });
+
+  it('por eso el que falta tiene que verse: cuenta como pendiente, no como 20 kg', () => {
+    // El peso que no se suma no se pierde — aparece como unidad sin pesar en la tienda y en la
+    // marca de la grilla, para que alguien lo pese en Bodega.
+    expect(esSinPesar({ peso: pesoChocolate({}) })).toBe(true);
   });
 
   it('sumar varios no arrastra coma flotante', () => {
