@@ -32,7 +32,7 @@ import { tipoBadge } from '../tipoTienda';
 import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
-import { buscarPalletPorNumero } from '../../shared/buscarPalletPorNumero';
+import { buscarPallet } from '../../shared/buscarPallet';
 import { fechaISOLocal } from '../../shared/fechaLocal';
 import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
@@ -858,7 +858,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // [Buscar por número de pallet] Si `search` es puramente numérico y calza con un pickingSlotId
   // activo de CUALQUIER tienda (no solo las que pasan el filtro RM/Costa), se ofrece saltar
   // directo — la persona tiene el número en la mano (etiqueta física), no el nombre de la tienda.
-  const palletEncontrado = buscarPalletPorNumero(pickingSlotsFull, search);
+  const palletEncontrado = buscarPallet(pickingSlotsFull, search);
   const tiendaDelPallet  = palletEncontrado ? tiendaByCod[palletEncontrado.claveTienda] : undefined;
   const saltarAPallet = () => {
     if (!palletEncontrado || !tiendaDelPallet) return;
@@ -2978,7 +2978,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         <div className="px-3 pt-2 pb-2.5 bg-bg border-b border-border flex-shrink-0">
           <div className="relative">
             <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar tienda o Nº de pallet…"
+              // La pistola de radiofrecuencia escribe el código y manda Enter, igual que un teclado.
+              // Con esto, escanear termina el salto sin que nadie tenga que tocar el resultado.
+              onKeyDown={e => { if (e.key === 'Enter' && palletEncontrado) { e.preventDefault(); saltarAPallet(); } }}
+              placeholder="Buscar tienda, Nº de pallet o escanear…"
               className="w-full bg-white border border-border rounded-btn px-3 py-2.5 pr-9 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] placeholder:text-text-3 transition-all" />
             {search && (
               <button onClick={() => setSearch('')} aria-label="Borrar búsqueda"

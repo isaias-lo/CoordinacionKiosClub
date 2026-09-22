@@ -38,7 +38,7 @@ import { MarcaSinPesar } from '../../shared/MarcaSinPesar';
 import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconciliarFormRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
-import { buscarPalletPorNumero } from '../../shared/buscarPalletPorNumero';
+import { buscarPallet } from '../../shared/buscarPallet';
 import { fechaISOLocal } from '../../shared/fechaLocal';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
@@ -821,7 +821,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   // [Buscar por número de pallet] Si `search` es puramente numérico y calza con un pickingSlotId
   // activo de CUALQUIER tienda, se ofrece saltar directo — la persona tiene el número en la mano
   // (etiqueta física), no el nombre de la tienda. `pickingSlotsFull` está indexado por NOMBRE acá.
-  const palletEncontrado = buscarPalletPorNumero(pickingSlotsFull, search);
+  const palletEncontrado = buscarPallet(pickingSlotsFull, search);
   const tiendaDelPallet  = palletEncontrado ? TIENDAS[palletEncontrado.claveTienda] : undefined;
   const saltarAPallet = () => {
     if (!palletEncontrado || !tiendaDelPallet) return;
@@ -2343,7 +2343,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         <div className="px-2 py-2 bg-bg border-b border-border flex-shrink-0">
           <div className="relative">
             <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar tienda o Nº de pallet…"
+              // La pistola de radiofrecuencia escribe el código y manda Enter, igual que un teclado.
+              // Con esto, escanear termina el salto sin que nadie tenga que tocar el resultado.
+              onKeyDown={e => { if (e.key === 'Enter' && palletEncontrado) { e.preventDefault(); saltarAPallet(); } }}
+              placeholder="Buscar tienda, Nº de pallet o escanear…"
               className="w-full bg-white border border-border rounded-btn px-2.5 py-2 pr-9 text-text font-barlow text-[15px] outline-none transition-all focus:border-[#1E40AF] placeholder:text-text-3" />
             {search && (
               <button onClick={() => setSearch('')} aria-label="Borrar búsqueda"
