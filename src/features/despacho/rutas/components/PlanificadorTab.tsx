@@ -635,9 +635,15 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
       .filter(({ r }) => visibleIds.includes(r.id) && r.selected.length > 0)
       .map(({ rc, r }) => {
         const cById = Object.fromEntries(r.customStops.map(p => [p.id, p]));
+        // El catálogo SEGÚN LA CARGA de esta ruta, igual que el orden (397), la vista (413) y el
+        // diagnóstico (427). Acá se leía `tiendas` crudo, así que el texto que se copia para
+        // WhatsApp salía siempre con la ventana de SECO: en una ruta de congelados la pantalla
+        // decía 08:00-17:00 y el texto pegado decía 08:30-13:00, mandando al chofer a un horario
+        // en que la tienda no recibe frío. Es el mismo olvido del #539, una capa más afuera.
+        const catRuta = catalogoDe(r.carga);
         const lineas: LineaParada[] = rc.ordered.map(cod => {
           if (esParadaDireccion(cod)) return { cod, esDireccion: true, nombre: cById[cod]?.label };
-          const inf = tiendas[cod];
+          const inf = catRuta[cod];
           return {
             cod, esDireccion: false, nombre: inf?.n, direccion: inf?.d,
             tipo: inf ? tipoTienda(inf.tipo, inf.d, inf.z).label : undefined, horario: inf?.v,
