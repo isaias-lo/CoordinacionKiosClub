@@ -144,6 +144,13 @@ interface SantiagoContextValue {
    *  motivo: el canal puede quedar unido y mudo sin avisar, y hasta ahora nadie en pantalla se
    *  enteraba (el respaldo por polling ya no se apaga, pero seguía siendo invisible). */
   canalSano: boolean;
+  /** [Bodega · tarjeta "llena pero no guardada" al entrar] Re-consulta `shared_session_state` y
+   *  aplica lo remoto YA (mismo camino que el catch-up de visibilidad/reconexión — conflictos,
+   *  corta-ecos y todo). Sin esto, abrir una tienda usaba lo que ya hubiera en memoria: si el
+   *  compañero guardó mientras este equipo estaba en background (el polling se pausa ahí), el
+   *  peso ya había llegado por el canal de picking_pallets (~600ms) pero el ítem "guardado" podía
+   *  demorar minutos. Quien selecciona la tienda llama esto para no depender de esa carrera. */
+  catchUp: () => void;
 }
 
 const SantiagoContext = createContext<SantiagoContextValue | null>(null);
@@ -368,8 +375,10 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   // [P9] Al volver a la pestaña/app → catch-up con el estado remoto; al ocultarla → flush de pendientes.
   useVisibilityRefetch(() => catchUpRef.current(), flushPending);
 
+  const catchUp = useCallback(() => catchUpRef.current(), []);
+
   return (
-    <SantiagoContext.Provider value={{ state, dispatch, flushPending, canalSano }}>
+    <SantiagoContext.Provider value={{ state, dispatch, flushPending, canalSano, catchUp }}>
       {children}
     </SantiagoContext.Provider>
   );

@@ -190,6 +190,11 @@ interface AppContextValue {
    *  caso (ver lib/ritmoDePoll.ts), pero hasta ahora nadie en pantalla se enteraba. `canalSano`
    *  expone la misma señal que ya se rastreaba en un closure, para que un componente la muestre. */
   canalSano: boolean;
+  /** [Bodega · tarjeta "llena pero no guardada" al entrar] Ver el mismo campo en
+   *  SantiagoContext.tsx — misma señal, mismo motivo: abrir una tienda usaba lo que ya hubiera en
+   *  memoria; si el compañero guardó mientras este equipo estaba en background, el peso llegaba
+   *  rápido por picking_pallets pero el ítem "guardado" podía demorar minutos. */
+  catchUp: () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -498,8 +503,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // [P9] Al volver a la pestaña/app → catch-up con el estado remoto; al ocultarla → flush de pendientes.
   useVisibilityRefetch(() => catchUpRef.current(), flushPending);
 
+  const catchUp = useCallback(() => catchUpRef.current(), []);
+
   return (
-    <AppContext.Provider value={{ state, dispatch, showToast, getStats, flushPending, canalSano }}>
+    <AppContext.Provider value={{ state, dispatch, showToast, getStats, flushPending, canalSano, catchUp }}>
       {children}
     </AppContext.Provider>
   );

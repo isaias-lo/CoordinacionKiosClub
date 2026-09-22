@@ -292,7 +292,7 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
 
 /* ── Main page ── */
 export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) {
-  const { state, dispatch, showToast, flushPending, canalSano } = useApp();
+  const { state, dispatch, showToast, flushPending, canalSano, catchUp } = useApp();
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const router = useRouter();
   const odooProgress = useOdooProgress();  // progreso de Odoo (punto gris/naranja/verde) — igual que Santiago
@@ -823,7 +823,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       ch: its.filter(i => i.pkg === 'chocolate').length,
     }));
 
-  const select  = (name: string) => dispatch({ type: 'SET_TIENDA', payload: selectedTienda === name ? null : name });
+  const select  = (name: string) => {
+    const opening = selectedTienda !== name;
+    dispatch({ type: 'SET_TIENDA', payload: opening ? name : null });
+    // [Tarjeta "llena pero no guardada" al entrar] Igual que en Santiago (StepForm.tsx): al abrir
+    // la tienda, no esperar al próximo tick de polling (se pausa en background) — traer ya lo
+    // último que haya guardado un compañero.
+    if (opening) catchUp();
+  };
 
   const onSheetDragStart = (e: React.TouchEvent) => {
     sheetDrag.current = { start: e.touches[0].clientY, delta: 0 };
