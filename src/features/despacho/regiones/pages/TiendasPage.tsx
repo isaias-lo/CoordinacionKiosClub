@@ -44,7 +44,7 @@ import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
-import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
+import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
 import { abreviaturaContenido, nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroVisibleCard, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional } from '@/features/despacho/shared/numeroCard';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
@@ -724,10 +724,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           return pool && pool.length ? pool.shift() : undefined;
         };
 
-        // Punto 2: chocolates de picking sin item guardado → auto-agregar como AGREGADOS (20 kg)
-        const chocToCreate: DispatchItem[] = [];
-        let chCount = existingItems.filter(i => i.pkg === 'chocolate').length;
-
         const rows: FormRow[] = [];
         baseSlotsR.forEach((s, i) => {
           const sid = (s as { id?: number }).id || 0;
@@ -738,24 +734,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           if (saved && slotPool && slotPool.length === 0) savedBySlot.delete(sid);
           if (!saved) saved = takeLeftover(pkg);
 
-          // 3) Chocolate sin guardar → materializar agregado con peso por defecto
-          if (!saved && pkg === 'chocolate') {
-            const newCh: DispatchItem = {
-              // `id` DETERMINISTA por slot: dos equipos que materializan el mismo chocolate generan
-              // la MISMA llave, así el merge por-ítem lo reconoce como uno solo. Antes el CH salía
-              // sin `id` y el reducer le estampaba uno local por dispositivo (`di-<ts>-<n>`), de modo
-              // que el mismo chocolate viajaba con llaves distintas y `mergeListaPorItem` lo
-              // duplicaba. (RM/Costa ya asignaba id acá — esto empareja el comportamiento.)
-              id: sid ? `ch-slot-${sid}` : `ch-${selectedTienda}-${chCount + 1}-${Date.now()}`,
-              orden: `chocolate${++chCount}`, tipo: mapearContenido(s.contenido), pkg: 'chocolate',
-              // Espejo del mismo arreglo en StepForm: el peso sale del slot de Picking si alguien
-              // lo pesó, y solo cae en la constante cuando nadie lo hizo.
-              peso: pesoChocolate(s), alto: CHOCOLATE_DIMS_R.alto, ancho: CHOCOLATE_DIMS_R.ancho, largo: CHOCOLATE_DIMS_R.largo,
-              guia: '', valor: 0, pickingSlotId: sid || undefined,
-            };
-            chocToCreate.push(newCh);
-            saved = newCh;
-          }
+          // El chocolate NO se auto-agrega: cae al formulario vacío como el bulto y el pallet.
+          // Mismo cambio que en StepForm — ver el comentario de allá para el por qué.
 
           if (saved) {
             // Un ítem guardado SIEMPRE se muestra como tarjeta (nunca vuelve a formulario)
@@ -793,17 +773,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           });
         });
         setFormRows(rows);
-
-        // Persistir en el estado los chocolates auto-agregados + reflejar peso en picking_pallets
-        if (chocToCreate.length > 0) {
-          dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: [...existingItems, ...chocToCreate] });
-          for (const ch of chocToCreate) {
-            if (!ch.pickingSlotId) continue;
-            supabase.from('picking_pallets').update({
-              peso_kg: ch.peso, alto: ch.alto, ancho: ch.ancho, largo: ch.largo,
-            }).eq('id', ch.pickingSlotId).then(({ error }) => { if (error) console.error('[picking_pallets update]', error.message); });
-          }
-        }
       } else if (existingItems.length === 0) {
         // No picking data — fall back to manual preset if set
         const preset = presets[selectedTienda];
@@ -1129,7 +1098,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   };
 
   // [Duplicar bulto] Crea `cantidad` copias de un bulto guardado con su MISMO peso y medidas,
-  // agregadas al instante (mismo patrón que auto-agregar un chocolate). Solo para bultos (pkg 'box').
+  // agregadas al instante, sin pasar por el formulario. Solo para bultos (pkg 'box').
   const duplicarBulto = async (row: FormRow, cantidad: number) => {
     const src = row.savedItem;
     if (!src || !selectedTienda) return;
