@@ -34,6 +34,7 @@ import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { useTiendaTerminada } from '../../shared/useTiendaTerminada';
 import { usePresenciaTienda, type ViendoInfo } from '../../shared/usePresenciaTienda';
 import { PresenciaBadge } from '../../shared/PresenciaBadge';
+import { MarcaSinPesar } from '../../shared/MarcaSinPesar';
 import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconcileSavedRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
@@ -161,6 +162,9 @@ interface GridCardProps {
   terminada?: boolean;
   /** [Presencia] Quién más tiene esta tienda abierta ahora. */
   viendo?: ViendoInfo[];
+  /** Unidades guardadas sin pesar. Se veía solo DENTRO de la tienda; ahora también desde la
+   *  grilla, que es donde se decide a cuál entrar. Ver `MarcaSinPesar`. */
+  sinPesarCount?: number;
   onSelect: () => void;
   onDragStart?: (e: React.DragEvent) => void;
   /** [Bug tablet 2026-09-09] El drag HTML5 nativo no dispara de forma confiable con touch — en una
@@ -169,7 +173,7 @@ interface GridCardProps {
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, onSelect, onDragStart, onAddToday, onRemoveFromToday }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, sinPesarCount, onSelect, onDragStart, onAddToday, onRemoveFromToday }: GridCardProps) {
   const t = TIENDAS[name];
   const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
   // Desconta los ya ingresados — ghost solo muestra los pendientes de picking
@@ -189,6 +193,7 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       className={`flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]
         ${claseTarjetaTienda(estadoCard)}`}>
       <PresenciaBadge viendo={viendo} />
+      <MarcaSinPesar sinPesar={sinPesarCount} />
       {isToday && onRemoveFromToday && (
         <button onClick={e => { e.stopPropagation(); onRemoveFromToday(); }}
           className="absolute top-0.5 right-0.5 w-6 h-6 flex items-center justify-center text-[14px] text-warn bg-[rgba(217,119,6,0.15)] hover:bg-[rgba(217,119,6,0.28)] rounded-full cursor-pointer border-none leading-none transition-colors"
@@ -2425,7 +2430,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   return (
                     <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]}
                       isActive={selectedTienda === t.name} isToday
-                      itemCount={cardItems.length}
+                      itemCount={cardItems.length} sinPesarCount={cardItems.filter(esSinPesar).length}
                       palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
                       contenedorCount={cardItems.filter(i => i.pkg === 'contenedor').length}
                       chocolateCount={cardItems.filter(i => i.pkg === 'chocolate').length}
@@ -2480,7 +2485,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     return (
                       <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]}
                         isActive={selectedTienda === t.name} isToday={false}
-                        itemCount={cardItems.length}
+                        itemCount={cardItems.length} sinPesarCount={cardItems.filter(esSinPesar).length}
                         palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
                         contenedorCount={cardItems.filter(i => i.pkg === 'contenedor').length}
                         chocolateCount={cardItems.filter(i => i.pkg === 'chocolate').length}

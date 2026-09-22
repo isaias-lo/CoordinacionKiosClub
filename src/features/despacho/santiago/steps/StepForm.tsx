@@ -42,6 +42,7 @@ import { useTiendaTerminada, type TerminadaInfo } from '../../shared/useTiendaTe
 import { STORE_CARD_BADGE as SCB, claseTarjetaTienda, claseCodigoTienda, claseEtiquetaTerminada } from '../../shared/storeCardStyles';
 import { usePresenciaTienda, type ViendoInfo } from '../../shared/usePresenciaTienda';
 import { PresenciaBadge } from '../../shared/PresenciaBadge';
+import { MarcaSinPesar } from '../../shared/MarcaSinPesar';
 import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { supabase } from '../../../../lib/supabase';
@@ -156,7 +157,7 @@ interface ResumenEditState {
 function TiendaGridCard({
   t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
   despachoP, despachoB, despachoC, despachoCH, hasGuide, storeDoneOps = 0, storeTotalOps = 0,
-  tipoCat, terminada, viendo,
+  tipoCat, terminada, viendo, sinPesarCount,
   onSelect, onAddToday, onRemoveFromToday,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
@@ -170,6 +171,9 @@ function TiendaGridCard({
   terminada?: boolean;
   /** [Presencia] Quién más tiene esta tienda abierta ahora. */
   viendo?: ViendoInfo[];
+  /** Unidades guardadas sin pesar. Se veía solo DENTRO de la tienda; ahora también desde la
+   *  grilla, que es donde se decide a cuál entrar. Ver `MarcaSinPesar`. */
+  sinPesarCount?: number;
   onSelect: () => void;
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
@@ -193,6 +197,7 @@ function TiendaGridCard({
       className={`flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]
         ${claseTarjetaTienda(estadoCard)}`}>
       <PresenciaBadge viendo={viendo} />
+      <MarcaSinPesar sinPesar={sinPesarCount} />
       {isToday && onRemoveFromToday && (
         <button onClick={e => { e.stopPropagation(); onRemoveFromToday(); }}
           className="absolute top-0.5 right-0.5 w-6 h-6 flex items-center justify-center text-[14px] text-warn bg-[rgba(217,119,6,0.15)] hover:bg-[rgba(217,119,6,0.28)] rounded-full cursor-pointer border-none leading-none transition-colors"
@@ -2001,6 +2006,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                 <TiendaGridCard key={t.cod} t={t} tipoCat={tipoCatByCod[t.cod]}
                   isActive={currentTienda?.cod === t.cod} isToday
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
+                  sinPesarCount={tI.filter(esSinPesar).length}
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
@@ -2040,6 +2046,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                 <TiendaGridCard key={t.cod} t={t} tipoCat={tipoCatByCod[t.cod]}
                   isActive={currentTienda?.cod === t.cod} isToday={false}
                   itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
+                  sinPesarCount={tI.filter(esSinPesar).length}
                   contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
                   chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
