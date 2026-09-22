@@ -11,7 +11,7 @@ import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '.
 import { guideKey } from '../utils/guideKey';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
-import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_MAX, CHOCOLATE_PESO_DEFECTO } from '@/features/despacho/shared/chocolate';
+import { pesoChocolate, CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED, CHOCOLATE_PESO_MAX } from '@/features/despacho/shared/chocolate';
 import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroVisibleCard, ordenDeItem, renumerarOrden, etiquetaCard } from '@/features/despacho/shared/numeroCard';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
@@ -107,7 +107,6 @@ const ESTADOS: EstadoItem[] = [
 // regiones/data/tiendas.ts y TiendasPage como CHOCOLATE_DIMS_R, esta última con los campos en
 // otro orden), y el peso por defecto en dos. Cambiar la caja obligaba a acordarse de los cinco.
 const CHOCOLATE_DIMS         = { ...CHOCOLATE_DIMS_SHARED, pesoMax: CHOCOLATE_PESO_MAX };
-const CHOCOLATE_DEFAULT_PESO = CHOCOLATE_PESO_DEFECTO;
 
 // Alias de códigos que llegan distintos en las guías PDF (campo "SEÑOR (ES)") vs el código real.
 // Ej.: BUENAVENTURA 2 es 35BN2, pero en la guía aparece como 35BNT.
@@ -1082,7 +1081,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             const chocItems: SantiagoItem[] = Array.from({ length: chocPresetCount }, (_, i) => ({
               id: `ch-pre-${Date.now()}-${i}`, tiendaCod: currentTienda.cod,
               tipo: 'Chocolate' as TipoCargamento, contenido: 'Chocolate' as ContenidoSantiago,
-              peso: 25, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
+              peso: 0, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
               pesoVolumetrico: 0, regimen, orden: `CH${i + 1}`, estado: ESTADO_DEFAULT,
             }));
             dispatch({ type: 'SET_ITEMS', tiendaCod: currentTienda.cod, items: chocItems });
@@ -1830,20 +1829,20 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       const stamp = Date.now();
       const item: SantiagoItem = {
         id: `${cod}-chadd-${stamp}-${countOffset}`, tiendaCod: cod, tipo: 'Chocolate', contenido: 'Chocolate',
-        peso: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
+        peso: 0, alto: CHOCOLATE_DIMS.alto, largo: CHOCOLATE_DIMS.largo, ancho: CHOCOLATE_DIMS.ancho,
         pesoVolumetrico: 0, regimen, orden: `CH${chc}`, estado: ESTADO_DEFAULT,
         pickingSlotId: slot?.id,
       };
       dispatch({ type: 'ADD_ITEM', item });
       setFormRows(prev => [...prev, {
         id: `saved-chadd-${stamp}-${countOffset}`, tipo: 'Chocolate', contenido: 'Chocolate',
-        peso: String(CHOCOLATE_DEFAULT_PESO), alto: String(CHOCOLATE_DIMS.alto),
+        peso: '', alto: String(CHOCOLATE_DIMS.alto),
         largo: String(CHOCOLATE_DIMS.largo), ancho: String(CHOCOLATE_DIMS.ancho),
         saved: true, savedItem: item, pickingSlotId: slot?.id,
       }]);
       if (slot?.id) {
         supabase.from('picking_pallets').update({
-          peso_kg: CHOCOLATE_DEFAULT_PESO, alto: CHOCOLATE_DIMS.alto, ancho: CHOCOLATE_DIMS.ancho, largo: CHOCOLATE_DIMS.largo,
+          alto: CHOCOLATE_DIMS.alto, ancho: CHOCOLATE_DIMS.ancho, largo: CHOCOLATE_DIMS.largo,
         }).eq('id', slot.id).then(({ error }) => { if (error) console.error('[picking_pallets update]', error.message); });
       }
       showToast(`✓ ${item.orden} agregado`, '#16A34A');
