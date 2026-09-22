@@ -42,3 +42,54 @@ export async function sendOTPEmail(to: string, storeName: string, otp: string, o
     `,
   });
 }
+
+/**
+ * [Panel Conductor · Fase 6] Comprobante de entrega — mismo patrón que Onfleet/Amazon Flex: la
+ * tienda recibe automáticamente un resumen apenas se confirma, sin tener que pedirlo. Se manda al
+ * MISMO correo que ya validó el OTP (no a `body.correos` de nuevo): es la prueba de que esa
+ * bandeja específica confirmó esta entrega puntual.
+ *
+ * Fire-and-forget desde el caller — un fallo de correo no debe hacer fallar la entrega, que ya
+ * quedó guardada en la base antes de intentar esto.
+ */
+export async function sendComprobanteEntregaEmail(a: {
+  to: string; storeCod: string; storeName?: string | null;
+  receptor: string; horaISO: string; observaciones?: string | null; fotoUrls: string[];
+  origin?: string;
+}): Promise<void> {
+  const hora = new Date(a.horaISO).toLocaleString('es-CL', { timeZone: 'America/Santiago', dateStyle: 'medium', timeStyle: 'short' });
+  const logoHtml = a.origin
+    ? `<img src="${a.origin}/logo-kiosclub-email.webp" alt="KIOS Club — American Supermarket" width="200" style="max-width:200px;height:auto;display:inline-block;border-radius:8px;" />`
+    : `<span style="font-size:32px;font-weight:900;color:#C62828;letter-spacing:-1px;">KIOS<span style="font-style:italic;">Club</span></span>`;
+  const fotosHtml = a.fotoUrls.length
+    ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+        ${a.fotoUrls.map(u => `<img src="${u}" alt="Evidencia de entrega" width="120" style="width:120px;height:120px;object-fit:cover;border-radius:8px;border:1px solid #E2E8F0;" />`).join('')}
+      </div>`
+    : '';
+  await transporter.sendMail({
+    from: `"KiosClub Despacho" <${process.env.GMAIL_USER}>`,
+    to: a.to,
+    subject: `Comprobante de entrega — ${a.storeName ?? a.storeCod}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background: #f8faff; border-radius: 16px;">
+        <div style="text-align: center; margin-bottom: 28px;">${logoHtml}</div>
+
+        <div style="background: #DCFCE7; border-radius: 12px; padding: 20px 24px; text-align: center; margin-bottom: 24px;">
+          <p style="margin: 0; font-size: 15px; font-weight: 800; color: #16A34A;">✓ Entrega confirmada</p>
+          <p style="margin: 4px 0 0; font-size: 13px; color: #15803D;">${a.storeName ?? a.storeCod} (${a.storeCod})</p>
+        </div>
+
+        <table style="width:100%; font-size: 13px; color: #374151; border-collapse: collapse;">
+          <tr><td style="padding: 4px 0; color: #9CA3AF;">Hora</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${hora}</td></tr>
+          <tr><td style="padding: 4px 0; color: #9CA3AF;">Recibió</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${a.receptor}</td></tr>
+          ${a.observaciones ? `<tr><td style="padding: 4px 0; color: #9CA3AF;">Observaciones</td><td style="padding: 4px 0; text-align: right;">${a.observaciones}</td></tr>` : ''}
+        </table>
+        ${fotosHtml}
+
+        <p style="font-size: 12px; color: #9CA3AF; margin: 20px 0 0;">
+          Este correo se genera automáticamente al confirmar la entrega. Si algo no corresponde, contacta a tu supervisor de KiosClub.
+        </p>
+      </div>
+    `,
+  });
+}

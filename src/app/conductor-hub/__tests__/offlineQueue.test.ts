@@ -9,6 +9,8 @@ function item(fotos: FotoQueued[]): EntregaPendiente {
   return {
     id: 'x', rutaTiendaId: 1, rutaId: 1, storeCod: '01ABC', tipo: 'seco',
     horaEntregaLocal: '2026-09-10T12:00:00Z', fotos, intentos: 0, createdAt: Date.now(),
+    receptor: 'Juana Pérez', rut: '12.345.678-9',
+    otpToken: 'tok', otpEmail: 'tienda@ejemplo.cl', otpCodigo: '123456',
   };
 }
 

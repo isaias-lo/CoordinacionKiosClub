@@ -30,13 +30,16 @@ export interface EventoRuta {
 }
 
 /**
- * Llegada a una tienda. La hora es la de la FOTO del sello, no la del escaneo. Sin ruta encontrada
- * igual se guarda —la columna admite nulo—, con la tienda y la patente: la hora sirve igual.
+ * Llegada a una tienda. La hora es la de la FOTO del sello, no la del escaneo (flujo original de
+ * "Entregar en Tienda"). `fuente` es informativa (queda en `ruta_eventos.datos` para saber de
+ * dónde salió el dato); el flujo de "Registrar entrega" pasa `'registrar_entrega'` porque ahí la
+ * hora es la del tap en el botón, no la de una foto de sello. Sin ruta encontrada igual se guarda
+ * —la columna admite nulo—, con la tienda y la patente: la hora sirve igual.
  */
-export function eventoLlegada(a: { rutaId: number | null; storeCod: string; horaISO: string; patente: string }): EventoRuta {
+export function eventoLlegada(a: { rutaId: number | null; storeCod: string; horaISO: string; patente: string; fuente?: string }): EventoRuta {
   return {
     ruta_id: a.rutaId, tipo: 'llegada',
-    datos: { store_cod: norm(a.storeCod), hora: a.horaISO, patente: a.patente || null, fuente: 'sello_llegada' },
+    datos: { store_cod: norm(a.storeCod), hora: a.horaISO, patente: a.patente || null, fuente: a.fuente ?? 'sello_llegada' },
   };
 }
 

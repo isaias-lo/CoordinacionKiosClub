@@ -5,6 +5,8 @@ import { verifyAuth } from '@/lib/apiAuth';
 import { norm } from '@/features/despacho/rutas/utils/helpers';
 import { ESTADO_TO_SEGUIMIENTO, syncSeguimientoDespacho } from './seguimientoSync';
 import { fechaChile } from '@/lib/fechaChile';
+import { verifyOtpToken } from '@/lib/otpToken';
+import { sendComprobanteEntregaEmail } from '@/lib/gmail';
 
 /** Suma `n` días a una fecha ISO YYYY-MM-DD (DST-safe vía UTC). */
 function addDaysIso(iso: string, n: number): string {
@@ -75,20 +77,30 @@ export async function GET(request: NextRequest) {
   // [Panel Conductor] `ruta_tiendas` no trae dirección — solo vive en el catálogo `tiendas`. Sin
   // esto, el chofer ve el nombre y el código de cada parada pero no adónde ir. Mismo patrón de
   // join que ya usa GET /api/r/[token] (batch por `codigo`, no un fetch por tienda).
+  // [Fase 6] Se suma lat/lon (navegación con un toque), tel_encargado (llamar a la tienda) y
+  // observacion (instrucción de entrega que no es un horario, ej. "puerta trasera después de las
+  // 10:00") — los tres ya existían en `tiendas` sin usarse en ningún lado de la app.
   const rutas = (data ?? []) as { ruta_tiendas?: { store_cod: string }[] }[];
   const cods = [...new Set(rutas.flatMap(r => (r.ruta_tiendas ?? []).map(t => t.store_cod)))];
   if (cods.length) {
     const { data: tiendaRows } = await supabaseServer()
       .from('tiendas')
-      .select('codigo, direccion, sector_comuna')
+      .select('codigo, direccion, sector_comuna, lat, lon, tel_encargado, observacion')
       .in('codigo', cods);
-    const dirByCod = new Map((tiendaRows ?? []).map((t: { codigo: string; direccion: string | null; sector_comuna: string | null }) =>
-      [t.codigo, { direccion: t.direccion, comuna: t.sector_comuna }]));
+    type TiendaRow = {
+      codigo: string; direccion: string | null; sector_comuna: string | null;
+      lat: number | null; lon: number | null; tel_encargado: string | null; observacion: string | null;
+    };
+    const dirByCod = new Map((tiendaRows ?? []).map((t: TiendaRow) => [t.codigo, t]));
     for (const r of rutas) {
       for (const t of (r.ruta_tiendas ?? []) as unknown as Record<string, unknown>[]) {
         const d = dirByCod.get(t.store_cod as string);
-        t.direccion = d?.direccion ?? null;
-        t.comuna    = d?.comuna ?? null;
+        t.direccion     = d?.direccion ?? null;
+        t.comuna        = d?.sector_comuna ?? null;
+        t.lat           = d?.lat ?? null;
+        t.lon           = d?.lon ?? null;
+        t.tel_encargado = d?.tel_encargado || null;
+        t.observacion   = d?.observacion || null;
       }
     }
   }
@@ -371,6 +383,16 @@ export async function PATCH(request: NextRequest) {
      *  viene (el camino en línea de siempre), se usa `now()` como hasta ahora.
      */
     hora_entrega?: string;
+    /** [Flujo único + OTP] Quién recibió la entrega — obligatorio, igual que en el flujo viejo que
+     *  se retiró (RecepcionForm). Sin esto una foto sola no prueba QUIÉN aceptó la mercadería. */
+    receptor?: string; rut?: string; observaciones?: string;
+    /** Token HMAC ya verificado por PUT /api/recepcion-otp (mismo mecanismo que usaba el flujo
+     *  viejo) — se re-valida acá server-side antes de aceptar la entrega, para que un cliente
+     *  alterado no pueda saltarse la confirmación real de la tienda. */
+    otpToken?: string; otpEmail?: string; otpCodigo?: string;
+    /** [Fase 6] "No se pudo entregar" — su presencia decide el branch (ver más abajo). Sin
+     *  receptor ni OTP: no hubo nadie que confirmara nada. */
+    motivo?: string; descripcion?: string;
   };
   const sb = supabaseServer();
 
@@ -391,8 +413,58 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // ── No se pudo entregar (Fase 6) ────────────────────────────────────────────
+  // Distinto del branch de abajo: no hay receptor ni OTP que pedir — nadie recibió nada. Se
+  // revisa PRIMERO (antes del branch de éxito) porque comparte `ruta_tienda_id` con él; `motivo`
+  // es lo que los distingue.
+  if (body.ruta_tienda_id != null && body.motivo) {
+    const horaCliente = body.hora_entrega ? new Date(body.hora_entrega) : null;
+    const horaIntento  = horaCliente && !Number.isNaN(horaCliente.getTime()) ? horaCliente.toISOString() : new Date().toISOString();
+    const { data: rt, error: rtErr } = await sb.from('ruta_tiendas')
+      // `estado_entrega` distinto de 'entregado': no cuenta como resuelta-con-éxito en el
+      // progreso, pero tampoco debe seguir apareciendo como "Siguiente" — ver progreso.ts.
+      .update({ estado_entrega: 'no_entregado', foto_urls: body.foto_urls ?? [], hora_entrega: horaIntento })
+      .eq('id', body.ruta_tienda_id)
+      .select('id, ruta_id, store_cod')
+      .single();
+    if (rtErr) return NextResponse.json({ error: rtErr.message }, { status: 500 });
+
+    void sb.from('ruta_eventos').insert({
+      ruta_id: rt.ruta_id, tipo: 'incidencia',
+      datos: { store_cod: rt.store_cod, motivo: body.motivo, descripcion: body.descripcion ?? null, foto_urls: body.foto_urls ?? [] },
+    });
+
+    // Misma cola que ya usa /incidencias (RECIBIDO_INCIDENCIA + estado_resolucion PENDIENTE) —
+    // no una tabla/estado paralelo, así el supervisor sigue viendo todo en un solo lugar.
+    void sb.from('trazabilidad_unidades')
+      .update({
+        fecha_hora_real_llegada: horaIntento,
+        estado_actual:           'RECIBIDO_INCIDENCIA',
+        tipo_incidencia:         body.motivo,
+        descripcion_incidencia:  body.descripcion ?? null,
+        links_evidencia:         body.foto_urls ?? [],
+        estado_resolucion:       'PENDIENTE',
+      })
+      .eq('ruta_id', rt.ruta_id)
+      .eq('codigo_tienda', rt.store_cod)
+      .in('estado_actual', ['EN_RUTA', 'CREADO']);
+
+    return NextResponse.json({ data: rt, hora_entrega: horaIntento });
+  }
+
   // ── Registrar entrega de UNA parada (fotos + hora real) ────────────────────
   if (body.ruta_tienda_id != null) {
+    // [Flujo único + OTP] Este es ahora el ÚNICO camino por el que una entrega queda registrada
+    // (se retiró "Entregar en Tienda") — así que absorbe sus dos garantías: quién recibió
+    // (nombre+RUT, sin esto una foto sola no prueba nada) y que la tienda participó de verdad
+    // (el código llegó a su correo, no algo que el chofer se pueda autoconfirmar). Se revalida el
+    // token OTP server-side — no basta con que el cliente diga "ya lo verifiqué" — para que un
+    // cliente alterado no pueda saltarse la confirmación real de la tienda.
+    if (!body.receptor?.trim() || !body.rut?.trim())
+      return NextResponse.json({ error: 'Falta el nombre y RUT de quien recibe' }, { status: 400 });
+    if (!body.otpToken || !body.otpEmail || !body.otpCodigo || !verifyOtpToken(body.otpToken, body.otpEmail, body.otpCodigo))
+      return NextResponse.json({ error: 'Código de verificación inválido o vencido — pide uno nuevo' }, { status: 403 });
+
     // Valida el override del cliente: si viene basura, se ignora silenciosamente y se usa la hora
     // del servidor — mejor una hora aproximada que una entrega que falla por un dato mal formado.
     const horaCliente  = body.hora_entrega ? new Date(body.hora_entrega) : null;
@@ -400,15 +472,50 @@ export async function PATCH(request: NextRequest) {
     const { data: rt, error: rtErr } = await sb.from('ruta_tiendas')
       .update({ estado_entrega: 'entregado', foto_urls: body.foto_urls ?? [], hora_entrega: horaEntrega })
       .eq('id', body.ruta_tienda_id)
-      .select('id, ruta_id, store_cod')
+      .select('id, ruta_id, store_cod, nombre')
       .single();
     if (rtErr) return NextResponse.json({ error: rtErr.message }, { status: 500 });
-    // Evento con el detalle completo (fotos, temperatura si es congelado) — `ruta_tiendas` guarda
-    // el estado ACTUAL para consultar rápido; `ruta_eventos` es el historial de qué pasó y cuándo.
+    // Evento con el detalle completo (fotos, temperatura si es congelado, receptor) —
+    // `ruta_tiendas` guarda el estado ACTUAL para consultar rápido; `ruta_eventos` es el
+    // historial de qué pasó y cuándo.
     void sb.from('ruta_eventos').insert({
       ruta_id: rt.ruta_id, tipo: 'entrega',
-      datos: { store_cod: rt.store_cod, foto_urls: body.foto_urls ?? [], temperatura: body.temperatura ?? null },
+      datos: {
+        store_cod: rt.store_cod, foto_urls: body.foto_urls ?? [], temperatura: body.temperatura ?? null,
+        receptor: body.receptor, rut: body.rut, observaciones: body.observaciones ?? null,
+      },
     });
+
+    // [Flujo único] `trazabilidad_unidades` es el libro de custodia que usa el resto de la empresa
+    // (Auditoría, Control Despacho) — antes SOLO lo escribía "Entregar en Tienda". Sin esto, una
+    // entrega registrada acá quedaría invisible para todo lo que lee esa tabla. Se actualizan
+    // TODAS las unidades EN_RUTA/CREADO de esa parada (pallets y bultos): acá la confirmación es
+    // por PARADA completa, no por unidad escaneada una por una como en el flujo viejo.
+    void sb.from('trazabilidad_unidades')
+      .update({
+        fecha_hora_real_llegada: horaEntrega,
+        estado_actual:           'RECIBIDO_CONFORME',
+        usuario_recepcion:       body.receptor,
+        observaciones:           body.observaciones ?? null,
+        links_evidencia:         body.foto_urls ?? [],
+        ...(body.temperatura !== undefined ? { temperatura_llegada: body.temperatura } : {}),
+      })
+      .eq('ruta_id', rt.ruta_id)
+      .eq('codigo_tienda', rt.store_cod)
+      .in('estado_actual', ['EN_RUTA', 'CREADO']);
+
+    // [Fase 6] Comprobante automático — mismo patrón que Onfleet/Amazon Flex: la tienda no
+    // tiene que pedir nada, le llega solo. Al MISMO correo que ya confirmó el OTP (no a
+    // `tiendas.correos` de nuevo): es prueba de que esa bandeja fue la que confirmó ESTA entrega.
+    // Fire-and-forget: un correo caído no debe invalidar una entrega ya guardada.
+    if (body.otpEmail) {
+      sendComprobanteEntregaEmail({
+        to: body.otpEmail, storeCod: rt.store_cod, storeName: rt.nombre,
+        receptor: body.receptor, horaISO: horaEntrega, observaciones: body.observaciones ?? null,
+        fotoUrls: body.foto_urls ?? [], origin: new URL(request.url).origin,
+      }).catch(e => console.error('[comprobante entrega]', e instanceof Error ? e.message : e));
+    }
+
     return NextResponse.json({ data: rt, hora_entrega: horaEntrega });
   }
 

@@ -41,6 +41,11 @@ describe('eventoLlegada', () => {
     expect(e.ruta_id).toBeNull();
     expect(e.datos.store_cod).toBe('99ZZZ');
   });
+
+  it('acepta una `fuente` distinta (ej. "Registrar entrega", que no tiene foto de sello)', () => {
+    const e = eventoLlegada({ rutaId: 11, storeCod: '16PQA', horaISO: '2026-09-11T12:31:05.000Z', patente: 'ABCD12', fuente: 'registrar_entrega' });
+    expect(e.datos.fuente).toBe('registrar_entrega');
+  });
 });
 
 describe('eventoSalida', () => {

@@ -6,6 +6,7 @@ import { TIENDAS_INICIAL } from '../../features/despacho/rutas/data/tiendas';
 import { formatCod } from '../../features/despacho/rutas/utils/helpers';
 import { guiaHref } from '../../lib/guiaUrl';
 import { safeStorageKey } from '../../lib/storageKey';
+import { formatRut } from '../../lib/rut';
 import type { FotoRegistro, QRData, SelloEstado } from './RecepcionTiendaScreen';
 import { formatHora } from './RecepcionTiendaScreen';
 
@@ -28,15 +29,6 @@ const S: Record<string, React.CSSProperties> = {
   input:        { width: '100%', border: '2px solid #E5E7EB', borderRadius: 12, padding: '10px 14px', fontSize: 15, outline: 'none', boxSizing: 'border-box' as const, color: '#1F2937' },
   sectionTitle: { margin: '0 0 12px', fontSize: 11, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.1em', textTransform: 'uppercase' as const },
 };
-
-function formatRut(raw: string): string {
-  const clean = raw.replace(/[^0-9kK]/g, '').toUpperCase().slice(0, 9);
-  if (clean.length < 2) return clean;
-  const dv     = clean.slice(-1);
-  const num    = clean.slice(0, -1);
-  const dotted = num.length > 3 ? num.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : num;
-  return `${dotted}-${dv}`;
-}
 
 // Sin `upsert`: los nombres llevan la hora exacta (`${cod}_${Date.now()}`), así que no chocan, y en
 // Supabase un upsert exige además permisos de lectura y actualización sobre el bucket. Con subir
