@@ -7,6 +7,9 @@ import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 export interface PickingSlot {
   id:           number;
   tipo:         string;   // P | B | C | CH
+  /** Solo para CH: 'negra' (medidas fijas + tara) o 'carton' (ni una ni otra). Ausente en todo lo
+   *  anterior al 22/09/2026, que se lee como negra. Ver `shared/subtipoCaja.ts`. */
+  subtipo:      string | null;
   contenido:    string;
   seq:          number | null;
   canonical_id: string | null;
