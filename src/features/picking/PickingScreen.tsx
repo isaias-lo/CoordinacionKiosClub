@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { usePestanaRecordada } from '@/hooks/usePestanaRecordada';
 import { claveSesion, parseClaveSesion, TIPO_NOMBRE } from '@/lib/sessionStateKeys';
-import { dimsChocolate } from '@/features/despacho/shared/chocolate';
 import { pesoVolumetrico } from '@/features/despacho/shared/medidasPallet';
 import {
   pesoTotalValido, repartirPeso, serializarPesoTotal, leerPesoTotal,
@@ -18,6 +17,15 @@ import { Printer, Bell, AlertTriangle, RefreshCw, Package, UserPlus } from 'luci
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
 import { fetchCalendarioCongelados, subscribeToCalendarioCongelados, type CalRecord } from '@/lib/calendarioCongeladosSync';
 import { LabelConfig, DEFAULT_LABEL_CONFIG, BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
+import { subtipoDeCaja, claveUnidad, partirClave, medidasDeCaja } from '@/features/despacho/shared/subtipoCaja';
+import type { ClaveUnidad } from './tiposUnidad';
+
+/** Cómo se llama cada unidad en pantalla, por CLAVE. El chocolate va abierto en sus dos cajas. */
+const NOMBRE_UNIDAD: Record<string, string> = {
+  P: 'Pallet', C: 'Contenedor', B: 'Bulto',
+  'CH:negra': 'Chocolate · Caja Negra', 'CH:carton': 'Chocolate · Caja Cartón',
+  CC: 'Caja Cartón', CN: 'Caja Negra',
+};
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
@@ -175,7 +183,7 @@ export function PickingScreen() {
   const [manualBatch, setManualBatch]         = useState('');
   // Con qué unidad nace el encargado. Antes siempre un Pallet — también en Congelados, que solo
   // maneja cajas, y en Chocolates, donde el 99% de lo que se prepara es CH.
-  const [manualTipo, setManualTipo]           = useState<PickerType>('P');
+  const [manualTipo, setManualTipo]           = useState<ClaveUnidad>('P');
   // Bug 5 reportado: el botón de imprimir toda una tienda disparaba la impresión de una al
   // toque, sin confirmar — un click accidental imprimía una etiqueta real de más. Armar/
   // confirmar: el primer click solo "arma" el botón (2.5 s); el segundo click, dentro de esa
@@ -225,7 +233,9 @@ export function PickingScreen() {
   const palletsByTipoAndStateKey = useMemo(() => {
     const result: Record<string, Record<string, number>> = {};
     for (const s of palletSlots) {
-      const t = s.tipo || 'P';
+      // Por CLAVE (`CH:negra` / `CH:carton` / el tipo pelado): dos botones escriben el mismo tipo
+      // 'CH', así que contar por tipo les daría a los dos el mismo número.
+      const t = claveUnidad(s.tipo || 'P', s.subtipo);
       if (!result[s.state_key]) result[s.state_key] = {};
       result[s.state_key][t] = (result[s.state_key][t] ?? 0) + 1;
     }
@@ -402,9 +412,12 @@ export function PickingScreen() {
       setPesoTotalGuardado(prev => ({ ...prev, [k]: guardado }));
       upsertSessionState(stateKey, serializarPesoTotal(guardado), `peso-total-${tipo}`);
       const partes = repartirPeso(v.total, cajas.length);
-      // El chocolate tiene medidas fijas; las cajas de congelado solo llevan peso.
-      const extra = tipo === 'CH'
-        ? { ...dimsChocolate(), peso_v: pesoVolumetrico(dimsChocolate().alto, dimsChocolate().largo, dimsChocolate().ancho) }
+      // Las medidas fijas son de la CAJA NEGRA. La de cartón varía de tamaño, así que no se le
+      // escribe ninguna — inventarlas sería peor que no tenerlas. Las de congelado, solo peso.
+      const cajaDeEstas = tipo === 'CH' ? subtipoDeCaja(cajas[0]?.subtipo) : null;
+      const dims = cajaDeEstas ? medidasDeCaja(cajaDeEstas) : null;
+      const extra = dims
+        ? { ...dims, peso_v: pesoVolumetrico(dims.alto, dims.largo, dims.ancho) }
         : {};
       cajas.forEach((sl, i) => {
         supabase.from('picking_pallets').update({ peso_kg: partes[i], ...extra }).eq('id', sl.id)
@@ -549,7 +562,7 @@ export function PickingScreen() {
     try {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('id, store_cod, state_key, picker_label, tipo, contenido, section, refs, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v')
+        .select('id, store_cod, state_key, picker_label, tipo, subtipo, contenido, section, refs, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v')
         .eq('date', todayISO())
         .eq('is_active', true)
         .order('created_at', { ascending: true })
@@ -629,7 +642,7 @@ export function PickingScreen() {
     return unsub;
   }, [loadPalletSlots]);
 
-  const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '', section: string | null = null, medidas?: MedidasPallet) => {
+  const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '', section: string | null = null, medidas?: MedidasPallet, subtipo: string | null = null) => {
     const date = todayISO();
     // Idempotencia: id de operación único por click. Si el POST se reintenta (red,
     // doble-click, replay de cola offline), el server deduplica por client_op_id.
@@ -641,7 +654,7 @@ export function PickingScreen() {
     const tempId = tempIdRef.current--;
     const tempSlot: PalletSlot = {
       id: tempId, store_cod: storeCod, state_key: stateKey,
-      picker_label: pickerLabel, tipo, contenido, section, refs,
+      picker_label: pickerLabel, tipo, subtipo, contenido, section, refs,
       created_at: new Date().toISOString(),
       ...(medidas ?? {}),
     };
@@ -649,7 +662,7 @@ export function PickingScreen() {
     try {
       const res = await pickingFetch('/api/picking-pallets', {
         method: 'POST',
-        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, contenido, section, refs, actor_name: actorName, client_op_id: clientOpId, ...(medidas ?? {}) }),
+        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, subtipo, contenido, section, refs, actor_name: actorName, client_op_id: clientOpId, ...(medidas ?? {}) }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
@@ -705,8 +718,10 @@ export function PickingScreen() {
     // BUG 7 corregido: antes 'all' caía en contenido='hogar' por defecto, así que
     // seccionDeSlot (sin `section`, cae al contenido) lo clasificaba como Hogar en vez de
     // dejarlo sin clasificar — 'mixto' no matchea ninguna sección en seccionDeContenido.
-    const { seccion, contenido } = seccionYContenidoManual(manualSeccion, manualTipo);
-    void addPalletSlot(stateKey, cod, nombre, manualTipo, contenido, '', seccion);
+    // `manualTipo` es una CLAVE (puede traer la caja del chocolate): se parte antes de crear.
+    const { tipo: tipoManual, subtipo: subManual } = partirClave(manualTipo);
+    const { seccion, contenido } = seccionYContenidoManual(manualSeccion, tipoManual);
+    void addPalletSlot(stateKey, cod, nombre, tipoManual, contenido, '', seccion, undefined, subManual);
     // BUG 1/2 corregido: sin esto, el campo "Nombre del picker" del card recién creado
     // aparecía vacío (solo el placeholder mostraba el nombre) y la advertencia de fallback
     // salía de entrada aunque el encargado ya tuviera nombre real. Al sembrar el nombre acá
@@ -724,12 +739,15 @@ export function PickingScreen() {
 
   // section: cuando hay filtro de sección activo, elimina un slot DE ESA sección (para que el
   // "−" del stepper baje el conteo de la sección visible, no cualquier pallet del picker).
-  const removePalletSlot = useCallback(async (stateKey: string, tipo: string, section: Seccion | null = null) => {
+  const removePalletSlot = useCallback(async (stateKey: string, tipo: string, section: Seccion | null = null, subtipo: string | null = null) => {
     if (!isOnline) { console.warn('[picking] offline — cannot remove pallet slot'); return; }
     // Read from ref (avoids stale closure) and skip pending deletes; filters by tipo for 3-counter accuracy
     const slot = palletSlotsRef.current
       .filter(s => s.state_key === stateKey && (s.tipo || 'P') === tipo
         && (section == null || seccionDeSlot(s) === section)
+        // Con dos cajas bajo el mismo tipo CH, el "−" tiene que sacar una de LA CAJA que se está
+        // descontando. Sin esto, bajar el contador de cartón podía borrar una caja negra.
+        && (subtipo == null || subtipoDeCaja(s.subtipo) === subtipoDeCaja(subtipo))
         && !pendingDeleteIds.current.has(s.id))
       .at(-1);
     if (!slot) return;
@@ -1869,7 +1887,7 @@ export function PickingScreen() {
                         <div className="flex items-center gap-1" role="radiogroup" aria-label="Primera unidad del encargado">
                           <span className="text-[11px] text-slate-400 mr-0.5">Nace con</span>
                           {tiposDeUnidad(manualSeccion === 'congelados', manualSeccion).map(t => {
-                            const nombre = ({ P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate', CC: 'Caja Cartón', CN: 'Caja Negra' } as Record<PickerType, string>)[t];
+                            const nombre = NOMBRE_UNIDAD[t] ?? t;
                             const activo = manualTipo === t;
                             return (
                               <button key={t} type="button" role="radio" aria-checked={activo}
@@ -1974,8 +1992,10 @@ export function PickingScreen() {
                                 upsertSessionState(group.stateKey, name, 'P');
                                 renamePickerSlots(group.stateKey, name);
                               }}
-                              onTipoPalletsChange={(tipo, n) => {
-                                const current = cardPalletsByTipo[tipo] ?? 0;
+                              onTipoPalletsChange={(clave, n) => {
+                                // La interfaz cuenta por clave; la base guarda tipo y subtipo aparte.
+                                const { tipo, subtipo } = partirClave(clave);
+                                const current = cardPalletsByTipo[clave] ?? 0;
                                 const delta = n - current;
                                 const label = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
                                 // [Req 1] En la sección Chocolates el pallet ES de chocolate → forzar el
@@ -1994,9 +2014,9 @@ export function PickingScreen() {
                                   // Una caja nueva nace SIN peso: el total ya pesado era para las que
                                   // había, y repartirlo entre más sería inventar. La tarjeta avisa que
                                   // cambió la cantidad y pide volver a pesar (ver avisoCantidad).
-                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs, seccionSlot);
+                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs, seccionSlot, undefined, subtipo);
                                 } else if (delta < 0) {
-                                  for (let i = 0; i < -delta; i++) void removePalletSlot(group.stateKey, tipo, seccionActiva);
+                                  for (let i = 0; i < -delta; i++) void removePalletSlot(group.stateKey, tipo, seccionActiva, subtipo);
                                 }
                               }}
                               onRefreshOp={(op) => void refreshOp(op, cod)}

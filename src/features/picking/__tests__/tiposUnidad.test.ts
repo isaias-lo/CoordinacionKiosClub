@@ -37,7 +37,7 @@ describe('tiposDeUnidad — qué contadores muestra la tarjeta', () => {
   });
 
   it('Chocolates: solo Pallet y Chocolate', () => {
-    expect(tiposDeUnidad(false, 'chocolates')).toEqual(['P', 'CH']);
+    expect(tiposDeUnidad(false, 'chocolates')).toEqual(['P', 'CH:negra', 'CH:carton']);
   });
 
   it('Aseo y Comida, y Hogar: todo menos Chocolate', () => {
@@ -46,7 +46,7 @@ describe('tiposDeUnidad — qué contadores muestra la tarjeta', () => {
   });
 
   it('Todas (seco): los cuatro de seco, nunca las cajas de congelado', () => {
-    expect(tiposDeUnidad(false, 'all')).toEqual(['P', 'C', 'B', 'CH']);
+    expect(tiposDeUnidad(false, 'all')).toEqual(['P', 'C', 'B', 'CH:negra', 'CH:carton']);
   });
 
   it('una unidad que EXISTE nunca queda invisible, aunque no sea de esa sección', () => {
@@ -54,7 +54,7 @@ describe('tiposDeUnidad — qué contadores muestra la tarjeta', () => {
     // de Congelados solo mostraba CC/CN — el pallet existía en la base sin que nadie pudiera verlo
     // ni quitarlo.
     expect(tiposDeUnidad(true, 'all', { P: 1 })).toEqual(['P', 'CC', 'CN']);
-    expect(tiposDeUnidad(false, 'chocolates', { B: 2 })).toEqual(['P', 'B', 'CH']);
+    expect(tiposDeUnidad(false, 'chocolates', { B: 2 })).toEqual(['P', 'B', 'CH:negra', 'CH:carton']);
   });
 
   it('los contadores en 0 no suman tipos', () => {
@@ -72,8 +72,10 @@ describe('primeraUnidadPorDefecto — con qué nace un encargado manual', () => 
     expect(primeraUnidadPorDefecto('congelados')).toBe('CC');
   });
 
-  it('Chocolates nace con Chocolate (99% de lo que se prepara ahí)', () => {
-    expect(primeraUnidadPorDefecto('chocolates')).toBe('CH');
+  it('Chocolates nace con la caja negra, que es lo que describe a todo lo anterior', () => {
+    // Desde el 22/09/2026 el chocolate se abre en dos cajas. La negra es el default porque es la
+    // que tiene las medidas que el sistema ya venía usando para TODOS los chocolates.
+    expect(primeraUnidadPorDefecto('chocolates')).toBe('CH:negra');
   });
 
   it('el resto nace con Pallet', () => {
@@ -112,5 +114,31 @@ describe('columnaSeco — en qué columna de "Todas" cae cada tarjeta', () => {
   it('en Seco no hay columna de congelados: nunca se devuelve y la tarjeta no se pierde', () => {
     expect(columnaSeco(['Congelados'], true)).toBe('mixto');
     expect(columnaSeco(['Congelados', 'Chocolates'], false)).toBe('chocolates');
+  });
+});
+
+describe('el chocolate va abierto en sus dos cajas (22/09/2026)', () => {
+  it('Chocolates ofrece la negra y la de cartón, no un "CH" que no dice cuál es', () => {
+    const ofrece = tiposDeUnidad(false, 'chocolates');
+    expect(ofrece).toContain('CH:negra');
+    expect(ofrece).toContain('CH:carton');
+    expect(ofrece).not.toContain('CH');
+  });
+
+  it('el default de Chocolates es una clave que la lista SÍ ofrece', () => {
+    // El bug que este test atrapó: devolvía 'CH' pelado, que ya no está en la lista, así que el
+    // formulario del encargado manual quedaba preseleccionando algo inexistente.
+    expect(tiposDeUnidad(false, 'chocolates')).toContain(primeraUnidadPorDefecto('chocolates'));
+  });
+
+  it('Aseo y Hogar siguen sin ofrecer chocolate, en ninguna de sus dos cajas', () => {
+    for (const s of ['aseo-comida', 'hogar'] as const) {
+      expect(tiposDeUnidad(false, s)).not.toContain('CH:negra');
+      expect(tiposDeUnidad(false, s)).not.toContain('CH:carton');
+    }
+  });
+
+  it('Congelados sigue siendo solo sus cajas: el chocolate no se mezcla', () => {
+    expect(tiposDeUnidad(true, 'all')).toEqual(['CC', 'CN']);
   });
 });

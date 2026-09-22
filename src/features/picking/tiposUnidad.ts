@@ -24,7 +24,11 @@ export function seccionesDeLaPestana(esTabCongelados: boolean): SectionFilter[] 
   return esTabCongelados ? ['all'] : ['all', 'aseo-comida', 'hogar', 'chocolates'];
 }
 
-const ORDEN: PickerType[] = ['P', 'C', 'B', 'CH', 'CC', 'CN'];
+/** Las claves que puede ofrecer una pestaña. El chocolate se abre en sus dos cajas (`subtipoCaja.ts`);
+ *  el resto son el tipo pelado. */
+export type ClaveUnidad = PickerType | 'CH:negra' | 'CH:carton';
+
+const ORDEN: ClaveUnidad[] = ['P', 'C', 'B', 'CH:negra', 'CH:carton', 'CC', 'CN'];
 
 /**
  * Los contadores que muestra la tarjeta de un encargado, en orden fijo.
@@ -36,13 +40,17 @@ const ORDEN: PickerType[] = ['P', 'C', 'B', 'CH', 'CC', 'CN'];
  */
 export function tiposDeUnidad(
   isCongelados: boolean, seccion: SectionFilter, conteos: Partial<Record<string, number>> = {},
-): PickerType[] {
-  const permitido = (t: PickerType): boolean => {
+): ClaveUnidad[] {
+  const permitido = (t: ClaveUnidad): boolean => {
     const esCaja = t === 'CC' || t === 'CN';
+    const esChocolate = t === 'CH:negra' || t === 'CH:carton';
     if (isCongelados) return esCaja;
     if (esCaja) return false;
-    if (seccion === 'chocolates') return t === 'P' || t === 'CH';
-    if (seccion === 'aseo-comida' || seccion === 'hogar') return t !== 'CH';
+    // Chocolates ofrece el pallet y LAS DOS CAJAS: negra (medidas fijas) y cartón (solo peso).
+    // Antes ofrecía un único 'CH', que no distinguía cuál era y dejaba a Bodega pidiendo medidas
+    // a una caja que no las tiene.
+    if (seccion === 'chocolates') return t === 'P' || esChocolate;
+    if (seccion === 'aseo-comida' || seccion === 'hogar') return !esChocolate;
     return true;
   };
   return ORDEN.filter(t => permitido(t) || (conteos[t] ?? 0) > 0);
@@ -56,9 +64,11 @@ export function tiposDeUnidad(
  * sección — Aseo/Comida 99% P, Hogar 85% P, Chocolates 99% CH — y en Congelados solo se manejan
  * Caja Cartón y Caja Negra. Es un default: el formulario deja elegir otro antes de agregar.
  */
-export function primeraUnidadPorDefecto(seccion: SectionFilter): PickerType {
+export function primeraUnidadPorDefecto(seccion: SectionFilter): ClaveUnidad {
   if (seccion === 'congelados') return 'CC';
-  if (seccion === 'chocolates') return 'CH';
+  // La caja negra es el default porque es lo que describe a todo lo anterior al cambio. Devolver
+  // 'CH' pelado dejaría al formulario preseleccionando algo que la lista ya no ofrece.
+  if (seccion === 'chocolates') return 'CH:negra';
   return 'P';
 }
 

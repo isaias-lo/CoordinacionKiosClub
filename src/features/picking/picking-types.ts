@@ -40,6 +40,9 @@ export interface PalletSlot {
   state_key: string;
   picker_label: string;
   tipo: string;
+  /** Solo para 'CH': de qué caja es — 'negra' (medidas fijas) o 'carton'. Ver `subtipoCaja.ts`.
+   *  Ausente en todo lo anterior al 22/09/2026, que se lee como negra. */
+  subtipo?: string | null;
   contenido: string;
   section?: string | null;      // sección de Picking del pallet (aseo-comida/hogar/…); null = mixto/legacy
   refs: string;
