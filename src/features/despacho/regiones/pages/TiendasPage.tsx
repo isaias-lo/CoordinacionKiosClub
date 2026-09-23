@@ -329,6 +329,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   // reactivo por sí solo). `sinDatosSendu` son las que aparecen pero les falta data de envío.
   const [catalogoVer,       setCatalogoVer]        = useState(0);
   const [sinDatosSendu,     setSinDatosSendu]      = useState<TiendaIncompleta[]>([]);
+  // Se lee `pickingSlotsFull`, NO `pickingSlots`.
+  //
+  // Los dos mapas se llenan juntos y traen las mismas unidades, pero al borrar un ítem
+  // `deletePickingSlot` saca el slot SOLO del primero. El segundo se quedaba con la unidad borrada
+  // hasta que llegara la recarga por Realtime, y en esa ventana la resta del ghost —slots de
+  // Picking menos ítems cargados— daba positiva: el badge PUNTEADO que aparecía al borrar un
+  // chocolate y se iba solo al rato. Se reportó con chocolates, pero le pasaba a los cuatro tipos.
+  //
+  // Una sola fuente para contar: la que el borrado mantiene al día.
   const [pickingSlots,          setPickingSlots]          = useState<Record<string, { tipo: string; contenido: string }[]>>({});
   const [pickingSlotsFull,      setPickingSlotsFull]      = useState<Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]>>({});
   const [consumedPickingSlots, setConsumedPickingSlots] = useState<ConsumedSlots>(() => typeof window === 'undefined' ? {} : loadConsumedSlots());
@@ -666,7 +675,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       }, 60);
 
       const existingItems  = dispatchData[selectedTienda] || [];
-      const slots          = pickingSlotsRef.current[selectedTienda] ?? [];
+      const slots          = pickingSlotsFullRef.current[selectedTienda] ?? [];
       const pickingP       = slots.filter(s => s.tipo === 'P').length;
       const pickingC       = slots.filter(s => s.tipo === 'C').length;
       const pickingB       = slots.filter(s => s.tipo === 'B').length;
@@ -1798,7 +1807,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           {(() => {
             const cns  = selectedTienda ? (consumedPickingSlots[selectedTienda] || { p: 0, b: 0, c: 0, ch: 0 }) : { p: 0, b: 0, c: 0, ch: 0 };
-            const pkS  = selectedTienda ? (pickingSlots[selectedTienda] ?? []) : [];
+            const pkS  = selectedTienda ? (pickingSlotsFull[selectedTienda] ?? []) : [];
             const gP   = Math.max(0, pkS.filter(s => s.tipo === 'P').length  - items.filter(i => i.pkg === 'pallet').length     - cns.p);
             const gB   = Math.max(0, pkS.filter(s => s.tipo === 'B').length  - items.filter(i => i.pkg === 'box').length        - cns.b);
             const gC   = Math.max(0, pkS.filter(s => s.tipo === 'C').length  - items.filter(i => i.pkg === 'contenedor').length  - cns.c);
@@ -2456,7 +2465,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
                 {today.map(t => {
                   const cardItems = dispatchData[t.name] || [];
-                  const pkSlots   = pickingSlots[t.name] ?? [];
+                  const pkSlots   = pickingSlotsFull[t.name] ?? [];
                   const consumed  = consumedPickingSlots[t.name] || { p: 0, b: 0, c: 0, ch: 0 };
                   // SECO excluye congelados: "N movimientos" de la card = total/done de Odoo
                   // menos el subconteo de Abastecimiento Congelados (que vive en su propio módulo).
@@ -2516,7 +2525,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
                   {others.map(t => {
                     const cardItems = dispatchData[t.name] || [];
-                    const pkSlots   = pickingSlots[t.name] ?? [];
+                    const pkSlots   = pickingSlotsFull[t.name] ?? [];
                     const consumed  = consumedPickingSlots[t.name] || { p: 0, b: 0, c: 0, ch: 0 };
                     return (
                       <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]}
