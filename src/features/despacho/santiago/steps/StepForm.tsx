@@ -459,6 +459,15 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   /* Preset / multi-form */
   const [presets,       setPresets]      = useState<Record<string, { pallets: number; bultos: number; contenedores: number; chocolates: number }>>({});
   const [formRows,             setFormRows]             = useState<FormRow[]>([]);
+  // Se lee `pickingSlotsFull`, NO `pickingSlots`.
+  //
+  // Los dos mapas se llenan juntos y traen las mismas unidades, pero al borrar un ítem
+  // `deletePickingSlot` saca el slot SOLO del primero. El segundo se quedaba con la unidad borrada
+  // hasta que llegara la recarga por Realtime, y en esa ventana la resta del ghost —slots de
+  // Picking menos ítems cargados— daba positiva: el badge PUNTEADO que aparecía al borrar un
+  // chocolate y se iba solo al rato. Se reportó con chocolates, pero le pasaba a los cuatro tipos.
+  //
+  // Una sola fuente para contar: la que el borrado mantiene al día.
   const [pickingSlots,         setPickingSlots]          = useState<Record<string, { tipo: string; contenido: string }[]>>({});
   const [pickingSlotsFull,     setPickingSlotsFull]      = useState<Record<string, PickingSlot[]>>({});
   const [consumedSlotsSant,    setConsumedSlotsSant]     = useState<ConsumedSlotsS>(() => typeof window === 'undefined' ? {} : loadConsumedSlotsS());
@@ -960,7 +969,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         [t.cod]: { pallets: existP, bultos: existB, contenedores: existC, chocolates: existCH },
       }));
     } else if (!hasManualPreset) {
-      const slots = pickingSlots[t.cod] ?? [];
+      const slots = pickingSlotsFull[t.cod] ?? [];
       const pkP   = slots.filter(s => s.tipo === 'P').length;
       const pkC   = slots.filter(s => s.tipo === 'C').length;
       const pkB   = slots.filter(s => s.tipo === 'B').length;
@@ -987,7 +996,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         formScrollDesktopRef.current?.scrollTo({ top: 0 });
       }, 60);
       const existing = items[currentTienda.cod] || [];
-      const slots    = pickingSlotsRef.current[currentTienda.cod] ?? [];
+      const slots    = pickingSlotsFullRef.current[currentTienda.cod] ?? [];
 
       const SANT_TIPO: Record<string, TipoCargamento> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate' };
       const mapearCont = contenidoSantiago;
@@ -1988,7 +1997,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             {todayList.map(t => {
               const tI = items[t.cod] || [];
               const dc = despachoCounts[t.cod];
-              const pkSlots = pickingSlots[t.cod] ?? [];
+              const pkSlots = pickingSlotsFull[t.cod] ?? [];
               const cnsS = consumedSlotsSant[t.cod] || { p: 0, b: 0, c: 0 };
               const pk = pkSlots.length > 0 ? { p: Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - cnsS.p), c: Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - cnsS.c), b: Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - cnsS.b) } : undefined;
               // SECO excluye congelados: "N movimientos" de la card = total/done de Odoo
@@ -2033,7 +2042,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             {othersList.map(t => {
               const tI = items[t.cod] || [];
               const dc = despachoCounts[t.cod];
-              const pkSlots = pickingSlots[t.cod] ?? [];
+              const pkSlots = pickingSlotsFull[t.cod] ?? [];
               const cnsS = consumedSlotsSant[t.cod] || { p: 0, b: 0, c: 0 };
               const pk = pkSlots.length > 0 ? { p: Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - cnsS.p), c: Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - cnsS.c), b: Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - cnsS.b) } : undefined;
               return (
@@ -2464,7 +2473,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   ════════════════════════════════════ */
   const renderMultiForm = (isMobile = false) => {
     if (!currentTienda) return null;
-    const pkSlots = pickingSlots[currentTienda.cod] ?? [];
+    const pkSlots = pickingSlotsFull[currentTienda.cod] ?? [];
     const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
     return (
       <>
