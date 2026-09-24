@@ -29,6 +29,7 @@ import { enElPool, codsEnPool, tieneCarga } from './utils/pool';
 import { resumenCierre, textoResumenCierre, type ResumenCierre } from './utils/resumenCierre';
 import { preflightCierre, type Preflight } from './utils/preflightCierre';
 import { porTienda, aplicarRemoto, type TableroPorTienda } from './utils/tableroSync';
+import { refrescarCargaTablero } from './utils/cargaDelTablero';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { pendientesDelPool, flotaConCapacidadRestante, fusionarAsignaciones, tableroConTrabajo, liberarCamion } from './utils/asignacionIncremental';
 import { enPool, flotaDePool, type PoolScope } from './utils/poolsSeparados';
@@ -847,26 +848,16 @@ export default function RutasScreen() {
   }, []);
 
   // ── Sync manual assignments when calT changes ────────────────────
+  // La regla vive en `refrescarCargaTablero` (pura, con tests). Lo que hay que saber acá es de
+  // dónde sale `reporto`: `calT` se arma del CALENDARIO, que no trae cantidades —cada tienda entra
+  // en p/b/ch = 0— y las cantidades llegan después (fetchCounts sale con 1,5 s de retraso). El
+  // tablero, en cambio, se lee entero y con sus conteos buenos. En esa ventana este efecto pisaba
+  // 3P con 0P, y como el push del tablero espera 800 ms, el cero alcanzaba a guardarse y a
+  // propagarse a los demás equipos. `sesionRowsRef` es la memoria de lo que `despacho_sesion`
+  // realmente dijo: si no habló de esa tienda, el cero es ignorancia y no se aplica.
   useEffect(() => {
-    setManualAsignaciones(prev => {
-      let changed = false;
-      const next = { ...prev };
-      Object.keys(next).forEach(plate => {
-        next[plate] = next[plate].map(s => {
-          const updated = calT[s.c];
-          // `ch` (contenedores/chocolates) quedaba fuera: si Bodega los cambiaba en una tienda ya
-          // asignada, el tablero seguía mostrando el número viejo y el conteo de bultos del camión
-          // salía corto. Entra en la misma comparación que p y b.
-          const ch = updated?.ch ?? 0;
-          if (updated && (updated.p !== s.p || updated.b !== s.b || ch !== (s.ch ?? 0))) {
-            changed = true;
-            return { ...s, p: updated.p, b: updated.b, ch };
-          }
-          return s;
-        });
-      });
-      return changed ? next : prev;
-    });
+    setManualAsignaciones(prev =>
+      refrescarCargaTablero(prev, calT, cod => sesionRowsRef.current.has(cod)));
   }, [calT]);
 
   // ── Fetch + subscribe manualAsignaciones (cross-device, por fecha) ──────────
