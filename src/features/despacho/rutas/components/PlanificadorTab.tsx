@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy, CalendarDays, Flag, ChevronUp, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
+import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy, CalendarDays, Flag, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import { CD_INICIAL, COLS, type TiendaInfo } from '../data/tiendas';
 import type { Vehiculo } from '../data/flota';
 import { nn, type Ruta } from '../utils/routing';
@@ -16,6 +16,8 @@ import {
 import { ordenarConVentanas } from '../utils/ordenConVentanas';
 import { catalogoParaCarga } from '../utils/ventanaHoraria';
 import { diagnosticarDia, resumenCuello } from '../utils/factibilidadDia';
+import { useReordenarTactil } from '../utils/useReordenarTactil';
+import { ladoDeLinea } from '../utils/reordenarTactil';
 
 /** Misma velocidad urbana que usa el motor (OPCIONES_DEFAULT.velocidadKmH): si las dos pantallas
  *  estimaran distinto, la ruta del Planificador y la del Enrutador no coincidirían. */
@@ -634,6 +636,11 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     setSelected(base); setOrderMode('manual');
   }
 
+  // El mismo reordenamiento, con el dedo: `draggable`/`onDrop` son eventos de mouse y en un
+  // telefono no se disparan nunca. Ver `useReordenarTactil`.
+  const { contenedorRef: tactilRef, arrastrandoIdx, destinoIdx, iniciar: iniciarTactil } =
+    useReordenarTactil(orderedCods.length, reordenar);
+
   // Compartir: arma una lista por cada ruta VISIBLE (COD: dirección / tipo / horario) + su link de
   // mapa, y abre un panel para copiar/mandar (no depende del menú del sistema, que no está en compu).
   function compartir() {
@@ -1115,34 +1122,37 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
           </div>
         )}
 
-        <div className="flex flex-col gap-1">
+        <div ref={tactilRef} className="flex flex-col gap-1">
           {orderedCods.map((cod, i) => {
             const esDir = esParadaDireccion(cod);
             const eta = etasActive?.[i];
             const estV: EstadoVentana | null = eta == null ? null : (esDir ? 'sin-ventana' : estadoVentana(eta, tiendasVista[cod]?.v));
+            const ladoLinea = destinoIdx === i ? ladoDeLinea(arrastrandoIdx, i) : null;
             return (
-            <div key={cod} draggable
+            <div key={cod} draggable data-idx={i}
               onDragStart={() => setDragIdx(i)}
               onDragOver={e => e.preventDefault()}
               onDrop={() => { if (dragIdx !== null) reordenar(dragIdx, i); setDragIdx(null); }}
-              className="flex items-center gap-2 px-2.5 py-1.5 rounded-[8px] bg-white border border-black/[0.09]">
-              {/* Subir/bajar: en un teléfono el arrastre NO existe. `draggable`/`onDrop` son
-                  eventos HTML5 de mouse y no se disparan al tocar, así que reordenar solo andaba
-                  en computador. Dos botones funcionan en los dos, no dependen de un gesto preciso
-                  sobre una fila de 34 px, y dejan el arrastre intacto para quien ya lo usa. */}
-              <span className="flex flex-col flex-shrink-0 -my-0.5">
-                <button type="button" aria-label={`Subir ${cod} a la parada ${i}`}
-                  disabled={i === 0} onClick={() => reordenar(i, i - 1)}
-                  className="w-6 h-4 flex items-center justify-center rounded-t text-black/45 disabled:text-black/10 disabled:cursor-default active:bg-black/10 border-none bg-transparent cursor-pointer p-0">
-                  <ChevronUp size={13} />
-                </button>
-                <button type="button" aria-label={`Bajar ${cod} a la parada ${i + 2}`}
-                  disabled={i === orderedCods.length - 1} onClick={() => reordenar(i, i + 1)}
-                  className="w-6 h-4 flex items-center justify-center rounded-b text-black/45 disabled:text-black/10 disabled:cursor-default active:bg-black/10 border-none bg-transparent cursor-pointer p-0">
-                  <ChevronDown size={13} />
-                </button>
+              className="relative flex items-center gap-2 px-2.5 py-1.5 rounded-[8px] bg-white border border-black/[0.09]"
+              style={arrastrandoIdx === i ? { opacity: 0.35 } : undefined}>
+              {/* La linea azul dice donde va a caer la parada al levantar el dedo. Arriba o abajo
+                  segun el sentido del movimiento: `reordenar` la saca y la reinserta, asi que
+                  bajando queda DESPUES de esta fila y subiendo queda ANTES. */}
+              {ladoLinea && (
+                <span aria-hidden="true" className="absolute left-1 right-1 h-[3px] rounded-full pointer-events-none"
+                  style={{ background: '#1B2A6B',
+                    top:    ladoLinea === 'arriba' ? -2 : undefined,
+                    bottom: ladoLinea === 'abajo'  ? -2 : undefined }} />
+              )}
+              {/* El asa es lo unico que arranca el arrastre tactil: si el gesto empezara en
+                  cualquier parte de la fila, deslizar para leer la lista moveria paradas sin
+                  querer. `touchAction:'none'` evita que el navegador se lleve el gesto como
+                  scroll antes del primer touchmove. */}
+              <span onTouchStart={e => iniciarTactil(e, i)} style={{ touchAction: 'none' }}
+                title={`Arrastrar ${cod} para cambiarla de parada`}
+                className="flex items-center justify-center flex-shrink-0 -mx-1 px-1 py-1.5 cursor-grab text-black/25 active:text-black/50">
+                <GripVertical size={15} />
               </span>
-              <GripVertical size={13} className="text-black/20 cursor-grab flex-shrink-0 hidden sm:block" />
               <span className="w-5 h-5 rounded-full text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0" style={{ background: activeColor }}>{i + 1}</span>
               <span className="flex-1 min-w-0">
                 {esDir ? (
