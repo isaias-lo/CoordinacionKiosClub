@@ -61,7 +61,7 @@ import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBo
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
-import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo,
+import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo, pesoPalletConCajas,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
 import { itemDeLaUnidad, fusionarConPrevio, esReingreso } from '../../shared/itemPorUnidad';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
@@ -125,6 +125,9 @@ interface FormRow {
   alto: string;
   largo: string;
   ancho: string;
+  /** Solo pallets: cuántas cajas negras estuvieron EN LA BALANZA junto con el pallet. Se les
+   *  descuenta la tara. Vacío = ninguna, que es el caso normal. Ver `pesoPalletConCajas`. */
+  cajasNegras?: string;
   saved?: boolean;
   /** La persona escribió algo acá. Distinto de `!saved`, que solo dice que no se guardó EN ESTE
    *  equipo: una tarjeta recién nacida en blanco no está tocada. */
@@ -1288,6 +1291,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         // La caja negra se pesa ENTERA y vuelve al CD: se descuenta lo que pesa vacía. Se rechaza
         // lo que no llega a la tara en vez de recortarlo a cero (ver `pesoNetoCajaNegra`).
         const neto = pesoNetoCajaNegra(row.peso);
+        if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
+        p = neto.neto;
+      } else if (row.tipo === 'Pallet') {
+        // Las cajas negras que se pesaron ENCIMA del pallet son retornables: no son mercadería.
+        // Si el chocolate se pesó aparte y se sumó con el botón, su peso ya vino neto y acá no se
+        // declara ninguna — declararla restaría la tara dos veces.
+        const neto = pesoPalletConCajas(row.peso, parseInt(row.cajasNegras ?? '', 10) || 0);
         if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
         p = neto.neto;
       } else {
@@ -2741,7 +2751,26 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     </div>
                   )}
                   {row.tipo === 'Pallet' && (
-                    <div className="mb-1.5 text-[11px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">120×100 cm</div>
+                    <>
+                      <div className="mb-1.5 text-[11px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">120×100 cm</div>
+                      {/* Se pregunta por lo que estuvo EN LA BALANZA, no por lo que hay en el pallet:
+                          un chocolate sumado con el botón ya vino neto y declararlo acá restaría la
+                          tara dos veces. Por eso dice "pesadas con el pallet". */}
+                      <div className="mb-1.5">
+                        <label className="text-[11px] text-text-3 uppercase block mb-0.5">
+                          cajas negras pesadas con el pallet
+                        </label>
+                        <input type="number" value={row.cajasNegras ?? ''} onChange={e => updateRow(row.id, 'cajasNegras', e.target.value)}
+                          onFocus={marcarEnFoco} onBlur={quitarFoco}
+                          placeholder="0" inputMode="numeric" min={0}
+                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
+                        {(parseInt(row.cajasNegras ?? '', 10) || 0) > 0 && (
+                          <div className="text-[10px] font-bold mt-0.5" style={{ color: '#C2410C' }}>
+                            se descuentan {String(Math.round((parseInt(row.cajasNegras!, 10) * TARA_CAJA_NEGRA) * 10) / 10).replace('.', ',')} kg de cajas
+                          </div>
+                        )}
+                      </div>
+                    </>
                   )}
                   {isChocRow && (
                     <div className="mb-1.5 text-[11px] text-navy/60 bg-bg border border-border rounded px-1.5 py-1">
