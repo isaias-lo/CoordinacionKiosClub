@@ -89,11 +89,16 @@ describe('mergeTablero — el caso que motivó todo', () => {
     expect(veces).toBe(1);
   });
 
-  it('cambiar solo las cantidades también cuenta como "la toqué"', () => {
+  // [2026-09-24] Este test decía lo contrario: que cambiar las cantidades contaba como "la
+  // toqué". Era la regla equivocada, y es la causa del "las tiendas se cambian de vehículo" que
+  // se reportó. Los conteos NO los toca nadie acá: los define Bodega y llegan a cada equipo por
+  // su lado, todo el día. Tratarlos como una edición hacía que un pallet registrado en Bodega le
+  // diera a este equipo el derecho a rechazar —y revertir— un movimiento que hizo el otro.
+  it('cambiar solo las cantidades NO cuenta como "la moví"', () => {
     const base   = { '40LIL': en('AB-1', 1) };
     const local  = { '40LIL': en('AB-1', 3) };       // Bodega actualizó los pallets acá
-    const remoto = { '40LIL': en('CD-2', 1) };
-    expect(mergeTablero(remoto, local, base)['40LIL']).toEqual(en('AB-1', 3));
+    const remoto = { '40LIL': en('CD-2', 1) };       // el otro equipo la movió de camión
+    expect(mergeTablero(remoto, local, base)['40LIL'].patente).toBe('CD-2');
   });
 });
 
@@ -174,5 +179,53 @@ describe('aplicarRemoto', () => {
     const remoto = { RGZJ70: [{ c: '23PEÑ', p: 2, b: 2, ch: 0 }] };
     const r = aplicarRemoto(remoto, MOVIDA, porTienda(remoto), cod => cod === '23PEÑ');
     expect(porTienda(r.merged)['23PEÑ'].patente).toBe('TYKK42');
+  });
+});
+
+// ── Un cambio de CARGA no es un cambio de CAMIÓN ────────────────────────────────────────────
+//
+// Reportado: "tiendas que se cambian de vehículo". Los conteos los define Bodega y llegan a cada
+// equipo por su lado, todo el día. Cuando entraban en la pregunta "¿la moví yo?", un pallet más
+// bastaba para que un equipo rechazara el movimiento del otro y se lo empujara de vuelta.
+describe('mergeTablero — la carga no decide quién movió la tienda', () => {
+  const en = (patente: string | null, p = 0, b = 0, ch = 0) => ({ patente, p, b, ch });
+
+  it('a B le cambió el conteo desde Bodega y el movimiento de A manda igual', () => {
+    const base   = { '26ALC': en('XXXX11', 3) };            // lo último que B sincronizó
+    const local  = { '26ALC': en('XXXX11', 4) };            // Bodega registró un pallet más
+    const remoto = { '26ALC': en('YYYY22', 3) };            // A la movió al camión Y
+
+    expect(mergeTablero(remoto, local, base)['26ALC'].patente).toBe('YYYY22');
+  });
+
+  it('si la moví YO, sigue ganando lo mío aunque la carga también haya cambiado', () => {
+    const base   = { '26ALC': en('XXXX11', 3) };
+    const local  = { '26ALC': en('ZZZZ33', 4) };            // yo la moví a Z
+    const remoto = { '26ALC': en('YYYY22', 3) };            // el otro la movió a Y
+
+    expect(mergeTablero(remoto, local, base)['26ALC'].patente).toBe('ZZZZ33');
+  });
+
+  it('sacarla en el otro equipo sigue sacándola acá', () => {
+    const base   = { '26ALC': en('XXXX11', 3) };
+    const local  = { '26ALC': en('XXXX11', 9) };            // solo cambió la carga
+    expect(mergeTablero({}, local, base)['26ALC']).toBeUndefined();
+  });
+
+  it('un camión cerrado no se toca ni con carga distinta', () => {
+    const base   = { '26ALC': en('XXXX11', 3) };
+    const local  = { '26ALC': en('XXXX11', 4) };
+    const remoto = { '26ALC': en('YYYY22', 3) };
+    const out = mergeTablero(remoto, local, base, cod => cod === '26ALC');
+    expect(out['26ALC'].patente).toBe('XXXX11');
+  });
+
+  it('el conteo distinto sigue pidiendo que se escriba (debePushear)', () => {
+    // `mismoTablero` SÍ mira la carga: si la mía es más fresca, hay que empujarla.
+    const base   = { '26ALC': en('XXXX11', 3) };
+    const local  = { XXXX11: [{ c: '26ALC', p: 4, b: 0, ch: 0 }] };
+    const remoto = { XXXX11: [{ c: '26ALC', p: 3, b: 0, ch: 0 }] };
+    expect(aplicarRemoto(remoto, local, base).debePushear).toBe(false);
+    // (la tienda no la moví → adopto la remota, y ahí lo remoto y lo fusionado coinciden)
   });
 });

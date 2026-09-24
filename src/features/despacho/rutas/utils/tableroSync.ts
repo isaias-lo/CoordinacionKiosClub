@@ -56,8 +56,28 @@ export function porCamion(t: TableroPorTienda, patentesVivas: string[] = []): Ta
   return out;
 }
 
+/**
+ * ¿La tienda está en el mismo camión? SOLO el camión.
+ *
+ * Es la pregunta del merge: "¿la moví yo desde el último sync?". La carga (p/b/ch) no entra, y esa
+ * era la causa de que una tienda se cambiara sola de vehículo.
+ *
+ * Los conteos del Enrutador son de SOLO LECTURA: los define Bodega y llegan por `despacho_sesion`,
+ * a cada equipo por su lado y todo el día. Cuando entraban en esta comparación, que Bodega
+ * registrara un pallet más alcanzaba para que el equipo B concluyera "esta tienda la moví yo" —
+ * sin haber tocado nada— y entonces RECHAZABA el movimiento que el equipo A sí había hecho, y lo
+ * empujaba de vuelta. En la pantalla de A la tienda volvía sola al camión anterior; si A insistía,
+ * quedaban los dos empujándose. Eso es "las tiendas se cambian de vehículo".
+ *
+ * La carga se sigue comparando en `mismoTablero`, que es otra pregunta —"¿el servidor ya tiene lo
+ * que yo tengo?"— y ahí sí corresponde: si mis conteos son más frescos, hay que empujarlos.
+ */
+const mismoCamion = (a?: UbicacionTienda, b?: UbicacionTienda): boolean =>
+  (a?.patente ?? null) === (b?.patente ?? null);
+
+/** Mismo camión Y misma carga. Para decidir si hace falta escribir, no para resolver conflictos. */
 const mismaUbicacion = (a?: UbicacionTienda, b?: UbicacionTienda): boolean =>
-  (a?.patente ?? null) === (b?.patente ?? null) &&
+  mismoCamion(a, b) &&
   (a?.p ?? 0) === (b?.p ?? 0) && (a?.b ?? 0) === (b?.b ?? 0) && (a?.ch ?? 0) === (b?.ch ?? 0);
 
 /**
@@ -91,8 +111,10 @@ export function mergeTablero(
     // Un camión cerrado ya emitió su manifiesto: su carga no se toca, venga lo que venga.
     if (protegida(cod)) { if (loc) out[cod] = loc; continue; }
 
-    // No la toqué → adopto lo remoto. Si no viene, es que la sacaron en el otro equipo.
-    if (mismaUbicacion(loc, base[cod])) { if (rem) out[cod] = rem; continue; }
+    // No la MOVÍ → adopto lo remoto. Si no viene, es que la sacaron en el otro equipo.
+    // Se pregunta por el camión y nada más: que Bodega haya cambiado la carga no significa que yo
+    // haya movido la tienda (ver `mismoCamion`).
+    if (mismoCamion(loc, base[cod])) { if (rem) out[cod] = rem; continue; }
 
     // La moví yo → gana lo mío.
     if (loc) out[cod] = loc;
