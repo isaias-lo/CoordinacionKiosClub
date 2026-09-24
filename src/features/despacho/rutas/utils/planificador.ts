@@ -293,6 +293,31 @@ export function siglaTienda(cod: string): string {
  * Una dirección suelta sigue siendo `N. Dirección: <lo que se escribió>`.
  * Cierra con `Mapa: <url>` si se pasa. Sin paradas ⇒ solo el título.
  */
+/**
+ * La MISMA ruta en su forma más corta: el nombre y los códigos, nada más.
+ *
+ *     Ruta 1
+ *
+ *     *1. PTA*
+ *     *2. FLO*
+ *
+ * Existe porque el texto completo —dirección, tipo y ventana de cada parada— es lo que necesita
+ * quien maneja, y es justo lo que estorba cuando lo único que se quiere es decir QUÉ ruta es y en
+ * qué orden va. Para eso se copiaba el texto largo y se borraba a mano.
+ *
+ * No reemplaza al completo: son dos usos distintos del mismo dato.
+ *
+ * Una dirección suelta sale como `*N. Dirección*`: no tiene código con qué nombrarla, y meterle el
+ * texto entero rompería la única virtud de esta forma, que es caber de un vistazo.
+ */
+export function construirListaRuta(opts: { titulo: string; lineas: LineaParada[] }): string {
+  const { titulo, lineas } = opts;
+  if (!lineas.length) return titulo;
+  const cuerpo = lineas.map((l, i) =>
+    `*${i + 1}. ${l.esDireccion ? 'Dirección' : siglaTienda(l.cod)}*`);
+  return [titulo, '', cuerpo.join('\n')].join('\n');
+}
+
 export function construirTextoRuta(opts: {
   titulo: string;
   lineas: LineaParada[];
