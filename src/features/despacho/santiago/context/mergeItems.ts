@@ -26,6 +26,12 @@ export function mergeItemsByTienda<T>(
   // legítimo) — pero antes lo hacía en silencio. `onConflict` deja que el caller avise "esto
   // cambió mientras editabas" sin tener que bloquear a nadie con una reserva/lock.
   onConflict?: (cod: string, item: T) => void,
+  // [Lápidas 2026-09-24] Un borrado deja de valer en cuanto este equipo empuja: desde ahí el ítem
+  // no está ni en `local` ni en `lastSynced`, y el remoto de un equipo con la copia vieja lo
+  // devuelve como si fuera un alta nueva. Medido: 26% de los chocolates borrados volvían y había
+  // que borrarlos de nuevo. `fueBorrado` es la memoria que la base ya no guarda — ver
+  // `shared/lapidasBorrado.ts`.
+  fueBorrado: (llave: string) => boolean = () => false,
 ): Record<string, T[]> {
   // [E3b/C2] Antes el merge era por TIENDA completa (dirty ⇒ gana toda la local). Eso pisaba lo
   // que otro usuario hacía en la MISMA tienda al mismo tiempo (A edita dims mientras B agrega un
@@ -39,9 +45,13 @@ export function mergeItemsByTienda<T>(
     const base = lastSynced[cod] ?? [];
     // Tienda que NO toqué desde el último sync → adopto la remota tal cual (trae ediciones más
     // nuevas de otro equipo; ausencia remota = borrado intencional). Igual que antes.
-    if (JSON.stringify(loc) === JSON.stringify(base)) { out[cod] = rem; continue; }
+    //
+    // Ojo: "limpia" es EXACTAMENTE como queda una tienda justo después de empujar, así que esta
+    // rama es por donde volvían todos los ítems borrados de una vez (se adopta la tienda remota
+    // entera). Las lápidas se aplican también acá, no solo en el merge por-ítem.
+    if (JSON.stringify(loc) === JSON.stringify(base)) { out[cod] = sinLapidas(rem, keyOf, fueBorrado); continue; }
     // Tienda editada localmente → merge por-ítem (protege mi edición sin pisar lo del otro).
-    out[cod] = mergeListaPorItem(rem, loc, base, keyOf, onConflict ? item => onConflict(cod, item) : undefined);
+    out[cod] = mergeListaPorItem(rem, loc, base, keyOf, onConflict ? item => onConflict(cod, item) : undefined, fueBorrado);
   }
   return out;
 }
@@ -58,7 +68,7 @@ export function mergeItemsByTienda<T>(
  * El borrado siempre gana sobre "reaparecer" (anti-zombie). Orden: primero la vista local, luego
  * las altas remotas nuevas al final (el `orden` se renumera aguas abajo).
  */
-export function mergeListaPorItem<T>(remote: T[], local: T[], base: T[], keyOf: (i: T) => string, onConflict?: (item: T) => void): T[] {
+export function mergeListaPorItem<T>(remote: T[], local: T[], base: T[], keyOf: (i: T) => string, onConflict?: (item: T) => void, fueBorrado: (llave: string) => boolean = () => false): T[] {
   const bMap = new Map(base.map(i => [keyOf(i), i]));
   const rMap = new Map(remote.map(i => [keyOf(i), i]));
   const eq = (a?: T, b?: T) => JSON.stringify(a) === JSON.stringify(b);
@@ -68,6 +78,9 @@ export function mergeListaPorItem<T>(remote: T[], local: T[], base: T[], keyOf: 
     const k = keyOf(item);
     if (seen.has(k)) continue;
     seen.add(k);
+    // Con lápida se cae también lo LOCAL: si un merge anterior ya lo resucitó, esto lo limpia en
+    // vez de dejarlo vivo hasta que alguien lo vuelva a borrar a mano.
+    if (fueBorrado(k)) continue;
     const inB = bMap.has(k), inR = rMap.has(k);
     if (inR) {
       const lChanged = !inB || !eq(item, bMap.get(k));
@@ -86,9 +99,38 @@ export function mergeListaPorItem<T>(remote: T[], local: T[], base: T[], keyOf: 
     const k = keyOf(item);
     if (seen.has(k)) continue;
     seen.add(k);
+    if (fueBorrado(k)) continue;         // lo borré acá: no vuelve, aunque la base ya no lo recuerde
     if (!bMap.has(k)) result.push(item); // alta remota nueva (si estaba en base y no en local ⇒ borrado local ⇒ drop)
   }
   return result;
+}
+
+/** Quita de una lista los ítems con lápida. Lo usa la rama de tienda limpia. */
+function sinLapidas<T>(lista: T[], keyOf: (i: T) => string, fueBorrado: (llave: string) => boolean): T[] {
+  const out = lista.filter(i => !fueBorrado(keyOf(i)));
+  return out.length === lista.length ? lista : out;
+}
+
+/**
+ * Lo mismo, sobre el mapa entero de tiendas.
+ *
+ * Para el camino de RM/Costa en que NO hay merge: con lo local limpio —que es justo como queda
+ * después de empujar— se adopta el estado remoto COMPLETO. Esa adopción también tiene que
+ * respetar las lápidas, o los ítems borrados vuelven todos juntos.
+ *
+ * Devuelve el MISMO objeto si no había nada que quitar, para no forzar un render de más.
+ */
+export function quitarLapidas<T>(
+  porTienda: Record<string, T[]>, keyOf: (i: T) => string, fueBorrado: (llave: string) => boolean,
+): Record<string, T[]> {
+  let cambio = false;
+  const out: Record<string, T[]> = {};
+  for (const [cod, lista] of Object.entries(porTienda ?? {})) {
+    const limpia = sinLapidas(lista ?? [], keyOf, fueBorrado);
+    if (limpia !== lista) cambio = true;
+    out[cod] = limpia;
+  }
+  return cambio ? out : porTienda;
 }
 
 /**
