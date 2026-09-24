@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { Navigation, GripVertical, ClipboardList, User, Store, FileUp } from 'lucide-react';
+import { Navigation, GripVertical, ClipboardList, User, Store, FileUp, ChevronLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
 import { IndicadorCanalSano } from '../../shared/IndicadorCanalSano';
@@ -3172,6 +3172,36 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       {/* ─── MOBILE: resumen view ─── */}
       {view === 'resumen' && (
         <div className="flex lg:hidden flex-1 flex-col overflow-hidden">
+          {/* Cabecera con VOLVER. En el teléfono, el Resumen ocupa la pantalla entera: la columna
+              de las tarjetas queda `hidden` y la barra de abajo —donde viven Resumen, Enrutador y
+              Manual— se va con ella. Sin esta cabecera no quedaba ninguna salida dentro de la
+              aplicación: había que usar el botón del navegador. Bodega Nacional ya la tenía (su
+              Resumen es un overlay con su propio encabezado); acá faltaba, porque el panel que se
+              reutiliza es el de ESCRITORIO, y su encabezado es `hidden lg:block`.
+              Va en la vista y no dentro de `renderResumenPanel`, que también es la columna derecha
+              del escritorio — ahí un "volver" no significa nada. */}
+          <div className="bg-navy px-3 py-3 flex items-center gap-3 flex-shrink-0"
+               style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
+            <button
+              onClick={() => setView('list')}
+              aria-label="Volver a las tiendas"
+              className="flex items-center justify-center rounded-full flex-shrink-0 cursor-pointer transition-all active:scale-95 border-none"
+              style={{
+                width: 36, height: 36,
+                background: 'rgba(255,255,255,0.10)',
+                border: '1px solid rgba(255,255,255,0.15)',
+              }}>
+              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+            </button>
+            <span className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-wide flex-1">Resumen</span>
+            <button
+              onClick={enrutar}
+              className="flex items-center gap-2 py-2 px-3 rounded cursor-pointer transition-all active:opacity-70"
+              style={{ background: 'rgba(30,64,175,0.25)', border: '1px solid rgba(30,64,175,0.60)' }}>
+              <Navigation size={13} color="#93C5FD" strokeWidth={2} />
+              <span className="font-barlow-condensed text-[13px] font-bold tracking-wide" style={{ color: '#93C5FD' }}>Enrutador</span>
+            </button>
+          </div>
           {renderResumenPanel()}
         </div>
       )}
