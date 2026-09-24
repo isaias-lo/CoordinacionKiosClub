@@ -19,16 +19,34 @@ import { CLAVE_AUTO, leerFlagAuto, escribirFlagAuto } from '@/features/despacho/
  */
 export function useAsignacionAutomatica(): {
   activo: boolean;
+  /**
+   * `true` solo cuando el servidor YA respondió. Mientras sea `false`, `activo` es una suposición.
+   *
+   * Existe por un bug reportado el 24/09: el Enrutador asignaba tiendas solo con el interruptor
+   * apagado. En `config_despacho` estaba en `false` desde el 10/09, pero el cliente arranca en
+   * `true` ("optimista mientras carga") y solo se corrige SI el GET responde. Si el GET tarda, o
+   * devuelve 401 por un token vencido, o la respuesta no trae la clave, `activo` se quedaba en
+   * `true` — para siempre, y sin que nada lo dijera. El `.catch(() => {})` se tragaba justo el
+   * caso en que la suposición era falsa.
+   *
+   * Quien solo MUESTRA el interruptor puede seguir usando `activo` y ver ON mientras carga: no
+   * cuesta nada. Quien va a MOVER carga con esto tiene que exigir `confirmado`, porque ahí la
+   * diferencia entre "está en ON" y "todavía no sé" es el trabajo del coordinador.
+   */
+  confirmado: boolean;
   guardar: (v: boolean) => Promise<boolean>;
 } {
   // Optimista mientras carga, igual que useOdooActivo: ON es el comportamiento de siempre.
   const [activo, setActivo] = useState(true);
+  const [confirmado, setConfirmado] = useState(false);
 
   const load = useCallback(() => {
     fetch('/api/parametros-sistema')
       .then(r => (r.ok ? r.json() : null))
       .then((json: { data?: Record<string, string> } | null) => {
-        if (json?.data) setActivo(leerFlagAuto(json.data));
+        if (!json?.data) return;   // 401/500/respuesta rara: sigue SIN confirmar, no se supone nada
+        setActivo(leerFlagAuto(json.data));
+        setConfirmado(true);
       })
       .catch(() => {});
   }, []);
@@ -45,6 +63,7 @@ export function useAsignacionAutomatica(): {
         body: JSON.stringify({ clave: CLAVE_AUTO, valor: escribirFlagAuto(v) }),
       });
       if (!res.ok) { setActivo(previo); return false; }  // 403 de no-admin, o cualquier fallo
+      setConfirmado(true);   // lo acabo de escribir yo: sé lo que vale
       return true;
     } catch {
       setActivo(previo);
@@ -52,5 +71,5 @@ export function useAsignacionAutomatica(): {
     }
   }, [activo]);
 
-  return { activo, guardar };
+  return { activo, confirmado, guardar };
 }

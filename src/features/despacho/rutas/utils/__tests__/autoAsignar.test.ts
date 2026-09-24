@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  leerFlagAuto, escribirFlagAuto, puedeCambiarAuto, motivoBloqueoAuto, CLAVE_AUTO,
+  leerFlagAuto, escribirFlagAuto, puedeCambiarAuto, motivoBloqueoAuto, puedeAsignarSolo, CLAVE_AUTO,
 } from '../autoAsignar';
 
 describe('leerFlagAuto', () => {
@@ -56,5 +56,25 @@ describe('motivoBloqueoAuto', () => {
     expect(m).toContain('administrador');
     // Que diga que es compartido: sin eso parece un permiso arbitrario.
     expect(m).toContain('compartido');
+  });
+});
+
+describe('puedeAsignarSolo — no mover carga sobre una suposición', () => {
+  it('con el servidor confirmado y el interruptor en ON, sí', () => {
+    expect(puedeAsignarSolo(true, true)).toBe(true);
+  });
+
+  it('confirmado y apagado, no', () => {
+    expect(puedeAsignarSolo(true, false)).toBe(false);
+  });
+
+  it('SIN confirmar no se asigna, aunque el cliente crea que está en ON', () => {
+    // Es el caso real: `config_despacho` dice `false` desde el 10/09, pero el cliente arranca
+    // suponiendo ON y solo se corrige si el GET vuelve. Mientras no vuelva, no se toca nada.
+    expect(puedeAsignarSolo(false, true)).toBe(false);
+  });
+
+  it('sin confirmar y apagado, tampoco', () => {
+    expect(puedeAsignarSolo(false, false)).toBe(false);
   });
 });
