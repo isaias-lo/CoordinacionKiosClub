@@ -46,7 +46,7 @@ import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
-import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo,
+import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo, pesoPalletConCajas,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
 import { abreviaturaContenido, nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroVisibleCard, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional } from '@/features/despacho/shared/numeroCard';
@@ -118,6 +118,9 @@ interface FormRow {
   alto: string;
   ancho: string;
   largo: string;
+  /** Solo pallets: cuántas cajas negras estuvieron EN LA BALANZA junto con el pallet. Se les
+   *  descuenta la tara. Vacío = ninguna, que es el caso normal. Ver `pesoPalletConCajas`. */
+  cajasNegras?: string;
   guia: string;
   valor: string;
   saved?: boolean;
@@ -1189,6 +1192,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         const neto = pesoNetoCajaNegra(row.peso);
         if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
         p = neto.neto;
+      } else if (row.pkg === 'pallet') {
+        // Las cajas negras pesadas ENCIMA del pallet son retornables: no son mercadería. Un
+        // chocolate sumado con el botón ya vino neto, así que ahí no se declara ninguna —
+        // declararla restaría la tara dos veces. Espejo de StepForm.
+        const neto = pesoPalletConCajas(row.peso, parseInt(row.cajasNegras ?? '', 10) || 0);
+        if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
+        p = neto.neto;
       } else {
         p = parseFloat(row.peso);
         if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
@@ -2033,6 +2043,18 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   )}
                   {row.pkg === 'pallet' && (
                     <div className="mb-1.5">
+                      {/* Se pregunta por lo que estuvo EN LA BALANZA, no por lo que hay en el pallet:
+                          un chocolate sumado con el botón ya vino neto y declararlo acá restaría la
+                          tara dos veces. */}
+                      <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Cajas negras pesadas con el pallet</label>
+                      <input type="number" value={row.cajasNegras ?? ''} onChange={e => updateRow(row.id, 'cajasNegras', e.target.value)}
+                        onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="0" inputMode="numeric" min={0}
+                        className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none] mb-1.5" />
+                      {(parseInt(row.cajasNegras ?? '', 10) || 0) > 0 && (
+                        <div className="text-[10px] font-bold mb-1.5" style={{ color: '#C2410C' }}>
+                          se descuentan {String(Math.round((parseInt(row.cajasNegras!, 10) * TARA_CAJA_NEGRA) * 10) / 10).replace('.', ',')} kg de cajas
+                        </div>
+                      )}
                       <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Tipo de carga</label>
                       <div className="flex gap-0.5">
                         {/* Chocolate también es tipo de carga de un pallet: dice QUÉ va adentro, no

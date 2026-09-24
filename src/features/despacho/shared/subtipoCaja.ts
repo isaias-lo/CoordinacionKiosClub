@@ -162,3 +162,54 @@ export function pesoParaMostrar(neto: number, subtipo: SubtipoCaja, tara = TARA_
   if (subtipo !== 'negra') return neto;
   return Math.round((neto + tara) * 10) / 10;
 }
+
+// ── Cajas negras pesadas JUNTO con un pallet ───────────────────────────────────────────────────
+//
+// Un chocolate puede terminar en un pallet por dos caminos, y solo uno necesita esta resta:
+//
+//   SUMAR   el chocolate ya se pesó solo (quedó neto, sin caja) y se le suma al pallet.
+//           Un pallet de 300 más un chocolate de 17 da 317. No se resta nada: la tara ya salió
+//           cuando se pesó el chocolate, y restarla otra vez la contaría dos veces.
+//
+//   PESAR   las cajas van arriba del pallet y se pesa todo junto. Ese número SÍ incluye las
+//           cajas, y son retornables: vuelven al CD, no son mercadería.
+//
+// Por eso lo que se pregunta es cuántas cajas ESTUVIERON EN LA BALANZA, no cuántas hay en el
+// pallet. Preguntar lo segundo haría restar en el primer caso, donde el peso nunca las incluyó.
+//
+// La de cartón no entra: no tiene tara conocida (su tamaño, y con él su peso, varía).
+
+export type PesoPallet =
+  | { ok: true; neto: number; bruto: number; cajas: number; descontado: number }
+  | { ok: false; error: string };
+
+/**
+ * El peso que queda registrado para un pallet que se pesó con `cajas` cajas negras encima.
+ *
+ * `cajas` en 0 —el caso normal— devuelve el peso tal cual, sin tocar nada.
+ *
+ * Se RECHAZA si lo pesado no alcanza para las cajas que se declaran: o el número está mal o el
+ * peso lo está, y guardar el resto convierte un error visible en un dato falso. Mismo criterio
+ * que `pesoNetoCajaNegra`.
+ */
+export function pesoPalletConCajas(
+  bruto: unknown, cajas: number, tara = TARA_CAJA_NEGRA,
+): PesoPallet {
+  const n = typeof bruto === 'number' ? bruto : parseFloat(String(bruto ?? '').replace(',', '.'));
+  if (!Number.isFinite(n) || n <= 0) {
+    return { ok: false, error: 'Escribe el peso que marcó la balanza (ej. 300).' };
+  }
+  const c = Math.floor(Number(cajas) || 0);
+  if (c <= 0) return { ok: true, neto: n, bruto: n, cajas: 0, descontado: 0 };
+
+  const descontado = Math.round(c * tara * 10) / 10;
+  if (n <= descontado) {
+    return {
+      ok: false,
+      error: `${c} caja${c === 1 ? '' : 's'} negra${c === 1 ? '' : 's'} ya pesan `
+           + `${String(descontado).replace('.', ',')} kg vacías. ¿Son `
+           + `${String(n).replace('.', ',')} kg lo que marcó la balanza?`,
+    };
+  }
+  return { ok: true, neto: Math.round((n - descontado) * 10) / 10, bruto: n, cajas: c, descontado };
+}

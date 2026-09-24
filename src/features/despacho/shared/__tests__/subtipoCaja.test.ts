@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   subtipoDeCaja, etiquetaSubtipo, tieneMedidasFijas, medidasDeCaja,
-  MEDIDAS_CAJA_NEGRA, SUBTIPOS_CAJA, claveUnidad, partirClave, pesoNetoCajaNegra, pesoParaGuardar, pesoParaMostrar,
+  MEDIDAS_CAJA_NEGRA, SUBTIPOS_CAJA, claveUnidad, partirClave, pesoNetoCajaNegra, pesoParaGuardar, pesoParaMostrar, pesoPalletConCajas,
 } from '../subtipoCaja';
 import { CHOCOLATE_DIMS } from '../chocolate';
 
@@ -167,5 +167,61 @@ describe('ida y vuelta: la resta ocurre UNA sola vez', () => {
   it('no arrastra coma flotante en ninguna de las dos', () => {
     expect(pesoParaGuardar(20.6, 'negra')).toBe(17.1);
     expect(pesoParaMostrar(17.1, 'negra')).toBe(20.6);
+  });
+});
+
+describe('un pallet pesado con cajas negras encima', () => {
+  it('sin cajas declaradas no toca nada: es el caso normal', () => {
+    expect(pesoPalletConCajas(300, 0)).toEqual({ ok: true, neto: 300, bruto: 300, cajas: 0, descontado: 0 });
+  });
+
+  it('una caja encima descuenta 3,5', () => {
+    expect(pesoPalletConCajas(300, 1)).toMatchObject({ ok: true, neto: 296.5, descontado: 3.5 });
+  });
+
+  it('dos cajas descuentan 7 — el caso real de 12LAS del 23/09', () => {
+    expect(pesoPalletConCajas(199, 2)).toMatchObject({ ok: true, neto: 192, descontado: 7 });
+  });
+
+  it('no arrastra coma flotante con varias cajas', () => {
+    expect(pesoPalletConCajas(100, 3)).toMatchObject({ neto: 89.5, descontado: 10.5 });
+  });
+
+  it('acepta coma decimal', () => {
+    expect(pesoPalletConCajas('300,5', 1)).toMatchObject({ neto: 297 });
+  });
+});
+
+describe('el pallet rechaza, no recorta', () => {
+  it('si lo pesado no alcanza para las cajas declaradas, se avisa', () => {
+    const r = pesoPalletConCajas(5, 2);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain('7');
+  });
+
+  it('un peso que no es peso se rechaza', () => {
+    for (const v of [0, '', 'abc', null, -3]) expect(pesoPalletConCajas(v, 1).ok).toBe(false);
+  });
+
+  it('un número de cajas negativo o basura se trata como cero', () => {
+    expect(pesoPalletConCajas(300, -2)).toMatchObject({ neto: 300, cajas: 0 });
+    expect(pesoPalletConCajas(300, NaN)).toMatchObject({ neto: 300, cajas: 0 });
+  });
+});
+
+describe('los dos caminos NO se pisan: la tara sale una sola vez', () => {
+  it('SUMAR: un pallet de 300 más un chocolate ya pesado de 17 da 317', () => {
+    // El 17 ya viene neto (20,5 menos la caja). El pallet se pesó sin la caja encima, así que
+    // `pesoPalletConCajas` no descuenta nada: declarar la caja acá la restaría dos veces.
+    const chocolate = pesoNetoCajaNegra(20.5);
+    expect(chocolate).toMatchObject({ neto: 17 });
+    const pallet = pesoPalletConCajas(300, 0);
+    expect(pallet).toMatchObject({ neto: 300 });
+    if (chocolate.ok && pallet.ok) expect(pallet.neto + chocolate.neto).toBe(317);
+  });
+
+  it('PESAR: el mismo conjunto pesado junto da lo mismo', () => {
+    // 300 de pallet + 20,5 de la caja llena = 320,5 en la balanza, con 1 caja encima.
+    expect(pesoPalletConCajas(320.5, 1)).toMatchObject({ neto: 317 });
   });
 });
