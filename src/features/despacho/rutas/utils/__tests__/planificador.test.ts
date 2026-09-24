@@ -4,7 +4,7 @@ import {
   esParadaDireccion, nuevoParadaDireccionId, paradasDireccionPatch,
   construirTextoRuta, siglaTienda, formatDuracion, kmRutaAprox, repartirEnNRutas,
   hhmmAMin, minAHHMM, parseVentana, estadoVentana, calcularETAs,
-  type ParadaDireccion, type LineaParada, filtrarPorZonas } from '../planificador';
+  type ParadaDireccion, type LineaParada, filtrarPorZonas, construirListaRuta } from '../planificador';
 
 const gps: Record<string, number[]> = {
   '26ALC': [-33.39, -70.50],
@@ -513,5 +513,40 @@ describe('filtrarPorZonas', () => {
 
   it('lista vacía no rompe', () => {
     expect(correr([], ['santiago'])).toMatchObject({ incluidas: [], sinZona: [] });
+  });
+});
+
+describe('construirListaRuta — la ruta en su forma más corta', () => {
+  const t = (cod: string): LineaParada => ({ cod, esDireccion: false, nombre: 'X', direccion: 'Calle 1', tipo: 'Mall', horario: '08:00-12:00' });
+
+  it('el ejemplo pedido: nombre, línea en blanco, y los códigos numerados', () => {
+    expect(construirListaRuta({ titulo: 'Ruta 1', lineas: ['01PTA', '18FLO', '29CFL'].map(t) }))
+      .toBe('Ruta 1\n\n*1. PTA*\n*2. FLO*\n*3. CFL*');
+  });
+
+  it('saca el número del código, igual que el texto completo', () => {
+    expect(construirListaRuta({ titulo: 'R', lineas: [t('16PQA')] })).toContain('*1. PQA*');
+  });
+
+  it('respeta los códigos que TERMINAN en número', () => {
+    // 38SP2 es el local 2, no SP. Mismo criterio que `siglaTienda`.
+    expect(construirListaRuta({ titulo: 'R', lineas: [t('38SP2')] })).toContain('*1. SP2*');
+  });
+
+  it('una dirección suelta no trae su texto entero: rompería la forma corta', () => {
+    const dir: LineaParada = { cod: 'dir-1', esDireccion: true, nombre: 'Av. Siempre Viva 742, Springfield' };
+    expect(construirListaRuta({ titulo: 'R', lineas: [t('01PTA'), dir] }))
+      .toBe('R\n\n*1. PTA*\n*2. Dirección*');
+  });
+
+  it('sin paradas queda solo el nombre, sin líneas en blanco colgando', () => {
+    expect(construirListaRuta({ titulo: 'Ruta 3', lineas: [] })).toBe('Ruta 3');
+  });
+
+  it('NO trae ni direcciones, ni ventanas, ni el link del mapa', () => {
+    const salida = construirListaRuta({ titulo: 'Ruta 1', lineas: [t('01PTA')] });
+    for (const fuera of ['Calle 1', '08:00-12:00', 'Mall', 'http', 'Mapa']) {
+      expect(salida).not.toContain(fuera);
+    }
   });
 });

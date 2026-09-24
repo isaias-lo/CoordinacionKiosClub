@@ -9,7 +9,7 @@ import { nn, type Ruta } from '../utils/routing';
 import {
   buscarTiendas, virtualStops, googleMapsDeepLink,
   esParadaDireccion, nuevoParadaDireccionId, paradasDireccionPatch,
-  construirTextoRuta, formatDuracion, kmRutaAprox, repartirEnNRutas,
+  construirTextoRuta, construirListaRuta, formatDuracion, kmRutaAprox, repartirEnNRutas,
   hhmmAMin, minAHHMM, calcularETAs, estadoVentana, type EstadoVentana,
   type ParadaDireccion, type LineaParada,
 } from '../utils/planificador';
@@ -192,6 +192,13 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const [dragIdx,     setDragIdx]     = useState<number | null>(null);
   // Compartir: se arma el texto y se abre un panel (shareText != '') para copiar/mandar por WhatsApp.
   const [shareText,   setShareText]   = useState('');
+  // El mismo compartir en dos formas: la completa —con dirección, tipo y ventana, que es lo que
+  // necesita quien maneja— y la lista pelada, para decir QUÉ ruta es y en qué orden va. Se arman
+  // las dos al abrir el panel y se alterna sin recalcular.
+  const [shareLista,  setShareLista]  = useState('');
+  const [shareModo,   setShareModo]   = useState<'completo' | 'lista'>('completo');
+  /** Lo que se ve y lo que copian los botones: una sola fuente para las dos cosas. */
+  const textoAComparir = shareModo === 'lista' ? shareLista : shareText;
   const [copied,      setCopied]      = useState(false);
   // Armar desde calendario: fuente (seco/congelados) + día + cuántas rutas.
   const [calFuente,   setCalFuente]   = useState<'seco' | 'congelados'>('seco');
@@ -657,18 +664,32 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         });
       });
     if (!bloques.length) return;
+    const listas = routesComputed
+      .map((rc, i) => ({ rc, r: routes[i] }))
+      .filter(({ r }) => visibleIds.includes(r.id) && r.selected.length > 0)
+      .map(({ rc, r }) => {
+        const cById = Object.fromEntries(r.customStops.map(p => [p.id, p]));
+        return construirListaRuta({
+          titulo: r.nombre,
+          lineas: rc.ordered.map(cod => esParadaDireccion(cod)
+            ? { cod, esDireccion: true, nombre: cById[cod]?.label }
+            : { cod, esDireccion: false }),
+        });
+      });
     setCopied(false);
+    setShareModo('completo');
+    setShareLista(listas.join('\n\n———\n\n'));
     setShareText(bloques.join('\n\n———\n\n'));
   }
 
   async function copiarTexto() {
-    try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    try { await navigator.clipboard.writeText(textoAComparir); setCopied(true); setTimeout(() => setCopied(false), 2000); }
     catch { /* algunos navegadores requieren HTTPS/permiso → el texto igual se puede seleccionar y copiar a mano */ }
   }
   function compartirNativo() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const nav = navigator as any;
-    if (typeof nav.share === 'function') nav.share({ title: 'Rutas', text: shareText }).catch(() => {});
+    if (typeof nav.share === 'function') nav.share({ title: 'Rutas', text: textoAComparir }).catch(() => {});
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const puedeCompartirNativo = typeof navigator !== 'undefined' && typeof (navigator as any).share === 'function';
@@ -1197,16 +1218,32 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
                 className="w-8 h-8 rounded-full bg-kbg flex items-center justify-center text-kmuted hover:text-ktext cursor-pointer"><X size={16} /></button>
             </div>
             <div className="p-4 overflow-y-auto flex-1">
-              <textarea readOnly value={shareText} onFocus={e => e.currentTarget.select()}
+              {/* Las dos formas del mismo compartir. Los botones de abajo actúan sobre la que
+                  esté a la vista, así que no hace falta duplicarlos. */}
+              <div className="flex gap-1 mb-2 p-0.5 bg-kbg rounded-[9px]">
+                {([['completo', 'Completo'], ['lista', 'Solo la lista']] as const).map(([modo, etiqueta]) => (
+                  <button key={modo} type="button" onClick={() => { setShareModo(modo); setCopied(false); }}
+                    aria-pressed={shareModo === modo}
+                    className={`flex-1 py-1.5 rounded-[7px] text-[12px] font-bold cursor-pointer border-none transition-colors ${
+                      shareModo === modo ? 'bg-white text-knavy shadow-[0_1px_3px_rgba(0,0,0,0.10)]' : 'bg-transparent text-kmuted'}`}>
+                    {etiqueta}
+                  </button>
+                ))}
+              </div>
+              <textarea readOnly value={textoAComparir} onFocus={e => e.currentTarget.select()}
                 className="w-full h-[240px] resize-none border border-black/[0.12] rounded-[10px] p-3 text-[12px] font-mono leading-relaxed text-ktext bg-kbg outline-none focus:border-knavy" />
-              <div className="text-[11px] text-kmuted mt-1.5">Tocá el texto para seleccionarlo, o usá los botones de abajo.</div>
+              <div className="text-[11px] text-kmuted mt-1.5">
+                {shareModo === 'lista'
+                  ? 'Solo el nombre de la ruta y sus paradas, sin direcciones ni horarios.'
+                  : 'Tocá el texto para seleccionarlo, o usá los botones de abajo.'}
+              </div>
             </div>
             <div className="flex gap-2 px-4 py-3 border-t border-black/[0.08] flex-shrink-0">
               <button onClick={copiarTexto}
                 className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[10px] bg-knavy text-white text-[13px] font-bold cursor-pointer">
                 {copied ? <><Check size={15} /> Copiado</> : <><Copy size={15} /> Copiar</>}
               </button>
-              <a href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener noreferrer"
+              <a href={`https://wa.me/?text=${encodeURIComponent(textoAComparir)}`} target="_blank" rel="noopener noreferrer"
                 className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[10px] bg-[#25D366] text-white text-[13px] font-bold cursor-pointer no-underline">
                 WhatsApp
               </a>
