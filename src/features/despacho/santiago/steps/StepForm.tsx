@@ -1765,8 +1765,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         .then(({ error }) => { if (error) console.error('[union peso]', error.message); });
     }
     if (tgtSlot && srcSlot) finalizarSlotUnion(tgtSlot, srcSlot);
-    else if (srcSlot) supabase.from('picking_pallets').delete().eq('id', srcSlot)
-      .then(({ error }) => { if (error) console.error('[union delete]', error.message); });
+    // Sin slot de destino no hay refs que fusionar, pero el borrado es el mismo. Antes era un
+    // `delete` a mano y se quedaba sin los DOS guards: sin el anti-revive (la recarga de picking lo
+    // resucitaba) y sin la lápida (el merge entre equipos lo devolvía). `eliminarSlotPicking` hace
+    // las tres cosas en un solo lugar.
+    else if (srcSlot) eliminarSlotPicking(srcSlot);
 
     // 3) Cachés de slots: quitar el del source de AMBOS (full para el rebuild; light para gP/badge,
     //    así no aparece el fantasma), y reflejar el peso sumado en el slot del target (full).
