@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy, CalendarDays, Flag, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
+import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy, CalendarDays, Flag, ChevronUp, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import { CD_INICIAL, COLS, type TiendaInfo } from '../data/tiendas';
 import type { Vehiculo } from '../data/flota';
 import { nn, type Ruta } from '../utils/routing';
@@ -1105,7 +1105,23 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
               onDragOver={e => e.preventDefault()}
               onDrop={() => { if (dragIdx !== null) reordenar(dragIdx, i); setDragIdx(null); }}
               className="flex items-center gap-2 px-2.5 py-1.5 rounded-[8px] bg-white border border-black/[0.09]">
-              <GripVertical size={13} className="text-black/20 cursor-grab flex-shrink-0" />
+              {/* Subir/bajar: en un teléfono el arrastre NO existe. `draggable`/`onDrop` son
+                  eventos HTML5 de mouse y no se disparan al tocar, así que reordenar solo andaba
+                  en computador. Dos botones funcionan en los dos, no dependen de un gesto preciso
+                  sobre una fila de 34 px, y dejan el arrastre intacto para quien ya lo usa. */}
+              <span className="flex flex-col flex-shrink-0 -my-0.5">
+                <button type="button" aria-label={`Subir ${cod} a la parada ${i}`}
+                  disabled={i === 0} onClick={() => reordenar(i, i - 1)}
+                  className="w-6 h-4 flex items-center justify-center rounded-t text-black/45 disabled:text-black/10 disabled:cursor-default active:bg-black/10 border-none bg-transparent cursor-pointer p-0">
+                  <ChevronUp size={13} />
+                </button>
+                <button type="button" aria-label={`Bajar ${cod} a la parada ${i + 2}`}
+                  disabled={i === orderedCods.length - 1} onClick={() => reordenar(i, i + 1)}
+                  className="w-6 h-4 flex items-center justify-center rounded-b text-black/45 disabled:text-black/10 disabled:cursor-default active:bg-black/10 border-none bg-transparent cursor-pointer p-0">
+                  <ChevronDown size={13} />
+                </button>
+              </span>
+              <GripVertical size={13} className="text-black/20 cursor-grab flex-shrink-0 hidden sm:block" />
               <span className="w-5 h-5 rounded-full text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0" style={{ background: activeColor }}>{i + 1}</span>
               <span className="flex-1 min-w-0">
                 {esDir ? (
