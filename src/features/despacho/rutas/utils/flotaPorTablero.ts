@@ -82,3 +82,89 @@ export function parseSeleccion(estado: unknown): Set<string> | null {
   if (!Array.isArray(p)) return null;
   return new Set(p.filter((x): x is string => typeof x === 'string' && x.trim() !== ''));
 }
+
+// ── Sincronizar la selección entre equipos ───────────────────────────────────────────────────
+//
+// Reportado: "vehículos que aparecen y desaparecen". Son dos cosas distintas y las dos viven acá.
+//
+// **1. La selección se pisaba.** El canal de tiempo real REEMPLAZABA la selección entera con la
+// del otro equipo, y al tocar un camión se empujaba el conjunto completo. Con dos personas
+// eligiendo camiones, gana el último que escribe y al otro se le mueve la flota debajo de las
+// manos. Es exactamente el mismo bug que `tableroSync` ya resolvió para las tiendas, y se arregla
+// igual: merge de tres vías, acá con la PATENTE como clave.
+//
+// **2. El parpadeo al abrir.** `selSeco` arranca en `null` y `visiblesEnTablero` con `undefined`
+// muestra TODOS los camiones activos. Cuando llega la selección guardada, la lista cambia sola.
+// Cada vez que se abre el Enrutador se ve una flota y un segundo después otra. Por eso se guarda
+// una copia local por día: la primera pintada ya sale bien, y el servidor corrige después si hace
+// falta — pero desde mucho más cerca.
+
+/**
+ * Merge de tres vías de la selección, patente por patente.
+ *
+ * `base` es lo último que este equipo sincronizó. La regla es la misma de `mergeTablero`:
+ *
+ *   · no la toqué desde el último sync → manda el remoto (es lo que hizo el otro equipo)
+ *   · la cambié yo                     → gana lo mío
+ *
+ * Así, si un equipo agrega un camión y el otro saca otro distinto, quedan los dos cambios. Antes
+ * ganaba el último en escribir y el otro perdía su elección sin enterarse.
+ */
+export function mergeSeleccion(
+  remoto: ReadonlySet<string>, local: ReadonlySet<string>, base: ReadonlySet<string>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const p of new Set([...remoto, ...local, ...base])) {
+    const enLocal = local.has(p), enBase = base.has(p);
+    if (enLocal === enBase) { if (remoto.has(p)) out.add(p); continue; }  // no la toqué → remoto
+    if (enLocal) out.add(p);                                             // la cambié yo → la mía
+  }
+  return out;
+}
+
+/** ¿Los dos conjuntos tienen las mismas patentes? (para saber si hace falta escribir). */
+export function mismaSeleccion(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const p of a) if (!b.has(p)) return false;
+  return true;
+}
+
+/** Texto estable de una selección: sirve de corta-ecos (el push propio vuelve por el canal). */
+export function firmaSeleccion(s: ReadonlySet<string>): string {
+  return [...s].sort().join(',');
+}
+
+/**
+ * Clave de la copia local, POR DÍA.
+ *
+ * Con la fecha adentro, abrir otro día no hereda la selección del anterior: sin copia se cae al
+ * comportamiento de siempre, que es lo correcto para un día que no se trabajó todavía.
+ */
+export function claveCacheSeleccion(tablero: Tablero, fecha: string): string {
+  return `flota_sel:${tablero}:${fecha}`;
+}
+
+type AlmacenSimple = Pick<Storage, 'getItem' | 'setItem'>;
+
+function almacenPorDefecto(): AlmacenSimple | null {
+  try { return typeof window === 'undefined' ? null : window.localStorage; } catch { return null; }
+}
+
+/** La selección guardada en este equipo para ese día, o `null` si no hay (o si no se puede leer). */
+export function leerCacheSeleccion(
+  tablero: Tablero, fecha: string, store: AlmacenSimple | null = almacenPorDefecto(),
+): Set<string> | null {
+  try {
+    const raw = store?.getItem(claveCacheSeleccion(tablero, fecha));
+    if (!raw) return null;
+    return parseSeleccion(JSON.parse(raw));
+  } catch { return null; }
+}
+
+/** Guarda la selección de este equipo. Que falle no rompe nada: es solo para la primera pintada. */
+export function guardarCacheSeleccion(
+  tablero: Tablero, fecha: string, sel: ReadonlySet<string>,
+  store: AlmacenSimple | null = almacenPorDefecto(),
+): void {
+  try { store?.setItem(claveCacheSeleccion(tablero, fecha), JSON.stringify(serializarSeleccion(sel))); } catch { /* sin copia local; el servidor manda igual */ }
+}

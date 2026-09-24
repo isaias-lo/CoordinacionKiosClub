@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, type Dispatch, type SetStateAction } from 'react';
 import { usePestanaRecordada } from '@/hooks/usePestanaRecordada';
 import { useAuth } from '../../../components/AuthProvider';
 import { useAsignacionAutomatica } from '@/hooks/useAsignacionAutomatica';
@@ -62,7 +62,10 @@ import type { Vehiculo } from './data/flota';
 import { fechaChile } from '@/lib/fechaChile';
 import { fechaSalida, type TipoCarga } from './utils/fechaSalida';
 import { buildControlCongeladosRows } from '../congelados/utils/controlCongelados';
-import { seleccionInicial, alternar, serializarSeleccion, parseSeleccion } from './utils/flotaPorTablero';
+import {
+  seleccionInicial, alternar, serializarSeleccion, parseSeleccion,
+  mergeSeleccion, mismaSeleccion, firmaSeleccion, leerCacheSeleccion, guardarCacheSeleccion,
+} from './utils/flotaPorTablero';
 import { aplicarCargaDelDia } from './utils/cargaFechaPasada';
 import { unirBacklog } from './utils/backlogSegundaVuelta';
 import { fetchBacklogCalculado } from '@/lib/backlogV2';
@@ -364,8 +367,27 @@ export default function RutasScreen() {
   // se separa es CUÁL uso en cada tablero — antes eran el mismo interruptor, y apagar los de Luis
   // Fica en Congelados los apagaba también en Despacho, para todos y para el día siguiente.
   // `null` = todavía no se leyó lo guardado; ahí no se pinta selección para no esconder camiones.
-  const [selSeco, setSelSeco] = useState<Set<string> | null>(null);
-  const [selCong, setSelCong] = useState<Set<string> | null>(null);
+  //
+  // Arranca de la COPIA LOCAL del día, no en `null`. Sin eso, la primera pintada mostraba todos los
+  // camiones activos —`visiblesEnTablero` con `undefined` cae al `v.on`— y un segundo después, al
+  // llegar lo guardado, la lista cambiaba sola: los "vehículos que aparecen y desaparecen" cada vez
+  // que se abre el Enrutador. La copia es por día, así que otro día no hereda nada y se comporta
+  // como antes. El servidor sigue mandando; solo se arranca mucho más cerca.
+  const [selSeco, setSelSeco] = useState<Set<string> | null>(() => leerCacheSeleccion('seco', fecha));
+  const [selCong, setSelCong] = useState<Set<string> | null>(() => leerCacheSeleccion('congelados', fecha));
+  // Base del merge de tres vías + corta-ecos, por tablero. Misma mecánica que `baseManualRef`:
+  // la base es lo que el SERVIDOR tiene, nunca el resultado del merge.
+  const selSyncRef = useRef<Record<'seco' | 'congelados', { base: Set<string>; firma: string }>>({
+    seco:       { base: new Set(), firma: '' },
+    congelados: { base: new Set(), firma: '' },
+  });
+  // Espejo de la selección vigente. El merge remoto necesita leer lo local, y hacerlo dentro de un
+  // `setState(prev => …)` obligaría a empujar y guardar DENTRO del updater — que React puede correr
+  // dos veces y mandaría el push duplicado. Mismo patrón que `cerradasV1Ref`.
+  const selSecoRef = useRef(selSeco);
+  const selCongRef = useRef(selCong);
+  useEffect(() => { selSecoRef.current = selSeco; }, [selSeco]);
+  useEffect(() => { selCongRef.current = selCong; }, [selCong]);
 
   const [cerradasCong, setCerradasCong] = useState<Set<string>>(new Set());
   const cerradasCongRef = useRef<Set<string>>(cerradasCong);
@@ -1203,17 +1225,38 @@ export default function RutasScreen() {
                           set: (s: Set<string>) => void) => {
       const remoto = await fetchSessionState(fuente, fecha).catch(() => null);
       if (!vivo) return;
-      set(parseSeleccion(remoto) ?? new Set(seleccionInicial(flota, tablero)));
+      const leida = parseSeleccion(remoto) ?? new Set(seleccionInicial(flota, tablero));
+      selSyncRef.current[tablero] = { base: new Set(leida), firma: firmaSeleccion(leida) };
+      guardarCacheSeleccion(tablero, fecha, leida);
+      set(leida);
     };
     void cargar('flota_sel',      'seco',       setSelSeco);
     void cargar('flota_sel_cong', 'congelados', setSelCong);
 
-    const u1 = subscribeToSessionState('flota_sel', userId ?? '', s => {
-      const r = parseSeleccion(s); if (r) setSelSeco(r);
-    }, undefined, fecha);
-    const u2 = subscribeToSessionState('flota_sel_cong', userId ?? '', s => {
-      const r = parseSeleccion(s); if (r) setSelCong(r);
-    }, undefined, fecha);
+    // Lo remoto se FUSIONA, no reemplaza. Antes se adoptaba la selección del otro equipo tal cual:
+    // con dos personas eligiendo camiones, la última en escribir borraba la elección de la otra —
+    // y a esa se le movía la flota debajo de las manos. Mismo merge de tres vías que el tablero.
+    const aplicar = (tablero: 'seco' | 'congelados', set: Dispatch<SetStateAction<Set<string> | null>>) => (estado: unknown) => {
+      const remoto = parseSeleccion(estado);
+      if (!remoto) return;
+      const sync = selSyncRef.current[tablero];
+      if (firmaSeleccion(remoto) === sync.firma) return;   // es el eco de mi propio push
+      const local  = (tablero === 'seco' ? selSecoRef.current : selCongRef.current) ?? remoto;
+      const fusion = mergeSeleccion(remoto, local, sync.base);
+      // La base del PRÓXIMO merge es lo remoto, no el resultado (ver `aplicarRemoto`).
+      selSyncRef.current[tablero] = { base: new Set(remoto), firma: firmaSeleccion(remoto) };
+      guardarCacheSeleccion(tablero, fecha, fusion);
+      // Si el merge conservó algo mío que el servidor todavía no tiene, hay que escribirlo: si no,
+      // el próximo evento remoto lo revierte (es el bug del 04/09, una capa más afuera).
+      if (!mismaSeleccion(fusion, remoto)) {
+        selSyncRef.current[tablero].firma = firmaSeleccion(fusion);
+        void pushSessionState(tablero === 'seco' ? 'flota_sel' : 'flota_sel_cong',
+          serializarSeleccion(fusion), userId, fecha);
+      }
+      set(fusion);
+    };
+    const u1 = subscribeToSessionState('flota_sel',      userId ?? '', aplicar('seco',       setSelSeco), undefined, fecha);
+    const u2 = subscribeToSessionState('flota_sel_cong', userId ?? '', aplicar('congelados', setSelCong), undefined, fecha);
     return () => { vivo = false; u1(); u2(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha, flota.length]);
@@ -1223,6 +1266,10 @@ export default function RutasScreen() {
     if (!actual) return;                       // todavía no cargó: no escribir sobre lo desconocido
     const next = alternar(actual, patente);
     (tablero === 'seco' ? setSelSeco : setSelCong)(next);
+    // La firma se anota ANTES de empujar: el canal devuelve el propio push y sin esto se volvería
+    // a fusionar contra una base vieja.
+    selSyncRef.current[tablero].firma = firmaSeleccion(next);
+    guardarCacheSeleccion(tablero, fecha, next);
     void pushSessionState(tablero === 'seco' ? 'flota_sel' : 'flota_sel_cong',
       serializarSeleccion(next), userId, fecha);
   };
