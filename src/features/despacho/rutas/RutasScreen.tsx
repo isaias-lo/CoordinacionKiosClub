@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { usePestanaRecordada } from '@/hooks/usePestanaRecordada';
 import { useAuth } from '../../../components/AuthProvider';
 import { useAsignacionAutomatica } from '@/hooks/useAsignacionAutomatica';
-import { puedeCambiarAuto, motivoBloqueoAuto } from './utils/autoAsignar';
+import { puedeCambiarAuto, motivoBloqueoAuto, puedeAsignarSolo } from './utils/autoAsignar';
 import InputSection   from './components/InputSection';
 import DespachoHeader from './components/DespachoHeader';
 import { useIsMobile } from './utils/useIsMobile';
@@ -204,7 +204,7 @@ export default function RutasScreen() {
   // COMPARTIDO por todo el equipo (`config_despacho`), no una preferencia de este navegador. Antes
   // vivía en localStorage y eso rompía justo en el caso que importa: alguien lo apagaba para armar
   // a mano, y en el equipo de al lado seguía en ON adelantando camiones sobre su armado.
-  const { activo: asignacionAutomatica, guardar: guardarAuto } = useAsignacionAutomatica();
+  const { activo: asignacionAutomatica, confirmado: autoConfirmado, guardar: guardarAuto } = useAsignacionAutomatica();
   const puedeAuto = puedeCambiarAuto(profile?.role);
   const [cal,     setCal]     = useState<CalRecord>(() => {
     // Fast-path: use localStorage cache written by the Calendario de Abastecimiento (if fresh)
@@ -2309,13 +2309,18 @@ export default function RutasScreen() {
   const poolSig   = useMemo(() => codsEnPool(calT).join(','), [calT]);
   const trucksSig = useMemo(() => flota.filter(v => v.on && !v.tlbd).map(v => v.p).sort().join(','), [flota]);
   useEffect(() => {
-    if (!asignacionAutomatica || !poolSig || !trucksSig) return;
+    // `autoConfirmado` no es un detalle: el flag arranca en ON por optimismo y solo se corrige si
+    // el servidor contesta. En `config_despacho` está en `false` desde el 10/09, y aun así el
+    // tablero se seguía completando solo — porque mientras el GET no vuelve (o vuelve 401), el
+    // cliente cree que está encendido. Mover carga sobre una suposición es justo lo que el
+    // interruptor existe para impedir: con "todavía no sé", no se toca nada.
+    if (!puedeAsignarSolo(autoConfirmado, asignacionAutomatica) || !poolSig || !trucksSig) return;
     // Los DOS pools, no solo el que se está mirando: las tiendas que Bodega registra para Regiones
     // tienen que asignarse solas aunque el coordinador esté trabajando RM en ese momento. El
     // `scope` es para las acciones que se piden a mano; esto corre en segundo plano y solo agrega.
     const t = setTimeout(() => completarRef.current(['rm-costa', 'regiones']), 1000);
     return () => clearTimeout(t);
-  }, [asignacionAutomatica, poolSig, trucksSig]);
+  }, [autoConfirmado, asignacionAutomatica, poolSig, trucksSig]);
 
   // [E4·4c] Fase actual del Enrutador para el indicador visible (Pool→Asignado→Revisar→Registrar→Cierre).
   const faseInfo = useMemo(() => {
