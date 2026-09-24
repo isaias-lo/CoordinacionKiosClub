@@ -1,5 +1,6 @@
 import type { PickingSlot } from '../santiago/components/PickingSlotCards';
 import { marcarRecienAgregado } from './slotRecienAgregado';
+import { levantarLapida } from './lapidasBorrado';
 
 export interface CrearSlotBodegaInput {
   date: string;
@@ -37,6 +38,9 @@ export async function crearSlotBodega(input: CrearSlotBodegaInput): Promise<Crea
       // de este INSERT y llega después reemplaza el mapa entero y se llevaría este slot puesto.
       // Se marca acá, en el único punto por donde pasan TODAS las altas de Bodega.
       marcarRecienAgregado(input.store_cod, json.data);
+      // [Lápidas] Si esta unidad tenía lápida, se levanta: volver a crearla es la única forma
+      // legítima de que el ítem vuelva (el Revertir pasa por acá). Ver `lapidasBorrado.ts`.
+      levantarLapida(json.data.id);
       return { slot: json.data };
     }
     return { error: json.error || 'el servidor no devolvió el pallet' };

@@ -13,6 +13,7 @@ import { agregarSinDuplicar } from '@/features/despacho/shared/itemPorUnidad';
 import { fechaChile } from '@/lib/fechaChile';
 import { stableItemKey } from '@/features/despacho/shared/formRowsReconcile';
 import { serializarBase } from '@/features/despacho/shared/syncBase';
+import { tieneLapida } from '@/features/despacho/shared/lapidasBorrado';
 
 const today = new Date();
 const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
@@ -329,7 +330,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // `dispatch` está indexado por NOMBRE de tienda (no cod) en este contexto — se manda tal
           // cual, el listener ya lo usa directo para el mensaje.
           window.dispatchEvent(new CustomEvent('bodega-conflicto-edicion', { detail: { tiendaNombre, orden: item.orden } }));
-        });
+        },
+        // [Lápidas] Lo que se borró acá no vuelve, aunque el remoto todavía lo traiga y la base ya
+        // no lo recuerde. Sin esto, el borrado solo valía hasta el push siguiente (2,5 s).
+        tieneLapida);
 
       // ── pdfData merge ── mismo criterio por-clave que las guías de RM/Costa (mergeEntriesByKey):
       // dirty ⇒ gana la local (subida/borrado sin empujar); limpia ⇒ manda la remota; y si el remoto

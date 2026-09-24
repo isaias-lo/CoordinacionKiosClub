@@ -9,7 +9,8 @@ import type {
 import { useAuth } from '@/components/AuthProvider';
 import { pushSessionState, fetchSessionStateMeta, subscribeToSessionState, remotoEsMasViejo } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
-import { mergeItemsByTienda, itemsFromSnapshot } from './mergeItems';
+import { mergeItemsByTienda, itemsFromSnapshot, quitarLapidas } from './mergeItems';
+import { tieneLapida } from '../../shared/lapidasBorrado';
 import { agregarSinDuplicar } from '../../shared/itemPorUnidad';
 import { stableItemKey } from '../../shared/formRowsReconcile';
 import { serializarBaseSantiago } from '../../shared/syncBase';
@@ -228,11 +229,18 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
           (cod, item) => {
             if (typeof window === 'undefined') return;
             window.dispatchEvent(new CustomEvent('bodega-conflicto-edicion', { detail: { cod, orden: item.orden } }));
-          });
+          },
+          // [Lápidas] Lo que se borró acá no vuelve, aunque el remoto todavía lo traiga y la base
+          // ya no lo recuerde. Ver `shared/lapidasBorrado.ts`.
+          tieneLapida);
         dispatch({ type: 'LOAD_STATE', payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: merged } });
       } else {
+        // Lo local está limpio → se adopta el remoto tal cual. Ojo: "limpio" es EXACTAMENTE como
+        // queda este equipo justo después de empujar, así que por acá volvían de una sola vez
+        // TODOS los ítems borrados hace un momento. Las lápidas se aplican también en esta rama.
         lastPushedRef.current = remoteStr;
-        dispatch({ type: 'LOAD_STATE', payload: remote });
+        const items = remote.items ? quitarLapidas(remote.items, stableItemKey, tieneLapida) : remote.items;
+        dispatch({ type: 'LOAD_STATE', payload: items === remote.items ? remote : { ...remote, items } });
       }
     };
 

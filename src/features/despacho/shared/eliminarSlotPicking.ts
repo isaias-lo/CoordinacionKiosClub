@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { marcarLapida } from './lapidasBorrado';
 
 // [RC-3] Ids de slots recién borrados (con TTL). La recarga de picking (load) los FILTRA para
 // que un borrado no "reviva": el canal de picking recarga la tabla completa con debounce 600 ms,
@@ -33,6 +34,11 @@ export function marcarRecienBorrado(id: number): void {
 export function eliminarSlotPicking(slotId?: number | null): void {
   if (!slotId) return;
   marcarRecienBorrado(slotId); // guard anti-revive contra la recarga de picking (RC-3)
+  // [Lápidas] El guard de arriba dura 5 s y protege de UNA recarga en vuelo. Este otro protege de
+  // algo distinto y más largo: del equipo de al lado que todavía tiene el ítem en su copia y lo
+  // devuelve al empujar. Ver `lapidasBorrado.ts` — es el 26% de chocolates que había que borrar
+  // dos veces. Va acá porque es el único punto por el que pasan TODOS los borrados.
+  marcarLapida(slotId);
   supabase.from('picking_pallets').delete().eq('id', slotId).then(({ error }) => {
     if (error) console.error('[eliminarSlotPicking]', error.message);
   });
