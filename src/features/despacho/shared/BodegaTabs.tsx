@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useAuth } from '@/components/AuthProvider';
+import { tabsPermitidos } from './tabsPermitidos';
 import { badgeZona, CONTEO_VACIO, type ConteoCongelados } from '../congelados/utils/conteoPorZona';
 import type { ZonaCongelados } from '../congelados/utils/congeladosGrid';
 
@@ -35,7 +37,13 @@ export function BodegaTabs() {
   // '/despacho/congelados/santiago' es hijo de '/despacho/congelados': mode-aware, no fusiona
   // con el seco (rutas hermanas, sin este problema de anidado).
   const isCongelados = !!pathname && pathname.startsWith('/despacho/congelados');
-  const TABS = isCongelados ? CONGELADOS_TABS : SECO_TABS;
+  // Solo las pestañas que esta persona puede ABRIR. Antes se dibujaban las tres siempre: quien no
+  // tenía la ruta —los supervisores de Picking no tienen `/despacho/santiago` ni
+  // `/despacho/actividad`— tocaba la pestaña y el middleware, en vez de decir "no tenés acceso",
+  // lo mandaba a la página inicial de su rol. Es decir: tocar una pestaña de Bodega los sacaba del
+  // módulo y los dejaba en Picking. Ver `tabsPermitidos.ts`.
+  const { profile } = useAuth();
+  const TABS = tabsPermitidos(isCongelados ? CONGELADOS_TABS : SECO_TABS, profile?.allowedPaths);
 
   // El conteo lo publica CongeladosPage, que ya tiene los datos de LAS DOS zonas (los slots de
   // picking no vienen filtrados por zona y el calendario llega entero). Mismo patrón que
@@ -53,6 +61,8 @@ export function BodegaTabs() {
 
   return (
     <div className="mobile-menu-safe flex bg-white border-b-2 border-bg-2 flex-shrink-0 print:hidden">
+      {/* Con una sola pestaña permitida la barra no aporta nada, pero se deja igual: sigue
+          diciendo en qué pantalla estás, que es la mitad de para qué está. */}
       {TABS.map((tab, i) => {
         // Congelados: match exacto (evita que '/despacho/congelados/santiago' active también
         // el tab 'Nacional' por ser prefijo). Seco: comportamiento original sin cambios.
