@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { unionRefs } from './unifyPallets';
 import { marcarRecienBorrado } from './eliminarSlotPicking';
+import { marcarLapida } from './lapidasBorrado';
 
 /**
  * Cierra una unión de dos unidades en `picking_pallets`: fusiona las referencias en la que
@@ -17,6 +18,10 @@ import { marcarRecienBorrado } from './eliminarSlotPicking';
  *  · El guard anti-revivir (RC-3). El canal de picking recarga la tabla con 600 ms de debounce; si
  *    ese reload sale antes de que propague el DELETE, re-inserta el slot recién borrado y el
  *    backfill lo materializa de nuevo. `eliminarSlotPicking` ya lo hacía; esto no.
+ *  · La LÁPIDA. Una unión hace desaparecer una unidad igual que un borrado, así que el ítem
+ *    absorbido puede volver por el merge de `shared_session_state` exactamente igual: el borrado
+ *    solo se recuerda mientras siga en la base del merge, y la base avanza en cada push. Ver
+ *    `lapidasBorrado.ts`. Faltaba acá, así que el arreglo de los borrados no cubría las uniones.
  *  · Decir si funcionó. Antes tragaba cualquier error en un `console.error` y seguía, así que una
  *    unión a medias —refs fusionadas, slot sin borrar— no se distinguía de una completa.
  *
@@ -45,6 +50,7 @@ export async function finalizarSlotUnion(
     }
 
     marcarRecienBorrado(idAbsorbido);   // que la recarga de picking no lo reviva
+    marcarLapida(idAbsorbido);          // que el merge entre equipos tampoco lo devuelva
     const { error: errBorrado } = await supabase.from('picking_pallets').delete().eq('id', idAbsorbido);
     if (errBorrado) return { ok: false, error: errBorrado.message };
     return { ok: true };
