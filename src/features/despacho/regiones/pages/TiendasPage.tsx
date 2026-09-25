@@ -58,7 +58,7 @@ import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { combinarEnLista } from '../../shared/combinarEnLista';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
-import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio, esReingreso } from '../../shared/itemPorUnidad';
+import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
 import { avisoDeUnidad } from '../../shared/avisoUnidadEscaneada';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
@@ -125,6 +125,9 @@ interface FormRow {
   guia: string;
   valor: string;
   saved?: boolean;
+  /** La tarjeta se reabrió porque se le SUMÓ algo: el guardado que viene no es trabajo rehecho.
+   *  Ver `esReingresoDeVerdad`. Se limpia al guardar. */
+  traSuma?: boolean;
   /** La persona escribió algo en esta tarjeta. Distinto de `!saved`, que solo dice que no se
    *  guardó EN ESTE equipo: una tarjeta recién nacida en blanco no está tocada. */
   tocada?: boolean;
@@ -1257,7 +1260,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // (el reintento de arriba), la fila se quedaba sin él. El backfill pregunta por los slots que
     // las filas declaran (`slotsRepresentados`), no encontraba este, y agregaba una SEGUNDA tarjeta
     // para la misma unidad. RM/Costa ya lo hacía (StepForm: mismo punto); acá faltaba.
-    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId } : r));
+    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId, traSuma: false } : r));
     // El toast "Agregado sin pesar" lo dispara el caller (botón "Sin pesar") justo después.
     if (!sinPesar) showToast(`✓ ${item.orden} ${previo ? 'actualizado' : 'agregado'}`, '#16A34A');
     logActividad({ accion: 'registrar_item', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
@@ -1265,7 +1268,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // [Bodega · uso simultáneo] Ver el mismo punto en StepForm.tsx — la unidad ya tenía un ítem
     // pesado de verdad y alguien la volvió a pesar. Registrarlo evita depender de otra medición
     // manual como la del 17/09.
-    if (esReingreso(previo)) {
+    if (esReingresoDeVerdad(previo, !!row.traSuma)) {
       logActividad({ accion: 'reingreso', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
         tiendaNombre: selectedTienda, label: ordenToLabel(item.orden), peso: item.peso, alto: item.alto,
         pesoPrevio: previo!.peso, altoPrevio: previo!.alto, slotId });
@@ -1535,7 +1538,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     setFormRows(prev => prev
       .filter(r => r.id !== bultoRowId)
       .map(r => r.id === palletRowId
-        ? { ...r, saved: false, savedItem: undefined, peso: String(nuevoPeso),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: String(nuevoPeso),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
@@ -1602,7 +1605,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     setFormRows(prev => prev
       .filter(r => !bultoRowIdSet.has(r.id))
       .map(r => r.id === palletRowId
-        ? { ...r, saved: false, savedItem: undefined, peso: String(nuevoPeso),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: String(nuevoPeso),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
@@ -1677,7 +1680,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     setFormRows(prev => prev
       .filter(r => r.id !== sourceRow.id)
       .map(r => r.id === targetRow.id
-        ? { ...r, saved: false, savedItem: undefined, peso: String(nuevoPeso),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: String(nuevoPeso),
             alto: prevAlto ? String(prevAlto) : '', guia: mguia || r.guia, mergeReopened: true }
         : r));
     setFormMergeState(null);

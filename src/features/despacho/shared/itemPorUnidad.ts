@@ -70,3 +70,25 @@ export function itemDeLaUnidad<T extends ItemConUnidad>(lista: T[], slotId: numb
 export function esReingreso<T extends ItemConUnidad>(previo: T | undefined): boolean {
   return previo !== undefined && !esSinPesar(previo);
 }
+
+/**
+ * ¿Este guardado es trabajo REHECHO, o es el cierre de una suma?
+ *
+ * `esReingreso` mira una sola cosa: si la unidad ya tenía un ítem pesado. Eso alcanza para el caso
+ * que importa —otra persona ya la había pesado— pero marca como reingreso algo que no lo es.
+ *
+ * Sumar un bulto a un pallet REABRE la tarjeta del pallet con el peso ya sumado, para que la
+ * persona ajuste la altura y vuelva a darle Agregar. Ese segundo guardado encuentra un ítem previo
+ * pesado, y hasta ahora se registraba como reingreso: "ya estaba pesado (259,1kg → 259,1kg)",
+ * misma persona, el mismo segundo.
+ *
+ * Medido el 25/09: de los 5 reingresos registrados en 14 días, **los 5** eran esto. O sea que el
+ * aviso no estaba midiendo trabajo duplicado — estaba midiendo el flujo de sumar, y además le
+ * decía a la persona que había repetido trabajo justo cuando hizo lo correcto.
+ *
+ * El porcentaje del panel NO se apoyaba en esto (`reingresosBodega.medirDias` reconstruye los
+ * repetidos desde `registrar_item` y ya separa "misma persona"), así que esa medición sigue valiendo.
+ */
+export function esReingresoDeVerdad<T extends ItemConUnidad>(previo: T | undefined, veniaDeSumar: boolean): boolean {
+  return !veniaDeSumar && esReingreso(previo);
+}

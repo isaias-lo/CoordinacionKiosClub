@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { agregarSinDuplicar, fusionarConPrevio, itemDeLaUnidad, esReingreso } from '../itemPorUnidad';
+import { agregarSinDuplicar, fusionarConPrevio, itemDeLaUnidad, esReingreso, esReingresoDeVerdad } from '../itemPorUnidad';
 
 // Forma de un ítem de Bodega RM/Costa (SantiagoItem) reducida a lo que importa acá.
 interface Item {
@@ -103,5 +103,30 @@ describe('esReingreso', () => {
 
   it('true si lo previo ya estaba pesado de verdad — alguien va a volver a pesar lo mismo', () => {
     expect(esReingreso(pesado(1))).toBe(true);
+  });
+});
+
+describe('esReingresoDeVerdad — sumar no es rehacer trabajo', () => {
+  const pesado    = { pickingSlotId: 1, peso: 259.1 };
+  const sinPesar  = { pickingSlotId: 1, peso: 0 };
+
+  it('otra persona ya lo había pesado: SÍ es reingreso', () => {
+    expect(esReingresoDeVerdad(pesado, false)).toBe(true);
+  });
+
+  it('el guardado que cierra una suma NO lo es', () => {
+    // Sumar reabre la tarjeta del pallet con el peso ya sumado para ajustar la altura. Ese segundo
+    // Agregar encontraba el ítem previo y se registraba como reingreso: misma persona, el mismo
+    // segundo, "259,1kg → 259,1kg". Medido el 25/09: los 5 reingresos de 14 días eran esto.
+    expect(esReingresoDeVerdad(pesado, true)).toBe(false);
+  });
+
+  it('sin ítem previo nunca es reingreso, venga de donde venga', () => {
+    expect(esReingresoDeVerdad(undefined, false)).toBe(false);
+    expect(esReingresoDeVerdad(undefined, true)).toBe(false);
+  });
+
+  it('un previo SIN pesar tampoco: no había trabajo que rehacer', () => {
+    expect(esReingresoDeVerdad(sinPesar, false)).toBe(false);
   });
 });
