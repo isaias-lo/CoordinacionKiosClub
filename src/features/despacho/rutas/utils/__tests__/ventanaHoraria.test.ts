@@ -2,8 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parseVentana, normalizarVentana, estadoVentana, aMinutosDelDia,
   durezaPorFormato, cierreEfectivo, SIN_RESTRICCION, BUFFER_CIERRE_MIN,
-  ventanaSegunCarga, catalogoParaCarga,
-} from '../ventanaHoraria';
+  ventanaSegunCarga, catalogoParaCarga, origenDeVentana } from '../ventanaHoraria';
 
 describe('normalizarVentana — las escrituras REALES de la tabla de congelados', () => {
   const casos: [string, string][] = [
@@ -215,5 +214,52 @@ describe('lo que ya estaba y no cambia', () => {
   it('el cierre efectivo descuenta el colchón sin bajar de la apertura', () => {
     expect(cierreEfectivo({ abre: 540, cierra: 720 })).toBe(720 - BUFFER_CIERRE_MIN);
     expect(cierreEfectivo({ abre: 540, cierra: 545 })).toBe(540);
+  });
+});
+
+describe('origenDeVentana — de cuál de las dos salió el horario en pantalla', () => {
+  const t = (v?: string, vCong?: string) => ({ v, vCong });
+
+  it('en una ruta de seco siempre es la de seco', () => {
+    expect(origenDeVentana(t('09:00-11:00', '06:30-10:00'), 'seco')).toBe('seco');
+    expect(origenDeVentana(t('09:00-11:00'), 'seco')).toBe('seco');
+  });
+
+  it('en congelados, con ventana propia, es la de congelados', () => {
+    expect(origenDeVentana(t('08:30-09:30', '09:30-12:00'), 'congelados')).toBe('congelados');
+  });
+
+  it('en congelados SIN ventana propia, avisa que está mostrando la de seco', () => {
+    // El caso medido el 25/09: 20 tiendas reciben congelados sin ventana propia, 9 de ellas MALL.
+    // 46TRE, por ejemplo, se planifica contra 08:00-10:00, que es su horario de SECO.
+    expect(origenDeVentana(t('08:00-10:00'), 'congelados')).toBe('congelados-cae-a-seco');
+  });
+
+  it('sin NINGUNA ventana no hay nada que advertir', () => {
+    // 60PBL: no se está mostrando un horario equivocado, no se está mostrando ninguno.
+    expect(origenDeVentana(t(), 'congelados')).toBe('congelados');
+    expect(origenDeVentana(t('', ''), 'congelados')).toBe('congelados');
+    expect(origenDeVentana(undefined, 'congelados')).toBe('congelados');
+  });
+
+  it('SIN RESTRICCIÓN es un valor real: no cae a seco', () => {
+    // Significa "recibe a cualquier hora", que es un dato, no una ausencia.
+    expect(origenDeVentana(t('08:30-13:00', 'SIN RESTRICCIÓN'), 'congelados')).toBe('congelados');
+  });
+
+  it('los espacios no cuentan como dato', () => {
+    expect(origenDeVentana(t('08:00-10:00', '   '), 'congelados')).toBe('congelados-cae-a-seco');
+  });
+
+  it('concuerda con lo que devuelve ventanaSegunCarga', () => {
+    // Las dos responden sobre el mismo par; si se contradijeran, la pantalla diría una cosa y el
+    // motor ordenaría por otra.
+    const casos = [t('08:00-10:00'), t('08:00-10:00', '09:30-12:00'), t(), t('', '10:00-13:00')];
+    for (const caso of casos) {
+      const origen  = origenDeVentana(caso, 'congelados');
+      const ventana = ventanaSegunCarga(caso, 'congelados');
+      if (origen === 'congelados-cae-a-seco') expect(ventana).toBe(caso.v);
+      else if (String(caso.vCong ?? '').trim()) expect(ventana).toBe(caso.vCong);
+    }
   });
 });
