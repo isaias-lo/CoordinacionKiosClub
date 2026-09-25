@@ -211,3 +211,35 @@ export const BUFFER_CIERRE_MIN = 10;
 export function cierreEfectivo(w: Ventana, buffer = BUFFER_CIERRE_MIN): number {
   return Math.max(w.abre, w.cierra - buffer);
 }
+
+/** De dónde salió la ventana que se está mostrando. El compañero de `ventanaSegunCarga`. */
+export type OrigenVentana =
+  /** Ruta de seco: la ventana de seco es la que corresponde. */
+  | 'seco'
+  /** Ruta de congelados y la tienda tiene la suya. */
+  | 'congelados'
+  /** Ruta de congelados y la tienda NO tiene la suya: se está usando la de seco. */
+  | 'congelados-cae-a-seco';
+
+/**
+ * Cuál de las dos ventanas se terminó usando.
+ *
+ * `ventanaSegunCarga` devuelve el horario; esto dice de dónde salió. Son dos preguntas distintas y
+ * la segunda es la que faltaba en pantalla.
+ *
+ * El caso que importa: en una ruta de CONGELADOS, una tienda sin ventana propia cae a la de seco.
+ * Eso no es un error —es la degradación que se eligió mientras la tabla está a medio cargar— pero
+ * hasta ahora solo se sabía pasando el mouse por encima: en la lista se veía un reloj gris, igual
+ * que en cualquier ruta de seco. Medido el 25/09: **20 tiendas reciben congelados sin ventana
+ * propia, 9 de ellas MALL**, donde la ventana es DURA y el andén cierra. Planificarlas contra el
+ * horario de seco manda al chofer a una hora en que la tienda no recibe frío, y nada lo decía.
+ *
+ * Una tienda sin NINGUNA ventana (60PBL) no cae en este caso: no hay nada que advertir, no hay
+ * ventana que esté mal. Se ve como siempre.
+ */
+export function origenDeVentana(t: TiendaConVentanas | undefined, carga: TipoCargaVentana): OrigenVentana {
+  if (carga !== 'congelados') return 'seco';
+  if (String(t?.vCong ?? '').trim()) return 'congelados';
+  // Sin ventana de seco tampoco no hay nada que advertir: no se está mostrando la ventana equivocada.
+  return String(t?.v ?? '').trim() ? 'congelados-cae-a-seco' : 'congelados';
+}

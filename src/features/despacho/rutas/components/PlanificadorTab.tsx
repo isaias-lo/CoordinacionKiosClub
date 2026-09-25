@@ -14,7 +14,7 @@ import {
   type ParadaDireccion, type LineaParada,
 } from '../utils/planificador';
 import { ordenarConVentanas } from '../utils/ordenConVentanas';
-import { catalogoParaCarga } from '../utils/ventanaHoraria';
+import { catalogoParaCarga, origenDeVentana, type OrigenVentana } from '../utils/ventanaHoraria';
 import { diagnosticarDia, resumenCuello } from '../utils/factibilidadDia';
 import { useReordenarTactil } from '../utils/useReordenarTactil';
 import { ladoDeLinea } from '../utils/reordenarTactil';
@@ -89,11 +89,24 @@ interface PlanRoute {
   carga?: 'seco' | 'congelados';
 }
 
+/** Cómo se pinta la ventana según de dónde salió. Ver `origenDeVentana`. */
+const ESTILO_VENTANA: Record<OrigenVentana, { color: string; titulo: string; icono: 'reloj' | 'copo' }> = {
+  'seco':        { color: 'text-kmuted',      icono: 'reloj', titulo: 'Ventana de recepción de SECO' },
+  'congelados':  { color: 'text-[#0E7490]',   icono: 'copo',  titulo: 'Ventana de recepción de CONGELADOS' },
+  // Ámbar y con la palabra "seco" a la vista: es el único de los tres en que el horario que se
+  // muestra NO es el de la carga que se está repartiendo.
+  'congelados-cae-a-seco': {
+    color: 'text-[#B45309]', icono: 'reloj',
+    titulo: 'Esta tienda NO tiene cargada su ventana de CONGELADOS. Se está usando la de SECO, que puede ser una hora en que no recibe frío.',
+  },
+};
+
 /** Badge de tipo (Mall/Strip/Street/…) + ventana horaria de una tienda. */
-function MetaTienda({ tienda, congelada }: { tienda?: TiendaInfo; congelada?: boolean }) {
+function MetaTienda({ tienda, origen = 'seco' }: { tienda?: TiendaInfo; origen?: OrigenVentana }) {
   if (!tienda) return null;
   const tp = tipoTienda(tienda.tipo, tienda.d, tienda.z);
   const ventana = (tienda.v ?? '').trim();
+  const est = ESTILO_VENTANA[origen];
   return (
     <span className="inline-flex items-center gap-1.5 flex-wrap mt-0.5">
       <span className="text-[10px] font-bold px-1.5 py-px rounded"
@@ -103,9 +116,15 @@ function MetaTienda({ tienda, congelada }: { tienda?: TiendaInfo; congelada?: bo
       {ventana && (
         // El copo dice CUÁL ventana se está viendo. Sin él, un horario suelto en pantalla no se
         // puede contrastar contra la planilla: son dos datos distintos para la misma tienda.
-        <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold ${congelada ? 'text-[#0E7490]' : 'text-kmuted'}`}
-          title={congelada ? 'Ventana de recepción de CONGELADOS' : 'Ventana de recepción de SECO'}>
-          {congelada ? <span aria-hidden="true">❄</span> : <Clock size={10} aria-hidden="true" />} {ventana}
+        <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold ${est.color}`} title={est.titulo}>
+          {est.icono === 'copo' ? <span aria-hidden="true">❄</span> : <Clock size={10} aria-hidden="true" />} {ventana}
+          {origen === 'congelados-cae-a-seco' && (
+            // En una ruta de congelados, un reloj gris se ve igual que en una de seco. La palabra
+            // es lo que distingue "esta es la ventana que corresponde" de "esta es la que había".
+            <span className="ml-0.5 text-[9px] font-extrabold uppercase tracking-wide px-1 rounded bg-[rgba(217,119,6,0.14)]">
+              seco
+            </span>
+          )}
         </span>
       )}
     </span>
@@ -1032,7 +1051,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
                   <span className="text-[13px] font-semibold text-ktext">{t.cod}</span>
                   <span className="text-[12px] text-kmuted"> · {t.nombre}</span>
                   {t.comuna && <span className="block text-[11px] text-kmuted truncate">{t.comuna}</span>}
-                  <MetaTienda tienda={tiendasVista[t.cod]} congelada={cargaActiva === 'congelados' && !!tiendas[t.cod]?.vCong?.trim()} />
+                  <MetaTienda tienda={tiendasVista[t.cod]} origen={origenDeVentana(tiendas[t.cod], cargaActiva)} />
                 </span>
               </button>
             );
@@ -1167,7 +1186,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
                   <>
                     <span className="text-[13px] font-semibold text-ktext">{cod}</span>
                     <span className="text-[11px] text-kmuted"> · {nombre(cod)}{comuna(cod) ? ` · ${comuna(cod)}` : ''}</span>
-                    <MetaTienda tienda={tiendasVista[cod]} congelada={cargaActiva === 'congelados' && !!tiendas[cod]?.vCong?.trim()} />
+                    <MetaTienda tienda={tiendasVista[cod]} origen={origenDeVentana(tiendas[cod], cargaActiva)} />
                   </>
                 )}
               </span>
