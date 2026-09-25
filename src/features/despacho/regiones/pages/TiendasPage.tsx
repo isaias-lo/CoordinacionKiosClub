@@ -332,16 +332,16 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   // reactivo por sí solo). `sinDatosSendu` son las que aparecen pero les falta data de envío.
   const [catalogoVer,       setCatalogoVer]        = useState(0);
   const [sinDatosSendu,     setSinDatosSendu]      = useState<TiendaIncompleta[]>([]);
-  // Se lee `pickingSlotsFull`, NO `pickingSlots`.
+  // Los slots de Picking del día, indexados por tienda. Es la ÚNICA fuente para contar unidades.
   //
-  // Los dos mapas se llenan juntos y traen las mismas unidades, pero al borrar un ítem
-  // `deletePickingSlot` saca el slot SOLO del primero. El segundo se quedaba con la unidad borrada
-  // hasta que llegara la recarga por Realtime, y en esa ventana la resta del ghost —slots de
-  // Picking menos ítems cargados— daba positiva: el badge PUNTEADO que aparecía al borrar un
-  // chocolate y se iba solo al rato. Se reportó con chocolates, pero le pasaba a los cuatro tipos.
-  //
-  // Una sola fuente para contar: la que el borrado mantiene al día.
-  const [pickingSlots,          setPickingSlots]          = useState<Record<string, { tipo: string; contenido: string }[]>>({});
+  // Antes había dos mapas gemelos: este y uno liviano (`pickingSlots`, solo `{tipo, contenido}`).
+  // Se llenaban juntos con las mismas unidades, pero al borrar un ítem `deletePickingSlot` saca el
+  // slot SOLO de este —es el único que tiene `id` con qué filtrar—, así que el liviano se quedaba
+  // con la unidad borrada hasta la recarga por Realtime. En esa ventana la resta del ghost —slots
+  // de Picking menos ítems cargados— daba positiva: el badge PUNTEADO que aparecía al borrar un
+  // chocolate y se iba solo al rato (#568). Los siete lectores pasaron a este mapa, y el liviano
+  // quedó escribiéndose sin que nadie lo leyera: una trampa esperando a que alguien lo usara otra
+  // vez y reviviera el mismo bug. Se eliminó.
   const [pickingSlotsFull,      setPickingSlotsFull]      = useState<Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]>>({});
   const [consumedPickingSlots, setConsumedPickingSlots] = useState<ConsumedSlots>(() => typeof window === 'undefined' ? {} : loadConsumedSlots());
   const [formRows,              setFormRows]              = useState<FormRow[]>([]);
@@ -440,7 +440,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const rightPanelRef   = useRef<HTMLDivElement>(null);
   const formScrollRef        = useRef<HTMLDivElement>(null);
   const formScrollDesktopRef = useRef<HTMLDivElement>(null);
-  const pickingSlotsRef      = useRef(pickingSlots);
   const pickingSlotsFullRef  = useRef(pickingSlotsFull);
 
   /* Combine items (drag-to-merge) */
@@ -586,14 +585,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         .order('id', { ascending: true });
       if (!data) return;
       const codToName = codToTiendaName();  // fresco: TIENDAS puede haber crecido desde el último load()
-      const slots: Record<string, { tipo: string; contenido: string }[]> = {};
       const full:  Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]> = {};
       for (const row of data) {
         if (fueRecienBorrado(row.id as number)) continue; // [RC-3] no revivir un slot recién borrado
         const name = codToName[row.store_cod as string];
         if (!name) continue;
-        if (!slots[name]) { slots[name] = []; full[name] = []; }
-        slots[name].push({ tipo: (row.tipo as string) || 'P', contenido: (row.contenido as string) || 'hogar' });
+        if (!full[name]) full[name] = [];
         full[name].push({
           id: row.id as number, tipo: (row.tipo as string) || 'P',
           subtipo: row.subtipo as string | null,
@@ -608,11 +605,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       // [RC-5] Lo recién creado que esta consulta todavía no ve. Sin esto, `load` reemplaza el
       // mapa entero y el pallet recién agregado desaparece de la pantalla aunque exista en la base.
       for (const { clave, slot } of faltantesEnLaConsulta(full, slotsRecienAgregados(), cod => codToName[cod])) {
-        if (!full[clave]) { full[clave] = []; slots[clave] = []; }
+        if (!full[clave]) full[clave] = [];
         full[clave].push(slot);
-        slots[clave].push({ tipo: slot.tipo, contenido: slot.contenido });
       }
-      setPickingSlots(slots);
       setPickingSlotsFull(full);
     };
 
@@ -628,7 +623,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   }, []);
 
   /* Keep ref in sync so form-init effect always reads latest picking without re-running */
-  useEffect(() => { pickingSlotsRef.current = pickingSlots; }, [pickingSlots]);
   useEffect(() => { pickingSlotsFullRef.current = pickingSlotsFull; }, [pickingSlotsFull]);
 
   /**
@@ -666,7 +660,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const mapearContenido = contenidoRegiones;
 
   /* Initialize formRows only when the selected tienda changes.
-     Uses pickingSlotsRef (always current) so picking real-time updates
+     Uses pickingSlotsFullRef (always current) so picking real-time updates
      do NOT retrigger this effect and wipe the user's in-progress form.
      useLayoutEffect → corre antes del paint: nunca se pinta el form de la
      tienda anterior bajo el header de la nueva. */
@@ -1636,7 +1630,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const prevAlto  = targetRow.savedItem?.alto ?? (parseFloat(targetRow.alto) || 0);
     const srcSlot   = sourceRow.pickingSlotId ?? sourceRow.savedItem?.pickingSlotId;
     const tgtSlot   = targetRow.pickingSlotId ?? targetRow.savedItem?.pickingSlotId;
-    const srcCode   = sourceRow.pkg === 'contenedor' ? 'C' : sourceRow.pkg === 'chocolate' ? 'CH' : sourceRow.pkg === 'box' ? 'B' : 'P';
     const mguia     = unionRefs(targetRow.savedItem?.guia ?? targetRow.guia, sourceRow.savedItem?.guia ?? sourceRow.guia);
     // [Revertir unificación] Snapshot ANTES de mutar (solo si ambos son items guardados).
     const itemsAntesUnion = [...(dispatchData[name] || [])];
@@ -1670,12 +1663,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         .filter(s => s.id !== srcSlot)
         .map(s => s.id === tgtSlot ? { ...s, peso_kg: nuevoPeso } : s);
       return next;
-    });
-    setPickingSlots(prev => {
-      const arr = [...(prev[name] ?? [])];
-      const idx = arr.findIndex(s => s.tipo === srcCode);
-      if (idx >= 0) arr.splice(idx, 1);
-      return { ...prev, [name]: arr };
     });
 
     // 4) Form: quitar la card source; reabrir el target como card editable con el peso ya sumado,
