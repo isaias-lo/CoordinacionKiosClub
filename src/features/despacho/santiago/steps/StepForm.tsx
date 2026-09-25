@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { Navigation, GripVertical, ClipboardList, User, Store, FileUp, ChevronLeft } from 'lucide-react';
+import { Navigation, GripVertical, ClipboardList, User, Store, FileUp, ChevronLeft, AlertTriangle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
 import { IndicadorCanalSano } from '../../shared/IndicadorCanalSano';
@@ -64,6 +64,7 @@ import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo, pesoPalletConCajas,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
 import { itemDeLaUnidad, fusionarConPrevio, esReingreso } from '../../shared/itemPorUnidad';
+import { avisoDeUnidad } from '../../shared/avisoUnidadEscaneada';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { fechaChile } from '@/lib/fechaChile';
@@ -869,6 +870,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // directo — la persona tiene el número en la mano (etiqueta física), no el nombre de la tienda.
   const palletEncontrado = buscarPallet(pickingSlotsFull, search);
   const tiendaDelPallet  = palletEncontrado ? tiendaByCod[palletEncontrado.claveTienda] : undefined;
+  // ¿Esta unidad ya está pesada? Escanear la etiqueta es el primer gesto de pesar algo, así que el
+  // aviso llega ANTES del trabajo y no después. Ver `avisoUnidadEscaneada.ts` — es el 14-23% de
+  // unidades que se pesaban dos veces porque nadie tenía cómo saber que ya estaba hecho.
+  const avisoEscaneo = avisoDeUnidad(palletEncontrado
+    ? itemDeLaUnidad(items[palletEncontrado.claveTienda] ?? [], palletEncontrado.slot.id)
+    : undefined);
   const saltarAPallet = () => {
     if (!palletEncontrado || !tiendaDelPallet) return;
     setSearch('');
@@ -3057,6 +3064,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                 <span className="block text-[11px] text-text-3 truncate">
                   {tiendaDelPallet.tienda} ({tiendaDelPallet.cod})
                 </span>
+                {avisoEscaneo.texto && (
+                  <span className={`mt-0.5 inline-flex items-center gap-1 text-[11px] font-bold rounded px-1.5 py-0.5 ${
+                    avisoEscaneo.advertir ? 'text-[#B45309] bg-[rgba(217,119,6,0.14)]' : 'text-text-3 bg-black/[0.05]'}`}>
+                    {avisoEscaneo.advertir && <AlertTriangle size={11} aria-hidden="true" />}
+                    {avisoEscaneo.texto}
+                  </span>
+                )}
               </span>
               <span className="text-[12px] font-bold text-[#1E40AF] shrink-0">Ir →</span>
             </button>

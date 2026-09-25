@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Navigation, ChevronLeft, ClipboardList, User, Store, FileUp } from 'lucide-react';
+import { Navigation, ChevronLeft, ClipboardList, User, Store, FileUp, AlertTriangle } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { IndicadorCanalSano } from '../../shared/IndicadorCanalSano';
 import { processPdf } from '../utils/pdfUtils';
@@ -59,6 +59,7 @@ import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { combinarEnLista } from '../../shared/combinarEnLista';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio, esReingreso } from '../../shared/itemPorUnidad';
+import { avisoDeUnidad } from '../../shared/avisoUnidadEscaneada';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaChile } from '@/lib/fechaChile';
@@ -841,6 +842,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   // (etiqueta física), no el nombre de la tienda. `pickingSlotsFull` está indexado por NOMBRE acá.
   const palletEncontrado = buscarPallet(pickingSlotsFull, search);
   const tiendaDelPallet  = palletEncontrado ? TIENDAS[palletEncontrado.claveTienda] : undefined;
+  // ¿Esta unidad ya está pesada? Escanear la etiqueta es el primer gesto de pesar algo, así que el
+  // aviso llega ANTES del trabajo y no después. Ver `avisoUnidadEscaneada.ts` — es el 14-23% de
+  // unidades que se pesaban dos veces porque nadie tenía cómo saber que ya estaba hecho.
+  const avisoEscaneo = avisoDeUnidad(palletEncontrado
+    ? itemDeLaUnidad(dispatchData[palletEncontrado.claveTienda] ?? [], palletEncontrado.slot.id)
+    : undefined);
   const saltarAPallet = () => {
     if (!palletEncontrado || !tiendaDelPallet) return;
     setSearch('');
@@ -2420,6 +2427,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                 <span className="block text-[11px] text-text-3 truncate">
                   {tiendaDelPallet.name} ({tiendaDelPallet.cod})
                 </span>
+                {avisoEscaneo.texto && (
+                  <span className={`mt-0.5 inline-flex items-center gap-1 text-[11px] font-bold rounded px-1.5 py-0.5 ${
+                    avisoEscaneo.advertir ? 'text-[#B45309] bg-[rgba(217,119,6,0.14)]' : 'text-text-3 bg-black/[0.05]'}`}>
+                    {avisoEscaneo.advertir && <AlertTriangle size={11} aria-hidden="true" />}
+                    {avisoEscaneo.texto}
+                  </span>
+                )}
               </span>
               <span className="text-[12px] font-bold text-[#1E40AF] shrink-0">Ir →</span>
             </button>
