@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   seleccionInicial, visiblesEnTablero, alternar, esFlotaInterna,
   serializarSeleccion, parseSeleccion,
+  mergeSeleccion, mismaSeleccion, firmaSeleccion,
+  claveCacheSeleccion, leerCacheSeleccion, guardarCacheSeleccion,
 } from '../flotaPorTablero';
 import type { Vehiculo } from '../../data/flota';
 
@@ -121,5 +123,106 @@ describe('guardar y leer', () => {
 
   it('descarta basura dentro del array', () => {
     expect(parseSeleccion({ patentes: ['A', '', null, 7, 'B'] })).toEqual(new Set(['A', 'B']));
+  });
+});
+
+// ── Sincronizar la selección entre equipos ───────────────────────────────────────────────────
+//
+// Reportado: "vehículos que aparecen y desaparecen". El canal reemplazaba la selección entera con
+// la del otro equipo, así que dos personas eligiendo camiones se pisaban: ganaba la última en
+// escribir y a la otra se le movía la flota debajo de las manos.
+
+const S = (...p: string[]) => new Set(p);
+
+describe('mergeSeleccion — dos personas eligiendo camiones a la vez', () => {
+  it('lo que agregó el otro equipo entra', () => {
+    // Base y local iguales: yo no toqué nada.
+    expect([...mergeSeleccion(S('AA', 'BB'), S('AA'), S('AA'))].sort()).toEqual(['AA', 'BB']);
+  });
+
+  it('lo que saqué yo NO vuelve, aunque el remoto lo traiga', () => {
+    expect([...mergeSeleccion(S('AA', 'BB'), S('AA'), S('AA', 'BB'))]).toEqual(['AA']);
+  });
+
+  it('lo que agregué yo NO se pierde, aunque el remoto no lo tenga', () => {
+    expect([...mergeSeleccion(S('AA'), S('AA', 'CC'), S('AA'))].sort()).toEqual(['AA', 'CC']);
+  });
+
+  it('el caso del reporte: uno agrega y el otro saca, y quedan los dos cambios', () => {
+    // Base compartida: AA y BB. Yo agrego CC; el otro sacó BB y ya lo empujó.
+    const out = mergeSeleccion(/* remoto */ S('AA'), /* local */ S('AA', 'BB', 'CC'), /* base */ S('AA', 'BB'));
+    expect([...out].sort()).toEqual(['AA', 'CC']);   // BB se fue (él), CC se queda (yo)
+  });
+
+  it('sin cambios de nadie, no pasa nada', () => {
+    expect([...mergeSeleccion(S('AA', 'BB'), S('AA', 'BB'), S('AA', 'BB'))].sort()).toEqual(['AA', 'BB']);
+  });
+
+  it('vaciar la selección en el otro equipo se respeta', () => {
+    expect([...mergeSeleccion(S(), S('AA'), S('AA'))]).toEqual([]);
+  });
+});
+
+describe('mismaSeleccion / firmaSeleccion', () => {
+  it('el orden no importa', () => {
+    expect(mismaSeleccion(S('BB', 'AA'), S('AA', 'BB'))).toBe(true);
+    expect(firmaSeleccion(S('BB', 'AA'))).toBe(firmaSeleccion(S('AA', 'BB')));
+  });
+
+  it('distinto tamaño o distinta patente, no', () => {
+    expect(mismaSeleccion(S('AA'), S('AA', 'BB'))).toBe(false);
+    expect(mismaSeleccion(S('AA'), S('BB'))).toBe(false);
+  });
+
+  it('la firma sirve de corta-ecos: el propio push vuelve idéntico', () => {
+    expect(firmaSeleccion(S('AA', 'BB'))).toBe('AA,BB');
+  });
+});
+
+describe('copia local de la selección — contra el parpadeo al abrir', () => {
+  /** localStorage de mentira: el test no depende del navegador. */
+  const almacen = () => {
+    const datos = new Map<string, string>();
+    return {
+      getItem: (k: string) => datos.get(k) ?? null,
+      setItem: (k: string, v: string) => { datos.set(k, v); },
+      _datos: datos,
+    };
+  };
+
+  it('la clave lleva el día: otro día no hereda la selección', () => {
+    expect(claveCacheSeleccion('seco', '2026-09-24')).toBe('flota_sel:seco:2026-09-24');
+    expect(claveCacheSeleccion('seco', '2026-09-24'))
+      .not.toBe(claveCacheSeleccion('seco', '2026-09-25'));
+    expect(claveCacheSeleccion('seco', '2026-09-24'))
+      .not.toBe(claveCacheSeleccion('congelados', '2026-09-24'));
+  });
+
+  it('guarda y vuelve a leer la misma selección', () => {
+    const st = almacen();
+    guardarCacheSeleccion('seco', '2026-09-24', S('AA', 'BB'), st);
+    expect([...leerCacheSeleccion('seco', '2026-09-24', st)!].sort()).toEqual(['AA', 'BB']);
+  });
+
+  it('sin copia devuelve null — ahí manda seleccionInicial, como antes', () => {
+    expect(leerCacheSeleccion('seco', '2026-09-25', almacen())).toBeNull();
+  });
+
+  it('una copia corrupta no rompe nada: devuelve null', () => {
+    const st = almacen();
+    st.setItem(claveCacheSeleccion('seco', '2026-09-24'), '{no es json');
+    expect(leerCacheSeleccion('seco', '2026-09-24', st)).toBeNull();
+  });
+
+  it('sin almacén (SSR, modo privado) tampoco rompe', () => {
+    expect(leerCacheSeleccion('seco', '2026-09-24', null)).toBeNull();
+    expect(() => guardarCacheSeleccion('seco', '2026-09-24', S('AA'), null)).not.toThrow();
+  });
+
+  it('una selección vacía se guarda como vacía, no como "sin dato"', () => {
+    // Vaciar la flota de un tablero es una decisión; no puede leerse como "nunca elegí".
+    const st = almacen();
+    guardarCacheSeleccion('seco', '2026-09-24', S(), st);
+    expect(leerCacheSeleccion('seco', '2026-09-24', st)).toEqual(new Set());
   });
 });
