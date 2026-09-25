@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   seleccionInicial, visiblesEnTablero, alternar, esFlotaInterna,
   serializarSeleccion, parseSeleccion,
-  mergeSeleccion, mismaSeleccion, firmaSeleccion,
+  mergeSeleccion, mismaSeleccion, firmaSeleccion, debeAplicarRemoto,
   claveCacheSeleccion, leerCacheSeleccion, guardarCacheSeleccion,
 } from '../flotaPorTablero';
 import type { Vehiculo } from '../../data/flota';
@@ -224,5 +224,36 @@ describe('copia local de la selección — contra el parpadeo al abrir', () => {
     const st = almacen();
     guardarCacheSeleccion('seco', '2026-09-24', S(), st);
     expect(leerCacheSeleccion('seco', '2026-09-24', st)).toEqual(new Set());
+  });
+});
+
+describe('debeAplicarRemoto — la rendija que quedó en el #579', () => {
+  it('sin la base del servidor todavía, NO se aplica', () => {
+    // La suscripción se registra antes de que resuelva el fetch inicial. Un evento que llegue ahí
+    // fusionaría contra una base VACÍA, y con base vacía el merge devuelve la UNIÓN de los dos
+    // lados: el camión que el otro acaba de sacar volvía, y encima se empujaba.
+    expect(debeAplicarRemoto(false, 'AA,BB', '')).toBe(false);
+  });
+
+  it('con la base puesta y un cambio ajeno, sí', () => {
+    expect(debeAplicarRemoto(true, 'AA,BB', 'AA')).toBe(true);
+  });
+
+  it('el eco del propio push nunca se aplica', () => {
+    expect(debeAplicarRemoto(true, 'AA,BB', 'AA,BB')).toBe(false);
+  });
+
+  it('ni siquiera el propio eco antes de estar listo', () => {
+    expect(debeAplicarRemoto(false, 'AA', 'AA')).toBe(false);
+  });
+
+  it('demuestra el daño que evita: con base vacía el merge une los dos lados', () => {
+    // Es el porqué del guard, no una regla nueva: el otro equipo sacó BB y lo empujó; yo lo tengo
+    // en mi copia local. Con base vacía, BB vuelve.
+    const conBaseVacia = mergeSeleccion(new Set(['AA']), new Set(['AA', 'BB']), new Set());
+    expect([...conBaseVacia].sort()).toEqual(['AA', 'BB']);   // BB revivió
+    // Con la base correcta, el borrado del otro se respeta.
+    const conBaseBuena = mergeSeleccion(new Set(['AA']), new Set(['AA', 'BB']), new Set(['AA', 'BB']));
+    expect([...conBaseBuena]).toEqual(['AA']);
   });
 });

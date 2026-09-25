@@ -64,7 +64,8 @@ import { fechaSalida, type TipoCarga } from './utils/fechaSalida';
 import { buildControlCongeladosRows } from '../congelados/utils/controlCongelados';
 import {
   seleccionInicial, alternar, serializarSeleccion, parseSeleccion,
-  mergeSeleccion, mismaSeleccion, firmaSeleccion, leerCacheSeleccion, guardarCacheSeleccion,
+  mergeSeleccion, mismaSeleccion, firmaSeleccion, debeAplicarRemoto,
+  leerCacheSeleccion, guardarCacheSeleccion,
 } from './utils/flotaPorTablero';
 import { aplicarCargaDelDia } from './utils/cargaFechaPasada';
 import { unirBacklog } from './utils/backlogSegundaVuelta';
@@ -377,9 +378,13 @@ export default function RutasScreen() {
   const [selCong, setSelCong] = useState<Set<string> | null>(() => leerCacheSeleccion('congelados', fecha));
   // Base del merge de tres vías + corta-ecos, por tablero. Misma mecánica que `baseManualRef`:
   // la base es lo que el SERVIDOR tiene, nunca el resultado del merge.
-  const selSyncRef = useRef<Record<'seco' | 'congelados', { base: Set<string>; firma: string }>>({
-    seco:       { base: new Set(), firma: '' },
-    congelados: { base: new Set(), firma: '' },
+  // `listo` = el fetch inicial de este tablero ya volvió. Sin eso, un evento del canal que llegue
+  // antes fusionaría contra una base VACÍA, y con base vacía el merge devuelve la unión de los dos
+  // lados (no puede distinguir "no lo toqué" de "lo agregué yo"): un camión que el otro equipo
+  // acaba de sacar volvía, y encima se empujaba. Ver `debeAplicarRemoto`.
+  const selSyncRef = useRef<Record<'seco' | 'congelados', { base: Set<string>; firma: string; listo: boolean }>>({
+    seco:       { base: new Set(), firma: '', listo: false },
+    congelados: { base: new Set(), firma: '', listo: false },
   });
   // Espejo de la selección vigente. El merge remoto necesita leer lo local, y hacerlo dentro de un
   // `setState(prev => …)` obligaría a empujar y guardar DENTRO del updater — que React puede correr
@@ -1221,12 +1226,18 @@ export default function RutasScreen() {
   useEffect(() => {
     if (typeof window === 'undefined' || flota.length === 0) return;
     let vivo = true;
+    // Día nuevo: la base y el corta-ecos del día anterior no valen, y hasta que vuelva su fetch no
+    // se aplica nada remoto.
+    selSyncRef.current = {
+      seco:       { base: new Set(), firma: '', listo: false },
+      congelados: { base: new Set(), firma: '', listo: false },
+    };
     const cargar = async (fuente: 'flota_sel' | 'flota_sel_cong', tablero: 'seco' | 'congelados',
                           set: (s: Set<string>) => void) => {
       const remoto = await fetchSessionState(fuente, fecha).catch(() => null);
       if (!vivo) return;
       const leida = parseSeleccion(remoto) ?? new Set(seleccionInicial(flota, tablero));
-      selSyncRef.current[tablero] = { base: new Set(leida), firma: firmaSeleccion(leida) };
+      selSyncRef.current[tablero] = { base: new Set(leida), firma: firmaSeleccion(leida), listo: true };
       guardarCacheSeleccion(tablero, fecha, leida);
       set(leida);
     };
@@ -1240,11 +1251,13 @@ export default function RutasScreen() {
       const remoto = parseSeleccion(estado);
       if (!remoto) return;
       const sync = selSyncRef.current[tablero];
-      if (firmaSeleccion(remoto) === sync.firma) return;   // es el eco de mi propio push
+      // Todavía sin la base del servidor, o es el eco de mi propio push. Descartar acá no pierde
+      // nada: el fetch en vuelo trae el estado del servidor, que ya incluye este cambio.
+      if (!debeAplicarRemoto(sync.listo, firmaSeleccion(remoto), sync.firma)) return;
       const local  = (tablero === 'seco' ? selSecoRef.current : selCongRef.current) ?? remoto;
       const fusion = mergeSeleccion(remoto, local, sync.base);
       // La base del PRÓXIMO merge es lo remoto, no el resultado (ver `aplicarRemoto`).
-      selSyncRef.current[tablero] = { base: new Set(remoto), firma: firmaSeleccion(remoto) };
+      selSyncRef.current[tablero] = { base: new Set(remoto), firma: firmaSeleccion(remoto), listo: true };
       guardarCacheSeleccion(tablero, fecha, fusion);
       // Si el merge conservó algo mío que el servidor todavía no tiene, hay que escribirlo: si no,
       // el próximo evento remoto lo revierte (es el bug del 04/09, una capa más afuera).
