@@ -1,17 +1,17 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { isPathAllowed, SYSTEM_ROLE_PATHS, SYSTEM_ROLE_HOME } from '@/config/routes';
+import { isPathAllowed, SYSTEM_ROLE_PATHS, paginaInicial } from '@/config/routes';
 
 function isAllowed(role: string, pathname: string, customPaths?: string[]): boolean {
   const allowed = customPaths ?? SYSTEM_ROLE_PATHS[role] ?? [];
   return isPathAllowed(allowed, pathname);
 }
 
+// La lógica vive en `config/routes` (pura y con tests): garantiza que la página devuelta sea una
+// que el rol PUEDA abrir. Antes devolvía `SYSTEM_ROLE_HOME[role]` a ciegas y eso podía dejar a
+// alguien en un bucle de redirección — ver `paginaInicial`.
 function roleHome(role: string, metaHome?: string, metaPaths?: string[]): string {
-  if (metaHome && isAllowed(role, metaHome, metaPaths)) return metaHome;
-  if (SYSTEM_ROLE_HOME[role]) return SYSTEM_ROLE_HOME[role];
-  const first = metaPaths?.find(p => p !== '/perfil' && p !== '*');
-  return first ?? '/perfil';
+  return paginaInicial(role, metaPaths, metaHome);
 }
 
 const PUBLIC_ROUTES = ['/login', '/registro', '/recuperar-contrasena', '/actualizar-contrasena'];

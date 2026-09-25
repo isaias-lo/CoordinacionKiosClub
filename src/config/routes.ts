@@ -99,6 +99,15 @@ export const ALL_MODULE_PATHS: string[] = MODULE_GROUPS.flatMap(g => g.routes.ma
 // permisos de un rol las rutas que ya NO existen, sin borrar accesos válidos.
 // ⚠️ Si agregas una página nueva fuera del sidebar, súmala aquí.
 const EXTRA_REAL_PATHS: string[] = [
+  // `/` es la home de `despachador` y `supervisor`, y existe (src/app/page.tsx). Faltaba acá, así
+  // que `cleanAllowedPaths` la BORRABA al guardar el rol desde el panel — y como `roleHome` la
+  // devolvía igual, el middleware mandaba a una ruta prohibida y de ahí otra vez a la misma:
+  // bucle de redirección. Bastaba que un admin guardara ese rol tocando cualquier otra casilla.
+  '/',
+  // 'Control de Flota' salió del sidebar pero LA PÁGINA SIGUE (src/app/despacho/control-flota).
+  // El comentario de abajo ya lo decía —"La ruta sigue activa"— y sin embargo no estaba en esta
+  // lista: `despachador` y `coordinador-flota` la tienen en la tabla y la perdían al primer guardado.
+  '/despacho/control-flota',
   '/perfil', '/tiendas', '/panel-choferes', '/chofer', '/control-cruce',
   '/historial', '/recepcion', '/despacho-hub', '/despacho/conteo',
   '/despacho/santiago/rutas', '/despacho/config-tiendas',
@@ -129,6 +138,34 @@ export const HOME_OPTIONS: { value: string; label: string }[] = [
 
 // ── Función de acceso (middleware + frontend) ────────────────────
 
+/** Las rutas efectivas de un rol: las del token si vienen, si no el respaldo de código. */
+export function rutasDeRol(role: string, metaPaths?: string[]): string[] {
+  return metaPaths ?? SYSTEM_ROLE_PATHS[role] ?? [];
+}
+
+/**
+ * A qué página mandar a alguien, garantizando que PUEDA abrirla.
+ *
+ * Antes esto vivía en el middleware y devolvía `SYSTEM_ROLE_HOME[role]` sin comprobar nada. Con eso,
+ * un rol cuya home no estuviera entre sus rutas entraba en bucle: el middleware ve una ruta
+ * prohibida → redirige a la home → la home también está prohibida → redirige a la home…
+ *
+ * No era teórico: `/` es la home de `despachador` y `supervisor`, y `cleanAllowedPaths` la borraba
+ * de sus permisos al guardar el rol (no estaba en las rutas válidas). Un guardado en el panel y esa
+ * persona no podía entrar a ninguna parte.
+ *
+ * El orden es el de siempre; lo único nuevo es que cada candidato se valida antes de devolverlo.
+ */
+export function paginaInicial(role: string, metaPaths?: string[], metaHome?: string): string {
+  const allowed = rutasDeRol(role, metaPaths);
+  const sirve = (p?: string): boolean => !!p && isPathAllowed(allowed, p);
+  if (sirve(metaHome)) return metaHome!;
+  if (sirve(SYSTEM_ROLE_HOME[role])) return SYSTEM_ROLE_HOME[role];
+  // Cualquier ruta propia antes que `/perfil`: mandar a Perfil a quien tiene trabajo que hacer es
+  // el último recurso, no el primero.
+  return allowed.find(p => p !== '/perfil' && p !== '*') ?? '/perfil';
+}
+
 export function isPathAllowed(allowed: string[], pathname: string): boolean {
   if (allowed.includes('*')) return true;
   return allowed.some(p => {
@@ -149,6 +186,26 @@ export function isPathAllowed(allowed: string[], pathname: string): boolean {
 // allowed_paths del JWT. Estos son los roles built-in cuyas rutas
 // están definidas en código como respaldo si el JWT aún no tiene
 // allowed_paths (usuarios que no han vuelto a iniciar sesión).
+//
+// ⚠️ LA VERDAD ES LA TABLA `roles`, NO ESTA LISTA. Esto es solo el respaldo para un token sin
+// `allowed_paths`, y por eso se desincroniza sin que nadie lo note: nada falla mientras todos los
+// tokens traigan sus rutas.
+//
+// Medido el 24/09: 2 de 3 auditores NO tienen `allowed_paths` en el token (último ingreso el
+// 28/05), así que para ellos manda esta lista — y decía `/registros` donde la tabla dice
+// `/historial`. O sea: acceso a un panel que el admin no les dio, y sin el que sí. Corregido.
+//
+// El drift va en LAS DOS DIRECCIONES, así que no se sincroniza a ciegas:
+//
+//   · `conductor`: la tabla todavía tiene `/tiendas`, pero el código lo quitó A PROPÓSITO en la
+//     Fase 5 del Panel Conductor (ver el comentario abajo). Acá el código es lo correcto y la
+//     TABLA es la que está vieja.
+//   · `despachador` y `supervisor`: el código (DESPACHO_FULL) es más amplio que la tabla. No se
+//     recorta sin revisarlo con el coordinador — hoy no afecta a nadie porque los dos usuarios
+//     con esos roles sí traen sus rutas en el token.
+//
+// Lo que cierra el tema de raíz no es código: es rellenar `allowed_paths` en los usuarios que no
+// lo tienen (el PATCH de /api/admin/roles ya sabe hacerlo). Con eso este respaldo deja de usarse.
 
 const DESPACHO_FULL = [
   '/', '/despacho', '/despacho/regiones', '/despacho/santiago',
@@ -160,11 +217,16 @@ const DESPACHO_FULL = [
 ];
 
 export const SYSTEM_ROLE_PATHS: Record<string, string[]> = {
-  'auditor':             ['/auditoria', '/registros', '/perfil'],
+  // La tabla dice `/historial`, no `/registros`. Importa de verdad: 2 de 3 auditores no traen
+  // rutas en el token, así que esta lista es la que los gobierna.
+  'auditor':             ['/auditoria', '/historial', '/perfil'],
   'admin-auditoria':     ['/auditoria', '/auditoria-admin', '/perfil'],
   'despachador':         DESPACHO_FULL,
   'supervisor':          DESPACHO_FULL,
-  'supervisor-picking':  ['/picking', '/perfil'],
+  // Los supervisores de Picking trabajan Bodega desde el cambio del 22/09 (el chocolate se pesa
+  // en Bodega). La tabla ya lo refleja; esta lista se había quedado en las dos rutas originales,
+  // así que un token sin rutas los habría dejado sin Bodega y sin explicación.
+  'supervisor-picking':  ['/picking', '/perfil', '/despacho/regiones', '/despacho/congelados', '/despacho/santiago'],
   'admin':               ['*'],
   'asistente-despacho':  ['/despacho', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/despacho/config-tiendas', '/despacho/congelados', '/despacho/congelados/santiago', '/perfil'],
   'coordinador-flota':   ['/despacho', '/despacho/control-flota', '/despacho/config-tiendas', '/panel-choferes', '/perfil'],
