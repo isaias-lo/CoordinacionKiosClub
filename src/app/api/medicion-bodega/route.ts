@@ -3,6 +3,7 @@ import { supabaseServer, hayServiceRole } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
 import { fechaChile } from '@/lib/fechaChile';
 import { medirDias, type RegistroBodega } from '@/features/despacho/shared/reingresosBodega';
+import { medirBorrados, type BorradoBodega } from '@/features/despacho/shared/borradosRepetidos';
 
 /**
  * GET /api/medicion-bodega?dias=10 — cuánto trabajo de Bodega se hizo dos veces, por día.
@@ -17,6 +18,15 @@ import { medirDias, type RegistroBodega } from '@/features/despacho/shared/reing
  * personas pesando la misma unidad— no borra ni crea nada y no deja rastro ahí. El porqué, con el
  * caso real que lo destapó, está en `shared/reingresosBodega.ts`.
  *
+ * Devuelve DOS medidas distintas, que responden a dos preguntas distintas:
+ *
+ *   · `dias`     — trabajo REPESADO: dos personas pesando la misma unidad (`registrar_item`).
+ *   · `borrados` — trabajo REBORRADO: unidades que hubo que borrar dos veces porque volvieron
+ *                  (`eliminar_item` repetido sobre el mismo slot). Es la huella del bug que
+ *                  arreglaron las lápidas (#573 / #580) y la forma de comprobar si sirvió:
+ *                  nadie borra dos veces algo que se borró bien. Baseline del 24/09, 12 días:
+ *                  de 135 chocolates borrados, 35 volvieron — el 26%.
+ *
  * Corre en el SERVIDOR con clave de servicio, y lo dice en la respuesta: sin ella una tabla con
  * RLS devuelve cero filas SIN error y el resultado sale vacío pareciendo correcto.
  */
@@ -27,10 +37,11 @@ const PAGINA = 1000;
 /** Lo que devuelve la consulta, antes de aplanar `detalle`. */
 interface FilaActividad {
   fecha: string;
+  accion: string;
   tienda_cod: string | null;
   actor_name: string | null;
   created_at: string;
-  detalle: { slotId?: number | string | null; peso?: number | string | null } | null;
+  detalle: { slotId?: number | string | null; peso?: number | string | null; label?: string | null } | null;
 }
 
 const num = (v: unknown): number | null => {
@@ -54,8 +65,10 @@ export async function GET(request: NextRequest) {
     for (let desdeFila = 0; ; desdeFila += PAGINA) {
       const { data, error } = await sb
         .from('actividad_bodega')
-        .select('fecha, tienda_cod, actor_name, created_at, detalle')
-        .eq('accion', 'registrar_item')
+        .select('fecha, accion, tienda_cod, actor_name, created_at, detalle')
+        // Las dos acciones en UNA pasada: son la misma tabla y el mismo rango, y separarlas en dos
+        // consultas duplicaría la paginación (que es justo donde se pierden filas en silencio).
+        .in('accion', ['registrar_item', 'eliminar_item'])
         .gte('fecha', desde)
         .lte('fecha', hoy)
         .order('id', { ascending: true })          // orden estable: sin él una página repite o salta
@@ -66,23 +79,34 @@ export async function GET(request: NextRequest) {
       if (pagina.length < PAGINA) break;           // última página
     }
 
-    const registros: RegistroBodega[] = filas.map(f => ({
-      fecha: f.fecha,
-      tienda: f.tienda_cod,
-      actor: f.actor_name,
-      createdAt: f.created_at,
-      slotId: num(f.detalle?.slotId),
-      peso:   num(f.detalle?.peso),
-    }));
+    const registros: RegistroBodega[] = filas
+      .filter(f => f.accion === 'registrar_item')
+      .map(f => ({
+        fecha: f.fecha,
+        tienda: f.tienda_cod,
+        actor: f.actor_name,
+        createdAt: f.created_at,
+        slotId: num(f.detalle?.slotId),
+        peso:   num(f.detalle?.peso),
+      }));
+
+    const borrados: BorradoBodega[] = filas
+      .filter(f => f.accion === 'eliminar_item')
+      .map(f => ({ fecha: f.fecha, slotId: num(f.detalle?.slotId), label: f.detalle?.label ?? null }));
 
     return NextResponse.json({
       desde, hasta: hoy,
       dias: medirDias(registros),
+      borrados: medirBorrados(borrados),
       // Los contadores viajan a propósito: si el número sorprende, lo primero que hay que poder
       // descartar es que la consulta leyó de menos. `sinSlot` avisa del otro modo de falla — filas
       // que no se pueden emparejar porque les falta el slot, y que bajarían el total en silencio.
       registrosLeidos: registros.length,
+      borradosLeidos: borrados.length,
       sinSlot: registros.filter(r => r.slotId == null).length,
+      // Un borrado sin slot no se puede emparejar y se descarta: bajaría el porcentaje, que es la
+      // dirección en la que un error acá pasa inadvertido.
+      borradosSinSlot: borrados.filter(bo => bo.slotId == null).length,
       serviceRole: hayServiceRole(),
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
