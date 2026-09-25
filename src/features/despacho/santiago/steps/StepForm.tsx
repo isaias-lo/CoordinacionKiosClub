@@ -63,7 +63,7 @@ import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo, pesoPalletConCajas,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
-import { itemDeLaUnidad, fusionarConPrevio, esReingreso } from '../../shared/itemPorUnidad';
+import { itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
 import { avisoDeUnidad } from '../../shared/avisoUnidadEscaneada';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
@@ -130,6 +130,9 @@ interface FormRow {
    *  descuenta la tara. Vacío = ninguna, que es el caso normal. Ver `pesoPalletConCajas`. */
   cajasNegras?: string;
   saved?: boolean;
+  /** La tarjeta se reabrió porque se le SUMÓ algo: el guardado que viene no es trabajo rehecho.
+   *  Ver `esReingresoDeVerdad`. Se limpia al guardar. */
+  traSuma?: boolean;
   /** La persona escribió algo acá. Distinto de `!saved`, que solo dice que no se guardó EN ESTE
    *  equipo: una tarjeta recién nacida en blanco no está tocada. */
   tocada?: boolean;
@@ -1359,7 +1362,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const previo = itemDeLaUnidad(existing, slotId);
     const savedItem = previo ? fusionarConPrevio(previo, candidato) : candidato;
     dispatch({ type: 'ADD_ITEM', item: savedItem });
-    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId } : r));
+    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId, traSuma: false } : r));
     // El toast "Agregado sin pesar" lo dispara el caller (botón "Sin pesar") tras el await,
     // así queda determinista sin importar si esta función esperó por el fetch del slot.
     if (!sinPesar) showToast(`✓ ${savedItem.orden} ${previo ? 'actualizado' : 'agregado'}`, '#16A34A');
@@ -1369,7 +1372,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     // [Bodega · uso simultáneo] La unidad ya tenía un ítem pesado de verdad — alguien la volvió a
     // pesar. El merge lo resuelve bien (no se duplica el ítem), pero el trabajo se hizo dos
     // veces: registrarlo automáticamente evita depender de otra medición manual como la del 17/09.
-    if (esReingreso(previo)) {
+    if (esReingresoDeVerdad(previo, !!row.traSuma)) {
       logActividad({ accion: 'reingreso', fuente: 'rmcosta', tiendaCod: currentTienda.cod,
         tiendaNombre: currentTienda.tienda, label: savedItem.orden, peso: savedItem.peso, alto: savedItem.alto,
         pesoPrevio: previo!.peso, altoPrevio: previo!.alto, contenido: savedItem.contenido, slotId });
@@ -1640,7 +1643,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => prev
       .filter(r => r.id !== bultoRowId)
       .map(r => r.id === palletRowId
-        ? { ...r, saved: false, savedItem: undefined, peso: String(nuevoPeso),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: String(nuevoPeso),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
@@ -1709,7 +1712,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => prev
       .filter(r => !bultoRowIdSet.has(r.id))
       .map(r => r.id === palletRowId
-        ? { ...r, saved: false, savedItem: undefined, peso: String(nuevoPeso),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: String(nuevoPeso),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
@@ -1786,7 +1789,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => prev
       .filter(r => r.id !== sourceRow.id)
       .map(r => r.id === targetRow.id
-        ? { ...r, saved: false, savedItem: undefined, peso: String(nuevoPeso),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: String(nuevoPeso),
             alto: prevAlto ? String(prevAlto) : '', mergeReopened: true }
         : r));
     setFormMergeState(null);
