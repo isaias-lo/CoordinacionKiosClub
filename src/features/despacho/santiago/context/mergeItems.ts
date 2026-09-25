@@ -32,6 +32,8 @@ export function mergeItemsByTienda<T>(
   // que borrarlos de nuevo. `fueBorrado` es la memoria que la base ya no guarda — ver
   // `shared/lapidasBorrado.ts`.
   fueBorrado: (llave: string) => boolean = () => false,
+  /** Ver `mergeListaPorItem`: avisa qué ítem local se descartó y en qué tienda. */
+  onDescartado?: (cod: string, item: T) => void,
 ): Record<string, T[]> {
   // [E3b/C2] Antes el merge era por TIENDA completa (dirty ⇒ gana toda la local). Eso pisaba lo
   // que otro usuario hacía en la MISMA tienda al mismo tiempo (A edita dims mientras B agrega un
@@ -49,9 +51,22 @@ export function mergeItemsByTienda<T>(
     // Ojo: "limpia" es EXACTAMENTE como queda una tienda justo después de empujar, así que esta
     // rama es por donde volvían todos los ítems borrados de una vez (se adopta la tienda remota
     // entera). Las lápidas se aplican también acá, no solo en el merge por-ítem.
-    if (JSON.stringify(loc) === JSON.stringify(base)) { out[cod] = sinLapidas(rem, keyOf, fueBorrado); continue; }
+    if (JSON.stringify(loc) === JSON.stringify(base)) {
+      // [Instrumentación 25/09] Esta rama descarta EN BLOQUE todo lo local que el remoto no trae, y
+      // es la ruta más sospechosa de las dos: "limpia" es exactamente como queda una tienda justo
+      // después de empujar. Si no se avisara acá, la instrumentación miraría el camino menos
+      // probable. Se avisa por ítem, igual que en el merge por-ítem.
+      if (onDescartado) {
+        const enRemoto = new Set(rem.map(keyOf));
+        for (const item of loc) if (!enRemoto.has(keyOf(item)) && !fueBorrado(keyOf(item))) onDescartado(cod, item);
+      }
+      out[cod] = sinLapidas(rem, keyOf, fueBorrado);
+      continue;
+    }
     // Tienda editada localmente → merge por-ítem (protege mi edición sin pisar lo del otro).
-    out[cod] = mergeListaPorItem(rem, loc, base, keyOf, onConflict ? item => onConflict(cod, item) : undefined, fueBorrado);
+    out[cod] = mergeListaPorItem(rem, loc, base, keyOf,
+      onConflict ? item => onConflict(cod, item) : undefined, fueBorrado,
+      onDescartado ? item => onDescartado(cod, item) : undefined);
   }
   return out;
 }
@@ -68,7 +83,22 @@ export function mergeItemsByTienda<T>(
  * El borrado siempre gana sobre "reaparecer" (anti-zombie). Orden: primero la vista local, luego
  * las altas remotas nuevas al final (el `orden` se renumera aguas abajo).
  */
-export function mergeListaPorItem<T>(remote: T[], local: T[], base: T[], keyOf: (i: T) => string, onConflict?: (item: T) => void, fueBorrado: (llave: string) => boolean = () => false): T[] {
+export function mergeListaPorItem<T>(
+  remote: T[], local: T[], base: T[], keyOf: (i: T) => string,
+  onConflict?: (item: T) => void,
+  fueBorrado: (llave: string) => boolean = () => false,
+  // [Instrumentación 25/09] Se avisa cada vez que se DESCARTA un ítem local porque el remoto no lo
+  // trae. Esa rama es correcta cuando el otro equipo borró de verdad — pero es también la sospecha
+  // del reporte "se agregan y al rato aparecen como no agregado": tras empujar, la base contiene mi
+  // ítem nuevo, y un remoto de otro equipo que todavía no lo tiene se lee como "borrado remoto".
+  //
+  // Medido el 25/09: 68 casos en 10 días de la misma persona re-ingresando peso Y altura idénticos
+  // minutos después, en lotes (60PBL repitió CH1/CH3/CH4/CH5 juntos 16 min después). El fenómeno
+  // existe; la CAUSA no está probada — la cantidad de gente no lo predice (22/09: 5 personas, 1
+  // caso; 15/09: 3 personas, 23 casos). En vez de arreglar a ciegas —que acá significa arriesgarse
+  // a suprimir borrados legítimos— se instrumenta la rama exacta y se mira un día de datos.
+  onDescartado?: (item: T) => void,
+): T[] {
   const bMap = new Map(base.map(i => [keyOf(i), i]));
   const rMap = new Map(remote.map(i => [keyOf(i), i]));
   const eq = (a?: T, b?: T) => JSON.stringify(a) === JSON.stringify(b);
@@ -93,7 +123,9 @@ export function mergeListaPorItem<T>(remote: T[], local: T[], base: T[], keyOf: 
       result.push(lChanged || !rChanged ? item : rMap.get(k)!);
     } else if (!inB) {
       result.push(item); // alta local nueva
-    } // inB && !inR ⇒ borrado remoto ⇒ drop
+    } else {
+      onDescartado?.(item);  // inB && !inR ⇒ borrado remoto ⇒ drop (instrumentado, ver la firma)
+    }
   }
   for (const item of remote) {
     const k = keyOf(item);

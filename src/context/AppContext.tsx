@@ -14,6 +14,8 @@ import { fechaChile } from '@/lib/fechaChile';
 import { stableItemKey } from '@/features/despacho/shared/formRowsReconcile';
 import { serializarBase } from '@/features/despacho/shared/syncBase';
 import { tieneLapida } from '@/features/despacho/shared/lapidasBorrado';
+import { esSinPesar } from '@/features/despacho/shared/sinPesar';
+import { logActividad, ordenToLabel } from '@/lib/actividad';
 
 const today = new Date();
 const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
@@ -333,7 +335,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
         // [Lápidas] Lo que se borró acá no vuelve, aunque el remoto todavía lo traiga y la base ya
         // no lo recuerde. Sin esto, el borrado solo valía hasta el push siguiente (2,5 s).
-        tieneLapida);
+        tieneLapida,
+        // [Instrumentación 25/09] Solo los que tenían PESO: un ítem sin pesar que se descarta no
+        // es trabajo perdido, y filtrar acá mantiene el volumen en lo que importa. Si esto aparece
+        // seguido, la causa de "se agregan y aparecen como no agregado" es el merge; si no aparece
+        // nunca, hay que buscar en otro lado. Ver `mergeListaPorItem`.
+        (tiendaNombre, item) => {
+          if (esSinPesar(item)) return;
+          logActividad({ accion: 'merge_descarte', fuente: 'nacional', tiendaNombre,
+            label: ordenToLabel(item.orden ?? ''), peso: item.peso, alto: item.alto,
+            slotId: item.pickingSlotId });
+        });
 
       // ── pdfData merge ── mismo criterio por-clave que las guías de RM/Costa (mergeEntriesByKey):
       // dirty ⇒ gana la local (subida/borrado sin empujar); limpia ⇒ manda la remota; y si el remoto

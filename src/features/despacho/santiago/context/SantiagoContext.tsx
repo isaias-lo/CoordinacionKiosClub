@@ -11,6 +11,8 @@ import { pushSessionState, fetchSessionStateMeta, subscribeToSessionState, remot
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { mergeItemsByTienda, itemsFromSnapshot, quitarLapidas } from './mergeItems';
 import { tieneLapida } from '../../shared/lapidasBorrado';
+import { esSinPesar } from '../../shared/sinPesar';
+import { logActividad } from '@/lib/actividad';
 import { agregarSinDuplicar } from '../../shared/itemPorUnidad';
 import { stableItemKey } from '../../shared/formRowsReconcile';
 import { serializarBaseSantiago } from '../../shared/syncBase';
@@ -232,7 +234,16 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
           },
           // [Lápidas] Lo que se borró acá no vuelve, aunque el remoto todavía lo traiga y la base
           // ya no lo recuerde. Ver `shared/lapidasBorrado.ts`.
-          tieneLapida);
+          tieneLapida,
+        // [Instrumentación 25/09] Solo los que tenían PESO: un ítem sin pesar que se descarta no
+        // es trabajo perdido, y filtrar acá mantiene el volumen en lo que importa. Si esto aparece
+        // seguido, la causa de "se agregan y aparecen como no agregado" es el merge; si no aparece
+        // nunca, hay que buscar en otro lado. Ver `mergeListaPorItem`.
+          (cod, item) => {
+            if (esSinPesar(item)) return;
+            logActividad({ accion: 'merge_descarte', fuente: 'rmcosta', tiendaCod: cod,
+              label: item.orden, peso: item.peso, alto: item.alto, slotId: item.pickingSlotId });
+          });
         dispatch({ type: 'LOAD_STATE', payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: merged } });
       } else {
         // Lo local está limpio → se adopta el remoto tal cual. Ojo: "limpio" es EXACTAMENTE como

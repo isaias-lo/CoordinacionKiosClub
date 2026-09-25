@@ -203,3 +203,50 @@ describe('itemsFromSnapshot', () => {
     expect(itemsFromSnapshot('{}')).toEqual({});
   });
 });
+
+describe('onDescartado — instrumentar la rama que se sospecha (25/09)', () => {
+  const it1 = { pickingSlotId: 1, orden: 'P1', peso: 200 };
+  const it2 = { pickingSlotId: 2, orden: 'P2', peso: 150 };
+  const k = (i: { pickingSlotId?: number }) => `slot:${i.pickingSlotId}`;
+
+  it('avisa cuando se descarta un ítem local que el remoto no trae', () => {
+    const vistos: typeof it1[] = [];
+    // El ítem está en base y en local, pero no en el remoto → se lee como "borrado remoto".
+    mergeListaPorItem([it2], [it1, it2], [it1, it2], k, undefined, () => false, i => vistos.push(i));
+    expect(vistos).toEqual([it1]);
+  });
+
+  it('NO avisa por un alta local nueva: esa se conserva, no se descarta', () => {
+    const vistos: unknown[] = [];
+    mergeListaPorItem([], [it1], [], k, undefined, () => false, i => vistos.push(i));
+    expect(vistos).toEqual([]);
+  });
+
+  it('NO avisa por algo con lápida: ese descarte es intencional y ya se explica solo', () => {
+    const vistos: unknown[] = [];
+    mergeListaPorItem([it1], [it1], [it1], k, undefined, llave => llave === 'slot:1', i => vistos.push(i));
+    expect(vistos).toEqual([]);
+  });
+
+  it('viaja la tienda al subir a mergeItemsByTienda (tienda EDITADA)', () => {
+    const vistos: [string, unknown][] = [];
+    // Local difiere de base → rama por-ítem. it1 está en base y no en el remoto → se descarta.
+    mergeItemsByTienda({ TLC: [it2] }, { TLC: [it1, { ...it2, peso: 999 }] }, { TLC: [it1, it2] }, k,
+      undefined, () => false, (cod, i) => vistos.push([cod, i]));
+    expect(vistos).toEqual([['TLC', it1]]);
+  });
+
+  it('también avisa en la rama de tienda LIMPIA, que es la más sospechosa', () => {
+    // "Limpia" (local == base) es exactamente como queda una tienda justo después de empujar, y
+    // ahí el merge adopta el remoto ENTERO. Sin este aviso, la instrumentación miraría el camino
+    // menos probable. Lo encontró un test, no una relectura del código.
+    const vistos: [string, unknown][] = [];
+    mergeItemsByTienda({ TLC: [it2] }, { TLC: [it1, it2] }, { TLC: [it1, it2] }, k,
+      undefined, () => false, (cod, i) => vistos.push([cod, i]));
+    expect(vistos).toEqual([['TLC', it1]]);
+  });
+
+  it('sin el callback, el merge se comporta exactamente igual que antes', () => {
+    expect(mergeListaPorItem([it2], [it1, it2], [it1, it2], k)).toEqual([it2]);
+  });
+});
