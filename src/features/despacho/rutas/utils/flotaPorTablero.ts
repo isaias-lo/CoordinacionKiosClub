@@ -168,3 +168,25 @@ export function guardarCacheSeleccion(
 ): void {
   try { store?.setItem(claveCacheSeleccion(tablero, fecha), JSON.stringify(serializarSeleccion(sel))); } catch { /* sin copia local; el servidor manda igual */ }
 }
+
+/**
+ * ¿Hay que aplicar este tablero remoto?
+ *
+ * Dos condiciones, y la primera es la que faltaba.
+ *
+ * **`listo`** — que el `fetch` inicial de la selección ya haya vuelto. La suscripción al canal se
+ * registra ANTES de que ese fetch resuelva, así que un cambio de otro equipo puede llegar en esos
+ * ~300 ms. Y ahí la `base` del merge todavía está vacía — con base vacía, `mergeSeleccion` no puede
+ * distinguir "no lo toqué" de "lo agregué yo", así que trata TODO lo local como un cambio propio y
+ * devuelve la unión de los dos lados. En esa ventana, un camión que el otro equipo acaba de sacar
+ * volvía, y encima se empujaba: exactamente el bug que el merge vino a arreglar, por una rendija.
+ *
+ * Un evento descartado acá no se pierde: el `fetch` que está en vuelo trae el estado del servidor,
+ * que ya lo incluye.
+ *
+ * **La firma** — corta-ecos. El canal devuelve el propio push, y volver a fusionarlo contra una base
+ * que ya avanzó da resultados raros sin que nada avise.
+ */
+export function debeAplicarRemoto(listo: boolean, firmaRemota: string, firmaPropia: string): boolean {
+  return listo && firmaRemota !== firmaPropia;
+}
