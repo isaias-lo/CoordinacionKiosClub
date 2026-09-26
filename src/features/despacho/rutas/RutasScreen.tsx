@@ -47,7 +47,7 @@ import type { IAStore, IATruck } from './ia/types';
 import { rutasAAsignacion, contarEdiciones } from './ia/feedback';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoSplitFn, actualizarPionetasRMFn } from './utils/sheets';
 import { splitRoutingPorTabla, buildControlRows, type Grupo, type RutaControl, type PendienteControl } from './utils/vueltaRegistro';
-import { fechasBacklogV2, poolV2ParaFecha, conteoPorFecha } from './utils/segundaVueltaFechas';
+import { fechasBacklogV2, poolV2ParaFecha, conteoPorFecha, codsDeCierreV2 } from './utils/segundaVueltaFechas';
 import { parseCerradas, serializeCerradas, mergeCerradas, isCerrada, rutasNoCerradas, todasCerradas, normPatente, codsEnCerradas, preservarCerradas } from './utils/cierrePorVehiculo';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
 import { pushSessionState, pushSessionStateResult, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays, fetchPendientesV2Pasadas, type PendienteV2 } from '../../../lib/userSessionState';
@@ -1701,10 +1701,15 @@ export default function RutasScreen() {
   // patente en columna "2ª Vuelta"), genera su manifiesto y quita esas tiendas de las pendientes
   // de ESA fecha. Se registra bajo la FECHA DE ORIGEN (no "hoy") para rellenar la "Patente 2. Vuelta"
   // de la fila existente (upsert por fecha::cod) en vez de crear una fila nueva bajo hoy.
-  // `acumular`: al cerrar VARIOS, cada camión aporta su ruta a esta lista en vez de reemplazar el
-  // manifiesto. Sin esto, cerrar cuatro dejaba a la vista el manifiesto del último y los otros tres
-  // se registraban sin que nadie los viera — que es justo lo que hay que revisar antes de despachar.
-  function cerrarCamionV2(fecha: string, patente: string, acumular?: Ruta[]) {
+  // `lote`: al cerrar VARIOS, cada camión aporta al lote su ruta y sus códigos en vez de publicar
+  // el manifiesto y guardar las pendientes por su cuenta. Las dos cosas por el mismo motivo:
+  //   · Manifiesto: sin esto, cerrar cuatro dejaba a la vista el del último y los otros tres se
+  //     registraban sin que nadie los viera — justo lo que hay que revisar antes de despachar.
+  //   · Pendientes: `savePendientesV2` LEE el estado, le saca sus códigos y lo vuelve a ESCRIBIR
+  //     entero. Cuatro llamadas en el mismo tick leen las cuatro la misma lista previa, cada una
+  //     quita solo lo suyo y gana la última: tres camiones quedaban registrados y despachados pero
+  //     sus tiendas seguían figurando como pendientes. Una sola escritura con la unión.
+  function cerrarCamionV2(fecha: string, patente: string, lote?: { rutas: Ruta[]; cods: Set<string> }) {
     const stores = asignacionesV2[fecha]?.[patente] || [];
     if (!stores.length) return;
     const vehicle = flota.find(v => v.p === patente);
@@ -1763,11 +1768,9 @@ export default function RutasScreen() {
 
     // 5) Quitar las despachadas SOLO de las pendientes de ESTA fecha (otras fechas de la misma
     //    tienda se conservan). Los códigos van tal cual están guardados, para casar en savePendientesV2.
-    const despachados = new Set(stores.map(t => norm(t.c)));
-    const codsFecha = new Set(
-      pendientesV2Origen.filter(p => p.fechaOrigen === fecha && despachados.has(norm(p.c))).map(p => p.c),
-    );
-    if (codsFecha.size) void savePendientesV2(fecha, [], codsFecha);
+    const codsFecha = codsDeCierreV2(pendientesV2Origen, fecha, stores);
+    if (lote) codsFecha.forEach(c => lote.cods.add(c));
+    else if (codsFecha.size) void savePendientesV2(fecha, [], codsFecha);
 
     // 6) Limpiar estado local (solo el camión de esta fecha) + abrir manifiesto
     setAsignacionesV2(prev => {
@@ -1777,8 +1780,8 @@ export default function RutasScreen() {
       n[fecha] = f;
       return n;
     });
-    setPendientesV2Origen(prev => prev.filter(p => !(p.fechaOrigen === fecha && despachados.has(norm(p.c)))));
-    if (acumular) acumular.push(...manifiestoRutas);
+    setPendientesV2Origen(prev => prev.filter(p => !(p.fechaOrigen === fecha && codsFecha.has(p.c))));
+    if (lote) lote.rutas.push(...manifiestoRutas);
     else setManifiestoV2(manifiestoRutas);
   }
 
@@ -1789,12 +1792,14 @@ export default function RutasScreen() {
   // lote entero. Los `setAsignacionesV2` son funcionales y se encadenan bien.
   function cerrarVariosV2(patentes: string[]) {
     if (!v2Fecha || patentes.length === 0) return;
-    // Un solo manifiesto con TODAS las rutas: `cerrarCamionV2` sale temprano si el camión no tiene
-    // tiendas, así que lo que se acumula acá es exactamente lo que se cerró.
-    const rutas: Ruta[] = [];
-    patentes.forEach(p => cerrarCamionV2(v2Fecha, p, rutas));
+    // `cerrarCamionV2` sale temprano si el camión no tiene tiendas, así que lo que queda en el lote
+    // es exactamente lo que se cerró: un manifiesto con todas las rutas y UNA escritura de
+    // pendientes con la unión de los códigos.
+    const lote = { rutas: [] as Ruta[], cods: new Set<string>() };
+    patentes.forEach(p => cerrarCamionV2(v2Fecha, p, lote));
     setCerrarSelV2(new Set());
-    if (rutas.length) setManifiestoV2(rutas);
+    if (lote.cods.size) void savePendientesV2(v2Fecha, [], lote.cods);
+    if (lote.rutas.length) setManifiestoV2(lote.rutas);
   }
 
   // ── Fase B: postear el summary del día (INSERT en historial_despacho, primario) ──
