@@ -411,6 +411,10 @@ export default function RutasScreen() {
   // y sumaba todas las fechas por código; ahora cada fecha se asigna y cierra por separado.
   const [asignacionesV2, setAsignacionesV2]         = useState<Record<string, Record<string, StoreItem[]>>>({});
   const [v2Fecha, setV2Fecha]                       = useState<string>(''); // sub-pestaña de fecha activa
+  // [Cerrar en masa · 2ª vuelta] Despacho y Congelados ya podían elegir varios camiones y cerrarlos
+  // de una; 2ª Vuelta no, y había que cerrarlos de a uno. `ManualDispatch` ya sabe hacerlo —solo
+  // hay que darle `cerrarSel`/`onCerrarVarios`—, así que lo que faltaba era esto y el lote de abajo.
+  const [cerrarSelV2, setCerrarSelV2] = useState<Set<string>>(new Set());
   const [manifiestoV2, setManifiestoV2]             = useState<Ruta[] | null>(null);
   // Fase B: manifiesto de un solo camión cerrado en 1ª vuelta (cierre por vehículo).
   const [manifiestoV1, setManifiestoV1]             = useState<Ruta[] | null>(null);
@@ -1697,7 +1701,10 @@ export default function RutasScreen() {
   // patente en columna "2ª Vuelta"), genera su manifiesto y quita esas tiendas de las pendientes
   // de ESA fecha. Se registra bajo la FECHA DE ORIGEN (no "hoy") para rellenar la "Patente 2. Vuelta"
   // de la fila existente (upsert por fecha::cod) en vez de crear una fila nueva bajo hoy.
-  function cerrarCamionV2(fecha: string, patente: string) {
+  // `acumular`: al cerrar VARIOS, cada camión aporta su ruta a esta lista en vez de reemplazar el
+  // manifiesto. Sin esto, cerrar cuatro dejaba a la vista el manifiesto del último y los otros tres
+  // se registraban sin que nadie los viera — que es justo lo que hay que revisar antes de despachar.
+  function cerrarCamionV2(fecha: string, patente: string, acumular?: Ruta[]) {
     const stores = asignacionesV2[fecha]?.[patente] || [];
     if (!stores.length) return;
     const vehicle = flota.find(v => v.p === patente);
@@ -1771,7 +1778,23 @@ export default function RutasScreen() {
       return n;
     });
     setPendientesV2Origen(prev => prev.filter(p => !(p.fechaOrigen === fecha && despachados.has(norm(p.c)))));
-    setManifiestoV2(manifiestoRutas);
+    if (acumular) acumular.push(...manifiestoRutas);
+    else setManifiestoV2(manifiestoRutas);
+  }
+
+  // [Cerrar en masa · 2ª vuelta] Cierra todos los seleccionados y abre UN manifiesto con todos.
+  //
+  // El estado se lee del render (`asignacionesV2`), no del que van dejando los `setState` de cada
+  // cierre: cada camión toma SUS tiendas por patente, así que la foto del render alcanza para el
+  // lote entero. Los `setAsignacionesV2` son funcionales y se encadenan bien.
+  function cerrarVariosV2(patentes: string[]) {
+    if (!v2Fecha || patentes.length === 0) return;
+    // Un solo manifiesto con TODAS las rutas: `cerrarCamionV2` sale temprano si el camión no tiene
+    // tiendas, así que lo que se acumula acá es exactamente lo que se cerró.
+    const rutas: Ruta[] = [];
+    patentes.forEach(p => cerrarCamionV2(v2Fecha, p, rutas));
+    setCerrarSelV2(new Set());
+    if (rutas.length) setManifiestoV2(rutas);
   }
 
   // ── Fase B: postear el summary del día (INSERT en historial_despacho, primario) ──
@@ -1995,6 +2018,9 @@ export default function RutasScreen() {
 
   // [Cerrar en masa] al cambiar de fecha, limpiar la selección de camiones para cerrar.
   useEffect(() => { setCerrarSel(new Set()); setCerrarSelCong(new Set()); }, [fecha]);
+  // La selección de 2ª vuelta vive por FECHA DE ORIGEN: al cambiar de sub-pestaña se limpia, o se
+  // arrastraría una patente elegida para otro día.
+  useEffect(() => { setCerrarSelV2(new Set()); }, [v2Fecha]);
 
   // ── Cierre de jornada: marca "listo por hoy" cross-device ─────────
   useEffect(() => {
@@ -3208,6 +3234,13 @@ export default function RutasScreen() {
                       onAsignaciones={a => setAsignacionesV2(prev => ({ ...prev, [v2Fecha]: a }))}
                       onCalcular={() => {}}
                       onCerrarCamion={patente => cerrarCamionV2(v2Fecha, patente)}
+                      cerrarSel={cerrarSelV2}
+                      onToggleCerrarSel={p => setCerrarSelV2(prev => {
+                        const next = new Set(prev);
+                        if (next.has(p)) next.delete(p); else next.add(p);
+                        return next;
+                      })}
+                      onCerrarVarios={cerrarVariosV2}
                       onToggleFlota={handleToggleFlota}
                       hideCalcular={true}
                       scrollContainerRef={v2ScrollRef}
