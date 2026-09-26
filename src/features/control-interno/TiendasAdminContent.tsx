@@ -20,7 +20,8 @@ import CalendarioColumnas from './CalendarioColumnas';
 import TransportistasTab from './TransportistasTab';
 import BitacoraTab from './BitacoraTab';
 import { parseCoord } from './coords';
-import { etiquetaDeUso, type UsoTienda } from './usoDeTienda';
+import { etiquetaDeUso, partirPorBorrable, type UsoTienda } from './usoDeTienda';
+import { todasMarcadas, alternarTodas, alternarUna, textoSeleccion, marcadasOcultas } from './seleccionTiendas';
 import { frecuenciasPorTienda } from './frecuencia';
 import { normalizarVentana } from '@/features/despacho/rutas/utils/ventanaHoraria';
 import { fetchCalendarioCompleto, subscribeToCalendarChanges } from '../despacho/utils/useCalendario';
@@ -216,6 +217,11 @@ export default function TiendasAdminContent({
   // y decide qué fila puede ofrecer borrar. Si falla, el mapa queda vacío y la columna dice "—":
   // nunca se asume "sin uso", que es el lado peligroso de la duda.
   const [usoPorCod, setUsoPorCod] = useState<Record<string, UsoTienda>>({});
+
+  // [Selección múltiple] Marcadas por CÓDIGO, no por posición: la tabla se filtra y se reordena, y
+  // una selección por índice apuntaría a otra tienda al cambiar el orden. Ver `seleccionTiendas`.
+  const [selCods, setSelCods] = useState<string[]>([]);
+  const [masivo, setMasivo] = useState<{ confirmacion: string; corriendo: boolean; hechas: number } | null>(null);
 
   // Frecuencia DERIVADA del Calendario de Abastecimiento (cod → "MA-JU-VI"), no del campo manual (que suele
   // quedar vacío). Se actualiza sola cuando cambia el calendario (cross-device).
@@ -424,6 +430,67 @@ export default function TiendasAdminContent({
     }
   }
 
+  // [Selección múltiple] Activar o desactivar varias.
+  //
+  // En SECUENCIA y con un solo `load()` al final: cada POST reescribe además la fila del Google
+  // Sheet, y N recargas en paralelo dejarían la tabla parpadeando sobre datos a medio escribir.
+  //
+  // `cods` explícito y no leído del estado: el botón "Desactivar las otras" cambia la selección y
+  // llama a esta función en el mismo tick, y `selCods` todavía valdría lo del render anterior —
+  // desactivaría también las que se iban a borrar.
+  async function cambiarActivoEnMasa(activo: boolean, cods: string[] = selCods) {
+    const lista = tiendas.filter(t => cods.includes(t.codigo) && t.activo !== activo);
+    if (!lista.length) { setSelCods([]); return; }
+    setMasivo({ confirmacion: '', corriendo: true, hechas: 0 });
+    let fallaron = 0;
+    for (const t of lista) {
+      try {
+        const res = await fetch('/api/tiendas', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...t, activo }),
+        });
+        if (!res.ok) fallaron++;
+      } catch { fallaron++; }
+      setMasivo(m => (m ? { ...m, hechas: m.hechas + 1 } : m));
+    }
+    setMasivo(null);
+    setSelCods([]);
+    await load();
+    const n = lista.length - fallaron;
+    setMsgType(fallaron ? 'err' : 'ok');
+    setMsg(fallaron
+      ? `${n} de ${lista.length} ${activo ? 'activadas' : 'desactivadas'}; ${fallaron} fallaron.`
+      : `${n} tienda${n === 1 ? '' : 's'} ${activo ? 'activada' : 'desactivada'}${n === 1 ? '' : 's'} ✓`);
+  }
+
+  // [Selección múltiple] Borrar varias.
+  //
+  // ESTRICTAMENTE EN SECUENCIA, y esto no es una preferencia de estilo: `deleteRowFromSheets` lee la
+  // hoja TIENDAS, busca el índice de la fila y borra POR POSICIÓN. En paralelo, las N llamadas
+  // calculan su índice sobre la misma foto; apenas se borra la primera, todo lo de abajo se corre
+  // una fila y la segunda borraría la fila equivocada. En secuencia cada una relee la hoja ya
+  // corrida. Ver la regla de hojas posicionales en CLAUDE.md.
+  async function borrarEnMasa(borrables: Tienda[]) {
+    if (!borrables.length) return;
+    setMasivo(m => (m ? { ...m, corriendo: true, hechas: 0 } : m));
+    const ok: string[] = [];
+    const fallaron: string[] = [];
+    for (const t of borrables) {
+      try {
+        const res = await fetch(`/api/tiendas?codigo=${encodeURIComponent(t.codigo)}`, { method: 'DELETE' });
+        (res.ok ? ok : fallaron).push(t.codigo);
+      } catch { fallaron.push(t.codigo); }
+      setMasivo(m => (m ? { ...m, hechas: m.hechas + 1 } : m));
+    }
+    setMasivo(null);
+    setSelCods(prev => prev.filter(c => ok.indexOf(c) < 0));
+    await load();
+    setMsgType(fallaron.length ? 'err' : 'ok');
+    setMsg(fallaron.length
+      ? `${ok.length} eliminada${ok.length === 1 ? '' : 's'}; no se pudo con ${fallaron.join(', ')}.`
+      : `${ok.length} tienda${ok.length === 1 ? '' : 's'} eliminada${ok.length === 1 ? '' : 's'} ✓`);
+  }
+
   function f(k: keyof Tienda) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
       const v = e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value;
@@ -441,6 +508,12 @@ export default function TiendasAdminContent({
   const baseFiltered = activeFilter === 'activas'   ? searchFiltered.filter(t =>  t.activo)
                      : activeFilter === 'inactivas' ? searchFiltered.filter(t => !t.activo)
                      : searchFiltered;
+
+  // [Selección múltiple] Derivados de la selección. `elegidas` sale de TODAS las tiendas, no de las
+  // filtradas: lo que se marcó y después quedó fuera del filtro sigue seleccionado a propósito.
+  const elegidas = tiendas.filter(t => selCods.includes(t.codigo));
+  const { borrables: borrablesMasa, conHistorial: conHistorialMasa } = partirPorBorrable(elegidas, usoPorCod);
+  const ocultas = marcadasOcultas(selCods, baseFiltered.map(t => t.codigo));
   /**
    * Aplica al formulario lo que devolvió Google, y propone el sector aparte.
    *
@@ -728,7 +801,16 @@ export default function TiendasAdminContent({
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
                     <thead>
-                      <tr>{TABLA_COLS.map(c => {
+                      <tr>
+                      {canEditTiendas && (
+                        <th style={{ ...TH_CELL, width: 40, cursor: 'default' }}>
+                          <input type="checkbox" aria-label="Seleccionar todas las tiendas de la lista"
+                            checked={todasMarcadas(selCods, filtered.map(t => t.codigo))}
+                            onChange={() => setSelCods(alternarTodas(selCods, filtered.map(t => t.codigo)))}
+                            style={{ width: 16, height: 16, accentColor: '#2563EB', cursor: 'pointer', margin: 0 }} />
+                        </th>
+                      )}
+                      {TABLA_COLS.map(c => {
                         const active = sortBy === c.sort;
                         return (
                           <th key={c.label} onClick={() => handleSortClick(c.sort)} title={`Ordenar por ${c.label}`}
@@ -746,13 +828,22 @@ export default function TiendasAdminContent({
                     </thead>
                     <tbody>
                       {filtered.map((t, i) => {
-                        const zebra = i % 2 ? '#FAFBFC' : '#fff';
+                        const marcada = selCods.includes(t.codigo);
+                        const zebra = marcada ? '#EEF2FF' : (i % 2 ? '#FAFBFC' : '#fff');
                         const uso = etiquetaDeUso(usoPorCod[t.codigo]);
                         return (
                           <tr key={t.codigo} onClick={() => openEdit(t)}
                             style={{ cursor: 'pointer', background: zebra }}
                             onMouseEnter={e => (e.currentTarget.style.background = '#EEF2FF')}
                             onMouseLeave={e => (e.currentTarget.style.background = zebra)}>
+                            {canEditTiendas && (
+                              <td style={TD_CELL} onClick={e => e.stopPropagation()}>
+                                <input type="checkbox" aria-label={`Seleccionar ${t.codigo}`}
+                                  checked={selCods.includes(t.codigo)}
+                                  onChange={() => setSelCods(alternarUna(selCods, t.codigo))}
+                                  style={{ width: 16, height: 16, accentColor: '#2563EB', cursor: 'pointer', margin: 0 }} />
+                              </td>
+                            )}
                             <td style={TD_CELL}><span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#1B2A6B' }}>{t.codigo}</span></td>
                             <td style={TD_CELL}>{t.nombre}</td>
                             <td style={TD_CELL}>{t.region || '—'}</td>
@@ -1108,6 +1199,141 @@ export default function TiendasAdminContent({
 
       {/* [P3] Diálogo de eliminar tienda. Borrado REAL solo si no tiene historial; si lo tiene,
           se explica dónde se usa y se ofrece desactivarla (reversible y sin dejar huérfanos). */}
+      {/* [Selección múltiple] Barra flotante. Aparece solo con algo marcado y dice cuántas de las
+          marcadas quedaron fuera del filtro: actuar sobre tiendas que no están en pantalla es
+          legítimo —se marcaron a propósito— pero callarlo haría ver el conteo como un error. */}
+      {canEditTiendas && selCods.length > 0 && (
+        <div style={{ position: 'fixed', left: '50%', bottom: 26, transform: 'translateX(-50%)', zIndex: 60,
+                      display: 'flex', alignItems: 'center', gap: 9, height: 52, padding: '0 11px 0 19px',
+                      borderRadius: 13, background: '#0F172A', boxShadow: '0 12px 34px rgba(15,23,42,0.34)' }}>
+          <span style={{ fontSize: 13.5, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap' }}>
+            {textoSeleccion(selCods.length)}
+            {ocultas > 0 && (
+              <span style={{ marginLeft: 7, fontSize: 12, fontWeight: 600, color: '#94A3B8' }}>
+                ({ocultas} fuera del filtro)
+              </span>
+            )}
+          </span>
+          <span style={{ width: 1, height: 24, background: '#334155', margin: '0 4px' }} />
+          <button onClick={() => cambiarActivoEnMasa(true)} disabled={!!masivo?.corriendo}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, height: 34, padding: '0 13px', borderRadius: 9,
+                     border: 0, background: '#16A34A', color: '#fff', fontSize: 12.5, fontWeight: 700,
+                     cursor: masivo?.corriendo ? 'wait' : 'pointer', opacity: masivo?.corriendo ? 0.6 : 1 }}>
+            <ToggleRight size={14} /> Activar
+          </button>
+          <button onClick={() => cambiarActivoEnMasa(false)} disabled={!!masivo?.corriendo}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, height: 34, padding: '0 13px', borderRadius: 9,
+                     border: 0, background: '#B45309', color: '#fff', fontSize: 12.5, fontWeight: 700,
+                     cursor: masivo?.corriendo ? 'wait' : 'pointer', opacity: masivo?.corriendo ? 0.6 : 1 }}>
+            <ToggleLeft size={14} /> Desactivar
+          </button>
+          <button onClick={() => setMasivo({ confirmacion: '', corriendo: false, hechas: 0 })} disabled={!!masivo?.corriendo}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, height: 34, padding: '0 13px', borderRadius: 9,
+                     border: 0, background: '#DC2626', color: '#fff', fontSize: 12.5, fontWeight: 700,
+                     cursor: masivo?.corriendo ? 'wait' : 'pointer', opacity: masivo?.corriendo ? 0.6 : 1 }}>
+            <Trash2 size={14} /> Eliminar
+          </button>
+          <button onClick={() => setSelCods([])} disabled={!!masivo?.corriendo} aria-label="Quitar la selección"
+            style={{ width: 34, height: 34, borderRadius: 9, border: 0, background: '#1E293B', color: '#94A3B8',
+                     fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* [Selección múltiple] Diálogo de borrado en masa. Parte la selección en dos y NUNCA ofrece
+          borrar lo que tiene historial: eso solo se puede desactivar. */}
+      {masivo && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.52)', zIndex: 70,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: 15, padding: 24,
+                        boxShadow: '0 24px 60px rgba(0,0,0,0.3)', maxHeight: '85vh', overflowY: 'auto' }}>
+            <div style={{ fontSize: 16.5, fontWeight: 800, color: '#0F172A', marginBottom: 15 }}>
+              {elegidas.length === 1 ? 'Eliminar 1 tienda' : `Eliminar ${elegidas.length} tiendas`}
+            </div>
+
+            {borrablesMasa.length > 0 && (
+              <div style={{ border: '1px solid #FECACA', background: '#FEF2F2', borderRadius: 11, padding: 13, marginBottom: 11 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#B91C1C', marginBottom: 8, letterSpacing: 0.3 }}>
+                  SE {borrablesMasa.length === 1 ? 'PUEDE' : 'PUEDEN'} ELIMINAR ({borrablesMasa.length})
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {borrablesMasa.map(t => (
+                    <span key={t.codigo} style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 800, padding: '4px 9px',
+                                                  borderRadius: 7, background: '#fff', border: '1px solid #FECACA', color: '#B91C1C' }}>
+                      {t.codigo}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {conHistorialMasa.length > 0 && (
+              <div style={{ border: '1px solid #FDE68A', background: '#FFFBEB', borderRadius: 11, padding: 13, marginBottom: 13 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#B45309', marginBottom: 4, letterSpacing: 0.3 }}>
+                  NO SE {conHistorialMasa.length === 1 ? 'PUEDE' : 'PUEDEN'} ELIMINAR ({conHistorialMasa.length})
+                </div>
+                <div style={{ fontSize: 12.5, color: '#92400E', lineHeight: 1.5, marginBottom: 8 }}>
+                  Tienen despachos, picking o manifiestos —o están en el calendario—, así que borrarlas
+                  dejaría esas filas sin ficha. Se pueden desactivar, que es reversible.
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {conHistorialMasa.map(t => (
+                    <span key={t.codigo} style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 800, padding: '4px 9px',
+                                                  borderRadius: 7, background: '#fff', border: '1px solid #FDE68A', color: '#B45309' }}>
+                      {t.codigo} · {etiquetaDeUso(usoPorCod[t.codigo]).texto}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {borrablesMasa.length > 0 && (
+              <div>
+                <label htmlFor="conf-masiva" style={{ display: 'block', fontSize: 12.5, color: '#64748B', margin: '0 0 6px' }}>
+                  Escribí <b style={{ fontFamily: 'monospace', color: '#DC2626' }}>ELIMINAR</b> para confirmar:
+                </label>
+                <input id="conf-masiva" value={masivo.confirmacion} autoFocus disabled={masivo.corriendo}
+                  onChange={e => setMasivo(m => (m ? { ...m, confirmacion: e.target.value } : m))}
+                  style={{ width: '100%', boxSizing: 'border-box', height: 38, borderRadius: 9, border: '1px solid #E2E8F0',
+                           padding: '0 11px', fontSize: 14, fontFamily: 'monospace', outline: 'none' }} />
+              </div>
+            )}
+
+            {masivo.corriendo && (
+              <div style={{ marginTop: 12, fontSize: 12.5, color: '#64748B' }}>
+                Procesando {masivo.hechas} de {borrablesMasa.length}… (una por una, para no correr las filas del Sheet)
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 19, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button onClick={() => setMasivo(null)} disabled={masivo.corriendo}
+                style={{ height: 36, padding: '0 15px', borderRadius: 9, border: '1px solid #E2E8F0', background: '#fff',
+                         color: '#475569', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                Cancelar
+              </button>
+              {conHistorialMasa.some(t => t.activo) && (
+                <button onClick={() => { setMasivo(null); void cambiarActivoEnMasa(false, conHistorialMasa.map(t => t.codigo)); }}
+                  disabled={masivo.corriendo}
+                  style={{ height: 36, padding: '0 15px', borderRadius: 9, border: 0, background: '#D97706', color: '#fff',
+                           fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  Desactivar las otras {conHistorialMasa.length}
+                </button>
+              )}
+              {borrablesMasa.length > 0 && (
+                <button onClick={() => borrarEnMasa(borrablesMasa)}
+                  disabled={masivo.corriendo || masivo.confirmacion.trim().toUpperCase() !== 'ELIMINAR'}
+                  style={{ height: 36, padding: '0 15px', borderRadius: 9, border: 0, background: '#DC2626', color: '#fff',
+                           fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                           opacity: (masivo.corriendo || masivo.confirmacion.trim().toUpperCase() !== 'ELIMINAR') ? 0.5 : 1 }}>
+                  {masivo.corriendo ? 'Eliminando…' : `Eliminar ${borrablesMasa.length} definitivamente`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {borrar && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
              onClick={() => { if (!borrar.borrando) setBorrar(null); }}>
