@@ -525,60 +525,6 @@ export default function ManualDispatch({
 
   return (
     <div className="space-y-3" ref={containerRef}>
-      {/* [Fase 2] Camiones activos — PRIMERO (activar/desactivar sin salir de DESPACHO) */}
-      {onToggleFlota && flota.length > 0 && (
-        <div className="rounded-[14px] border border-black/[0.09] bg-white px-3 py-2.5">
-          <div className="flex items-center gap-2 mb-2">
-            <Truck size={13} className="text-kmuted" aria-hidden="true" />
-            <span className="text-[12px] font-bold text-ktext uppercase tracking-wide">Camiones activos</span>
-            <span className="text-[12px] text-kmuted">· {flotaDisp.length}/{flota.length}</span>
-            <span className="ml-auto text-[11px] text-kmuted hidden sm:inline">
-              {onToggleSeleccion ? 'toca para usarlo en este tablero' : 'toca para activar / desactivar'}
-            </span>
-          </div>
-          {/* Agrupados por empresa (preserva el índice original para onToggleFlota); la empresa
-              con la patente activada más reciente va primero. */}
-          <div className="space-y-2">
-            {agruparCamionesPorEmpresa(
-              flota.map((v, i) => ({ v, i })).sort((a, b) => porRecencia(a.v, b.v)),
-              x => x.v.empresa,
-              x => ordAct[x.v.p] ?? 0,
-            ).map(g => (
-              <div key={g.empresa}>
-                <div className="flex items-center gap-1.5 mb-1 px-0.5">
-                  <span className="w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: g.color }} aria-hidden="true" />
-                  <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: g.color }}>{g.empresa}</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {g.items.map(({ v, i }) => {
-                      // Con selección de tablero el chip manda solo ACÁ, y manda SIEMPRE: no hay
-                      // candado por encima. `en_servicio` nunca significó "operativo" —la UI
-                      // siempre dijo "activos"— así que usarlo para bloquear dejaba camiones
-                      // tachados e intocables sin ninguna razón real.
-                      const porTablero = !!onToggleSeleccion;
-                      const elegido = porTablero ? !!seleccion?.has(v.p) : v.on;
-                      return (
-                        <button
-                          key={v.p} type="button"
-                          onClick={() => (porTablero ? onToggleSeleccion!(v.p) : onToggleFlota(i))}
-                          title={porTablero
-                            ? (elegido ? `${v.p} — quitar de este tablero` : `${v.p} — usar en este tablero`)
-                            : (v.on ? `${v.p} activo — toca para desactivar` : `${v.p} inactivo — toca para activar`)}
-                          className={`inline-flex items-center gap-1 h-[28px] px-2.5 rounded text-[12px] font-bold font-mono border transition-all active:scale-95
-                            ${elegido ? 'bg-knavy text-white border-knavy' : 'bg-white text-kmuted border-black/[0.15] hover:border-knavy/40'}
-                            ${v.tlbd ? 'border-dashed' : ''}`}
-                        >
-                          {elegido && <Check size={12} strokeWidth={3} aria-hidden="true" />}{v.p}
-                        </button>
-                      );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {tiendasCount > 0 && (
         <div className="flex gap-2 text-[11px] text-kmuted bg-kbg rounded-kios2 px-3 py-2">
           <span><span className="font-semibold text-ktext">{tiendasCount}</span> tiendas ·</span>
@@ -594,6 +540,16 @@ export default function ManualDispatch({
         </div>
       )}
 
+      {/* [Rediseño] Dos columnas: las tiendas a la izquierda, la flota a la derecha.
+          Antes era una sola columna apilada —chips, pool, tarjetas—, así que asignar obligaba a
+          scrollear entre la tienda y el camión al que iba: el origen y el destino del arrastre no
+          cabían juntos en pantalla.
+          La izquierda queda pegada (`sticky`) para que el pool siga a la vista mientras se recorre
+          la flota. En teléfono se apila igual que siempre, en una sola columna.
+          Las tres pestañas —Despacho, Congelados y 2ª Vuelta— usan ESTE componente, así que las
+          tres cambian juntas. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)] gap-3 items-start">
+        <div className="min-w-0 lg:sticky lg:top-0">
       {tiendasCount > 0 && (
         <div
           data-dropzone="pool"
@@ -742,6 +698,61 @@ export default function ManualDispatch({
                 ))}
               </>
             )}
+          </div>
+        </div>
+      )}
+        </div>
+        <div className="min-w-0 space-y-3">
+      {/* [Fase 2] Camiones activos — PRIMERO (activar/desactivar sin salir de DESPACHO) */}
+      {onToggleFlota && flota.length > 0 && (
+        <div className="rounded-[14px] border border-black/[0.09] bg-white px-3 py-2.5">
+          <div className="flex items-center gap-2 mb-2">
+            <Truck size={13} className="text-kmuted" aria-hidden="true" />
+            <span className="text-[12px] font-bold text-ktext uppercase tracking-wide">Camiones activos</span>
+            <span className="text-[12px] text-kmuted">· {flotaDisp.length}/{flota.length}</span>
+            <span className="ml-auto text-[11px] text-kmuted hidden sm:inline">
+              {onToggleSeleccion ? 'toca para usarlo en este tablero' : 'toca para activar / desactivar'}
+            </span>
+          </div>
+          {/* Agrupados por empresa (preserva el índice original para onToggleFlota); la empresa
+              con la patente activada más reciente va primero. */}
+          <div className="space-y-2">
+            {agruparCamionesPorEmpresa(
+              flota.map((v, i) => ({ v, i })).sort((a, b) => porRecencia(a.v, b.v)),
+              x => x.v.empresa,
+              x => ordAct[x.v.p] ?? 0,
+            ).map(g => (
+              <div key={g.empresa}>
+                <div className="flex items-center gap-1.5 mb-1 px-0.5">
+                  <span className="w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: g.color }} aria-hidden="true" />
+                  <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: g.color }}>{g.empresa}</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {g.items.map(({ v, i }) => {
+                      // Con selección de tablero el chip manda solo ACÁ, y manda SIEMPRE: no hay
+                      // candado por encima. `en_servicio` nunca significó "operativo" —la UI
+                      // siempre dijo "activos"— así que usarlo para bloquear dejaba camiones
+                      // tachados e intocables sin ninguna razón real.
+                      const porTablero = !!onToggleSeleccion;
+                      const elegido = porTablero ? !!seleccion?.has(v.p) : v.on;
+                      return (
+                        <button
+                          key={v.p} type="button"
+                          onClick={() => (porTablero ? onToggleSeleccion!(v.p) : onToggleFlota(i))}
+                          title={porTablero
+                            ? (elegido ? `${v.p} — quitar de este tablero` : `${v.p} — usar en este tablero`)
+                            : (v.on ? `${v.p} activo — toca para desactivar` : `${v.p} inactivo — toca para activar`)}
+                          className={`inline-flex items-center gap-1 h-[28px] px-2.5 rounded text-[12px] font-bold font-mono border transition-all active:scale-95
+                            ${elegido ? 'bg-knavy text-white border-knavy' : 'bg-white text-kmuted border-black/[0.15] hover:border-knavy/40'}
+                            ${v.tlbd ? 'border-dashed' : ''}`}
+                        >
+                          {elegido && <Check size={12} strokeWidth={3} aria-hidden="true" />}{v.p}
+                        </button>
+                      );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -1012,6 +1023,8 @@ export default function ManualDispatch({
         ))}
         </div>
       )}
+        </div>
+      </div>
 
       {issues.length > 0 && (
         <div
