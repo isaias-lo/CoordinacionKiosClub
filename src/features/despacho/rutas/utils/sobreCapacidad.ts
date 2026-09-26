@@ -48,6 +48,23 @@ export function confirmacionSobreCapacidad(patente: string, e: ExcesoCapacidad):
     + '¿Cerrar el camión igual?';
 }
 
+/**
+ * Lo que se pregunta antes de ASIGNAR carga que deja al camión pasado.
+ *
+ * Hasta ahora este camino era el único que seguía bloqueando: el tablero cortaba con un aviso y no
+ * dejaba soltar la tienda. La salida que quedaba era ir a Flota y subirle la capacidad al vehículo
+ * —de 12 a 13 pallets—, que arregla el día de hoy y le miente al motor para SIEMPRE: `enrutadorV2`
+ * decide con `v.c >= grupo.p`, así que ese camión queda proponiéndose para 13 todos los días.
+ *
+ * Por eso la pregunta es acá y no en Flota: la excepción es de hoy y de este camión.
+ */
+export function confirmacionCargaSobreCapacidad(patente: string, e: ExcesoCapacidad): string {
+  const p = e.sobran === 1 ? 'pallet' : 'pallets';
+  return `${patente} quedaría con ${e.pallets} pallets y su capacidad es ${e.capacidad}: ${e.sobran} ${p} de más.\n\n`
+    + `Se asigna tal cual: el manifiesto y el conteo van a decir ${e.pallets}.\n\n`
+    + '¿Asignar igual?';
+}
+
 /** Texto del botón. Cuando hay exceso lo dice, para que cerrar no parezca la vía normal. */
 export function textoBotonCerrar(hayExceso: boolean): string {
   return hayExceso ? '⚠ Cerrar igual (sobre capacidad)' : '🚚 Cerrar camión y manifiesto';
