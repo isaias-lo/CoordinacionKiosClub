@@ -17,7 +17,7 @@ import type { Parada } from './ParadasAdicionales';
 import { fechaChile } from '@/lib/fechaChile';
 import { etiquetaTipoVehiculo } from '../utils/tipoVehiculo';
 import { esVehiculoDePrueba, AVISO_PRUEBA } from '../utils/vehiculoPrueba';
-import { excesoDe, confirmacionSobreCapacidad, textoBotonCerrar, confirmacionVarios } from '../utils/sobreCapacidad';
+import { excesoDe, confirmacionSobreCapacidad, confirmacionCargaSobreCapacidad, textoBotonCerrar, confirmacionVarios } from '../utils/sobreCapacidad';
 import { visiblesEnTablero } from '../utils/flotaPorTablero';
 
 interface StoreTag { c: string; p: number; b: number; }
@@ -299,10 +299,12 @@ export default function ManualDispatch({
       const current = newAsig[target] || [];
       const usedP   = current.reduce((s, t) => s + t.p, 0);
       const addP    = tags.reduce((s, t) => s + t.p, 0);
-      if (usedP + addP > cap) {
-        alert(`⚠️ ${vehicle?.p} admite máximo ${cap} pallets. Ya tiene ${usedP}p y quieres sumar ${addP}p. Deselecciona algunas.`);
-        return;
-      }
+      // El exceso avisa, no bloquea — el mismo criterio que ya rige al cerrar. Ver
+      // utils/sobreCapacidad: la capacidad de la flota es una referencia, y la salida que quedaba
+      // (subirle la capacidad al camión en Flota) le cambia la regla al motor para siempre.
+      // `current` ya viene sin las seleccionadas, así que `usedP + addP` es el total que quedaría.
+      const excesoCarga = excesoDe(usedP + addP, cap);
+      if (excesoCarga && !confirm(confirmacionCargaSobreCapacidad(target, excesoCarga))) return;
       const existing = new Set(current.map(s => s.c));
       newAsig[target] = [...current, ...tags.filter(t => !existing.has(t.c))];
     }
@@ -331,9 +333,15 @@ export default function ManualDispatch({
       const vehicle  = flota.find(v => v.p === target);
       const cap      = vehicle?.c || 10;
       const usedP    = currentP.reduce((s, t) => s + t.p, 0);
-      if (usedP + store.p > cap) {
-        alert(`⚠️ ${vehicle?.p} admite máximo ${cap} pallets. Ya tiene ${usedP}p. Intenta con ${cap - usedP}p o menos.`);
-        return;
+      // Igual que arriba: se avisa y decide quien está en el andén. Dos cuidados:
+      //   · Mover una tienda DENTRO del mismo camión no cambia su carga — no hay nada que preguntar.
+      //     Sin esto, un camión que ya venía pasado (la carga crece en Bodega DESPUÉS de asignar)
+      //     preguntaba por un reordenamiento que no suma ni un pallet.
+      //   · Al cancelar hay que soltar el arrastre. El bloqueo anterior volvía sin limpiarlo y el
+      //     resaltado del camión quedaba pegado.
+      const excesoCarga = target === from ? null : excesoDe(usedP + store.p, cap);
+      if (excesoCarga && !confirm(confirmacionCargaSobreCapacidad(target, excesoCarga))) {
+        setDragging(null); setDragOver(null); return;
       }
       newAsig[target] = [...currentP, store];
     } else {
