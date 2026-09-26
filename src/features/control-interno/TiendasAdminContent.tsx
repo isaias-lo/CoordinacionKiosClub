@@ -14,12 +14,13 @@ import { ZONAS_DEFAULT, type ConfigZonas } from '@/features/despacho/rutas/utils
 import { opcionesSector } from '@/lib/sectores';
 import {
   Store, CalendarDays, Snowflake, Plus, RefreshCw, Upload, Truck, History,
-  Search, Settings2, ChevronUp, ChevronDown, ToggleLeft, ToggleRight,
+  Search, Settings2, ChevronUp, ChevronDown, ToggleLeft, ToggleRight, Trash2,
 } from 'lucide-react';
 import CalendarioColumnas from './CalendarioColumnas';
 import TransportistasTab from './TransportistasTab';
 import BitacoraTab from './BitacoraTab';
 import { parseCoord } from './coords';
+import { etiquetaDeUso, type UsoTienda } from './usoDeTienda';
 import { frecuenciasPorTienda } from './frecuencia';
 import { normalizarVentana } from '@/features/despacho/rutas/utils/ventanaHoraria';
 import { fetchCalendarioCompleto, subscribeToCalendarChanges } from '../despacho/utils/useCalendario';
@@ -47,7 +48,7 @@ const EMPTY: Tienda = {
 };
 
 type SortBy  = 'nombre' | 'codigo' | 'region' | 'estado' | 'recientes' | 'modificadas'
-             | 'comuna' | 'tipo' | 'ventana' | 'frecuencia' | 'coords';
+             | 'comuna' | 'tipo' | 'ventana' | 'frecuencia' | 'coords' | 'uso';
 type SortDir = 'asc' | 'desc';
 
 const SORT_OPTS: { id: SortBy; label: string }[] = [
@@ -63,8 +64,10 @@ const SORT_OPTS: { id: SortBy; label: string }[] = [
 const TABLA_COLS: { label: string; sort: SortBy }[] = [
   { label: 'Código', sort: 'codigo' }, { label: 'Nombre', sort: 'nombre' }, { label: 'Región', sort: 'region' },
   { label: 'Comuna', sort: 'comuna' }, { label: 'Tipo', sort: 'tipo' }, { label: 'Ventana', sort: 'ventana' },
-  { label: 'Frecuencia', sort: 'frecuencia' }, { label: 'Coords', sort: 'coords' }, { label: 'Estado', sort: 'estado' },
+  { label: 'Frecuencia', sort: 'frecuencia' }, { label: 'Coords', sort: 'coords' },
+  { label: 'Uso', sort: 'uso' }, { label: 'Estado', sort: 'estado' },
 ];
+
 const TH_CELL: React.CSSProperties = { position: 'sticky', top: 0, zIndex: 1, textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#1B2A6B', background: '#F1F5F9', borderBottom: '2px solid rgba(27,42,107,0.18)', whiteSpace: 'nowrap' };
 const TD_CELL: React.CSSProperties = { padding: '7px 12px', borderBottom: '1px solid #F1F5F9', color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 };
 
@@ -82,7 +85,11 @@ function relativeTime(iso: string | undefined): string | null {
   return new Date(iso).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: days > 365 ? '2-digit' : undefined });
 }
 
-function sortTiendas(list: Tienda[], by: SortBy, dir: SortDir, freqByCod: Record<string, string> = {}): Tienda[] {
+function sortTiendas(
+  list: Tienda[], by: SortBy, dir: SortDir,
+  freqByCod: Record<string, string> = {},
+  usoPorCod: Record<string, UsoTienda> = {},
+): Tienda[] {
   return [...list].sort((a, b) => {
     let cmp = 0;
     switch (by) {
@@ -95,6 +102,8 @@ function sortTiendas(list: Tienda[], by: SortBy, dir: SortDir, freqByCod: Record
       case 'frecuencia':  cmp = (freqByCod[a.codigo] || '').localeCompare(freqByCod[b.codigo] || '', 'es'); break;
       case 'coords':      cmp = (a.lat != null && a.lon != null ? 0 : 1) - (b.lat != null && b.lon != null ? 0 : 1); break;
       case 'estado':      cmp = (a.activo === b.activo) ? 0 : a.activo ? -1 : 1; break;
+      // Ordenar por uso pone arriba las que NO dejaron rastro, que son las únicas borrables.
+      case 'uso':         cmp = (usoPorCod[a.codigo]?.total ?? 0) - (usoPorCod[b.codigo]?.total ?? 0); break;
       case 'recientes':
         cmp = new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
         return dir === 'desc' ? cmp : -cmp;
@@ -195,9 +204,18 @@ export default function TiendasAdminContent({
     typeof window !== 'undefined' ? (localStorage.getItem('tiendas_sort_by') as SortBy) ?? 'nombre' : 'nombre');
   const [sortDir, setSortDir] = useState<SortDir>(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('tiendas_sort_dir') as SortDir) ?? 'asc' : 'asc');
+  // Por defecto TABLA. La llave cambió a `_v2` a propósito: la vista se recuerda por navegador, así
+  // que con la llave vieja todo el que ya había entrado seguiría abriendo en Cards y el cambio no se
+  // notaría nunca. Renovarla descarta esa preferencia UNA vez; de ahí en adelante se vuelve a
+  // recordar lo que cada uno elija.
   const [viewMode, setViewMode] = useState<'cards' | 'tabla'>(() =>
-    typeof window !== 'undefined' ? (localStorage.getItem('tiendas_view') as 'cards' | 'tabla') ?? 'cards' : 'cards');
-  useEffect(() => { localStorage.setItem('tiendas_view', viewMode); }, [viewMode]);
+    typeof window !== 'undefined' ? (localStorage.getItem('tiendas_view_v2') as 'cards' | 'tabla') ?? 'tabla' : 'tabla');
+  useEffect(() => { localStorage.setItem('tiendas_view_v2', viewMode); }, [viewMode]);
+
+  // Uso de TODAS las tiendas, en una sola consulta (ver /api/tiendas/uso). Alimenta la columna Uso
+  // y decide qué fila puede ofrecer borrar. Si falla, el mapa queda vacío y la columna dice "—":
+  // nunca se asume "sin uso", que es el lado peligroso de la duda.
+  const [usoPorCod, setUsoPorCod] = useState<Record<string, UsoTienda>>({});
 
   // Frecuencia DERIVADA del Calendario de Abastecimiento (cod → "MA-JU-VI"), no del campo manual (que suele
   // quedar vacío). Se actualiza sola cuando cambia el calendario (cross-device).
@@ -260,6 +278,11 @@ export default function TiendasAdminContent({
       const d   = await res.json() as { tiendas?: Tienda[] };
       setTiendas(d.tiendas ?? []);
     } finally { setLoading(false); }
+    try {
+      const resUso = await fetch('/api/tiendas/uso');
+      const dUso   = await resUso.json() as { porTienda?: Record<string, UsoTienda> };
+      setUsoPorCod(dUso.porTienda ?? {});
+    } catch { setUsoPorCod({}); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -444,7 +467,7 @@ export default function TiendasAdminContent({
     setSugerencia(sugerirSector({ lat: sel.lat, lon: sel.lng }, d.region || undefined, tiendas));
   }, [tiendas]);
 
-  const filtered = sortTiendas(baseFiltered, sortBy, sortDir, freqByCod);
+  const filtered = sortTiendas(baseFiltered, sortBy, sortDir, freqByCod, usoPorCod);
   const hasTimestamps = filtered.some(t => t.created_at || t.updated_at);
 
   // ── Input/label helpers ───────────────────────────────────────────────────
@@ -679,9 +702,9 @@ export default function TiendasAdminContent({
                 <span style={{ marginLeft: 6, fontSize: 12, color: '#94A3B8' }}>
                   {filtered.length} tienda{filtered.length !== 1 ? 's' : ''}
                 </span>
-                {/* Toggle Cards / Tabla */}
+                {/* Toggle Tabla / Cards — Tabla primero: es la vista por defecto. */}
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 2, background: '#F1F5F9', borderRadius: 7, padding: 2 }}>
-                  {(['cards', 'tabla'] as const).map(m => (
+                  {(['tabla', 'cards'] as const).map(m => (
                     <button key={m} onClick={() => setViewMode(m)}
                       style={{ height: 24, padding: '0 12px', borderRadius: 5, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
                         background: viewMode === m ? '#fff' : 'transparent', color: viewMode === m ? '#1D4ED8' : '#64748B',
@@ -716,11 +739,15 @@ export default function TiendasAdminContent({
                             </span>
                           </th>
                         );
-                      })}</tr>
+                      })}
+                      {canEditTiendas && (
+                        <th style={{ ...TH_CELL, textAlign: 'right', cursor: 'default' }}>Acciones</th>
+                      )}</tr>
                     </thead>
                     <tbody>
                       {filtered.map((t, i) => {
                         const zebra = i % 2 ? '#FAFBFC' : '#fff';
+                        const uso = etiquetaDeUso(usoPorCod[t.codigo]);
                         return (
                           <tr key={t.codigo} onClick={() => openEdit(t)}
                             style={{ cursor: 'pointer', background: zebra }}
@@ -741,11 +768,44 @@ export default function TiendasAdminContent({
                             </td>
                             <td style={TD_CELL}>{freqByCod[t.codigo] || t.frecuencia || '—'}</td>
                             <td style={TD_CELL}>{t.lat != null && t.lon != null ? '✓' : '—'}</td>
+                            {/* Uso: cuántas filas dejó en despachos, picking y manifiestos. "sin uso"
+                                es la única que se puede borrar; sin dato se dice "—", no "sin uso". */}
+                            <td style={TD_CELL}>
+                              {uso.conocido ? (
+                                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, fontVariantNumeric: 'tabular-nums',
+                                               background: uso.borrable ? '#F0FDF4' : '#F1F5F9',
+                                               color: uso.borrable ? '#15803D' : '#475569' }}>
+                                  {uso.texto}
+                                </span>
+                              ) : '—'}
+                            </td>
                             <td style={TD_CELL}>
                               <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: t.activo ? '#DCFCE7' : '#FEE2E2', color: t.activo ? '#16A34A' : '#DC2626' }}>
                                 {t.activo ? 'Activa' : 'Inactiva'}
                               </span>
                             </td>
+                            {/* Acciones. Existían solo en la vista Cards, así que desde la Tabla no
+                                había forma de desactivar ni borrar — que es lo que se reportó.
+                                `stopPropagation`: la fila entera abre la ficha. */}
+                            {canEditTiendas && (
+                              <td style={{ ...TD_CELL, textAlign: 'right', whiteSpace: 'nowrap' }}
+                                  onClick={e => e.stopPropagation()}>
+                                <button onClick={() => handleToggleActivo(t)} disabled={togglingCod === t.codigo}
+                                  title={t.activo ? `Desactivar ${t.codigo}` : `Activar ${t.codigo}`}
+                                  aria-label={t.activo ? `Desactivar ${t.codigo}` : `Activar ${t.codigo}`}
+                                  style={{ width: 30, height: 28, borderRadius: 7, border: '1px solid #E2E8F0', background: '#fff',
+                                           color: t.activo ? '#16A34A' : '#94A3B8', cursor: togglingCod === t.codigo ? 'wait' : 'pointer',
+                                           opacity: togglingCod === t.codigo ? 0.5 : 1, marginRight: 5, verticalAlign: 'middle' }}>
+                                  {t.activo ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+                                </button>
+                                <button onClick={() => pedirEliminar(t)}
+                                  title={`Eliminar ${t.codigo}`} aria-label={`Eliminar ${t.codigo}`}
+                                  style={{ width: 30, height: 28, borderRadius: 7, border: '1px solid #FECACA', background: '#fff',
+                                           color: '#DC2626', cursor: 'pointer', verticalAlign: 'middle' }}>
+                                  <Trash2 size={14} />
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
