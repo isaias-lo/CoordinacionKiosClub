@@ -8,6 +8,14 @@ import { elegirRuta, type RutaCandidata } from '@/lib/rutaGuiaMatch';
 // Cubre el caso "armado hoy / sale mañana" y subidas al día siguiente.
 const VENTANA_DIAS = 1;
 
+// Extrae el path dentro del bucket `guides` desde la URL pública de Storage
+// (.../storage/v1/object/public/guides/<path>). Devuelve null para URLs legado (fileId de Drive).
+function storagePathFromGuideUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const m = /\/storage\/v1\/object\/public\/guides\/(.+)$/.exec(url);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 // Vincula automáticamente las guías DTE subidas en bodega (Estado / Santiago /
 // Regiones) a la ruta de despacho que contiene esa tienda. Match robusto:
 // código normalizado + ventana de fecha local de Chile (no UTC).
@@ -29,10 +37,25 @@ export async function POST(request: NextRequest) {
   if (body.folios?.length) {
     const sbg = supabaseServer();
     const hoy = fechaChile(0);
+
+    // Capturar el/los PDF(s) reemplazados para borrarlos del Storage: cada re-subida
+    // sube un archivo nuevo (nombre con Date.now()) y el anterior quedaba huérfano,
+    // inflando la cuota de Storage con copias que ya nadie referencia.
+    const { data: reemplazadas } = await sbg
+      .from('guias_subidas')
+      .select('drive_url')
+      .eq('store_cod', codNorm)
+      .eq('fecha', hoy);
+
     await sbg.from('guias_subidas').delete().eq('store_cod', codNorm).eq('fecha', hoy);
     await sbg.from('guias_subidas').insert({
       store_cod: codNorm, folios: body.folios, drive_url: body.drive_url ?? null, fecha: hoy,
     });
+
+    const paths = (reemplazadas ?? [])
+      .map(r => storagePathFromGuideUrl(r.drive_url))
+      .filter((p): p is string => !!p && p !== storagePathFromGuideUrl(body.drive_url));
+    if (paths.length) await sbg.storage.from('guides').remove(paths);
   }
 
   // Buscar rutas que tengan esta tienda dentro de la ventana de fechas
