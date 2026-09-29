@@ -103,7 +103,11 @@ export function valoresDeFila(d: DatosFila): Record<string, string | number> {
     v[`KG ${ETIQUETA[t]}`] = redondear(d.cruce.kg[t]);
   }
 
-  const sinPesar = d.kgBodega === null || d.kgBodega === undefined;
+  // CERO ES "SIN PESAR", no "no vino nada". El 29/09 había 115 filas registradas con peso 0
+  // —registradas temprano, pesadas después— y escribirlas como 0 daba «−100%» en toda la hoja,
+  // que se lee como si no hubiera llegado nada. Es la misma regla que `esSinPesar` usa en el resto
+  // del sistema: `!peso || peso <= 0`.
+  const sinPesar = d.kgBodega === null || d.kgBodega === undefined || d.kgBodega <= 0;
   v['TOTAL BODEGA'] = sinPesar ? '' : redondear(d.kgBodega as number);
   const pct = sinPesar ? null : pctDiferencia(d.kgBodega as number, d.cruce.totalOdoo);
   v['% DIF'] = pct === null ? '' : Math.round(pct * 10) / 10;

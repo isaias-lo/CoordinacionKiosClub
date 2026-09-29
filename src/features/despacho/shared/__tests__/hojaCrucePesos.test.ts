@@ -49,6 +49,14 @@ describe('valoresDeFila', () => {
     expect(v['% DIF']).toBe('');
   });
 
+  it('un CERO también es "sin pesar", no una tienda que no recibió nada', () => {
+    // Caso real del 29/09: 115 filas registradas con peso 0 —se registra temprano y se pesa
+    // después—. Escribirlas como 0 daba «−100%» en toda la hoja, como si no hubiera llegado nada.
+    const v = valoresDeFila({ ...base, kgBodega: 0 });
+    expect(v['TOTAL BODEGA']).toBe('');
+    expect(v['% DIF']).toBe('');
+  });
+
   it('el % sale redondeado a un decimal', () => {
     expect(valoresDeFila({ ...base, kgBodega: 390.16 })['% DIF']).toBe(0);
     expect(valoresDeFila({ ...base, kgBodega: 351.14 })['% DIF']).toBeCloseTo(-10, 1);
