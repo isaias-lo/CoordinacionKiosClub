@@ -8,6 +8,7 @@ import { sheetsRegionesWrite } from '../../features/despacho/regiones/utils/shee
 import type { HistoryEntry } from '../../types';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { logActividad } from '@/lib/actividad';
+import { escribirCruceDelDia } from '@/features/despacho/shared/avisarCruce';
 import { fechaChile } from '@/lib/fechaChile';
 
 // Hoy en horario LOCAL (Chile). NO toISOString() (da UTC → de tarde rueda al día siguiente).
@@ -79,8 +80,15 @@ export function FinishModal({ open, onClose }: Props) {
     // manual "Sincronizar". keepalive: sobrevive si el usuario navega.
     // TRANSPORTE de bodega = 'Luis Fica' (placeholder, igual que Santiago); el Enrutador lo
     // sobrescribe con la empresa del camión asignado (Luis Fica / Ortiz / Falabella…). REGIMEN='Seco'.
+    // El CRUCE PESOS se escribe DESPUÉS del sync: lee los pesos de despacho_rm/despacho_regiones,
+    // y hasta que ese sync no termina esas tablas no tienen lo que se acaba de registrar.
+    // No rompe el registro si falla — ver `shared/avisarCruce.ts`.
+    //
+    // La fecha se toma ACÁ y no del `todayKey` de arriba: ese se fija al importar el módulo, así
+    // que una pestaña abierta desde ayer registraría el cruce bajo el día equivocado.
     sheetsRegionesWrite(dispatchData, 'Luis Fica', fechaDespacho, todayKey)
       .then(() => fetch('/api/sync-despacho', { method: 'POST', keepalive: true }))
+      .then(() => escribirCruceDelDia())
       .catch(() => {});
     showToast('✓ Guardado · enviando a Sheets…', '#16A34A');
 

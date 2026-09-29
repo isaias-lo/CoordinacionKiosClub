@@ -7,6 +7,7 @@ import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { logActividad } from '@/lib/actividad';
+import { escribirCruceDelDia } from '@/features/despacho/shared/avisarCruce';
 
 interface Props { open: boolean; onClose: () => void; }
 
@@ -49,8 +50,12 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
     //    Los IDs ya tienen el formato canónico: P{seq}{cod}{stamp}P, {seq}B{cod}{stamp}B, etc.
     //    Tras la escritura, refrescar la base de datos (sync-despacho) para que el
     //    dashboard de Inicio quede al día. keepalive: sobrevive al cierre/desmonte.
+    // El CRUCE PESOS se escribe DESPUÉS del sync: lee los pesos de despacho_rm/despacho_regiones,
+    // y hasta que ese sync no termina esas tablas no tienen lo que se acaba de registrar.
+    // No rompe el registro si falla — ver `shared/avisarCruce.ts`.
     sheetsSantiagoWrite(items, regimen!, fechaDespacho, todayISO)
       .then(() => fetch('/api/sync-despacho', { method: 'POST', keepalive: true }))
+      .then(() => escribirCruceDelDia(todayISO))
       .catch(() => {});
 
     // 2. Marcar como terminado (badge COMPLETADO en el header).
