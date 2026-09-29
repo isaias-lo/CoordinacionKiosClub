@@ -394,6 +394,22 @@ export default function RutasScreen() {
   useEffect(() => { selSecoRef.current = selSeco; }, [selSeco]);
   useEffect(() => { selCongRef.current = selCong; }, [selCong]);
 
+  // [Fondo/cola] Camiones cuyo orden de carga lo decidió una persona. Viaja entre equipos con el
+  // mismo contrato que las cerradas —un conjunto de patentes— porque tiene el mismo problema: si el
+  // otro dispositivo no se entera, cierra el camión recalculando y le pisa el orden que se armó a
+  // mano mirando el andén.
+  const [ordenManual, setOrdenManual] = useState<Set<string>>(new Set());
+  const ordenManualRef = useRef<Set<string>>(ordenManual);
+  useEffect(() => { ordenManualRef.current = ordenManual; }, [ordenManual]);
+  const marcarOrdenManual = useCallback((patente: string) => {
+    setOrdenManual(prev => {
+      if (prev.has(normPatente(patente))) return prev;
+      const next = new Set(prev).add(normPatente(patente));
+      void pushSessionState('orden_manual', serializeCerradas(next), userId, fecha);
+      return next;
+    });
+  }, [userId, fecha]);
+
   const [cerradasCong, setCerradasCong] = useState<Set<string>>(new Set());
   const cerradasCongRef = useRef<Set<string>>(cerradasCong);
   useEffect(() => { cerradasCongRef.current = cerradasCong; }, [cerradasCong]);
@@ -1204,6 +1220,21 @@ export default function RutasScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
 
+  // ── Fetch + subscribe ordenManual: mismo contrato que las cerradas ─────────
+  // La unión y no el reemplazo, por el mismo motivo: marcar un camión como manual es monótono, y un
+  // eco viejo del otro equipo no puede desmarcar el que se acaba de ordenar en el andén.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    fetchSessionState('orden_manual', fecha)
+      .then(remote => setOrdenManual(parseCerradas(remote)))
+      .catch(() => {});
+    return subscribeToSessionState('orden_manual', userId ?? '', (state) => {
+      const remote = parseCerradas(state);
+      setOrdenManual(prev => mergeCerradas(prev, remote));
+    }, undefined, fecha);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fecha]);
+
   // ── Fetch + subscribe cerradasCong: mismo contrato que el seco, otra clave ──
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1925,7 +1956,11 @@ export default function RutasScreen() {
     const vehicle = flota.find(v => normPatente(v.p) === normPatente(patente));
     if (!vehicle) return;
 
-    const ordered = stores.length > 1 ? nn(stores, gps, cdRef.current) : stores;
+    // [Fondo/cola] Si alguien ordenó este camión a mano, su orden MANDA: recalcular acá borraría
+    // en silencio una decisión tomada mirando el camión. Los que nadie tocó se siguen calculando
+    // por cercanía, igual que siempre.
+    const ordered = ordenManualRef.current.has(normPatente(patente)) ? stores
+                  : stores.length > 1 ? nn(stores, gps, cdRef.current) : stores;
     const ruta: Ruta = {
       v: vehicle,
       ts: ordered,
@@ -1994,7 +2029,11 @@ export default function RutasScreen() {
     if (!stores.length) return;
     const vehicle = flota.find(v => normPatente(v.p) === normPatente(patente));
     if (!vehicle) return;
-    const ordered = stores.length > 1 ? nn(stores, gps, cdRef.current) : stores;
+    // [Fondo/cola] Si alguien ordenó este camión a mano, su orden MANDA: recalcular acá borraría
+    // en silencio una decisión tomada mirando el camión. Los que nadie tocó se siguen calculando
+    // por cercanía, igual que siempre.
+    const ordered = ordenManualRef.current.has(normPatente(patente)) ? stores
+                  : stores.length > 1 ? nn(stores, gps, cdRef.current) : stores;
     const ruta: Ruta = {
       v: vehicle,
       ts: ordered,
@@ -2440,6 +2479,15 @@ export default function RutasScreen() {
       camionesConAsig, cerradasCount: 0, diaCerrado: false,
     });
   }, [asignacionesV2, v2Fecha, pendientesV2Origen]);
+
+  // [Fondo/cola] El orden de ENTREGA ya calculado, por patente. Alimenta el pie de cada tarjeta.
+  // Mientras no se haya calculado nada queda vacío y la tarjeta dice "sin ruta calculada", que es
+  // la verdad la mayor parte del día.
+  const ordenRutaPorPatente = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const r of results?.rutas ?? []) out[r.v.p] = r.ts.map(t => t.c);
+    return out;
+  }, [results]);
 
   // [E4·4b] El botón "Asignar" del tablero ahora usa el motor por clusters históricos
   // (autoAsignar, instantáneo). El asistente LLM (construirPayloadIA/solicitarAsignacionIA)
@@ -3129,6 +3177,7 @@ export default function RutasScreen() {
           <InputSection
             flota={flota}
             modo={modo} fase={faseInfo} faseCong={faseInfoCong} calT={sortedCalT}
+            ordenRuta={ordenRutaPorPatente} ordenManual={ordenManual} onOrdenManual={marcarOrdenManual}
             calTCong={sortedCalTCong}
             asignacionesCong={asignacionesCong}
             onAsignacionesCong={setAsignacionesCong}
@@ -3269,6 +3318,8 @@ export default function RutasScreen() {
                       onCalcular={() => {}}
                       onCerrarCamion={patente => cerrarCamionV2(v2Fecha, patente)}
                       fase={faseInfoV2}
+                      ordenManual={ordenManual}
+                      onOrdenManual={marcarOrdenManual}
                       cerrarSel={cerrarSelV2}
                       onToggleCerrarSel={p => setCerrarSelV2(prev => {
                         const next = new Set(prev);
