@@ -26,6 +26,7 @@ const TAG: Record<string, string> = {
 };
 const LABEL: Record<TipoContenido | TipoPaquete, string> = {
   comida: 'Comida', hogar: 'Hogar', 'comida-hogar': 'Mixto', pallet: 'Pallet', box: 'Bulto', contenedor: 'Contenedor', chocolate: 'Chocolate',
+  adquisicion: 'Adquisición', 'web-retiro': 'Web / retiro',
 };
 
 // El renumerado del Resumen ya no es propio: era la TERCERA copia del mismo bloque posicional, y

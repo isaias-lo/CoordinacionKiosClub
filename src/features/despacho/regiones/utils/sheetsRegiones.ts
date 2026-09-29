@@ -1,6 +1,7 @@
 import { TIENDAS } from '../data/tiendas';
 import type { DispatchItem } from '../../../../types';
 import { esSinPesar } from '../../shared/sinPesar';
+import { etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
 
 const CARGA_LABEL: Record<string, string> = {
   comida:         'Comida',
@@ -84,7 +85,8 @@ export function buildRows(
         fechaArmadoFmt,                                 // FECHA (armado) [P4] — llave de match cod+fecha
         tienda.cod,                                     // COD
         tienda.name,                                    // TIENDA
-        item.pkg === 'pallet' ? 'Pallet' : item.pkg === 'contenedor' ? 'Contenedor' : item.pkg === 'chocolate' ? 'Bulto CH' : 'Bulto',  // TIPO
+        item.pkg === 'pallet' ? 'Pallet' : item.pkg === 'contenedor' ? 'Contenedor' : item.pkg === 'chocolate' ? 'Bulto CH'
+          : (etiquetaAgregado(item.pkg) ?? 'Bulto'),  // TIPO
         'Seco',                                         // REGIMEN (producto seco, como Santiago)
         transporte,                                     // TRANSPORTE
         '',                                             // PATENTE (enrutador la completa)
