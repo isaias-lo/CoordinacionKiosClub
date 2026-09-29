@@ -112,6 +112,11 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Excluir archivos estáticos de public/ para que no pasen por auth
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:b64|mjs|ico|png|jpg|jpeg|svg|gif|webp|woff2?|ttf)).*)'],
+  // Excluir archivos estáticos de public/ para que no pasen por auth.
+  //
+  // `webmanifest` está acá porque el navegador pide `/manifest.webmanifest` ANTES de que exista
+  // sesión — y a veces sin cookies, según el sistema. Si pasa por este middleware recibe un
+  // redirect a /login, el navegador lo lee como un manifest inválido y la app deja de ofrecerse
+  // para instalar, sin ningún error visible que explique por qué.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:b64|mjs|ico|png|jpg|jpeg|svg|gif|webp|webmanifest|woff2?|ttf)).*)'],
 };
