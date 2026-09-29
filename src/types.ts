@@ -73,5 +73,7 @@ export interface AppState {
   dispatchDate: string;
   toast: { msg: string; color?: string } | null;
   fechaDespacho?: string;  // YYYY-MM-DD, default = mañana
-  registrado?: boolean;    // true after "Registrar" — usado por cron auto-registro
+  registrado?: boolean;    // DERIVADO de `registros` para la fecha activa; los componentes lo leen así
+  /** Qué días quedaron registrados. Fuente de verdad. Ver shared/registroPorFecha. */
+  registros?: Record<string, boolean>;
 }

@@ -17,6 +17,7 @@ import { agregarSinDuplicar } from '../../shared/itemPorUnidad';
 import { stableItemKey } from '../../shared/formRowsReconcile';
 import { serializarBaseSantiago } from '../../shared/syncBase';
 import { fechaChile, fechaChileDe } from '@/lib/fechaChile';
+import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, type RegistroPorFecha } from '@/features/despacho/shared/registroPorFecha';
 
 // Se eliminó el paso de selección de Régimen: se entra directo a la bodega (lista de
 // tiendas) con régimen 'Seco' por defecto (es el que se escribe en Sheets/despacho_rm).
@@ -33,6 +34,8 @@ type SyncableState = {
   items: Record<string, SantiagoItem[]>;
   fechaDespacho?: string;
   registrado?: boolean;
+  /** La fuente de verdad: qué días quedaron registrados. Ver shared/registroPorFecha. */
+  registros?: RegistroPorFecha;
 };
 
 const todayKey = fechaChile();
@@ -118,21 +121,41 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
     case 'RESET':
       return { ...defaultState };
 
-    case 'LOAD_STATE':
+    case 'LOAD_STATE': {
+      const fechaTrasCarga = action.payload.fechaDespacho ?? state.fechaDespacho;
+      // Se ADOPTAN los registros del otro equipo (un `true` nunca se pierde) y se conserva el
+      // booleano viejo que puedan traer los estados ya guardados.
+      const registrosTrasCarga = migrarRegistroViejo(
+        fusionarRegistros(state.registros, action.payload.registros),
+        action.payload.registrado, action.payload.fechaDespacho,
+      );
       return {
         ...state,
         // step is intentionally not synced — each device controls its own navigation
         regimen:       action.payload.regimen       ?? state.regimen,
         items:         action.payload.items         ?? state.items,
-        fechaDespacho: action.payload.fechaDespacho ?? state.fechaDespacho,
-        registrado:    action.payload.registrado    ?? state.registrado,
+        fechaDespacho: fechaTrasCarga,
+        registros:     registrosTrasCarga,
+        // `registrado` pasa a ser DERIVADO del mapa: los componentes lo siguen leyendo igual.
+        registrado:    estaRegistrado(registrosTrasCarga, fechaTrasCarga ?? ''),
       };
+    }
 
-    case 'SET_FECHA_DESPACHO':
-      return { ...state, fechaDespacho: action.payload, registrado: false };
+    case 'SET_FECHA_DESPACHO': {
+      // Cambiar la fecha YA NO borra el registro. Antes acá iba `registrado: false`, y mover la
+      // fecha para dejar lista la carga de mañana desregistraba el día que sí se había registrado
+      // —y ese false se empujaba a todos los equipos—. Ver shared/registroPorFecha.
+      return {
+        ...state,
+        fechaDespacho: action.payload,
+        registrado: estaRegistrado(state.registros, action.payload),
+      };
+    }
 
-    case 'SET_REGISTRADO':
-      return { ...state, registrado: action.payload };
+    case 'SET_REGISTRADO': {
+      const registros = marcarRegistro(state.registros, state.fechaDespacho ?? '', action.payload);
+      return { ...state, registros, registrado: action.payload };
+    }
 
     default:
       return state;
@@ -315,7 +338,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     if (!isInitializedRef.current) return;
     const payload: SyncableState = {
       step: state.step, regimen: state.regimen, items: state.items,
-      fechaDespacho: state.fechaDespacho, registrado: state.registrado,
+      fechaDespacho: state.fechaDespacho, registrado: state.registrado, registros: state.registros,
     };
     // [P5] El chequeo de cambios mira el payload COMPLETO; la base del merge/corta-ecos va aparte.
     const current = JSON.stringify(payload);
@@ -373,7 +396,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     if (!isInitializedRef.current) return;
     const payload: SyncableState = {
       step: stateRef.current.step, regimen: stateRef.current.regimen, items: stateRef.current.items,
-      fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado,
+      fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado, registros: stateRef.current.registros,
     };
     const current = JSON.stringify(payload);
     if (current === lastPushedFullRef.current) return;

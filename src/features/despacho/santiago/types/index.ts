@@ -43,5 +43,7 @@ export interface SantiagoState {
   currentTienda: TiendaSantiago | null;
   items: Record<string, SantiagoItem[]>;
   fechaDespacho?: string;  // YYYY-MM-DD, default = mañana
-  registrado?: boolean;    // true after "Registrar despacho" — usado por cron auto-registro
+  registrado?: boolean;    // DERIVADO de `registros` para la fecha activa; los componentes lo leen así
+  /** Qué días quedaron registrados. Fuente de verdad. Ver shared/registroPorFecha. */
+  registros?: Record<string, boolean>;
 }
