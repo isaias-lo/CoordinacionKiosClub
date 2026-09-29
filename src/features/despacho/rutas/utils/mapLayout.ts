@@ -19,7 +19,15 @@
 /** Ancho del mapa, en % del ancho total, cuando está visible. */
 export const MAP_PCT_DEFAULT = 37;
 export const MAP_PCT_MIN = 20;
-export const MAP_PCT_MAX = 60;
+export const MAP_PCT_MAX = 85;
+
+/**
+ * Ancho de la columna de tiendas, en px. Es el MISMO número que usa la grilla del tablero
+ * (`lg:grid-cols-[minmax(0,360px)_...]`). La cortina "entera" tapa todo menos esa columna: cubre la
+ * flota, que es lo que estorba mirando el mapa, y deja las tiendas a la vista para poder seguir
+ * arrastrando desde ahí.
+ */
+export const ANCHO_TIENDAS_PX = 360;
 
 export const LS_MAP_PCT = 'enrutador_map_w_pct';
 export const LS_MAP_OCULTO = 'enrutador_map_oculto';
@@ -62,7 +70,29 @@ export function mapaColapsado(opts: { modo: string; oculto: boolean }): boolean 
  * algo falsy es justo lo que lleva al `{cond && <panel/>}` y al desmontaje que este módulo
  * existe para evitar.
  */
-export function anchoCortina(colapsado: boolean, pct: number): string {
-  return colapsado ? '0%' : `${clampMapPct(pct)}%`;
+export function anchoCortina(opts: { colapsada: boolean; completa: boolean; pct: number }): string {
+  if (opts.colapsada) return '0%';
+  // Entera = todo menos la columna de tiendas. En % no se puede expresar: la columna mide px fijos.
+  if (opts.completa) return `calc(100% - ${ANCHO_TIENDAS_PX}px)`;
+  return `${clampMapPct(opts.pct)}%`;
+}
+
+/**
+ * Qué hace UN TOQUE en la manija.
+ *
+ * Del boceto, textual: "un clic la lleva a cubrir toda la columna; otro clic, estando entera, la
+ * cierra". Antes el toque solo alternaba mostrar/esconder, así que para taparla entera había que
+ * arrastrar hasta el tope — y el tope era 60%, que no alcanzaba a cubrir la columna. Por eso se
+ * veía "a medio correr" por más que se arrastrara.
+ *
+ * Desde a medias también va a entera: el toque siempre EMPUJA hacia la posición extrema, y solo
+ * cierra cuando ya no queda más para abrir.
+ */
+export function alTocarCortina(
+  estado: { colapsada: boolean; completa: boolean },
+): { colapsada: boolean; completa: boolean } {
+  if (estado.colapsada) return { colapsada: false, completa: true };
+  if (estado.completa)  return { colapsada: true,  completa: false };
+  return { colapsada: false, completa: true };
 }
 

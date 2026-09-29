@@ -576,11 +576,7 @@ export default function ManualDispatch({
         </div>
       )}
 
-      {tiendasCount === 0 && (
-        <div className="bg-kbg border border-black/[0.09] rounded-kios2 px-3 py-3 text-[13px] text-kmuted text-center">
-          Activa tiendas arriba e ingresa sus pallets para comenzar.
-        </div>
-      )}
+
 
       {/* [Rediseño] Dos columnas: las tiendas a la izquierda, la flota a la derecha.
           Antes era una sola columna apilada —chips, pool, tarjetas—, así que asignar obligaba a
@@ -592,6 +588,23 @@ export default function ManualDispatch({
           tres cambian juntas. */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)] gap-3 items-start">
         <div className="min-w-0 lg:sticky lg:top-0">
+          {/* [Rediseño] El rótulo y el aviso viven en ESTA columna, no a lo ancho.
+              Con el aviso centrado arriba, la columna izquierda quedaba vacía y no se entendía para
+              qué era: parecía espacio desaprovechado en vez de el lugar de las tiendas. */}
+          <div className="flex items-center gap-2 mb-2 px-0.5">
+            <span className="text-[12px] font-extrabold uppercase tracking-wide text-ktext">Tiendas</span>
+            {tiendasCount > 0 && (
+              <span className="text-[11px] text-kmuted font-semibold">
+                · {pool.length} sin asignar de {tiendasCount}
+              </span>
+            )}
+          </div>
+          {tiendasCount === 0 && (
+            <div className="bg-kbg border border-dashed border-black/[0.14] rounded-kios2 px-3 py-6 text-[13px] text-kmuted text-center">
+              Acá van a aparecer las tiendas.
+              <div className="mt-1 text-[12px] text-kmuted/70">Activalas arriba e ingresá sus pallets para comenzar.</div>
+            </div>
+          )}
       {tiendasCount > 0 && (
         <div
           data-dropzone="pool"
