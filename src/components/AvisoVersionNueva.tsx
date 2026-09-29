@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { hayVersionNueva, debeMostrarAviso, VERSION_DESCONOCIDA, POSPONER_MS } from '@/lib/versionApp';
+import { registrarSW, activarVersionNueva } from '@/lib/sw/registrarSW';
 
 /** Cada cuánto se le pregunta al servidor qué versión está publicada. */
 const CADA_MS = 5 * 60_000;
@@ -52,6 +53,14 @@ export function AvisoVersionNueva() {
     return () => { vivo = false; clearInterval(id); document.removeEventListener('visibilitychange', alVolver); };
   }, [local]);
 
+  // Segunda fuente de la misma señal: el service worker.
+  //
+  // El sondeo de arriba se queda porque no depende de nada — si el service worker no llega a
+  // registrarse (Safari en privado, almacenamiento bloqueado, `NEXT_PUBLIC_SW_DISABLED`), el aviso
+  // tiene que seguir apareciendo igual que hasta hoy. Con service worker hay además una señal
+  // directa: el navegador ya descargó la versión nueva y la dejó esperando.
+  useEffect(() => registrarSW(() => { yaDetectada.current = true; setHayNueva(true); }), []);
+
   // Mientras está pospuesto, un temporizador lo trae de vuelta al vencer.
   useEffect(() => {
     if (!hayNueva || pospuestoHasta <= Date.now()) return;
@@ -59,7 +68,10 @@ export function AvisoVersionNueva() {
     return () => clearTimeout(id);
   }, [hayNueva, pospuestoHasta]);
 
-  const recargar = useCallback(() => { window.location.reload(); }, []);
+  // No es un `location.reload()` a secas: con un service worker esperando, el viejo sigue
+  // controlando la pestaña y la recarga volvería a servir el código viejo, dejando a la persona
+  // apretando Recargar sin que pase nada. `activarVersionNueva` le cede el paso primero.
+  const recargar = useCallback(() => { void activarVersionNueva(); }, []);
   const posponer = useCallback(() => { setPospuestoHasta(Date.now() + POSPONER_MS); }, []);
 
   if (!debeMostrarAviso(hayNueva, pospuestoHasta, Date.now())) return null;
