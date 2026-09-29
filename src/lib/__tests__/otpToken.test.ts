@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import crypto from 'crypto';
-import { createOtpToken, verifyOtpToken } from '../otpToken';
+import { createOtpToken, verifyOtpToken, createReciboEntrega, verifyReciboEntrega } from '../otpToken';
 
 const TEST_SECRET = 'kiosclub-otp-test-secret-vitest';
 const EMAIL = 'test@kiosclub.com';
@@ -113,5 +113,84 @@ describe('verifyOtpToken', () => {
     const badPayload = Buffer.from('onlytwoparts:123').toString('base64url');
     const sig        = crypto.createHmac('sha256', TEST_SECRET).update(badPayload).digest('base64url');
     expect(verifyOtpToken(`${badPayload}.${sig}`, EMAIL, OTP)).toBe(false);
+  });
+});
+
+// ─── createReciboEntrega / verifyReciboEntrega ────────────────────────────────
+//
+// El comprobante existe por un bug real: la cola offline del conductor guardaba el token del OTP y
+// lo reintentaba, pero ese token vive 10 minutos. Una entrega confirmada sin señal que tardaba más
+// en sincronizar recibía un 403 y se perdía en silencio. Ver `createReciboEntrega` en ../otpToken.
+
+describe('verifyReciboEntrega', () => {
+  const ALCANCE = 'ruta_tienda:1234';
+
+  it('acepta el comprobante recién emitido para su propia entrega', () => {
+    const recibo = createReciboEntrega(EMAIL, OTP, ALCANCE);
+    expect(verifyReciboEntrega(recibo, EMAIL, OTP, ALCANCE)).toBe(true);
+  });
+
+  it('NO sirve para otra entrega — es lo que impide reusarlo', () => {
+    // Sin esto, un comprobante de 72 horas serviría para confirmar cualquier parada del día.
+    const recibo = createReciboEntrega(EMAIL, OTP, ALCANCE);
+    expect(verifyReciboEntrega(recibo, EMAIL, OTP, 'ruta_tienda:9999')).toBe(false);
+  });
+
+  it('rechaza otro correo u otro código', () => {
+    const recibo = createReciboEntrega(EMAIL, OTP, ALCANCE);
+    expect(verifyReciboEntrega(recibo, 'otra@tienda.cl', OTP, ALCANCE)).toBe(false);
+    expect(verifyReciboEntrega(recibo, EMAIL, '999999', ALCANCE)).toBe(false);
+  });
+
+  it('rechaza una firma alterada', () => {
+    const recibo = createReciboEntrega(EMAIL, OTP, ALCANCE);
+    const [payload] = recibo.split('.');
+    expect(verifyReciboEntrega(`${payload}.firmaInventada`, EMAIL, OTP, ALCANCE)).toBe(false);
+  });
+
+  it('rechaza basura sin reventar', () => {
+    expect(verifyReciboEntrega('', EMAIL, OTP, ALCANCE)).toBe(false);
+    expect(verifyReciboEntrega('sin-punto', EMAIL, OTP, ALCANCE)).toBe(false);
+  });
+
+  it('vence, pero mucho después que el token de 10 minutos', () => {
+    const recibo = createReciboEntrega(EMAIL, OTP, ALCANCE);
+    const token  = createOtpToken(EMAIL, OTP);
+    const ahora  = Date.now();
+
+    const enMinutos = (m: number) => new Date(ahora + m * 60_000);
+    vi.useFakeTimers();
+    try {
+      // A los 30 minutos el token ya murió, que es exactamente el caso que perdía entregas.
+      vi.setSystemTime(enMinutos(30));
+      expect(verifyOtpToken(token, EMAIL, OTP)).toBe(false);
+      expect(verifyReciboEntrega(recibo, EMAIL, OTP, ALCANCE)).toBe(true);
+
+      // Al día siguiente sigue valiendo: el teléfono pudo quedarse sin batería en plena ruta.
+      vi.setSystemTime(enMinutos(24 * 60));
+      expect(verifyReciboEntrega(recibo, EMAIL, OTP, ALCANCE)).toBe(true);
+
+      // Pero no es eterno.
+      vi.setSystemTime(enMinutos(73 * 60));
+      expect(verifyReciboEntrega(recibo, EMAIL, OTP, ALCANCE)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('los dos formatos no se cruzan', () => {
+  const ALCANCE = 'ruta_tienda:1234';
+
+  it('un token de 10 minutos no pasa como comprobante de 72 horas', () => {
+    // Si pasara, el límite corto del token en vivo no valdría nada: bastaría con presentarlo por
+    // el otro camino. Por eso las dos firmas se calculan sobre dominios distintos.
+    const token = createOtpToken(EMAIL, OTP);
+    expect(verifyReciboEntrega(token, EMAIL, OTP, ALCANCE)).toBe(false);
+  });
+
+  it('un comprobante no pasa como token del camino en vivo', () => {
+    const recibo = createReciboEntrega(EMAIL, OTP, ALCANCE);
+    expect(verifyOtpToken(recibo, EMAIL, OTP)).toBe(false);
   });
 });
