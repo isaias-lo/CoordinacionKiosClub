@@ -14,7 +14,7 @@ import { ControlFlotaPanel, PersonalCatalogPanel } from '@/features/despacho/con
 import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
 import { useIsMobile } from '../utils/useIsMobile';
 import {
-  clampMapPct, mapaColapsado, anchoMapa, anchoContenido,
+  clampMapPct, mapaColapsado, anchoCortina,
   MAP_PCT_DEFAULT, LS_MAP_PCT, LS_MAP_OCULTO,
 } from '../utils/mapLayout';
 import type { Vehiculo } from '../data/flota';
@@ -501,9 +501,11 @@ export default function InputSection({
 
       {errorsBanner}
 
-      {/* Content area — contenido (izquierda) + mapa fijo (derecha, desktop) */}
-      <div ref={contentRowRef} className="flex-1 flex overflow-hidden min-h-0">
-        <div className="flex flex-col overflow-hidden min-w-0" style={{ flex: anchoContenido(hideMap, mapPct, !!mapPanel) }}>
+      {/* Content area — el contenido ocupa TODO el ancho; el mapa es una cortina que lo tapa.
+          `relative` es lo que ancla la cortina a esta fila, y `getBoundingClientRect` de esta misma
+          fila es lo que usa el arrastre para calcular el %, así que el redimensionado no cambia. */}
+      <div ref={contentRowRef} className="flex-1 flex overflow-hidden min-h-0 relative">
+        <div className="flex flex-col overflow-hidden min-w-0" style={{ flex: '1 1 100%' }}>
       {modo === 'flota' ? flotaTabContent
       : modo === 'v2' ? (
         <div className="flex-1 overflow-hidden">
@@ -591,19 +593,35 @@ export default function InputSection({
         </div>
       )}
         </div>
-        {mapDivider}
-        {/* SIN condicional de montaje: colapsar es poner el ancho en 0, no sacar el panel del
+        {/* LA CORTINA. Va superpuesta y anclada a la derecha, así que abrirla NO reacomoda las
+            tarjetas de camión de abajo: se corre encima y lo demás queda donde estaba.
+            SIN condicional de montaje: colapsar es poner el ancho en 0, no sacar el panel del
             árbol. Desmontarlo pierde el dedupe de Directions y cada vuelta se factura de nuevo.
             `aria-hidden` + `inert` lo sacan del foco y del lector de pantalla mientras mide 0. */}
         {mapPanel && (
-          <div
-            className="flex-shrink-0 overflow-hidden border-l border-black/[0.09]"
-            style={{ flex: anchoMapa(hideMap, mapPct), minWidth: 0, borderLeftWidth: hideMap ? 0 : undefined }}
-            aria-hidden={hideMap || undefined}
-            inert={hideMap || undefined}
-          >
-            {mapPanel}
-          </div>
+          <>
+            {/* La manija viaja con el borde de la cortina. Queda FUERA de ella para seguir visible
+                y pulsable cuando la cortina mide 0 — si viviera adentro, cerrar el mapa se llevaría
+                también la forma de volver a abrirlo. */}
+            <div
+              className="absolute top-0 bottom-0 flex z-20"
+              style={{ right: anchoCortina(hideMap, mapPct) }}
+            >
+              {mapDivider}
+            </div>
+            <div
+              className="absolute top-0 right-0 bottom-0 overflow-hidden border-l border-black/[0.09] z-10"
+              style={{
+                width: anchoCortina(hideMap, mapPct),
+                borderLeftWidth: hideMap ? 0 : undefined,
+                boxShadow: hideMap ? 'none' : '-8px 0 24px rgba(15,23,42,0.10)',
+              }}
+              aria-hidden={hideMap || undefined}
+              inert={hideMap || undefined}
+            >
+              {mapPanel}
+            </div>
+          </>
         )}
       </div>
     </div>

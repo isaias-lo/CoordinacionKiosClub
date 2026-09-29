@@ -1,26 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import {
-  clampMapPct, mapaColapsado, anchoMapa, anchoContenido,
+  clampMapPct, mapaColapsado, anchoCortina,
   MAP_PCT_DEFAULT, MAP_PCT_MIN, MAP_PCT_MAX,
 } from '../mapLayout';
 
-describe('anchoMapa — el test que protege la factura', () => {
+describe('anchoCortina — el test que protege la factura', () => {
   // Si esto devuelve algo falsy, el siguiente que toque InputSection va a escribir
   // `{ancho && <panel/>}`, el panel se va a desmontar, `lastDrawnRef` se va a perder y cada
   // mostrar/esconder va a re-llamar a Google Directions, que se factura por llamada.
   it('colapsado devuelve un ancho de verdad, NO null ni undefined ni cadena vacía', () => {
-    const v = anchoMapa(true, 37);
-    expect(v).toBe('0 0 0px');
+    const v = anchoCortina(true, 37);
+    expect(v).toBe('0%');
     expect(v).toBeTruthy();
   });
 
   it('visible devuelve el porcentaje pedido', () => {
-    expect(anchoMapa(false, 37)).toBe('0 0 37%');
-    expect(anchoMapa(false, 55)).toBe('0 0 55%');
+    expect(anchoCortina(false, 37)).toBe('37%');
+    expect(anchoCortina(false, 55)).toBe('55%');
   });
 
   it('sanea el porcentaje también al construir el ancho', () => {
-    expect(anchoMapa(false, 999)).toBe(`0 0 ${MAP_PCT_DEFAULT}%`);
+    expect(anchoCortina(false, 999)).toBe(`${MAP_PCT_DEFAULT}%`);
   });
 });
 
@@ -65,25 +65,28 @@ describe('clampMapPct', () => {
   });
 });
 
-describe('anchoContenido — el contenido se queda con lo que el mapa no ocupa', () => {
-  it('con el mapa visible reparten el ancho', () => {
-    expect(anchoContenido(false, 37, true)).toBe('1 1 63%');
+describe('anchoCortina — el mapa TAPA la columna, no la empuja', () => {
+  it('abierta mide el porcentaje elegido', () => {
+    expect(anchoCortina(false, 37)).toBe('37%');
+    expect(anchoCortina(false, 55)).toBe('55%');
   });
 
-  it('con el mapa colapsado el contenido toma todo', () => {
-    expect(anchoContenido(true, 37, true)).toBe('1 1 100%');
+  it('colapsada mide 0% — y sigue montada', () => {
+    // Devolver 0% y no algo falsy es el punto del módulo: un valor falsy invita al `{cond && ...}`
+    // que desmonta el panel y vuelve a facturar Directions.
+    expect(anchoCortina(true, 37)).toBe('0%');
   });
 
-  it('sin mapa el contenido toma todo', () => {
-    expect(anchoContenido(false, 37, false)).toBe('1 1 100%');
+  it('sanea un porcentaje fuera de rango en vez de romper el layout', () => {
+    expect(anchoCortina(false, 999)).toBe('37%');
+    expect(anchoCortina(false, Number.NaN)).toBe('37%');
   });
 });
-
 describe('restaurar devuelve el ancho guardado, no el default', () => {
   it('esconder y mostrar conserva el % que tenía el usuario', () => {
     const guardado = 52;
-    expect(anchoMapa(true, guardado)).toBe('0 0 0px');       // escondido
-    expect(anchoMapa(false, guardado)).toBe('0 0 52%');      // restaurado → su ancho, no 37
+    expect(anchoCortina(true, guardado)).toBe('0%');        // escondido
+    expect(anchoCortina(false, guardado)).toBe('52%');     // restaurado → su ancho, no 37
   });
 });
 
