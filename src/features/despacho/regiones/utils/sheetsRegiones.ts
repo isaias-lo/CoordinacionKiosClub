@@ -35,8 +35,13 @@ function ordenSeq(orden: string): string {
 //   bulto/box   → {seq}B{cod}{stamp}B
 //   chocolate   → CH{seq}{cod}{stamp}CH
 //   contenedor  → C{seq}{cod}{stamp}C
-function canonicalId(pkg: string, orden: string, cod: string, stamp: string): string {
-  const seq = ordenSeq(orden);
+//
+// Usa item.id (estable, sobrevive al renumber) en vez de item.orden (posición recalculada en cada
+// navegador) cuando está disponible — con `orden` dos sesiones abiertas a la vez podían generar el
+// MISMO id para pallets distintos, y el UPDATE de sheets-write pisaba uno con el otro. Si el item no
+// trae id (borradores viejos sin este campo), cae al esquema anterior basado en `orden`.
+function canonicalId(pkg: string, orden: string, cod: string, stamp: string, itemId?: string): string {
+  const seq = itemId ?? ordenSeq(orden);
   if (pkg === 'pallet')     return `P${seq}${cod}${stamp}P`;
   if (pkg === 'contenedor') return `C${seq}${cod}${stamp}C`;
   if (pkg === 'chocolate')  return `CH${seq}${cod}${stamp}CH`;
@@ -81,7 +86,7 @@ export function buildRows(
         : '');
 
       rows.push([
-        canonicalId(item.pkg, item.orden, tienda.cod, stamp), // ID — mantiene stamp de despacho (idempotencia)
+        canonicalId(item.pkg, item.orden, tienda.cod, stamp, item.id), // ID — mantiene stamp de despacho (idempotencia)
         fechaArmadoFmt,                                 // FECHA (armado) [P4] — llave de match cod+fecha
         tienda.cod,                                     // COD
         tienda.name,                                    // TIENDA
