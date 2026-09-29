@@ -14,6 +14,7 @@ import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
 import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
 import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroVisibleCard, ordenDeItem, renumerarOrden, etiquetaCard, claseSantiago } from '@/features/despacho/shared/numeroCard';
+import { leerPeso, limpiarTecleo, avisoDePeso, excedeTopeDuro } from '@/features/despacho/shared/pesoIngresado';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
 import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
@@ -1306,13 +1307,20 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
         p = neto.neto;
       } else {
-        p = parseFloat(row.peso); if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
+        p = (leerPeso(row.peso) ?? 0); if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
       }
       a  = isCont ? CONTENEDOR_ALTO  : isChocTipo ? (medidasCaja?.alto  ?? 0) : isChoc ? CHOCOLATE_BULTO_DIMS.alto  : (parseFloat(row.alto)  || 0);
       fL = row.tipo === 'Pallet' ? 120 : isCont ? CONTENEDOR_LARGO : isChocTipo ? (medidasCaja?.largo ?? 0) : (isChoc ? CHOCOLATE_BULTO_DIMS.largo : (parseFloat(row.largo) || 0));
       fA = row.tipo === 'Pallet' ? 100 : isCont ? CONTENEDOR_ANCHO : isChocTipo ? (medidasCaja?.ancho ?? 0) : (isChoc ? CHOCOLATE_BULTO_DIMS.ancho : (parseFloat(row.ancho) || 0));
       if (!isCont && !isChocTipo && !a) { showToast('Ingresa el alto', '#D97706'); return; }
       if (row.tipo === 'Bulto' && !isChoc && (!fL || !fA)) { showToast('Ingresa largo y ancho', '#D97706'); return; }
+      // Un peso imposible se ataja ACÁ, con la balanza todavía al lado y el bulto todavía arriba.
+      // El 28/09 un «353,7» al que se le perdió la coma quedó registrado como 9.357 kg y nadie lo
+      // vio hasta cruzarlo contra Odoo al día siguiente. Ver `shared/pesoIngresado.ts`.
+      const duro = excedeTopeDuro(p, claseSantiago(row.tipo));
+      if (duro) { showToast(`⚠ ${duro}`, '#D32F2F'); return; }
+      const aviso = avisoDePeso(p, claseSantiago(row.tipo));
+      if (aviso && !window.confirm(`⚠ ${aviso.titulo}\n\n${aviso.detalle}\n\n¿Guardar así?`)) return;
       pesoV = Math.round((a * fL * fA) / 6000 * 100) / 100;
     }
     const cod = currentTienda.cod;
@@ -1541,7 +1549,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           contenido: sl?.contenido ?? it?.contenido ?? r.contenido,
           seq: sl?.seq ?? null,
           canonical: sl?.canonical_id ?? it?.canonical_id ?? null,
-          peso:  it?.peso  ?? (parseFloat(r.peso)  || 0),
+          peso:  it?.peso  ?? ((leerPeso(r.peso) ?? 0)),
           alto:  it?.alto  ?? (parseFloat(r.alto)  || 0),
           largo: it?.largo ?? (parseFloat(r.largo) || 0),
           ancho: it?.ancho ?? (parseFloat(r.ancho) || 0),
@@ -1610,8 +1618,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       showToast('No se pudo sumar: recarga la tienda e inténtalo otra vez', '#D97706');
       return;
     }
-    const bultoPeso  = bultoRow.savedItem?.peso  ?? (parseFloat(bultoRow.peso)  || 0);
-    const pesoActual = palletRow.savedItem?.peso ?? (parseFloat(palletRow.peso) || 0);
+    const bultoPeso  = bultoRow.savedItem?.peso  ?? ((leerPeso(bultoRow.peso) ?? 0));
+    const pesoActual = palletRow.savedItem?.peso ?? ((leerPeso(palletRow.peso) ?? 0));
     const nuevoPeso  = sumPeso(pesoActual, bultoPeso);
 
     // El destino se reconfirma ANTES de borrar nada. Antes se borraba el slot del bulto y recién
@@ -1675,8 +1683,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       showToast('No se pudo sumar: recarga la tienda e inténtalo otra vez', '#D97706');
       return;
     }
-    const pesosBultos = bultoRows.map(r => r.savedItem?.peso ?? (parseFloat(r.peso) || 0));
-    const pesoActual  = palletRow.savedItem?.peso ?? (parseFloat(palletRow.peso) || 0);
+    const pesosBultos = bultoRows.map(r => r.savedItem?.peso ?? ((leerPeso(r.peso) ?? 0)));
+    const pesoActual  = palletRow.savedItem?.peso ?? ((leerPeso(palletRow.peso) ?? 0));
     const nuevoPeso   = sumarPesoMultiple(pesoActual, pesosBultos);
     const palletIdx   = formRows.slice(0, formRows.findIndex(r => r.id === palletRowId) + 1).filter(r => r.tipo === 'Pallet').length;
     const palletLabel = `P${palletIdx}`;
@@ -1742,8 +1750,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const iniciarUnionInline = (sourceRow: FormRow, targetRow: FormRow, srcLabel?: string, tgtLabel?: string) => {
     if (!currentTienda) return;
     const cod       = currentTienda.cod;
-    const srcPeso   = sourceRow.savedItem?.peso ?? (parseFloat(sourceRow.peso) || 0);
-    const tgtPeso   = targetRow.savedItem?.peso ?? (parseFloat(targetRow.peso) || 0);
+    const srcPeso   = sourceRow.savedItem?.peso ?? ((leerPeso(sourceRow.peso) ?? 0));
+    const tgtPeso   = targetRow.savedItem?.peso ?? ((leerPeso(targetRow.peso) ?? 0));
     const nuevoPeso = sumPeso(tgtPeso, srcPeso);
     const prevAlto  = targetRow.savedItem?.alto ?? (parseFloat(targetRow.alto) || 0);
     const srcSlot   = sourceRow.pickingSlotId ?? sourceRow.savedItem?.pickingSlotId;
@@ -2010,7 +2018,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     dispatch({
       type: 'EDIT_ITEM', tiendaCod: cod, idx,
       item: { ...item, tipo: rTipo, contenido: rContenido, estado: rEstado,
-        peso: parseFloat(resumenEditing.peso) || 0, alto, largo, ancho,
+        peso: (leerPeso(resumenEditing.peso) ?? 0), alto, largo, ancho,
         pesoVolumetrico: (alto * largo * ancho) / 6000 },
     });
     setResumenEditing(null);
@@ -2341,9 +2349,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                                 <div className={`grid gap-2 mb-3 ${re.tipo === 'Bulto' && !rIsChoc ? 'grid-cols-4' : 'grid-cols-2'}`}>
                                   <div>
                                     <div className={LABEL_CLS}>Peso kg</div>
-                                    <input type="number" value={re.peso}
-                                      onChange={e => setResumenEditing(prev => prev ? { ...prev, peso: e.target.value } : prev)}
-                                      className={INPUT_CLS} step="0.1" />
+                                    <input type="text" inputMode="decimal" value={re.peso}
+                                      onChange={e => setResumenEditing(prev => prev ? { ...prev, peso: limpiarTecleo(e.target.value) } : prev)}
+                                      className={INPUT_CLS} />
                                   </div>
                                   {!rIsChoc && (
                                     <div>
@@ -2759,7 +2767,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       <label className="text-[11px] text-text-3 uppercase block mb-0.5">
                         peso{cajaDeFila === 'negra' && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(TARA_CAJA_NEGRA).replace('.', ',')} kg de caja</span>}
                       </label>
-                      <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)}
+                      <input type="text" value={row.peso} onChange={e => updateRow(row.id, 'peso', limpiarTecleo(e.target.value))}
                         onFocus={marcarEnFoco} onBlur={quitarFoco}
                         placeholder="kg" inputMode="decimal"
                         className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
@@ -2832,7 +2840,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       real de la unificación, así que van por el camino normal. */}
                   <button
                     onClick={async () => {
-                      const tienePeso = parseFloat(row.peso) > 0;
+                      const tienePeso = (leerPeso(row.peso) ?? 0) > 0;
                       if (!tienePeso && !row.mergeReopened) {
                         if (window.confirm('¿Agregar sin pesar? El peso y las medidas quedarán en 0.')) {
                           await saveRow(row, true);
