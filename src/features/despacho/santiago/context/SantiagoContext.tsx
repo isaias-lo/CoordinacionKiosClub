@@ -200,9 +200,6 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   const lastServerStampRef   = useRef<number>(0); // [C3/RC-6] updated_at (reloj SERVIDOR) del último push/adopción
   const catchUpRef        = useRef<() => void>(() => {}); // [P9] re-fetch + apply remoto (catch-up)
   const pendingCatchupRef = useRef(false);        // [P9] remoto llegó durante push local → catch-up al terminar
-  const lastPushCompletedAtRef = useRef<number>(0); // timestamp when last Supabase push completed
-  // [P5] Catch-up programado cuando un remoto cae dentro de la ventana de 3 s post-push.
-  const ventanaCatchupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vencimientoPushRef = useRef<number>(0);   // tope del debounce (ver lib/esperaDePush)
 
   // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
@@ -222,19 +219,6 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       // trabajo con varias personas — después este equipo escribía el blob COMPLETO, sin lo suyo,
       // y la fila es una sola por día donde gana el último que escribe. Ver AppContext, misma nota.
       if (isPushingRef.current) { pendingCatchupRef.current = true; return; }
-      // Block for 3 s after push completes — Supabase propagation lag can cause stale remote to
-      // overwrite our data. No se descarta: se PROGRAMA un catch-up para cuando la ventana expire
-      // (ver misma nota/incidente en AppContext.tsx).
-      const restante = 3_000 - (Date.now() - lastPushCompletedAtRef.current);
-      if (restante > 0) {
-        if (ventanaCatchupRef.current === null) {
-          ventanaCatchupRef.current = setTimeout(() => {
-            ventanaCatchupRef.current = null;
-            catchUpRef.current();
-          }, restante + 50);
-        }
-        return;
-      }
       // Block for 30 s after an intentional RESET to prevent remote from restoring cleared data
       if (Date.now() - clearedAtRef.current < 30_000) return;
       // Reject data without an explicit sessionDate or from a different calendar day
@@ -343,10 +327,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       } catch {}
     }, TICK_MS);
 
-    return () => {
-      unsub(); clearInterval(pollId);
-      if (ventanaCatchupRef.current) { clearTimeout(ventanaCatchupRef.current); ventanaCatchupRef.current = null; }
-    };
+    return () => { unsub(); clearInterval(pollId); };
   }, [userId]);
 
   // Debounced push to Supabase (2.5 s after last change) + localStorage fallback.
@@ -380,7 +361,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
         .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6] reloj de servidor de mi push
         .catch(() => { lastPushedRef.current = prevLastPushed; lastPushedFullRef.current = prevLastFull; }) // reset so dirty check retries correctly
         .finally(() => {
-          isPushingRef.current = false; lastPushCompletedAtRef.current = Date.now();
+          isPushingRef.current = false;
           // [P9] Si llegó un remoto mientras empujábamos, ponerse al día ahora (no se descarta).
           if (pendingCatchupRef.current) { pendingCatchupRef.current = false; catchUpRef.current(); }
         });
@@ -429,8 +410,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     lastPushTimestampRef.current = pushedAt;
     pushSessionState('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined)
       .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6]
-      .catch(() => { lastPushedRef.current = prevPushed; lastPushedFullRef.current = prevFull; })
-      .finally(() => { lastPushCompletedAtRef.current = Date.now(); });
+      .catch(() => { lastPushedRef.current = prevPushed; lastPushedFullRef.current = prevFull; });
     try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...stateRef.current, _savedAt: Date.now() })); } catch {}
   }, [userId]);
 
