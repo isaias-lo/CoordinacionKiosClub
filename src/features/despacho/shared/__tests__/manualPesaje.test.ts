@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ALTO_AVISO_CM, nivelAlto, resumenPesaje, avisosAltoPorTienda, textoResumenPesaje,
-  lineasPesaje, etiquetaAviso, textoManualParaCopiar,
+  lineasPesaje, etiquetaAviso, textoManualParaCopiar, lineaAgregados, agregadosPorTienda,
 } from '../manualPesaje';
 import { MAX_ALTO_CM } from '../palletLimits';
 
@@ -183,5 +183,94 @@ describe('textoManualParaCopiar — lo copiado dice lo mismo que la pantalla', (
 
   it('sin tiendas no hay nada que copiar', () => {
     expect(textoManualParaCopiar([], tot, {}, r)).toBe('');
+  });
+});
+
+describe('los AGREGADOS se cuentan, pero no se pesan', () => {
+  // El día real del 29/09, tal como lo reportó el coordinador:
+  //   PESADOS: 125 de 135 (93%) · Pallets 74/74 · Bultos 16/26 · Chocolates 35/35
+  // y ocho slots de adquisición que no aparecían en ninguna parte.
+  const vis = new Set(['01TPS', '60PBL']);
+
+  it('NO entran en el total pesable ni bajan el porcentaje', () => {
+    // Si contaran, ocho adquisiciones en 0 arrastrarían el % del día por un trabajo que nadie
+    // dejó pendiente.
+    const slots = [
+      s('01TPS', 'P', 300), s('01TPS', 'B', 20),
+      s('60PBL', 'A', 0), s('60PBL', 'A', 0), s('60PBL', 'W', 0),
+    ];
+    const r = resumenPesaje(slots, vis);
+    expect(r.todos).toEqual({ pesados: 2, total: 2 });
+    expect(r.pct).toBe(100);
+  });
+
+  it('tampoco se cuelan entre los bultos', () => {
+    // Era la sospecha del coordinador —"los bultos sin pesar deben ser las adquisiciones"— y hay
+    // que dejarla fijada: no lo son, y no pueden llegar a serlo.
+    const r = resumenPesaje([s('60PBL', 'A', 0), s('60PBL', 'W', 0)], vis);
+    expect(r.b.total).toBe(0);
+    expect(r.p.total).toBe(0);
+  });
+
+  it('pero SÍ se cuentan, que es lo que faltaba', () => {
+    const r = resumenPesaje([s('60PBL', 'A', 0), s('60PBL', 'A', 0), s('60PBL', 'W', 0)], vis);
+    expect(r.a).toBe(2);
+    expect(r.w).toBe(1);
+  });
+
+  it('un agregado con peso NO cambia nada: se sigue sin pesar ni contar como pesable', () => {
+    // El caso que pidió explícitamente: "si a alguno de ellos se le agregara el peso".
+    const r = resumenPesaje([s('01TPS', 'P', 300), s('60PBL', 'A', 15)], vis);
+    expect(r.todos).toEqual({ pesados: 1, total: 1 });
+    expect(r.a).toBe(1);
+  });
+});
+
+describe('lineaAgregados', () => {
+  it('dice cuántos y dice que no se pesan', () => {
+    // Las dos mitades importan: sin la primera parecían escondidos; sin la segunda, alguien
+    // buscaría su fracción de pesados.
+    expect(lineaAgregados({ a: 8, w: 0 })).toBe('Adquisiciones: 8 — no se pesan');
+    expect(lineaAgregados({ a: 8, w: 2 })).toBe('Adquisiciones: 8 · Web/retiro: 2 — no se pesan');
+    expect(lineaAgregados({ a: 0, w: 3 })).toBe('Web/retiro: 3 — no se pesan');
+  });
+
+  it('sin agregados no ocupa una línea', () => {
+    expect(lineaAgregados({ a: 0, w: 0 })).toBeNull();
+  });
+
+  it('aparece en el bloque de pesaje, al final', () => {
+    const r = resumenPesaje([s('01TPS', 'P', 300), s('01TPS', 'A', 0)], new Set(['01TPS']));
+    const l = lineasPesaje(r);
+    expect(l[0]).toBe('PESADOS: 1 de 1 (100%)');
+    expect(l[l.length - 1]).toBe('Adquisiciones: 1 — no se pesan');
+  });
+
+  it('un día SOLO de agregados igual los nombra', () => {
+    // Antes `lineasPesaje` devolvía [] sin envases pesables, y los agregados desaparecían del todo.
+    const r = resumenPesaje([s('60PBL', 'A', 0)], new Set(['60PBL']));
+    expect(lineasPesaje(r)).toEqual(['Adquisiciones: 1 — no se pesan']);
+  });
+});
+
+describe('agregadosPorTienda', () => {
+  it('cuenta por tienda, para la línea "01TPS: 3P - 1B - 2A"', () => {
+    const slots = [
+      s('01TPS', 'A', 0), s('01TPS', 'A', 0), s('01TPS', 'W', 0),
+      s('60PBL', 'A', 0), s('60PBL', 'P', 300),
+    ];
+    expect(agregadosPorTienda(slots, new Set(['01TPS', '60PBL']))).toEqual({
+      '01TPS': { a: 2, w: 1 },
+      '60PBL': { a: 1, w: 0 },
+    });
+  });
+
+  it('una tienda sin agregados no aparece: la línea no lleva sufijo', () => {
+    expect(agregadosPorTienda([s('01TPS', 'P', 300)], new Set(['01TPS']))).toEqual({});
+  });
+
+  it('respeta el filtro de grupo y el bucket "Sin asignar"', () => {
+    const slots = [s('01TPS', 'A', 0), s('99XXX', 'A', 0), s('01TPS', 'A', 0, null, 'Sin asignar')];
+    expect(agregadosPorTienda(slots, new Set(['01TPS']))).toEqual({ '01TPS': { a: 1, w: 0 } });
   });
 });

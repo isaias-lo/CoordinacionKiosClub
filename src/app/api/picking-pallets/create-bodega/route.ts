@@ -4,11 +4,16 @@ import { verifyAuth } from '@/lib/apiAuth';
 
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
+// Ojo con el `return` final: NO lleva letra de tipo. Los slots de adquisición y web/retiro caían
+// ahí y salían como `160PBL29092026` —sin la A—, así que una adquisición A1 y un web/retiro W1 de
+// la misma tienda producían EXACTAMENTE el mismo id. Hoy no había W, así que todavía no chocó.
 function buildCanonical(tipo: string, seq: number, cod: string, stamp: string): string {
   if (tipo === 'P')  return `P${seq}${cod}${stamp}P`;
   if (tipo === 'B')  return `${seq}B${cod}${stamp}B`;
   if (tipo === 'CH') return `CH${seq}${cod}${stamp}CH`;
   if (tipo === 'C')  return `C${seq}${cod}${stamp}C`;
+  if (tipo === 'A')  return `A${seq}${cod}${stamp}A`;
+  if (tipo === 'W')  return `W${seq}${cod}${stamp}W`;
   return `${seq}${cod}${stamp}`;
 }
 
