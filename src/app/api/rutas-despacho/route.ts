@@ -5,7 +5,8 @@ import { verifyAuth } from '@/lib/apiAuth';
 import { norm } from '@/features/despacho/rutas/utils/helpers';
 import { ESTADO_TO_SEGUIMIENTO, syncSeguimientoDespacho } from './seguimientoSync';
 import { fechaChile } from '@/lib/fechaChile';
-import { verifyOtpToken } from '@/lib/otpToken';
+import { verifyOtpToken, verifyReciboEntrega } from '@/lib/otpToken';
+import { alcanceEntrega } from '@/lib/alcanceEntrega';
 import { sendComprobanteEntregaEmail } from '@/lib/gmail';
 
 /** Suma `n` días a una fecha ISO YYYY-MM-DD (DST-safe vía UTC). */
@@ -389,7 +390,7 @@ export async function PATCH(request: NextRequest) {
     /** Token HMAC ya verificado por PUT /api/recepcion-otp (mismo mecanismo que usaba el flujo
      *  viejo) — se re-valida acá server-side antes de aceptar la entrega, para que un cliente
      *  alterado no pueda saltarse la confirmación real de la tienda. */
-    otpToken?: string; otpEmail?: string; otpCodigo?: string;
+    otpToken?: string; otpEmail?: string; otpCodigo?: string; recibo?: string;
     /** [Fase 6] "No se pudo entregar" — su presencia decide el branch (ver más abajo). Sin
      *  receptor ni OTP: no hubo nadie que confirmara nada. */
     motivo?: string; descripcion?: string;
@@ -462,7 +463,22 @@ export async function PATCH(request: NextRequest) {
     // cliente alterado no pueda saltarse la confirmación real de la tienda.
     if (!body.receptor?.trim() || !body.rut?.trim())
       return NextResponse.json({ error: 'Falta el nombre y RUT de quien recibe' }, { status: 400 });
-    if (!body.otpToken || !body.otpEmail || !body.otpCodigo || !verifyOtpToken(body.otpToken, body.otpEmail, body.otpCodigo))
+    // Dos pruebas valen, y las dos exigen que la tienda haya participado de verdad con su código:
+    //
+    //  - `otpToken`, el de siempre, vive 10 minutos. Es el del camino en vivo.
+    //  - `recibo`, atado a ESTA parada y con 72 horas, es el de la cola offline. El chofer verificó
+    //    el código con señal y recién después la perdió; sin esto, cualquier entrega que tardara
+    //    más de 10 minutos en sincronizar quedaba rechazada para siempre y en silencio, porque la
+    //    cola vive en el teléfono y el 403 no dejaba rastro en ningún lado.
+    //
+    // Que el comprobante dure más no afloja nada: lo que dura es la PRUEBA de una verificación que
+    // ya ocurrió, y solo sirve para esta parada.
+    const otpEnVivo = !!body.otpToken && !!body.otpEmail && !!body.otpCodigo
+      && verifyOtpToken(body.otpToken, body.otpEmail, body.otpCodigo);
+    const conRecibo = !!body.recibo && !!body.otpEmail && !!body.otpCodigo
+      && verifyReciboEntrega(body.recibo, body.otpEmail, body.otpCodigo, alcanceEntrega(body.ruta_tienda_id));
+
+    if (!otpEnVivo && !conRecibo)
       return NextResponse.json({ error: 'Código de verificación inválido o vencido — pide uno nuevo' }, { status: 403 });
 
     // Valida el override del cliente: si viene basura, se ignora silenciosamente y se usa la hora

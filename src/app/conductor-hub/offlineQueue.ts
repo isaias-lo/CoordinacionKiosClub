@@ -39,15 +39,35 @@ export interface EntregaPendiente {
   receptor: string;
   rut: string;
   observaciones?: string;
-  /** El código ya se verificó (PUT /api/recepcion-otp) antes de encolar — la cola solo reintenta
-   *  el PATCH final con el token ya firmado, nunca repite la verificación del OTP en sí (el token
-   *  vence a los 10 min; si la sincronización tarda más que eso, el PATCH lo va a rechazar y no
-   *  hay forma de "renovarlo" desde la cola sin que la tienda vuelva a participar). */
+  /** El código ya se verificó (PUT /api/recepcion-otp) antes de encolar — la cola solo reenvía la
+   *  prueba de esa verificación, nunca repite el OTP en sí. */
   otpToken: string;
   otpEmail: string;
   otpCodigo: string;
+  /**
+   * Comprobante firmado de esa misma verificación, atado a ESTA entrega y con 72 horas de vida.
+   *
+   * Existe porque `otpToken` vence a los 10 minutos, y ese plazo es justo el que la cola no puede
+   * garantizar: es la que entra a jugar cuando el chofer se queda sin señal. Antes de esto, una
+   * entrega que tardaba más de 10 minutos en sincronizar recibía un 403 y se quedaba reintentando
+   * para siempre, sin que nadie se enterara — la cola vive en el teléfono, así que el rechazo no
+   * dejaba rastro en ningún lado. Ver `createReciboEntrega` en src/lib/otpToken.ts.
+   *
+   * Opcional porque los ítems encolados por la versión anterior no lo traen. Esos ya no se pueden
+   * rescatar (su token venció), pero al menos dejan de reintentarse a ciegas: ver `bloqueado`.
+   */
+  recibo?: string;
   intentos: number;
   ultimoError?: string;
+  /**
+   * El servidor rechazó esta entrega por algo que reintentar no va a arreglar (un 4xx: comprobante
+   * inválido, o de la versión vieja y ya vencido).
+   *
+   * Sin esto, un rechazo definitivo es indistinguible de un corte de señal, y la cola lo reintenta
+   * eternamente mientras el chofer ve la parada como entregada. Marcarlo permite mostrárselo, que
+   * es la única forma de que alguien pueda rehacer la confirmación con la tienda.
+   */
+  bloqueado?: boolean;
   createdAt: number;
 }
 

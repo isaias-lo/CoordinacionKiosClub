@@ -131,6 +131,9 @@ export default function ConductorHubPage() {
   const [historialDias,   setHistorialDias]   = useState<HistorialDia[]>([]);
   const [historialLoading, setHistorialLoading] = useState(false);
   const [pendientesCount, setPendientesCount] = useState(0);
+  // Entregas que el servidor rechazó de forma definitiva. Se cuentan aparte de las pendientes
+  // porque no se arreglan solas: hay que volver a registrarlas con la tienda.
+  const [bloqueadasCount, setBloqueadasCount] = useState(0);
   // Confirmar salida CD (PUNTO 2 trazabilidad)
   const [salidaId,     setSalidaId]     = useState<number | null>(null);  // ruta_id en confirmación
   const [salidaTemp,   setSalidaTemp]   = useState('');
@@ -238,11 +241,20 @@ export default function ConductorHubPage() {
    *  reintenta, ver `intentos`/`ultimoError` en la cola si algún día hay que depurar en terreno. */
   async function sincronizarPendientes() {
     const pendientes = await listarPendientes();
-    setPendientesCount(pendientes.length);
+    // Las bloqueadas se cuentan aparte y NO entran en "sin subir": ese badge reintenta al tocarlo,
+    // y una bloqueada no se mueve por más que se toque. Sumarlas ahí dejaría un contador que nunca
+    // baja, que es otra forma de la misma falla silenciosa.
+    setPendientesCount(pendientes.filter(p => !p.bloqueado).length);
+    setBloqueadasCount(pendientes.filter(p =>  p.bloqueado).length);
     if (!pendientes.length) return;
     if (typeof navigator !== 'undefined' && !navigator.onLine) return; // no gastar intentos en vano
 
     for (const item of pendientes) {
+      // Ya se sabe que el servidor la rechaza por algo que reintentar no arregla. Se deja quieta y
+      // a la vista (ver `bloqueado` en offlineQueue.ts) en vez de gastar subidas de fotos y
+      // requests en cada pasada, para siempre.
+      if (item.bloqueado) continue;
+
       try {
         const fotos = await Promise.all(item.fotos.map(async f => {
           if (f.url || !f.blob) return f;
@@ -260,13 +272,28 @@ export default function ConductorHubPage() {
             foto_urls: fotos.map(f => f.url),
             temperatura: item.temperatura,
             hora_entrega: item.horaEntregaLocal,
-            // [Flujo único] El OTP ya se verificó EN VIVO al momento de encolar — acá solo se
-            // reenvía el token firmado, nunca se repite la verificación (vence a los 10 min).
+            // [Flujo único] El OTP ya se verificó EN VIVO al momento de encolar. Acá viaja el
+            // comprobante de esa verificación (72 h, atado a esta parada) y también el token de
+            // 10 minutos, que sirve cuando la sincronización sale de inmediato.
             receptor: item.receptor, rut: item.rut, observaciones: item.observaciones,
             otpToken: item.otpToken, otpEmail: item.otpEmail, otpCodigo: item.otpCodigo,
+            recibo: item.recibo,
           }),
         });
-        if (!res.ok) throw new Error('server');
+        if (!res.ok) {
+          // Un 4xx no se arregla reintentando: el comprobante no vale, o es de la versión anterior
+          // (sin `recibo`) y su token ya venció. Antes esto caía en el catch de abajo y la entrega
+          // se reintentaba eternamente mientras el chofer la veía como lista — con las fotos, el
+          // receptor y la hora real atrapados en el teléfono, sin que nadie se enterara.
+          if (res.status >= 400 && res.status < 500) {
+            await actualizarPendiente({
+              ...item, fotos, intentos: item.intentos + 1, bloqueado: true,
+              ultimoError: 'La verificación con la tienda ya no vale. Hay que registrar la entrega de nuevo.',
+            });
+            continue;
+          }
+          throw new Error('server');
+        }
         await eliminarPendiente(item.id);
         setRutas(prev => prev.map(r => r.id !== item.rutaId ? r : {
           ...r,
@@ -276,7 +303,9 @@ export default function ConductorHubPage() {
         await actualizarPendiente({ ...item, intentos: item.intentos + 1, ultimoError: 'No se pudo sincronizar' });
       }
     }
-    setPendientesCount((await listarPendientes()).length);
+    const quedan = await listarPendientes();
+    setPendientesCount(quedan.filter(p => !p.bloqueado).length);
+    setBloqueadasCount(quedan.filter(p =>  p.bloqueado).length);
   }
 
   // [Fase 4] `fecha` ahora es un parámetro (default hoy) — lo usa el historial para volver a
@@ -499,6 +528,15 @@ export default function ConductorHubPage() {
               style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 20, background: 'rgba(217,119,6,0.25)', border: '1px solid rgba(217,119,6,0.5)', color: '#FEF3C7', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
               <CloudOff size={12} aria-hidden="true" /> {pendientesCount} sin subir
             </button>
+          )}
+
+          {/* Rojo y no naranjo, y sin botón de reintentar: esto no se arregla esperando ni tocando.
+              Reintentar es justo lo que hacía la cola en silencio mientras la entrega se perdía. */}
+          {bloqueadasCount > 0 && (
+            <span role="alert"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 20, background: 'rgba(212,43,43,0.25)', border: '1px solid rgba(212,43,43,0.6)', color: '#FEE2E2', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+              <AlertTriangle size={12} aria-hidden="true" /> {bloqueadasCount} hay que registrarla{bloqueadasCount === 1 ? '' : 's'} de nuevo
+            </span>
           )}
         </div>
 

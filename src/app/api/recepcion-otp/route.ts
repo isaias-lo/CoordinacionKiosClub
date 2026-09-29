@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { sendOTPEmail } from '@/lib/gmail';
-import { createOtpToken } from '@/lib/otpToken';
+import { createOtpToken, createReciboEntrega } from '@/lib/otpToken';
 import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 import { normalizeCod } from '@/app/api/tiendas/sync/normalizeCod';
 import { ALIAS } from '@/features/despacho/rutas/data/tiendas';
@@ -76,9 +76,12 @@ export async function POST(request: NextRequest) {
 
 /** PUT — valida el OTP ingresado por el conductor */
 export async function PUT(request: NextRequest) {
-  const { store_cod, otp } = await request.json() as {
+  const { store_cod, otp, alcance } = await request.json() as {
     store_cod: string;
     otp: string;
+    /** Entrega puntual para la que se quiere además un comprobante de vida larga, p.ej.
+     *  `ruta_tienda:1234`. Opcional: el flujo en vivo no lo necesita. */
+    alcance?: string;
   };
 
   if (!store_cod || !otp) {
@@ -140,5 +143,13 @@ export async function PUT(request: NextRequest) {
     .single();
   const email = (tienda?.correos as string | null) ?? '';
 
-  return NextResponse.json({ valid: true, token: createOtpToken(email, otp.trim()), email });
+  // `alcance`, cuando viene, pide además un COMPROBANTE de esta verificación para una entrega
+  // puntual. Lo usa el flujo del chofer: verifica con señal y recién después la pierde, con el
+  // PATCH final pendiente en la cola. El token de 10 minutos no le sirve a esa cola (ver el
+  // encabezado de createReciboEntrega en src/lib/otpToken.ts).
+  const recibo = typeof alcance === 'string' && alcance
+    ? createReciboEntrega(email, otp.trim(), alcance)
+    : undefined;
+
+  return NextResponse.json({ valid: true, token: createOtpToken(email, otp.trim()), email, recibo });
 }

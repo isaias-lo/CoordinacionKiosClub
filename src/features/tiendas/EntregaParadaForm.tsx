@@ -7,6 +7,7 @@ import { safeStorageKey } from '@/lib/storageKey';
 import { formatRut } from '@/lib/rut';
 import { processPhoto } from '@/features/auditoria/utils/photos';
 import { encolarEntrega, type EntregaPendiente } from '@/app/conductor-hub/offlineQueue';
+import { alcanceEntrega } from '@/lib/alcanceEntrega';
 import { ENTREGA_FOTOS_BUCKET, subirFotoEntrega } from './entregaFotos';
 
 /**
@@ -194,6 +195,10 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
   const [otpVerificado, setOtpVerificado] = useState(false);
   const [otpToken,      setOtpToken]      = useState('');
   const [otpEmailFinal, setOtpEmailFinal] = useState('');
+  // Comprobante de vida larga para el PATCH que puede quedar en la cola. Ver `recibo` en
+  // src/app/conductor-hub/offlineQueue.ts: sin esto la entrega se perdía si tardaba más de 10
+  // minutos en sincronizar.
+  const [otpRecibo,     setOtpRecibo]     = useState('');
 
   const [fotoA, setFotoA] = useState<FotoItem[]>([]); // temperatura (congelado) | sello (seco)
   const [fotoB, setFotoB] = useState<FotoItem[]>([]); // entrega en tienda (congelado) | pallets (seco)
@@ -228,12 +233,15 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
     try {
       const res = await fetch('/api/recepcion-otp', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_cod: parada.store_cod, otp: otpInput }),
+        // `alcance` pide además el comprobante atado a ESTA parada. Se pide acá y no al encolar
+        // porque acá todavía hay señal: verificar el código la necesita sí o sí.
+        body: JSON.stringify({ store_cod: parada.store_cod, otp: otpInput, alcance: alcanceEntrega(parada.id) }),
       });
-      const json = await res.json() as { valid?: boolean; token?: string; email?: string; error?: string };
+      const json = await res.json() as { valid?: boolean; token?: string; email?: string; recibo?: string; error?: string };
       if (!res.ok || !json.valid) throw new Error(json.error ?? 'Código incorrecto');
       setOtpVerificado(true);
       setOtpToken(json.token ?? '');
+      setOtpRecibo(json.recibo ?? '');
       setOtpEmailFinal(json.email ?? otpEmailDestino);
     } catch (e) {
       setOtpError(e instanceof Error ? e.message : 'Sin conexión. Reintenta.');
@@ -277,9 +285,10 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
       receptor: receptor.trim(),
       rut: rut.trim(),
       observaciones: observaciones.trim() || undefined,
-      // El OTP ya se verificó EN VIVO recién — la cola solo reintenta el PATCH final con el mismo
-      // token firmado, nunca repite la verificación (vence a los 10 min, ver offlineQueue.ts).
-      otpToken, otpEmail: otpEmailFinal, otpCodigo: otpInput,
+      // El OTP ya se verificó EN VIVO recién. A la cola le va el comprobante de esa verificación,
+      // que dura 72 horas y sirve solo para esta parada; el token de 10 minutos viaja igual para
+      // el caso en que la sincronización sea inmediata. Ver offlineQueue.ts.
+      otpToken, otpEmail: otpEmailFinal, otpCodigo: otpInput, recibo: otpRecibo || undefined,
       intentos: 0,
       createdAt: Date.now(),
     };
