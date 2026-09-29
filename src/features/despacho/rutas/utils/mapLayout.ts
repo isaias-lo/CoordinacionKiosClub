@@ -48,18 +48,21 @@ export function mapaColapsado(opts: { modo: string; oculto: boolean }): boolean 
 }
 
 /**
- * El valor de `flex` del panel del mapa.
+ * Ancho de la CORTINA del mapa, superpuesta sobre la columna de flota.
  *
- * Colapsado devuelve `'0 0 0px'` y NO `null`/`undefined`: devolver algo falsy es justo lo que
- * llevaría a `{cond && <panel/>}` y al desmontaje que este módulo existe para evitar.
+ * El mapa dejó de ser una tercera columna que empuja el contenido: ahora lo TAPA. El pedido fue
+ * explícito —"que sea una tipo cortina que ocupe toda la columna derecha"— y la razón es de uso:
+ * empujando, abrir el mapa reacomodaba las tarjetas de camión y había que volver a buscar dónde
+ * quedó cada una. Tapando, lo de abajo no se mueve; se corre la cortina y sigue todo en su lugar.
+ *
+ * Devuelve un ancho en %, no un `flex`: la cortina se posiciona absoluta sobre la fila, así que su
+ * tamaño ya no se negocia con nadie.
+ *
+ * Colapsada mide `'0%'` y SIGUE MONTADA. Devuelve la cadena y NO `null`/`undefined` a propósito:
+ * algo falsy es justo lo que lleva al `{cond && <panel/>}` y al desmontaje que este módulo
+ * existe para evitar.
  */
-export function anchoMapa(colapsado: boolean, pct: number): string {
-  return colapsado ? '0 0 0px' : `0 0 ${clampMapPct(pct)}%`;
-}
-
-/** El `flex` de la columna de contenido: se queda con lo que el mapa no ocupa. */
-export function anchoContenido(colapsado: boolean, pct: number, hayMapa: boolean): string {
-  if (!hayMapa || colapsado) return '1 1 100%';
-  return `1 1 ${100 - clampMapPct(pct)}%`;
+export function anchoCortina(colapsado: boolean, pct: number): string {
+  return colapsado ? '0%' : `${clampMapPct(pct)}%`;
 }
 
