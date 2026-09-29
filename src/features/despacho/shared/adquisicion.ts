@@ -3,13 +3,20 @@
 //   · Adquisición   — una compra que sube al camión.
 //   · Web / retiro  — un pedido web que el cliente retira en la tienda.
 //
-// Los dos se comportan como un BULTO en todo lo que se cuenta y se numera: suman como bulto en los
-// totales y entran en la misma serie. La única diferencia es que NO se miden ni se pesan: la
-// tarjeta nace completa y apretar el botón es todo lo que hay que hacer.
+// Los dos se comportan como un BULTO en lo que se CUENTA —suman como bulto en los totales— pero
+// NO en lo que se numera. La otra diferencia es que no se miden ni se pesan: la tarjeta nace
+// completa y apretar el botón es todo lo que hay que hacer.
 //
-// Eso sale gratis por cómo está escrito `numeroCard`: `claseSantiago` y `claseNacional` caen por
-// defecto en 'bulto', así que un tipo nuevo ya se numera y se cuenta como bulto sin tocarlas. El
-// test de este módulo lo fija, para que nadie cambie ese `return 'bulto'` final sin enterarse.
+// TIENEN SU PROPIA SERIE: A1, A2, A3 y W1, W2, W3 (29/09/2026).
+//
+// Al principio caían en el `return 'bulto'` final de `claseSantiago`/`claseNacional` y se numeraban
+// como bultos. Salía gratis, pero salía mal de dos formas: en pantalla eran B4 y B5, indistinguibles
+// de un bulto de verdad, y —peor— el contador del alta de RM/Costa comparaba `i.tipo === 'Bulto'`,
+// que nunca coincide con 'Adquisicion'. Tres adquisiciones recibían el mismo número y, como el ID de
+// la fila es `${orden}${cod}${stamp}${prefijo}`, las tres colapsaban en UNA fila de la planilla.
+//
+// La letra no es nueva: `PREFIJO_ADQUISICION` y `PREFIJO_WEB_RETIRO` ya se usaban para el ID desde
+// el primer día. Lo que se arregló fue que la pantalla y el `orden` dijeran lo mismo que el ID.
 //
 // POR QUÉ SON DOS BOTONES Y NO UNO CON PREGUNTA. Un botón único obligaría a bautizar la familia en
 // pantalla, y el candidato natural —"Agregado"— YA ESTÁ USADO en la tarjeta con otro significado:
