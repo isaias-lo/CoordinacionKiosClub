@@ -12,6 +12,15 @@ describe('ordenToLabel', () => {
     expect(ordenToLabel('P1')).toBe('P1');
     expect(ordenToLabel('1B')).toBe('1B'); // no matchea el patrón letra+número
   });
+
+  it('la adquisición es A y el web/retiro es W', () => {
+    // Hueco que dejó el #611: al darles su propia clase, `ordenNacional` pasó a escribir
+    // `adquisicion3` / `webretiro2`, y este mapa no los conocía. La bitácora decía
+    // "Ingresó adquisicion3" en vez de "Ingresó A3" — el nombre interno crudo, delante de la gente.
+    expect(ordenToLabel('adquisicion1')).toBe('A1');
+    expect(ordenToLabel('adquisicion3')).toBe('A3');
+    expect(ordenToLabel('webretiro2')).toBe('W2');
+  });
 });
 
 describe('buildActividadMensaje', () => {

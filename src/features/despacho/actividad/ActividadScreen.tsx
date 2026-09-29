@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { BodegaHeader } from '../shared/BodegaHeader';
 import type { ActividadRow, FuenteActividad } from '@/lib/actividad';
 import { fechaChile } from '@/lib/fechaChile';
+import { opcionesDeFiltro, filtrarVisibles, avisoDeCorte } from './utils/feedActividad';
 
 // El día del CD. Este es el "Hoy" que mostraba mañana cuando se miraba después de las 21:00.
 const localDate = fechaChile;
@@ -24,6 +25,10 @@ const ACCION_META: Record<string, { verb: string; cls: string }> = {
   sumar:          { verb: 'Sumó',         cls: 'text-[#B45309] bg-[rgba(217,119,6,0.12)]' },
   registrar_dia:  { verb: 'Registró día', cls: 'text-navy bg-[rgba(26,37,80,0.08)]' },
   revertir:       { verb: 'Revirtió',     cls: 'text-[#0E7490] bg-[rgba(8,145,178,0.10)]' },
+  reingreso:      { verb: 'Repesó',       cls: 'text-[#B45309] bg-[rgba(217,119,6,0.12)]' },
+  // No es una acción de nadie: es el sistema contándose a sí mismo. Solo aparece con el
+  // interruptor de diagnóstico, y va apagado para que no compita con el trabajo de las personas.
+  merge_descarte: { verb: 'Sync quitó',   cls: 'text-text-3 bg-bg-2' },
 };
 
 function detalleOf(r: ActividadRow) {
@@ -43,24 +48,32 @@ export function ActividadScreen() {
   const [fuente, setFuente]   = useState<'' | FuenteActividad>('');
   const [usuario, setUsuario] = useState('');
   const [tienda, setTienda]   = useState('');
+  // El diagnóstico (`merge_descarte`) no se pide salvo que se marque: no es trabajo de nadie y era
+  // el 68% de lo que llegaba a esta pantalla. Ver `utils/feedActividad.ts`.
+  const [verDiagnostico, setVerDiagnostico] = useState(false);
+  const [total, setTotal] = useState<number | null>(null);
 
   const filtersRef = useRef({ fecha, fuente });
   filtersRef.current = { fecha, fuente };
 
   const load = useCallback(async () => {
     setLoading(true);
-    const qs = new URLSearchParams({ fecha });
+    // El tope explícito: sin él la API asume 200, y con 672 eventos en un día eso alcanzaba hasta
+    // media tarde — la mañana entera quedaba afuera sin decirlo.
+    const qs = new URLSearchParams({ fecha, limit: '1000' });
     if (fuente) qs.set('fuente', fuente);
+    if (verDiagnostico) qs.set('diagnostico', '1');
     try {
       const res  = await fetch(`/api/actividad?${qs.toString()}`);
-      const json = await res.json() as { data?: ActividadRow[] };
+      const json = await res.json() as { data?: ActividadRow[]; total?: number | null };
       setRows(json.data ?? []);
+      setTotal(json.total ?? null);
     } catch (e) {
       console.error('[actividad load]', e);
     } finally {
       setLoading(false);
     }
-  }, [fecha, fuente]);
+  }, [fecha, fuente, verDiagnostico]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -77,19 +90,15 @@ export function ActividadScreen() {
     return () => { void supabase.removeChannel(ch); };
   }, [load]);
 
-  // Opciones de filtro derivadas de lo cargado.
-  const usuarios = useMemo(
-    () => [...new Set(rows.map(r => r.actor_name).filter((x): x is string => !!x))].sort(),
-    [rows],
-  );
-  const tiendas = useMemo(
-    () => [...new Set(rows.map(r => r.tienda_cod).filter((x): x is string => !!x))].sort(),
-    [rows],
-  );
+  // Los desplegables salen de TODO lo cargado (reglas en `utils/feedActividad.ts`).
+  const { usuarios, tiendas } = useMemo(() => opcionesDeFiltro(rows), [rows]);
 
-  const visibles = rows.filter(r =>
-    (!usuario || r.actor_name === usuario) &&
-    (!tienda  || r.tienda_cod === tienda));
+  const visibles = useMemo(
+    () => filtrarVisibles(rows, { usuario, tienda, verDiagnostico }),
+    [rows, usuario, tienda, verDiagnostico],
+  );
+  // Que la lista esté cortada tiene que DECIRSE. Terminar sola se lee como "no hubo más".
+  const aviso = avisoDeCorte(rows.length, total);
 
   return (
     <div className="fixed inset-0 flex flex-col bg-bg overflow-hidden">
@@ -116,6 +125,13 @@ export function ActividadScreen() {
           <option value="">Todas las tiendas</option>
           {tiendas.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
+        <label className="flex items-center gap-1.5 text-[12px] text-text-3 cursor-pointer select-none whitespace-nowrap"
+          title="merge_descarte: lo que el sync quitó. No es trabajo de una persona.">
+          <input type="checkbox" checked={verDiagnostico}
+            onChange={e => setVerDiagnostico(e.target.checked)}
+            className="cursor-pointer accent-[#1E40AF]" />
+          ver diagnóstico
+        </label>
         {(usuario || tienda || fuente) && (
           <button onClick={() => { setUsuario(''); setTienda(''); setFuente(''); }}
             className="text-[12px] text-text-3 hover:text-[#1E40AF] cursor-pointer border-none bg-transparent underline">
@@ -123,9 +139,15 @@ export function ActividadScreen() {
           </button>
         )}
         <div className="ml-auto font-barlow-condensed text-[12px] text-text-3 tracking-wide leading-none flex-shrink-0 tabular-nums">
-          {visibles.length} reg.
+          {visibles.length}{total != null && total !== visibles.length ? ' de ' + total : ''} reg.
         </div>
       </div>
+
+      {aviso && (
+        <div className="flex-shrink-0 px-3 py-1.5 text-[12px] bg-[rgba(217,119,6,0.10)] border-b border-[rgba(217,119,6,0.25)] text-[#B45309]">
+          ⚠ {aviso}
+        </div>
+      )}
 
       {/* Feed en columnas */}
       <div className="flex-1 overflow-auto min-h-0">
