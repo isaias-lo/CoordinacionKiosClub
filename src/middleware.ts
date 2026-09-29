@@ -34,6 +34,11 @@ export async function middleware(request: NextRequest) {
   // Galería pública de fotos de recepción (link del Sheet RECEPCIÓN/TIENDA). Solo lectura por id.
   if (pathname.startsWith('/recepcion/galeria/')) return NextResponse.next();
 
+  // Pantalla de "sin conexión" del service worker. Tiene que ser pública por dos motivos: el worker
+  // la descarga al instalarse, que puede pasar antes de que alguien inicie sesión, y cuando se
+  // muestra no hay red con la que validar nada. No lee datos ni sesión: es un cartel.
+  if (pathname === '/offline') return NextResponse.next();
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -118,5 +123,9 @@ export const config = {
   // sesión — y a veces sin cookies, según el sistema. Si pasa por este middleware recibe un
   // redirect a /login, el navegador lo lee como un manifest inválido y la app deja de ofrecerse
   // para instalar, sin ningún error visible que explique por qué.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:b64|mjs|ico|png|jpg|jpeg|svg|gif|webp|webmanifest|woff2?|ttf)).*)'],
+  //
+  // `sw.js` es el mismo caso y peor: el navegador lo pide sin sesión, y si en vez del service
+  // worker recibe el HTML de /login, el registro falla con un error de tipo MIME. Se excluye por
+  // nombre y no por extensión `.js` para no abrir la puerta a cualquier otro archivo.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|sw\\.js|api/|.*\\.(?:b64|mjs|ico|png|jpg|jpeg|svg|gif|webp|webmanifest|woff2?|ttf)).*)'],
 };
