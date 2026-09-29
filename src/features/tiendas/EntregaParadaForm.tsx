@@ -274,7 +274,6 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
    *  sincronizar" — el chofer ve la parada como lista de inmediato, nunca se queda esperando. */
   async function encolarYAvisar(horaEntregaLocal: string) {
     const item: EntregaPendiente = {
-      id: crypto.randomUUID(),
       rutaTiendaId: parada.id,
       rutaId: parada.rutaId,
       storeCod: parada.store_cod,
@@ -289,8 +288,6 @@ export function EntregaParadaForm({ parada, tipo, onClose, onEntregado }: {
       // que dura 72 horas y sirve solo para esta parada; el token de 10 minutos viaja igual para
       // el caso en que la sincronización sea inmediata. Ver offlineQueue.ts.
       otpToken, otpEmail: otpEmailFinal, otpCodigo: otpInput, recibo: otpRecibo || undefined,
-      intentos: 0,
-      createdAt: Date.now(),
     };
     await encolarEntrega(item);
     onEntregado({ id: parada.id, hora_entrega: horaEntregaLocal, pendiente: true });
