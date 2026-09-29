@@ -1345,10 +1345,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     }
 
     const existing = items[cod] || [];
-    const pc  = existing.filter(i => i.tipo === 'Pallet').length + 1;
-    const bc  = existing.filter(i => i.tipo === 'Bulto').length + 1;
-    const cc  = existing.filter(i => i.tipo === 'Contenedor').length + 1;
-    const chc = existing.filter(i => i.tipo === 'Chocolate').length + 1;
+    // Por CLASE, no por igualdad de string. Los cuatro contadores de antes comparaban
+    // `i.tipo === 'Bulto'`, que nunca coincide con 'Adquisicion' ni con 'WebRetiro': las tres
+    // adquisiciones de una tienda recibían el MISMO número y colapsaban en una sola fila del ID.
+    const claseNueva = claseSantiago(row.tipo);
+    const posicionEnClase = existing.filter(i => claseSantiago(i.tipo) === claseNueva).length + 1;
     const pickingSlot = nuevoSlot ?? (slotId
       ? (pickingSlotsFull[cod] ?? []).find(s => s.id === slotId)
       : undefined);
@@ -1359,7 +1360,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       // El CH usa el seq del slot (el número impreso), no su posición entre los que hay ahora.
       orden: ordenDeItem(row.tipo, numeroVisibleCard({
         esChocolate: row.tipo === 'Chocolate',
-        posicion: row.tipo === 'Pallet' ? pc : row.tipo === 'Contenedor' ? cc : row.tipo === 'Chocolate' ? chc : bc,
+        posicion: posicionEnClase,
         seq: pickingSlot?.seq,
       })),
       estado: ESTADO_DEFAULT,
