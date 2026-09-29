@@ -30,6 +30,9 @@
 // La lápida arregla eso: el borrado se recuerda aparte de la base, y el merge descarta cualquier
 // ítem remoto que tenga una lápida puesta. Se levanta sola cuando la unidad se vuelve a crear
 // (Revertir), que es el único caso en que el ítem debe poder volver.
+//
+// [29/09] Además, las lápidas ahora SE COMPARTEN entre equipos (ver `lapidasComoLista` /
+// `absorberLapidas`) y son la única señal de borrado que respeta el merge.
 
 /**
  * Llaves con lápida. Sin TTL a propósito.
@@ -71,9 +74,25 @@ export function levantarLapida(slotId?: number | null): void {
   lapidas.delete(llaveDeSlot(slotId));
 }
 
-/** ¿Esta llave —la de `stableItemKey`— corresponde a algo que se borró acá? */
+/** ¿Esta llave —la de `stableItemKey`— corresponde a algo que se borró (acá o en otro equipo)? */
 export function tieneLapida(llave: string): boolean {
   return lapidas.has(llave);
+}
+
+/**
+ * Las lápidas viajan en el estado sincronizado (`borrados`). Desde el 29/09 el merge ya no lee
+ * "el remoto no trae este ítem" como borrado —esa lectura era la que hacía desaparecer pallets
+ * guardados cuando otro equipo empujaba una copia que todavía no los tenía—, así que la ÚNICA
+ * forma de que un ítem salga en los demás equipos es que les llegue su lápida.
+ */
+export function lapidasComoLista(): string[] {
+  return [...lapidas];
+}
+
+/** Incorpora las lápidas que trae un remoto. Solo llaves de slot: un id de slot no se reutiliza. */
+export function absorberLapidas(llaves: unknown): void {
+  if (!Array.isArray(llaves)) return;
+  for (const k of llaves) if (typeof k === 'string' && k.startsWith('slot:')) lapidas.add(k);
 }
 
 /** Solo para tests: vacía el registro. */

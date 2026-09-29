@@ -13,9 +13,7 @@ import { agregarSinDuplicar } from '@/features/despacho/shared/itemPorUnidad';
 import { fechaChile } from '@/lib/fechaChile';
 import { stableItemKey } from '@/features/despacho/shared/formRowsReconcile';
 import { serializarBase } from '@/features/despacho/shared/syncBase';
-import { tieneLapida } from '@/features/despacho/shared/lapidasBorrado';
-import { esSinPesar } from '@/features/despacho/shared/sinPesar';
-import { logActividad, ordenToLabel } from '@/lib/actividad';
+import { tieneLapida, lapidasComoLista, absorberLapidas } from '@/features/despacho/shared/lapidasBorrado';
 import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, type RegistroPorFecha } from '@/features/despacho/shared/registroPorFecha';
 
 const today = new Date();
@@ -316,6 +314,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Reject data from a different calendar day — prevents stale sessions from other devices
       // from pushing yesterday's guides into today's view. Old records without sessionDate are also rejected.
       if (remote.sessionDate !== SESSION_DATE) return;
+      // Las lápidas son acumulativas: se incorporan aunque el remoto sea viejo o sea mi eco.
+      absorberLapidas((remoteState as { borrados?: unknown }).borrados);
       // [C3/RC-6] Rechaza un remoto MÁS VIEJO que lo último que ya incorporé, ordenando por reloj del
       // SERVIDOR (updated_at) para no depender del reloj de cada equipo; sin server-stamp cae al
       // pushedAt del cliente (comportamiento previo). Evita que un push stale pise lo ya guardado.
@@ -352,19 +352,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // cual, el listener ya lo usa directo para el mensaje.
           window.dispatchEvent(new CustomEvent('bodega-conflicto-edicion', { detail: { tiendaNombre, orden: item.orden } }));
         },
-        // [Lápidas] Lo que se borró acá no vuelve, aunque el remoto todavía lo traiga y la base ya
-        // no lo recuerde. Sin esto, el borrado solo valía hasta el push siguiente (2,5 s).
-        tieneLapida,
-        // [Instrumentación 25/09] Solo los que tenían PESO: un ítem sin pesar que se descarta no
-        // es trabajo perdido, y filtrar acá mantiene el volumen en lo que importa. Si esto aparece
-        // seguido, la causa de "se agregan y aparecen como no agregado" es el merge; si no aparece
-        // nunca, hay que buscar en otro lado. Ver `mergeListaPorItem`.
-        (tiendaNombre, item) => {
-          if (esSinPesar(item)) return;
-          logActividad({ accion: 'merge_descarte', fuente: 'nacional', tiendaNombre,
-            label: ordenToLabel(item.orden ?? ''), peso: item.peso, alto: item.alto,
-            slotId: item.pickingSlotId });
-        });
+        // [Lápidas] Lo que se borró (acá o en otro equipo) no vuelve. Es la única señal de borrado
+        // que respeta el merge: desde el 29/09 la ausencia en el remoto ya no borra nada.
+        tieneLapida);
 
       // ── pdfData merge ── mismo criterio por-clave que las guías de RM/Costa (mergeEntriesByKey):
       // dirty ⇒ gana la local (subida/borrado sin empujar); limpia ⇒ manda la remota; y si el remoto
@@ -450,7 +440,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // el cleanup solo hacía clearTimeout, sin guardar nada.)
   useEffect(() => {
     if (!isInitializedRef.current) return;
-    const payload = { dispatch: state.dispatch, pdfData: state.pdfData, fechaDespacho: state.fechaDespacho, registrado: state.registrado, registros: state.registros };
+    const payload = { dispatch: state.dispatch, pdfData: state.pdfData, fechaDespacho: state.fechaDespacho, registrado: state.registrado, registros: state.registros, borrados: lapidasComoLista() };
     // [P5] "¿Hay algo que empujar?" mira el payload COMPLETO (incluye fechaDespacho/registrado);
     // la BASE del merge y del corta-ecos se guarda aparte con `serializarBase`.
     const current = JSON.stringify(payload);
@@ -519,7 +509,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Flush any pending debounced push immediately — call before navigating away so data is never lost.
   const flushPending = useCallback(() => {
     if (!isInitializedRef.current) return;
-    const payload = { dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData, fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado, registros: stateRef.current.registros };
+    const payload = { dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData, fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado, registros: stateRef.current.registros, borrados: lapidasComoLista() };
     const current = JSON.stringify(payload);
     if (current === lastPushedFullRef.current) return;
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }

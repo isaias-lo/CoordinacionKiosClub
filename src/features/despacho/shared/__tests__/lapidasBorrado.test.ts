@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { marcarLapida, levantarLapida, tieneLapida, llaveDeSlot, _limpiarLapidas } from '../lapidasBorrado';
+import { marcarLapida, levantarLapida, tieneLapida, llaveDeSlot, _limpiarLapidas, lapidasComoLista, absorberLapidas } from '../lapidasBorrado';
 import { mergeItemsByTienda, mergeListaPorItem, quitarLapidas } from '../../santiago/context/mergeItems';
 import { stableItemKey } from '../formRowsReconcile';
 
@@ -96,5 +96,26 @@ describe('quitarLapidas — la adopción completa de RM/Costa', () => {
   it('sin nada que quitar devuelve el MISMO objeto (no fuerza un render)', () => {
     const entrada = { TLC: [ch(1)] };
     expect(quitarLapidas(entrada, stableItemKey, tieneLapida)).toBe(entrada);
+  });
+});
+
+describe('lapidasBorrado — compartidas entre equipos (29/09)', () => {
+  it('lo que marco sale en la lista que viaja en el estado sincronizado', () => {
+    marcarLapida(7);
+    expect(lapidasComoLista()).toEqual(['slot:7']);
+  });
+
+  it('absorbe las lápidas de otro equipo y el merge descarta ese ítem', () => {
+    absorberLapidas(['slot:2']);
+    const merged = mergeItemsByTienda({ TLC: [ch(1), ch(2)] }, { TLC: [ch(1), ch(2)] }, { TLC: [ch(1), ch(2)] },
+      stableItemKey, undefined, tieneLapida);
+    expect(merged).toEqual({ TLC: [ch(1)] });
+  });
+
+  it('ignora basura: solo acepta llaves de slot', () => {
+    absorberLapidas(['id:x', 'orden:P1', 42, null, 'slot:9']);
+    absorberLapidas(undefined);
+    absorberLapidas('slot:3');
+    expect(lapidasComoLista()).toEqual(['slot:9']);
   });
 });
