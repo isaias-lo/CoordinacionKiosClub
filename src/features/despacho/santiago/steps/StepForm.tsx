@@ -13,7 +13,7 @@ import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
 import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
 import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
-import { numeroVisibleCard, ordenDeItem, renumerarOrden, etiquetaCard } from '@/features/despacho/shared/numeroCard';
+import { numeroVisibleCard, ordenDeItem, renumerarOrden, etiquetaCard, claseSantiago } from '@/features/despacho/shared/numeroCard';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
 import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
@@ -70,6 +70,7 @@ import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { fechaChile } from '@/lib/fechaChile';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
+import { esAgregado, etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
 
 /* ── Calendar localStorage ── */
 const todayKey = fechaChile();
@@ -1863,6 +1864,45 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       return;
     }
 
+    // [Agregados] Adquisición y Web/retiro: nacen COMPLETOS, sin formulario que llenar.
+    // Mismo camino que el chocolate —alta inmediata— pero sin medidas ni peso: ese es justamente el
+    // punto del tipo. Ver shared/adquisicion.
+    if (esAgregado(t)) {
+      if (!cod || !regimen) { showToast('Selecciona régimen', '#D97706'); return; }
+      let slot: PickingSlot | undefined = existingSlot;
+      if (!slot) {
+        const res = await crearSlotBodega({ date, store_cod: cod, tipo: TIPO_CODE[t], contenido: 'hogar' });
+        slot = res.slot;
+        // Sin fila en picking_pallets el ítem queda invisible para Seguimiento, Enrutador y el
+        // conteo de flota — el mismo modo de falla silenciosa que ya arregló el chocolate.
+        if (!slot) { showToast(`⚠ No se pudo agregar (${res.error}) — reintenta`, '#D32F2F'); return; }
+      }
+      setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot!] }));
+      const existing = items[cod] || [];
+      // Se numera en la serie de BULTOS: `claseSantiago` cae en 'bulto' y `ordenDeItem` devuelve
+      // `${n}B`. Un contador propio partiría la serie en dos.
+      const nb = existing.filter(i => claseSantiago(i.tipo) === 'bulto').length + 1 + countOffset;
+      const stamp = Date.now();
+      const item: SantiagoItem = {
+        id: `${cod}-agr-${stamp}-${countOffset}`, tiendaCod: cod, tipo: t,
+        // 'Hogar' es el contenido por defecto de toda fila nueva. No se inventa un valor propio:
+        // `clasificarContenido` no lo reconocería al releerlo y el round-trip se rompe en silencio
+        // — es el bug que documentó `contenidoCarga.ts` con el chocolate.
+        contenido: 'Hogar',
+        peso: 0, alto: 0, largo: 0, ancho: 0,
+        pesoVolumetrico: 0, regimen, orden: ordenDeItem(t, nb), estado: ESTADO_DEFAULT,
+        pickingSlotId: slot?.id,
+      };
+      dispatch({ type: 'ADD_ITEM', item });
+      setFormRows(prev => [...prev, {
+        id: `saved-agr-${stamp}-${countOffset}`, tipo: t, contenido: 'Hogar',
+        peso: '', alto: '', largo: '', ancho: '',
+        saved: true, savedItem: item, pickingSlotId: slot?.id,
+      }]);
+      showToast(`✓ ${etiquetaAgregado(t)} agregada`, '#16A34A');
+      return;
+    }
+
     const rowId = `row-${Date.now()}-${countOffset}`;
     // Agregar el form row de inmediato (respuesta visual), luego vincular el slot
     setFormRows(prev => [...prev, { id: rowId, tipo: t, contenido: 'Hogar', peso: '', alto: '', largo: '', ancho: '' }]);
@@ -2959,6 +2999,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             <button onClick={() => setDialogTipo('Bulto')}      className="flex-1 py-2.5 border-2 border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Bulto</button>
             <button onClick={() => setDialogTipo('Contenedor')} className="flex-1 py-2.5 border-2 border-dashed border-[#6B21A8]/50 text-[#6B21A8] rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Cont.</button>
             <button onClick={() => setDialogTipo('Chocolate')}  className="flex-1 py-2.5 border-2 border-dashed rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer" style={{ borderColor: 'rgba(146,64,14,0.50)', color: '#92400E' }}>+ Choc.</button>
+          </div>
+          {/* [Agregados] Segunda fila: no piden medidas ni peso, se crean de un toque. Van aparte y
+              no comparten fila con los otros cuatro porque son otra cosa — los de arriba se miden,
+              estos no. Ver shared/adquisicion. */}
+          <div className="flex gap-2 pb-2">
+            <button onClick={() => void addFormRow('Adquisicion')} className="flex-1 py-2.5 border-2 border-dashed rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer" style={{ borderColor: 'rgba(15,118,110,0.50)', color: '#0F766E' }}>+ Adquisición</button>
+            <button onClick={() => void addFormRow('WebRetiro')}   className="flex-1 py-2.5 border-2 border-dashed rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer" style={{ borderColor: 'rgba(109,40,217,0.50)', color: '#6D28D9' }}>+ Web / retiro</button>
           </div>
           {dialogTipo && currentTienda && (
             <AgregarPalletDialog

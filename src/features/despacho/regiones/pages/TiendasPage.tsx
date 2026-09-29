@@ -69,6 +69,7 @@ import { STORE_CARD_BADGE as SCB, claseTarjetaTienda, claseCodigoTienda, claseEt
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
+import { esAgregado, etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ──
    [Bug 60PBL, 2026-09-10] Antes esto era un `const` calculado UNA sola vez, al cargar el módulo.
@@ -1073,6 +1074,40 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         }).eq('id', slot.id).then(({ error }) => { if (error) console.error('[picking_pallets update]', error.message); });
       }
       showToast(`✓ ${item.orden} agregado`, '#16A34A');
+      return;
+    }
+
+    // [Agregados] Adquisición y Web/retiro: nacen COMPLETOS, sin formulario que llenar.
+    // Mismo camino que el chocolate —alta inmediata— pero sin medidas ni peso. Espejo exacto de lo
+    // que hace RM/Costa; los dos tableros tienen que comportarse igual. Ver shared/adquisicion.
+    if (esAgregado(pkg)) {
+      if (!cod || !selectedTienda) return;
+      let slot: PickingSlot | undefined = existingSlot;
+      if (!slot) {
+        const res = await crearSlotBodega({ date, store_cod: cod, tipo: PKG_CODE[pkg], contenido: 'hogar' });
+        slot = res.slot;
+        if (!slot) { showToast(`⚠ No se pudo agregar (${res.error}) — reintenta`, '#D32F2F'); return; }
+      }
+      const s2 = slot;
+      setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), s2] }));
+      const existing = dispatchData[selectedTienda] || [];
+      // Se numera en la serie de BULTOS: `claseNacional` cae en 'bulto' y `ordenNacional` devuelve
+      // `bultoN`. Un contador propio partiría la serie en dos.
+      const nb = existing.filter(i => claseNacional(i.pkg) === 'bulto').length + 1 + countOffset;
+      const stamp = Date.now();
+      const item: DispatchItem = {
+        id: crypto.randomUUID(),
+        orden: ordenNacional('bulto', nb), tipo: 'hogar', pkg,
+        peso: 0, alto: 0, ancho: 0, largo: 0,
+        guia: '', valor: 0, pickingSlotId: slot?.id,
+      };
+      dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item });
+      setFormRows(prev => [...prev, {
+        id: `saved-agr-${stamp}-${countOffset}`, pkg, tipo: 'hogar',
+        peso: '', alto: '', ancho: '', largo: '',
+        guia: '', valor: '', saved: true, savedItem: item, pickingSlotId: slot?.id,
+      }]);
+      showToast(`✓ ${etiquetaAgregado(pkg)} agregada`, '#16A34A');
       return;
     }
 
@@ -2328,6 +2363,20 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               onMouseEnter={e => (e.currentTarget.style.background = 'rgba(120,53,15,0.05)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
               + Choc.
+            </button>
+          </div>
+          {/* [Agregados] Segunda fila: no piden medidas ni peso y se crean de UN TOQUE, sin diálogo.
+              Van aparte porque son otra cosa: los de arriba se miden, estos no. */}
+          <div className="grid grid-cols-2 gap-1.5 pb-1">
+            <button onClick={() => void addFormRow('adquisicion')}
+              className="py-2 border border-dashed rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all"
+              style={{ borderColor: 'rgba(15,118,110,0.4)', color: '#0F766E', background: 'transparent' }}>
+              + Adquisición
+            </button>
+            <button onClick={() => void addFormRow('web-retiro')}
+              className="py-2 border border-dashed rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all"
+              style={{ borderColor: 'rgba(109,40,217,0.4)', color: '#6D28D9', background: 'transparent' }}>
+              + Web / retiro
             </button>
           </div>
           {dialogPkg && selectedTienda && (
