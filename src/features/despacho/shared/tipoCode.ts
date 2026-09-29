@@ -1,12 +1,30 @@
 /* ── Código de tipo para picking_pallets ──────────────────────────────────────
    Mapea el tipo/paquete de un item a la letra que espera picking_pallets
-   (create-bodega): P (pallet), B (bulto/box), C (contenedor), CH (chocolate).
-   Puro — centraliza el mapeo antes duplicado en StepForm (Santiago) y TiendasPage (Nacional). */
+   (create-bodega): P (pallet), B (bulto/box), C (contenedor), CH (chocolate),
+   A (adquisición), W (web/retiro).
+   Puro — centraliza el mapeo antes duplicado en StepForm (Santiago) y TiendasPage (Nacional).
 
-export type TipoCodePicking = 'P' | 'B' | 'C' | 'CH';
+   ⚠ EL `default` DE ESTAS DOS FUNCIONES ES 'P', Y ESO MUERDE.
 
-/** Santiago: 'Pallet' | 'Bulto' | 'Contenedor' | 'Chocolate' → P/B/C/CH. */
+   Cuando nacieron la adquisición y el web/retiro nadie las agregó acá, así que caían al default y
+   se guardaban como PALLET. En Nacional pasaba siempre; en RM/Costa a veces sí y a veces no,
+   porque StepForm se había hecho DOS mapas propios en línea —con A y W— y seguía llamando a
+   `tipoCodeSantiago` —sin A ni W— en otros tres sitios. El mismo envase salía 'A' o 'P' según por
+   dónde pasara.
+
+   El encabezado de este archivo decía "centraliza el mapeo antes duplicado", y la duplicación
+   había vuelto. Ahora los mapas en línea se borraron y esta es otra vez la única fuente.
+
+   Al agregar un envase nuevo: agregarlo ACÁ. El default se lo traga en silencio. */
+
+import { esAdquisicion, esWebRetiro } from './adquisicion';
+
+export type TipoCodePicking = 'P' | 'B' | 'C' | 'CH' | 'A' | 'W';
+
+/** Santiago: 'Pallet' | 'Bulto' | 'Contenedor' | 'Chocolate' | 'Adquisicion' | 'WebRetiro'. */
 export function tipoCodeSantiago(tipo: string): TipoCodePicking {
+  if (esAdquisicion(tipo)) return 'A';
+  if (esWebRetiro(tipo))   return 'W';
   switch (tipo) {
     case 'Contenedor': return 'C';
     case 'Chocolate':  return 'CH';
@@ -15,8 +33,10 @@ export function tipoCodeSantiago(tipo: string): TipoCodePicking {
   }
 }
 
-/** Nacional: pkg 'pallet' | 'box' | 'contenedor' | 'chocolate' → P/B/C/CH. */
+/** Nacional: pkg 'pallet' | 'box' | 'contenedor' | 'chocolate' | 'adquisicion' | 'web-retiro'. */
 export function pkgCodeNacional(pkg: string): TipoCodePicking {
+  if (esAdquisicion(pkg)) return 'A';
+  if (esWebRetiro(pkg))   return 'W';
   switch (pkg) {
     case 'contenedor': return 'C';
     case 'chocolate':  return 'CH';
@@ -42,6 +62,8 @@ export function botonDeTipoCode(code?: string | null): string | null {
     case 'B':  return '+ Bulto';
     case 'C':  return '+ Cont.';
     case 'CH': return '+ Choc.';
+    case 'A':  return '+ Adquisición';
+    case 'W':  return '+ Web / retiro';
     case 'CC': return '+ Caja cartón';
     case 'CN': return '+ Caja negra';
     default:   return null;
