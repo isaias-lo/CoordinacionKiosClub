@@ -10,7 +10,10 @@ import { fechaChile, fmtHoraChile } from '@/lib/fechaChile';
 import { progresoRuta, proximaParadaPendiente } from './progreso';
 import { moverEnLista } from './reordenar';
 import { formatFechaHistorial } from './historial';
-import { listarPendientes, actualizarPendiente, eliminarPendiente } from './offlineQueue';
+import { listarPendientes, actualizarPendiente, eliminarPendiente, migrarColaVieja,
+         soloLasBloqueadas, type EntregaPendiente } from './offlineQueue';
+import { drenar } from '@/lib/offline/drenar';
+import { clasificarEstado, pendientesDeEnvio } from '@/lib/offline/resultado';
 import { linkNavegacion, linkLlamar } from './contacto';
 
 // [Fase 6] Mismos motivos que ya entiende /incidencias (vía trazabilidad_unidades.tipo_incidencia)
@@ -227,7 +230,9 @@ export default function ConductorHubPage() {
   // aviso visible.
   useEffect(() => {
     if (!patente) return;
-    void sincronizarPendientes();
+    // Primero traer lo que haya quedado en la base anterior: son entregas ya confirmadas con la
+    // tienda que viven solo en este teléfono, así que si la versión nueva no las mira, se pierden.
+    void migrarColaVieja().then(() => sincronizarPendientes());
     const onOnline = () => void sincronizarPendientes();
     window.addEventListener('online', onOnline);
     const interval = setInterval(() => void sincronizarPendientes(), 60_000);
@@ -244,68 +249,80 @@ export default function ConductorHubPage() {
     // Las bloqueadas se cuentan aparte y NO entran en "sin subir": ese badge reintenta al tocarlo,
     // y una bloqueada no se mueve por más que se toque. Sumarlas ahí dejaría un contador que nunca
     // baja, que es otra forma de la misma falla silenciosa.
-    setPendientesCount(pendientes.filter(p => !p.bloqueado).length);
-    setBloqueadasCount(pendientes.filter(p =>  p.bloqueado).length);
+    setPendientesCount(pendientesDeEnvio(pendientes).length);
+    setBloqueadasCount(soloLasBloqueadas(pendientes).length);
     if (!pendientes.length) return;
     if (typeof navigator !== 'undefined' && !navigator.onLine) return; // no gastar intentos en vano
 
-    for (const item of pendientes) {
-      // Ya se sabe que el servidor la rechaza por algo que reintentar no arregla. Se deja quieta y
-      // a la vista (ver `bloqueado` en offlineQueue.ts) en vez de gastar subidas de fotos y
-      // requests en cada pasada, para siempre.
-      if (item.bloqueado) continue;
+    // El drenado en sí es el compartido (`src/lib/offline/drenar.ts`): manda de a uno, cuenta los
+    // intentos y marca lo que el servidor rechaza de forma definitiva. Lo único propio del
+    // conductor es CÓMO se manda una entrega, que son dos pasos.
+    await drenar<EntregaPendiente>(
+      pendientes,
+      async item => {
+        const entrega = item.payload;
 
-      try {
-        const fotos = await Promise.all(item.fotos.map(async f => {
-          if (f.url || !f.blob) return f;
-          const url = await subirFotoEntrega(f.blob, f.path);
-          return { ...f, url, blob: null };
-        }));
-        if (!fotos.every(f => f.url)) {
-          await actualizarPendiente({ ...item, fotos, intentos: item.intentos + 1 });
-          continue;
+        // Paso 1: subir las fotos que todavía son solo un blob.
+        //
+        // De a una y guardando el avance, no con un Promise.all: si la señal se corta en la
+        // tercera de cinco, con Promise.all se pierde también el resultado de las dos primeras y
+        // el próximo intento las vuelve a subir. En un teléfono en ruta, con señal que va y viene,
+        // eso puede ser subir la misma foto media docena de veces.
+        const fotos = [...entrega.fotos];
+        const conFotos = () => ({ ...item, payload: { ...entrega, fotos: [...fotos] } });
+        for (let i = 0; i < fotos.length; i++) {
+          const f = fotos[i];
+          if (f.url || !f.blob) continue;
+          try {
+            fotos[i] = { ...f, url: await subirFotoEntrega(f.blob, f.path), blob: null };
+          } catch {
+            return { veredicto: 'reintentar' as const, mensaje: 'no se pudo subir una foto', item: conFotos() };
+          }
         }
+
+        if (!fotos.every(f => f.url)) {
+          return { veredicto: 'reintentar' as const, mensaje: 'faltan fotos por subir', item: conFotos() };
+        }
+
+        // Paso 2: el PATCH final, con la hora REAL en que el chofer confirmó, no la de ahora.
         const res = await fetch('/api/rutas-despacho', {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            ruta_tienda_id: item.rutaTiendaId,
+            ruta_tienda_id: entrega.rutaTiendaId,
             foto_urls: fotos.map(f => f.url),
-            temperatura: item.temperatura,
-            hora_entrega: item.horaEntregaLocal,
+            temperatura: entrega.temperatura,
+            hora_entrega: entrega.horaEntregaLocal,
             // [Flujo único] El OTP ya se verificó EN VIVO al momento de encolar. Acá viaja el
             // comprobante de esa verificación (72 h, atado a esta parada) y también el token de
             // 10 minutos, que sirve cuando la sincronización sale de inmediato.
-            receptor: item.receptor, rut: item.rut, observaciones: item.observaciones,
-            otpToken: item.otpToken, otpEmail: item.otpEmail, otpCodigo: item.otpCodigo,
-            recibo: item.recibo,
+            receptor: entrega.receptor, rut: entrega.rut, observaciones: entrega.observaciones,
+            otpToken: entrega.otpToken, otpEmail: entrega.otpEmail, otpCodigo: entrega.otpCodigo,
+            recibo: entrega.recibo,
           }),
         });
-        if (!res.ok) {
-          // Un 4xx no se arregla reintentando: el comprobante no vale, o es de la versión anterior
-          // (sin `recibo`) y su token ya venció. Antes esto caía en el catch de abajo y la entrega
-          // se reintentaba eternamente mientras el chofer la veía como lista — con las fotos, el
-          // receptor y la hora real atrapados en el teléfono, sin que nadie se enterara.
-          if (res.status >= 400 && res.status < 500) {
-            await actualizarPendiente({
-              ...item, fotos, intentos: item.intentos + 1, bloqueado: true,
-              ultimoError: 'La verificación con la tienda ya no vale. Hay que registrar la entrega de nuevo.',
-            });
-            continue;
-          }
-          throw new Error('server');
+
+        const veredicto = clasificarEstado(res.status);
+        if (veredicto === 'ok') {
+          setRutas(prev => prev.map(r => r.id !== entrega.rutaId ? r : {
+            ...r,
+            ruta_tiendas: r.ruta_tiendas.map(t => t.id === entrega.rutaTiendaId ? { ...t, pendienteSync: false } : t),
+          }));
         }
-        await eliminarPendiente(item.id);
-        setRutas(prev => prev.map(r => r.id !== item.rutaId ? r : {
-          ...r,
-          ruta_tiendas: r.ruta_tiendas.map(t => t.id === item.rutaTiendaId ? { ...t, pendienteSync: false } : t),
-        }));
-      } catch {
-        await actualizarPendiente({ ...item, intentos: item.intentos + 1, ultimoError: 'No se pudo sincronizar' });
-      }
-    }
+        return {
+          veredicto,
+          // Un 4xx acá significa que la verificación con la tienda ya no vale, y eso no se arregla
+          // reintentando. El mensaje es el que va a leer el chofer en la pantalla.
+          mensaje: veredicto === 'bloqueado'
+            ? 'La verificación con la tienda ya no vale. Hay que registrar la entrega de nuevo.'
+            : `HTTP ${res.status}`,
+          item: conFotos(),
+        };
+      },
+      { guardar: actualizarPendiente, eliminar: eliminarPendiente },
+    );
     const quedan = await listarPendientes();
-    setPendientesCount(quedan.filter(p => !p.bloqueado).length);
-    setBloqueadasCount(quedan.filter(p =>  p.bloqueado).length);
+    setPendientesCount(pendientesDeEnvio(quedan).length);
+    setBloqueadasCount(soloLasBloqueadas(quedan).length);
   }
 
   // [Fase 4] `fecha` ahora es un parámetro (default hoy) — lo usa el historial para volver a
