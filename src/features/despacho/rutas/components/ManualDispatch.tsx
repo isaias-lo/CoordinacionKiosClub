@@ -22,6 +22,7 @@ import { visiblesEnTablero } from '../utils/flotaPorTablero';
 import { resumenEmpresa, empiezaPlegada, alternarEmpresa, textoResumen } from '../utils/plegadoEmpresa';
 import { FaseEnrutador } from './FaseEnrutador';
 import type { FaseInfo } from '../utils/faseEnrutador';
+import { estadoDeCarga, acomodarSegunRuta, moverEnLista, textoEstadoCarga } from '../utils/ordenCarga';
 
 interface StoreTag { c: string; p: number; b: number; }
 
@@ -85,6 +86,13 @@ interface Props {
   /** [Fase] Indicador 1-5 arriba de la columna de flota. Vivía FUERA del componente y solo en
    *  Despacho; acá lo ven los tres tableros. El cálculo sigue en `utils/faseEnrutador`. */
   fase?: FaseInfo;
+  /** [Fondo/cola] Orden de ENTREGA por patente, cuando ya se calculó. Sin esto la tarjeta dice
+   *  "sin ruta calculada" — que es la verdad la mayor parte del tiempo. */
+  ordenRuta?: Record<string, string[]>;
+  /** [Fondo/cola] Avisa que esta patente quedó con orden MANUAL: al cerrar no se recalcula. */
+  onOrdenManual?: (patente: string) => void;
+  /** Patentes cuyo orden de carga lo decidió una persona. */
+  ordenManual?: Set<string>;
   cerrarSel?: Set<string>;
   onToggleCerrarSel?: (patente: string) => void;
   onCerrarVarios?: (patentes: string[]) => void;
@@ -155,6 +163,9 @@ export default function ManualDispatch({
   onSelectTruck,
   scrollContainerRef,
   fase,
+  ordenRuta,
+  onOrdenManual,
+  ordenManual,
   cerrarSel,
   onToggleCerrarSel,
   onCerrarVarios,
@@ -172,6 +183,18 @@ export default function ManualDispatch({
   // [Flota plegable] Qué empresas están plegadas. Se recuerda por navegador: con seis empresas, la
   // persona que trabaja siempre con dos no tiene por qué volver a plegar las otras cuatro cada vez.
   // La regla por defecto —plegada si no tiene carga— vive en utils/plegadoEmpresa.
+  // [Fondo/cola] Qué fila se está arrastrando para reordenar DENTRO de un camión. Es un arrastre
+  // distinto del de mover una tienda a otro camión: ese lo dispara el chip, este solo el asa.
+  const [reordenando, setReordenando] = useState<{ patente: string; idx: number } | null>(null);
+
+  function reordenarCarga(patente: string, desde: number, hasta: number) {
+    const lista = asignaciones[patente] ?? [];
+    if (desde === hasta) return;
+    emitir({ ...asignaciones, [patente]: moverEnLista(lista, desde, hasta) });
+    // Queda marcado como manual: a partir de acá el cierre NO recalcula este camión.
+    onOrdenManual?.(patente);
+  }
+
   const [plegadas, setPlegadas] = useState<Record<string, boolean>>(() => {
     if (typeof window === 'undefined') return {};
     try { return JSON.parse(localStorage.getItem('enrutador_empresas_plegadas') ?? '{}') as Record<string, boolean>; }
@@ -994,8 +1017,17 @@ export default function ManualDispatch({
                 ))}
               </div>
 
-              {/* ── Tiendas asignadas ── */}
-              <div className="px-2.5 pb-2 pt-1.5 flex flex-wrap gap-[5px] min-h-[42px] flex-1 min-w-0">
+              {/* ── Tiendas asignadas ──
+                  En COLUMNA y no en chips envueltos: el eje fondo→cola tiene que leerse en una sola
+                  dirección. Envuelto, la segunda fila empieza otra vez por la izquierda y el eje
+                  deja de significar nada. */}
+              {stores.length > 0 && (
+                <div className="px-2.5 pt-1 flex items-center gap-1.5" aria-hidden="true">
+                  <span className="text-[9px] font-extrabold tracking-wider text-kmuted">FONDO · cabina</span>
+                  <span className="flex-1 h-px" style={{ background: 'linear-gradient(to right, rgba(27,42,107,.35), rgba(27,42,107,.06))' }} />
+                </div>
+              )}
+              <div className="px-2.5 pb-2 pt-1.5 flex flex-col gap-[5px] min-h-[42px] flex-1 min-w-0">
                 {stores.length === 0 ? (
                   <div className={`w-full flex items-center justify-center rounded-[10px] border-[1.5px] border-dashed transition-colors min-h-[34px] ${isOver ? 'border-knavy/50 bg-knavy/[0.04]' : 'border-black/[0.12]'}`}>
                     <span className={`text-[12px] font-semibold transition-colors ${isOver ? 'text-knavy' : 'text-kmuted/50'}`}>
@@ -1003,9 +1035,10 @@ export default function ManualDispatch({
                     </span>
                   </div>
                 ) : (
-                  stores.map(t => {
+                  stores.map((t, idx) => {
                     const parada = paradas.find(p => p.id === t.c);
-                    return parada ? (
+                    const reordenandoAqui = reordenando?.patente === v.p;
+                    const chip = parada ? (
                       <ParadaTagComp
                         key={t.c} parada={parada}
                         isDragging={dragging?.c === t.c}
@@ -1030,9 +1063,73 @@ export default function ManualDispatch({
                         requireConfirm
                       />
                     );
+                    return (
+                      <div
+                        key={t.c}
+                        className="flex items-center gap-1 min-w-0"
+                        onDragOver={e => { if (reordenandoAqui) { e.preventDefault(); e.stopPropagation(); } }}
+                        onDrop={e => {
+                          if (!reordenandoAqui) return;
+                          // `stopPropagation`: sin esto el drop sube a la tarjeta del camión y se
+                          // resuelve como "soltar carga acá", que no es lo que se está haciendo.
+                          e.preventDefault(); e.stopPropagation();
+                          reordenarCarga(v.p, reordenando!.idx, idx);
+                          setReordenando(null);
+                        }}
+                      >
+                        {/* El asa es el ÚNICO disparador del reordenamiento. El chip conserva su
+                            propio arrastre, que es el que mueve la tienda a otro camión. */}
+                        <span
+                          draggable
+                          onDragStart={e => { e.stopPropagation(); setReordenando({ patente: v.p, idx }); }}
+                          onDragEnd={() => setReordenando(null)}
+                          title="Arrastra para cambiar el orden de carga"
+                          aria-label={`Mover ${t.c} en el orden de carga`}
+                          className="flex-shrink-0 grid grid-cols-2 gap-[2px] px-[3px] py-1 rounded cursor-grab active:cursor-grabbing opacity-35 hover:opacity-90 transition-opacity"
+                        >
+                          {[0, 1, 2, 3, 4, 5].map(i => (
+                            <span key={i} className="w-[2.5px] h-[2.5px] rounded-full bg-knavy" />
+                          ))}
+                        </span>
+                        <div className="min-w-0 flex-1">{chip}</div>
+                      </div>
+                    );
                   })
                 )}
               </div>
+
+              {/* [Fondo/cola] El pie: dónde está la puerta y cómo quedó la carga. */}
+              {stores.length > 0 && (() => {
+                const diag = estadoDeCarga(stores.map(x => x.c), ordenRuta?.[v.p]);
+                const manual = ordenManual?.has(v.p) ?? false;
+                const color = diag.estado === 'en-orden' ? '#15803D' : diag.estado === 'contradice' ? '#B45309' : '#8E8E93';
+                return (
+                  <div className="px-2.5 pb-1.5 -mt-1">
+                    <div className="flex items-center gap-1.5 mb-1" aria-hidden="true">
+                      <span className="flex-1 h-px" style={{ background: 'linear-gradient(to right, rgba(27,42,107,.06), rgba(27,42,107,.35))' }} />
+                      <span className="text-[9px] font-extrabold tracking-wider text-kmuted">COLA · puerta (sale 1ª)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="w-[6px] h-[6px] rounded-full flex-shrink-0" style={{ background: color }} />
+                      <span className="text-[10.5px] font-semibold" style={{ color }}>{textoEstadoCarga(diag.estado)}</span>
+                      {manual && (
+                        <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(27,42,107,.08)', color: '#1B2A6B' }}
+                              title="Este camión se cierra con el orden que le diste, sin recalcular">
+                          orden manual
+                        </span>
+                      )}
+                      {diag.estado === 'contradice' && (
+                        <button
+                          onClick={() => { emitir({ ...asignaciones, [v.p]: acomodarSegunRuta(stores.map(x => x.c), ordenRuta?.[v.p]).map(c => stores.find(x => x.c === c)!).filter(Boolean) }); onOrdenManual?.(v.p); }}
+                          className="ml-auto text-[10px] font-bold px-2 py-[2px] rounded border border-amber-300 text-amber-700 bg-amber-50"
+                        >
+                          Acomodar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Cerrar camión y generar su manifiesto (registro por camión). Cerrado → verde. */}
               {onCerrarCamion && stores.length > 0 && (

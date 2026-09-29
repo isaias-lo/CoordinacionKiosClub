@@ -32,6 +32,10 @@ interface Props {
   fase: FaseInfo;
   /** [Fase] La del tablero de Congelados, calculada con la misma función pura. */
   faseCong?: FaseInfo;
+  /** [Fondo/cola] Orden de entrega ya calculado y marca de orden manual — pasan al tablero. */
+  ordenRuta?: Record<string, string[]>;
+  ordenManual?: Set<string>;
+  onOrdenManual?: (patente: string) => void;
   calT: Record<string, CalData>;
   /** Qué camiones usa cada tablero. Separado de `on` (en servicio, global) — ver
    *  utils/flotaPorTablero: antes eran el mismo interruptor y los dos tableros se pisaban. */
@@ -143,7 +147,7 @@ const MODES: { id: string; Icon: LIcon; label: string; color: string }[] = [
 
 /* ── Main component ──────────────────────────────────────────────── */
 export default function InputSection({
-  flota, flotaStatus, modo, fase, faseCong, calT, calTCong, asignacionesCong, onAsignacionesCong, manualText, errors,
+  flota, flotaStatus, modo, fase, faseCong, ordenRuta, ordenManual, onOrdenManual, calT, calTCong, asignacionesCong, onAsignacionesCong, manualText, errors,
   onCerrarCamionCong, cerrarSelCong, onToggleCerrarSelCong, onCerrarVariosCong, esCerradaCong,
   seleccionSeco, onToggleSeleccionSeco, seleccionCong, onToggleSeleccionCong,
   tiendas, gps, cd, manualAsignaciones,
@@ -383,7 +387,7 @@ export default function InputSection({
         ) : modo === 'cong' ? (
           <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
             <div className="p-3">
-              <ManualDispatch fase={faseCong} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+              <ManualDispatch fase={faseCong} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                 asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
                 seleccion={seleccionCong} onToggleSeleccion={onToggleSeleccionCong}
                 onCalcular={() => {}} hideCalcular
@@ -405,7 +409,7 @@ export default function InputSection({
           <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
             {modo === 'drag' && (
               <div className="p-3">
-                <ManualDispatch fase={fase} calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+                <ManualDispatch fase={fase} ordenRuta={ordenRuta} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                   paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
                 seleccion={seleccionSeco} onToggleSeleccion={onToggleSeleccionSeco}
                   onCalcular={onCalcularManual} onEliminarParada={onEliminarParada}
@@ -520,7 +524,7 @@ export default function InputSection({
       ) : modo === 'cong' ? (
         <div ref={dragScrollRef} className="flex-1 overflow-y-auto">
           <div className="p-4">
-            <ManualDispatch fase={faseCong} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+            <ManualDispatch fase={faseCong} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
               asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
                 seleccion={seleccionCong} onToggleSeleccion={onToggleSeleccionCong}
               onCalcular={() => {}} hideCalcular
@@ -550,6 +554,9 @@ export default function InputSection({
             <div className="p-4">
               <ManualDispatch
                 fase={fase}
+                ordenRuta={ordenRuta}
+                ordenManual={ordenManual}
+                onOrdenManual={onOrdenManual}
                 calT={calT}
                 flota={flota}
                 gps={gps}
