@@ -55,7 +55,12 @@ export interface ActividadCtx {
 export function ordenToLabel(orden: string): string {
   const m = orden.match(/^([a-zA-Z]+)(\d+)$/);
   if (!m) return orden;
-  const map: Record<string, string> = { pallet: 'P', bulto: 'B', contenedor: 'C', chocolate: 'CH' };
+  const map: Record<string, string> = {
+    pallet: 'P', bulto: 'B', contenedor: 'C', chocolate: 'CH',
+    // Las dos clases que nacieron en el #611. Sin ellas la bitácora escribía el nombre interno
+    // crudo —"Ingresó adquisicion3"— en vez de la etiqueta que se ve en la tarjeta.
+    adquisicion: 'A', webretiro: 'W',
+  };
   return (map[m[1].toLowerCase()] ?? m[1]) + m[2];
 }
 
