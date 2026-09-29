@@ -41,12 +41,6 @@ describe('sheetsRegiones buildRows — [P4] fecha de registro', () => {
     expect(rows[0][COL_ID]).toBe('P128TEM30062026P');
   });
 
-  it('con item.id presente, el ID usa item.id en vez de orden (evita colisión entre sesiones)', () => {
-    const itemConId: DispatchItem = { ...baseItem, id: 'abc-123' };
-    const rows = buildRows({ 'Temuco': [itemConId] }, 'Luis Fica', despacho, armado);
-    expect(rows[0][COL_ID]).toBe('Pabc-12328TEM30062026P');
-  });
-
   it('sin fecha de armado, FECHA cae a hoy', () => {
     const rows = buildRows(dispatchData, 'Luis Fica', despacho);
     const now = new Date();

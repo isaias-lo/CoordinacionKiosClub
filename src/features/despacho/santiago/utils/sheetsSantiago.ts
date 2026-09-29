@@ -53,10 +53,7 @@ export function buildRows(
       // (pérdida de datos). Con 0 numérico, peso_kg = 0 (no null) y hasDims se mantiene true.
       const sinPesar = esSinPesar(item);
       rows.push([
-        // ID: usa item.id (estable, sobrevive al renumber) en vez de item.orden (posición que se
-        // recalcula en cada navegador) — con `orden` dos sesiones abiertas a la vez podían generar
-        // el MISMO id para pallets distintos, y el UPDATE de sheets-write pisaba uno con el otro.
-        `${item.id}${stamp}${tipoPrefix}`,                                 // ID — mantiene stamp de despacho (idempotencia del registro)
+        `${item.orden}${cod}${stamp}${tipoPrefix}`,                       // ID — mantiene stamp de despacho (idempotencia del registro)
         fechaArmadoFmt,                                                    // FECHA (armado) [P4] — llave de match cod+fecha
         cod,                                                               // COD
         tienda.tienda,                                                     // TIENDA

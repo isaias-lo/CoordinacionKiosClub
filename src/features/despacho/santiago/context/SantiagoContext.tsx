@@ -9,10 +9,8 @@ import type {
 import { useAuth } from '@/components/AuthProvider';
 import { pushSessionState, fetchSessionStateMeta, subscribeToSessionState, remotoEsMasViejo } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
-import { mergeItemsByTienda, itemsFromSnapshot, quitarLapidas } from './mergeItems';
-import { tieneLapida } from '../../shared/lapidasBorrado';
-import { esSinPesar } from '../../shared/sinPesar';
-import { logActividad } from '@/lib/actividad';
+import { mergeItemsByTienda, itemsFromSnapshot } from './mergeItems';
+import { tieneLapida, lapidasComoLista, absorberLapidas } from '../../shared/lapidasBorrado';
 import { agregarSinDuplicar } from '../../shared/itemPorUnidad';
 import { stableItemKey } from '../../shared/formRowsReconcile';
 import { serializarBaseSantiago } from '../../shared/syncBase';
@@ -36,6 +34,8 @@ type SyncableState = {
   registrado?: boolean;
   /** La fuente de verdad: qué días quedaron registrados. Ver shared/registroPorFecha. */
   registros?: RegistroPorFecha;
+  /** Lápidas compartidas: la única señal de borrado que respeta el merge. Ver shared/lapidasBorrado. */
+  borrados?: string[];
 };
 
 const todayKey = fechaChile();
@@ -200,9 +200,6 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   const lastServerStampRef   = useRef<number>(0); // [C3/RC-6] updated_at (reloj SERVIDOR) del último push/adopción
   const catchUpRef        = useRef<() => void>(() => {}); // [P9] re-fetch + apply remoto (catch-up)
   const pendingCatchupRef = useRef(false);        // [P9] remoto llegó durante push local → catch-up al terminar
-  const lastPushCompletedAtRef = useRef<number>(0); // timestamp when last Supabase push completed
-  // [P5] Catch-up programado cuando un remoto cae dentro de la ventana de 3 s post-push.
-  const ventanaCatchupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vencimientoPushRef = useRef<number>(0);   // tope del debounce (ver lib/esperaDePush)
 
   // Load + subscribe + poll (Realtime fires instantly; poll is the guaranteed fallback)
@@ -222,24 +219,13 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       // trabajo con varias personas — después este equipo escribía el blob COMPLETO, sin lo suyo,
       // y la fila es una sola por día donde gana el último que escribe. Ver AppContext, misma nota.
       if (isPushingRef.current) { pendingCatchupRef.current = true; return; }
-      // Block for 3 s after push completes — Supabase propagation lag can cause stale remote to
-      // overwrite our data. No se descarta: se PROGRAMA un catch-up para cuando la ventana expire
-      // (ver misma nota/incidente en AppContext.tsx).
-      const restante = 3_000 - (Date.now() - lastPushCompletedAtRef.current);
-      if (restante > 0) {
-        if (ventanaCatchupRef.current === null) {
-          ventanaCatchupRef.current = setTimeout(() => {
-            ventanaCatchupRef.current = null;
-            catchUpRef.current();
-          }, restante + 50);
-        }
-        return;
-      }
       // Block for 30 s after an intentional RESET to prevent remote from restoring cleared data
       if (Date.now() - clearedAtRef.current < 30_000) return;
       // Reject data without an explicit sessionDate or from a different calendar day
       const remoteSessionDate = (remoteState as { sessionDate?: string }).sessionDate;
       if (!remoteSessionDate || remoteSessionDate !== todayKey) return;
+      // Las lápidas son acumulativas: se incorporan aunque el remoto sea viejo o sea mi eco.
+      absorberLapidas((remoteState as { borrados?: unknown }).borrados);
       // [C3/RC-6] Rechaza un remoto MÁS VIEJO que lo último que incorporé, ordenando por reloj del
       // SERVIDOR (updated_at) y no por el de cada equipo; sin server-stamp cae al pushedAt del cliente.
       const rawPushedAt = (remoteState as { pushedAt?: number }).pushedAt;
@@ -271,26 +257,22 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
             if (typeof window === 'undefined') return;
             window.dispatchEvent(new CustomEvent('bodega-conflicto-edicion', { detail: { cod, orden: item.orden } }));
           },
-          // [Lápidas] Lo que se borró acá no vuelve, aunque el remoto todavía lo traiga y la base
-          // ya no lo recuerde. Ver `shared/lapidasBorrado.ts`.
-          tieneLapida,
-        // [Instrumentación 25/09] Solo los que tenían PESO: un ítem sin pesar que se descarta no
-        // es trabajo perdido, y filtrar acá mantiene el volumen en lo que importa. Si esto aparece
-        // seguido, la causa de "se agregan y aparecen como no agregado" es el merge; si no aparece
-        // nunca, hay que buscar en otro lado. Ver `mergeListaPorItem`.
-          (cod, item) => {
-            if (esSinPesar(item)) return;
-            logActividad({ accion: 'merge_descarte', fuente: 'rmcosta', tiendaCod: cod,
-              label: item.orden, peso: item.peso, alto: item.alto, slotId: item.pickingSlotId });
-          });
+          // [Lápidas] Lo que se borró (acá o en otro equipo) no vuelve. Ver `shared/lapidasBorrado.ts`.
+          tieneLapida);
         dispatch({ type: 'LOAD_STATE', payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: merged } });
       } else {
-        // Lo local está limpio → se adopta el remoto tal cual. Ojo: "limpio" es EXACTAMENTE como
-        // queda este equipo justo después de empujar, así que por acá volvían de una sola vez
-        // TODOS los ítems borrados hace un momento. Las lápidas se aplican también en esta rama.
+        // Lo local está limpio → se adopta el remoto, PERO lo que yo tengo y el remoto no trae se
+        // conserva (ausencia no es borrado; ver mergeItems). "Limpio" es exactamente como queda
+        // este equipo justo después de empujar, y el remoto de un equipo que aún no recibió mi
+        // pallet no lo trae: antes acá se adoptaba el remoto entero y el pallet desaparecía.
+        // Si quedé con algo que el remoto no tiene, la base pasa a ser el remoto → el estado queda
+        // "sucio" y el próximo push lo sube, así el servidor también lo recupera.
         lastPushedRef.current = remoteStr;
-        const items = remote.items ? quitarLapidas(remote.items, stableItemKey, tieneLapida) : remote.items;
-        dispatch({ type: 'LOAD_STATE', payload: items === remote.items ? remote : { ...remote, items } });
+        const localItems = stateRef.current.items ?? {};
+        const items = remote.items
+          ? mergeItemsByTienda(remote.items, localItems, localItems, stableItemKey, undefined, tieneLapida)
+          : remote.items;
+        dispatch({ type: 'LOAD_STATE', payload: { ...remote, items } });
       }
     };
 
@@ -307,10 +289,19 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
         // Reject data without an explicit sessionDate or from a different calendar day
         const remoteSessionDate = (m.state as { sessionDate?: string }).sessionDate;
         if (!remoteSessionDate || remoteSessionDate !== todayKey) return;
+        absorberLapidas((m.state as { borrados?: unknown }).borrados);
         const s = normalize(m.state as SyncableState);
         lastPushedRef.current = serializarBaseSantiago(s);
         if (m.updatedAt != null) lastServerStampRef.current = m.updatedAt; // [C3/RC-6] base del reloj de servidor
-        dispatch({ type: 'LOAD_STATE', payload: s });
+        // [29/09] Se UNE con lo que este equipo tenía en localStorage en vez de reemplazarlo. Si
+        // alguien guardó un pallet y salió de la pantalla antes del push (2,5 s), el desmontaje lo
+        // deja solo en localStorage; antes, al volver, el remoto lo pisaba y el pallet se perdía.
+        // Si queda algo que el remoto no tenía, la base (= remoto) difiere → el próximo push lo sube.
+        const localItems = stateRef.current.items ?? {};
+        const items = s.items
+          ? mergeItemsByTienda(s.items, localItems, localItems, stableItemKey, undefined, tieneLapida)
+          : s.items;
+        dispatch({ type: 'LOAD_STATE', payload: { ...s, items } });
       })
       .catch(() => { isInitializedRef.current = true; });
 
@@ -343,10 +334,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       } catch {}
     }, TICK_MS);
 
-    return () => {
-      unsub(); clearInterval(pollId);
-      if (ventanaCatchupRef.current) { clearTimeout(ventanaCatchupRef.current); ventanaCatchupRef.current = null; }
-    };
+    return () => { unsub(); clearInterval(pollId); };
   }, [userId]);
 
   // Debounced push to Supabase (2.5 s after last change) + localStorage fallback.
@@ -358,6 +346,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     const payload: SyncableState = {
       step: state.step, regimen: state.regimen, items: state.items,
       fechaDespacho: state.fechaDespacho, registrado: state.registrado, registros: state.registros,
+      borrados: lapidasComoLista(),
     };
     // [P5] El chequeo de cambios mira el payload COMPLETO; la base del merge/corta-ecos va aparte.
     const current = JSON.stringify(payload);
@@ -380,7 +369,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
         .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6] reloj de servidor de mi push
         .catch(() => { lastPushedRef.current = prevLastPushed; lastPushedFullRef.current = prevLastFull; }) // reset so dirty check retries correctly
         .finally(() => {
-          isPushingRef.current = false; lastPushCompletedAtRef.current = Date.now();
+          isPushingRef.current = false;
           // [P9] Si llegó un remoto mientras empujábamos, ponerse al día ahora (no se descarta).
           if (pendingCatchupRef.current) { pendingCatchupRef.current = false; catchUpRef.current(); }
         });
@@ -416,6 +405,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     const payload: SyncableState = {
       step: stateRef.current.step, regimen: stateRef.current.regimen, items: stateRef.current.items,
       fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado, registros: stateRef.current.registros,
+      borrados: lapidasComoLista(),
     };
     const current = JSON.stringify(payload);
     if (current === lastPushedFullRef.current) return;
@@ -429,8 +419,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     lastPushTimestampRef.current = pushedAt;
     pushSessionState('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined)
       .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6]
-      .catch(() => { lastPushedRef.current = prevPushed; lastPushedFullRef.current = prevFull; })
-      .finally(() => { lastPushCompletedAtRef.current = Date.now(); });
+      .catch(() => { lastPushedRef.current = prevPushed; lastPushedFullRef.current = prevFull; });
     try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...stateRef.current, _savedAt: Date.now() })); } catch {}
   }, [userId]);
 

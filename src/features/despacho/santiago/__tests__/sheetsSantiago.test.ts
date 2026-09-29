@@ -38,12 +38,10 @@ describe('sheetsSantiago buildRows — [P4] fecha de registro', () => {
     expect(rows[0][COL_FECHA_ARMADO]).toBe('29/06/2026');
   });
 
-  it('el ID mantiene el stamp de DESPACHO (idempotencia del registro) y usa item.id, no item.orden', () => {
+  it('el ID mantiene el stamp de DESPACHO (idempotencia del registro)', () => {
     const rows = buildRows(items, 'Falabella', despacho, armado);
     expect(String(rows[0][COL_ID])).toContain('30062026');
-    // item.id ('x1') es estable y sobrevive al renumber; item.orden ('P1') NO se usa en el ID
-    // porque dos sesiones abiertas a la vez podían recalcularlo distinto y colisionar/pisarse.
-    expect(rows[0][COL_ID]).toBe('x130062026P');
+    expect(rows[0][COL_ID]).toBe('P132BNV30062026P');
   });
 
   it('sin fecha de armado, FECHA cae a hoy', () => {

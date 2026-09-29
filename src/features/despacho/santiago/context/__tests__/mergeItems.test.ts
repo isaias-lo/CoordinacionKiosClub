@@ -7,11 +7,35 @@ const P = (id: string, v?: number): Item => (v === undefined ? { id } : { id, v 
 const K = (i: Item) => i.id; // llave estable (C1)
 
 describe('mergeItemsByTienda', () => {
-  it('adopta la versión REMOTA de una tienda que no cambié localmente (fix del revert)', () => {
+  it('adopta la versión REMOTA de una tienda que no cambié localmente (edición del otro equipo)', () => {
+    const lastSynced = { PTV: [P('P1', 1), P('P2', 2)] };
+    const local      = { PTV: [P('P1', 1), P('P2', 2)] }; // igual a lastSynced (no la cambié)
+    const remote     = { PTV: [P('P1', 9), P('P2', 2)] }; // el otro editó P1
+    expect(mergeItemsByTienda(remote, local, lastSynced, K)).toEqual({ PTV: [P('P1', 9), P('P2', 2)] });
+  });
+
+  it('una unión hecha en otro equipo se propaga por las LÁPIDAS de lo absorbido', () => {
     const lastSynced = { PTV: [P('P1'), P('P2'), P('CH1'), P('CH2')] };
-    const local      = { PTV: [P('P1'), P('P2'), P('CH1'), P('CH2')] }; // igual a lastSynced (no la cambié)
+    const local      = { PTV: [P('P1'), P('P2'), P('CH1'), P('CH2')] };
     const remote     = { PTV: [P('P1'), P('P2')] };                     // el otro dispositivo la unió
-    expect(mergeItemsByTienda(remote, local, lastSynced, K)).toEqual({ PTV: [P('P1'), P('P2')] });
+    const lapidas = new Set(['CH1', 'CH2']);                            // y marcó lápida a lo absorbido
+    expect(mergeItemsByTienda(remote, local, lastSynced, K, undefined, k => lapidas.has(k)))
+      .toEqual({ PTV: [P('P1'), P('P2')] });
+  });
+
+  it('BUG 29/09: tienda LIMPIA — un pallet que yo guardé y el remoto aún no trae NO desaparece', () => {
+    // Recién empujé P3 (local == base). Llega el push de un equipo que todavía no lo había recibido.
+    const lastSynced = { PTV: [P('P1'), P('P2'), P('P3')] };
+    const local      = { PTV: [P('P1'), P('P2'), P('P3')] };
+    const remote     = { PTV: [P('P1'), P('P2'), P('B1')] };            // el otro agregó B1, sin P3
+    expect(mergeItemsByTienda(remote, local, lastSynced, K)).toEqual({ PTV: [P('P1'), P('P2'), P('B1'), P('P3')] });
+  });
+
+  it('BUG 29/09: tienda EDITADA — un pallet que está en mi base y el remoto no trae NO desaparece', () => {
+    const lastSynced = { PTV: [P('P1'), P('P3')] };
+    const local      = { PTV: [P('P1', 5), P('P3')] };                  // edité P1, P3 ya empujado
+    const remote     = { PTV: [P('P1')] };                              // remoto sin P3 (no lo recibió)
+    expect(mergeItemsByTienda(remote, local, lastSynced, K)).toEqual({ PTV: [P('P1', 5), P('P3')] });
   });
 
   it('conserva MI versión de una tienda que sí edité localmente (no perder edición sin empujar)', () => {
@@ -24,8 +48,8 @@ describe('mergeItemsByTienda', () => {
   it('preserva ediciones concurrentes en tiendas DISTINTAS (ambas sobreviven)', () => {
     const lastSynced = { X: [P('x1')], Y: [P('y1'), P('y2')] };
     const local      = { X: [P('x1'), P('x2')], Y: [P('y1'), P('y2')] }; // cambié X, no toqué Y
-    const remote     = { X: [P('x1')], Y: [P('y1')] };                   // el otro unió Y
-    expect(mergeItemsByTienda(remote, local, lastSynced, K)).toEqual({
+    const remote     = { X: [P('x1')], Y: [P('y1')] };                   // el otro unió Y (lápida a y2)
+    expect(mergeItemsByTienda(remote, local, lastSynced, K, undefined, k => k === 'y2')).toEqual({
       X: [P('x1'), P('x2')], Y: [P('y1')],
     });
   });
@@ -37,11 +61,19 @@ describe('mergeItemsByTienda', () => {
     expect(mergeItemsByTienda(remote, local, lastSynced, K)).toEqual({ A: [P('a1')], B: [P('b1')] });
   });
 
-  it('una tienda LIMPIA ausente del remoto se trata como borrada (no se restaura desde local)', () => {
+  it('una tienda LIMPIA ausente del remoto se CONSERVA (ausencia no es borrado)', () => {
     const lastSynced = { A: [P('a1')], B: [P('b1')] };
     const local      = { A: [P('a1')], B: [P('b1')] };
     const remote     = { A: [P('a1')] };
-    expect(mergeItemsByTienda(remote, local, lastSynced, K)).toEqual({ A: [P('a1')], B: [] });
+    expect(mergeItemsByTienda(remote, local, lastSynced, K)).toEqual({ A: [P('a1')], B: [P('b1')] });
+  });
+
+  it('una tienda LIMPIA cuyos ítems tienen lápida sí se vacía', () => {
+    const lastSynced = { A: [P('a1')], B: [P('b1')] };
+    const local      = { A: [P('a1')], B: [P('b1')] };
+    const remote     = { A: [P('a1')] };
+    expect(mergeItemsByTienda(remote, local, lastSynced, K, undefined, k => k === 'b1'))
+      .toEqual({ A: [P('a1')], B: [] });
   });
 
   it('incorpora tiendas nuevas que solo están en el remoto', () => {
@@ -67,11 +99,19 @@ describe('mergeItemsByTienda', () => {
     });
   });
 
-  it('borrado remoto de un ítem gana sobre mi copia sin cambios (no reaparece)', () => {
+  it('borrado remoto CON lápida gana sobre mi copia sin cambios (no reaparece)', () => {
     const lastSynced = { PTV: [P('P1'), P('B1')] };
     const local      = { PTV: [P('P1', 7), P('B1')] };   // edité P1 (dirty en la tienda), no toqué B1
-    const remote     = { PTV: [P('P1')] };               // B borró B1
-    expect(mergeItemsByTienda(remote, local, lastSynced, K)).toEqual({ PTV: [P('P1', 7)] }); // B1 no reaparece
+    const remote     = { PTV: [P('P1')] };               // B borró B1 y dejó su lápida
+    expect(mergeItemsByTienda(remote, local, lastSynced, K, undefined, k => k === 'B1'))
+      .toEqual({ PTV: [P('P1', 7)] });
+  });
+
+  it('mi borrado aún sin empujar no lo resucita el remoto (estaba en base, ya no en local)', () => {
+    const lastSynced = { PTV: [P('P1'), P('B1')] };
+    const local      = { PTV: [P('P1')] };               // borré B1, todavía no empujo
+    const remote     = { PTV: [P('P1'), P('B1')] };
+    expect(mergeItemsByTienda(remote, local, lastSynced, K)).toEqual({ PTV: [P('P1')] });
   });
 
   it('sin base: ítems DISTINTOS local y remoto se UNEN (no se pierde el remoto)', () => {
@@ -204,49 +244,25 @@ describe('itemsFromSnapshot', () => {
   });
 });
 
-describe('onDescartado — instrumentar la rama que se sospecha (25/09)', () => {
+describe('ausencia remota ≠ borrado (29/09) — escenario real con slots de picking', () => {
   const it1 = { pickingSlotId: 1, orden: 'P1', peso: 200 };
   const it2 = { pickingSlotId: 2, orden: 'P2', peso: 150 };
   const k = (i: { pickingSlotId?: number }) => `slot:${i.pickingSlotId}`;
 
-  it('avisa cuando se descarta un ítem local que el remoto no trae', () => {
-    const vistos: typeof it1[] = [];
-    // El ítem está en base y en local, pero no en el remoto → se lee como "borrado remoto".
-    mergeListaPorItem([it2], [it1, it2], [it1, it2], k, undefined, () => false, i => vistos.push(i));
-    expect(vistos).toEqual([it1]);
+  it('un ítem en base y local pero no en el remoto se CONSERVA', () => {
+    expect(mergeListaPorItem([it2], [it1, it2], [it1, it2], k)).toEqual([it1, it2]);
   });
 
-  it('NO avisa por un alta local nueva: esa se conserva, no se descarta', () => {
-    const vistos: unknown[] = [];
-    mergeListaPorItem([], [it1], [], k, undefined, () => false, i => vistos.push(i));
-    expect(vistos).toEqual([]);
+  it('con lápida sí se va, aunque siga en local y en el remoto', () => {
+    expect(mergeListaPorItem([it1], [it1], [it1], k, undefined, llave => llave === 'slot:1')).toEqual([]);
   });
 
-  it('NO avisa por algo con lápida: ese descarte es intencional y ya se explica solo', () => {
-    const vistos: unknown[] = [];
-    mergeListaPorItem([it1], [it1], [it1], k, undefined, llave => llave === 'slot:1', i => vistos.push(i));
-    expect(vistos).toEqual([]);
-  });
-
-  it('viaja la tienda al subir a mergeItemsByTienda (tienda EDITADA)', () => {
-    const vistos: [string, unknown][] = [];
-    // Local difiere de base → rama por-ítem. it1 está en base y no en el remoto → se descarta.
-    mergeItemsByTienda({ TLC: [it2] }, { TLC: [it1, { ...it2, peso: 999 }] }, { TLC: [it1, it2] }, k,
-      undefined, () => false, (cod, i) => vistos.push([cod, i]));
-    expect(vistos).toEqual([['TLC', it1]]);
-  });
-
-  it('también avisa en la rama de tienda LIMPIA, que es la más sospechosa', () => {
-    // "Limpia" (local == base) es exactamente como queda una tienda justo después de empujar, y
-    // ahí el merge adopta el remoto ENTERO. Sin este aviso, la instrumentación miraría el camino
-    // menos probable. Lo encontró un test, no una relectura del código.
-    const vistos: [string, unknown][] = [];
-    mergeItemsByTienda({ TLC: [it2] }, { TLC: [it1, it2] }, { TLC: [it1, it2] }, k,
-      undefined, () => false, (cod, i) => vistos.push([cod, i]));
-    expect(vistos).toEqual([['TLC', it1]]);
-  });
-
-  it('sin el callback, el merge se comporta exactamente igual que antes', () => {
-    expect(mergeListaPorItem([it2], [it1, it2], [it1, it2], k)).toEqual([it2]);
+  it('3 asistentes + admin: cada push parcial NO borra lo de los demás; al converger están todos', () => {
+    // A guardó P1, B guardó P2, C guardó P3; cada uno empujó su copia sin ver la de los otros.
+    const a = { pickingSlotId: 11, peso: 100 }, b = { pickingSlotId: 12, peso: 110 }, c = { pickingSlotId: 13, peso: 120 };
+    let enA: Record<string, (typeof a)[]> = { X: [a] };     // A, limpio tras empujar
+    enA = mergeItemsByTienda({ X: [b] }, enA, enA, k);      // llega el push de B (sin a)
+    enA = mergeItemsByTienda({ X: [c] }, enA, { X: [b] }, k); // llega el de C (sin a ni b)
+    expect(enA.X.map(i => i.pickingSlotId).sort()).toEqual([11, 12, 13]);
   });
 });
