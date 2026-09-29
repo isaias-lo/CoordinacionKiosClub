@@ -5,6 +5,7 @@ import { X, Copy, Check, Calendar, ClipboardList, TriangleAlert } from 'lucide-r
 import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
 import { fetchCounts, type SesionRow } from '@/lib/despachoSesion';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
+import { combinarPorTienda } from '@/features/despacho/rutas/utils/conteoEntreBodegas';
 import { getTiendaSantiagoByCod } from '@/features/despacho/santiago/data/tiendasSantiago';
 import { partsOf, buildManualText, lineaTotal, filasParaManual, type ManualLine, type ManualGrupo } from './manualText';
 import {
@@ -62,7 +63,9 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
     // seca y fila de congelados terminaba con una pisando a la otra. Y las cajas viajan en
     // `bultos`, así que sin filtrar se leen como bultos secos (ver manualText/filasParaManual).
     fetchCounts(todayStr()).then(rows => {
-      if (!cancelled) setGlobalLines(filasParaManual(rows).map(rowToLine));
+      // Una línea por tienda aunque las dos bodegas la hayan reportado: el Map de abajo es por
+      // código y se quedaba con la última fila (ver rutas/utils/conteoEntreBodegas).
+      if (!cancelled) setGlobalLines(combinarPorTienda(filasParaManual(rows)).map(rowToLine));
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [open]);

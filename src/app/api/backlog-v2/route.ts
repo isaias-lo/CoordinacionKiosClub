@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer, hayServiceRole } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
 import { fechaChile, fechaChileDe } from '@/lib/fechaChile';
+import type { SesionRow } from '@/lib/despachoSesion';
+import { combinarPorTienda } from '@/features/despacho/rutas/utils/conteoEntreBodegas';
 import {
   pendientesDelDia, despachadasParaOrigen, aFechaPlanilla, desdeFechaPlanilla,
   type PendienteBacklog,
@@ -94,13 +96,19 @@ export async function GET(request: NextRequest) {
     const despachos = [...porFecha.entries()].map(([fecha, cods]) => ({ fecha, cods }));
 
     // Congelados NO entra: tiene su propio flujo y su propia pestaña.
-    const cargaPorFecha = new Map<string, { cod: string; pallets: number; bultos: number; contenedores: number; chocolates: number }[]>();
-    for (const f of (sesion.data ?? []) as { fecha: string; tienda_cod: string; fuente: string | null; pallets: number; bultos: number; contenedores: number | null; chocolates: number | null }[]) {
+    const filasPorFecha = new Map<string, SesionRow[]>();
+    for (const f of (sesion.data ?? []) as SesionRow[]) {
       if ((f.fuente ?? '').startsWith('congelados')) continue;
-      cargaPorFecha.set(f.fecha, [...(cargaPorFecha.get(f.fecha) ?? []), {
+      filasPorFecha.set(f.fecha, [...(filasPorFecha.get(f.fecha) ?? []), f]);
+    }
+    // Una fila por tienda y día aunque las dos bodegas la hayan reportado: antes salían DOS
+    // pendientes para la misma tienda y la 2ª vuelta la contaba doble (ver conteoEntreBodegas).
+    const cargaPorFecha = new Map<string, { cod: string; pallets: number; bultos: number; contenedores: number; chocolates: number }[]>();
+    for (const [fecha, filas] of filasPorFecha) {
+      cargaPorFecha.set(fecha, combinarPorTienda(filas, c => c.trim().toUpperCase()).map(f => ({
         cod: f.tienda_cod, pallets: f.pallets, bultos: f.bultos,
         contenedores: f.contenedores ?? 0, chocolates: f.chocolates ?? 0,
-      }]);
+      })));
     }
 
     const pendientes: PendienteBacklog[] = [];

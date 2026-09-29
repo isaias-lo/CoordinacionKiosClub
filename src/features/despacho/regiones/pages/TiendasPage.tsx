@@ -496,10 +496,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       if (!tienda) return;
       conocidas.push(tienda.cod);
       if (!items.length) return;
-      const p  = items.filter(i => i.pkg === 'pallet').length;
-      const b  = items.filter(i => i.pkg === 'box').length;
-      const c  = items.filter(i => i.pkg === 'contenedor').length;
-      const ch = items.filter(i => i.pkg === 'chocolate').length;
+      // Por CLASE de envase, no por pkg literal: adquisición y web/retiro cuentan como bulto
+      // (ver shared/adquisicion). Con `pkg === 'box'` no entraban y el Enrutador veía bultos de menos.
+      const p  = items.filter(i => claseNacional(i.pkg) === 'pallet').length;
+      const b  = items.filter(i => claseNacional(i.pkg) === 'bulto').length;
+      const c  = items.filter(i => claseNacional(i.pkg) === 'contenedor').length;
+      const ch = items.filter(i => claseNacional(i.pkg) === 'chocolate').length;
       if (p > 0 || b > 0 || c > 0 || ch > 0) counts[tienda.cod] = { p, b, c, ch };
     });
     localStorage.setItem('regionesCounts', JSON.stringify({ date: todayKey, counts }));

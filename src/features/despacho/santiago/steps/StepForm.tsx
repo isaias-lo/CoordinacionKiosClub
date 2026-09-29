@@ -722,10 +722,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     // propio universo, para no borrar las cargadas por otra persona (ver pushCounts).
     const conocidas = Object.keys(items);
     Object.entries(items).forEach(([cod, list]) => {
-      const p  = list.filter(i => i.tipo === 'Pallet').length;
-      const b  = list.filter(i => i.tipo === 'Bulto').length;
-      const c  = list.filter(i => i.tipo === 'Contenedor').length;
-      const ch = list.filter(i => i.tipo === 'Chocolate').length;
+      // Por CLASE de envase, no por tipo literal: adquisición y web/retiro cuentan como bulto
+      // (ver shared/adquisicion). Con `tipo === 'Bulto'` no entraban y el Enrutador veía bultos de menos.
+      const p  = list.filter(i => claseSantiago(i.tipo) === 'pallet').length;
+      const b  = list.filter(i => claseSantiago(i.tipo) === 'bulto').length;
+      const c  = list.filter(i => claseSantiago(i.tipo) === 'contenedor').length;
+      const ch = list.filter(i => claseSantiago(i.tipo) === 'chocolate').length;
       if (p > 0 || b > 0 || c > 0 || ch > 0) counts[cod] = { p, b, c, ch };
     });
     const todayKey = fechaChile();

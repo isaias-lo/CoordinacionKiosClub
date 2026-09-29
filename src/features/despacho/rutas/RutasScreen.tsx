@@ -57,6 +57,7 @@ import { writeCalendario } from '../utils/useCalendario';
 import { reaplicarCounts } from './utils/reaplicarCounts';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import type { SesionRow } from '../../../lib/despachoSesion';
+import { registrarFilaSeco, combinarPorTienda, type FilasPorBodega } from './utils/conteoEntreBodegas';
 import type { TiendaInfo } from './data/tiendas';
 import type { Vehiculo } from './data/flota';
 import { fechaChile } from '@/lib/fechaChile';
@@ -486,6 +487,9 @@ export default function RutasScreen() {
   // Se re-aplican al inicializar calT desde el calendario (evita perder counts si
   // los counts llegan antes de que cargue el calendario). #4
   const sesionRowsRef = useRef<Map<string, SesionRow>>(new Map());
+  // La última fila de cada tienda POR BODEGA (seco). `sesionRowsRef` guarda la fila ya combinada;
+  // esta memoria es la que permite combinar sin que gane "la que llegó última". Ver conteoEntreBodegas.
+  const filasPorBodegaRef = useRef<FilasPorBodega>(new Map());
 
   const sessionRestoredRef = useRef(false);
   const restoringRef       = useRef(false);
@@ -610,10 +614,15 @@ export default function RutasScreen() {
             setCalT(prev => {
               const merged = { ...prev };
               let changed = false;
-              Object.entries(counts).forEach(([cod, data]) => {
+              Object.entries(counts).forEach(([cod, raw]) => {
                 const c = norm(cod);
-                const newC  = data.c  ?? 0;
-                const newCh = data.ch ?? 0;
+                // Combinado con lo que haya reportado la otra bodega (ver conteoEntreBodegas): antes
+                // esto pisaba cada 2 s con la copia de ESTA bodega, aunque fuera la parcial.
+                const ef = registrarFilaSeco(filasPorBodegaRef.current, c, { fecha: todayKey, fuente: 'santiago',
+                  tienda_cod: c, pallets: raw.p, bultos: raw.b, contenedores: raw.c ?? 0, chocolates: raw.ch ?? 0 });
+                const data = { p: ef.pallets, b: ef.bultos };
+                const newC  = ef.contenedores;
+                const newCh = ef.chocolates;
                 if (merged[c]) {
                   if (merged[c].p !== data.p || merged[c].b !== data.b || merged[c].c !== newC || merged[c].ch !== newCh) {
                     merged[c] = { ...merged[c], p: data.p, b: data.b, c: newC, ch: newCh, on: data.p > 0 || data.b > 0 || newC > 0 || newCh > 0 };
@@ -638,10 +647,14 @@ export default function RutasScreen() {
             setCalT(prev => {
               const merged = { ...prev };
               let changed = false;
-              Object.entries(counts).forEach(([cod, data]) => {
+              Object.entries(counts).forEach(([cod, raw]) => {
                 const c = norm(cod);
-                const newC  = data.c  ?? 0;
-                const newCh = data.ch ?? 0;
+                // Combinado con la otra bodega (ver conteoEntreBodegas y el bloque de Santiago).
+                const ef = registrarFilaSeco(filasPorBodegaRef.current, c, { fecha: todayKey, fuente: 'regiones',
+                  tienda_cod: c, pallets: raw.p, bultos: raw.b, contenedores: raw.c ?? 0, chocolates: raw.ch ?? 0 });
+                const data = { p: ef.pallets, b: ef.bultos };
+                const newC  = ef.contenedores;
+                const newCh = ef.chocolates;
                 if (merged[c]) {
                   if (merged[c].p !== data.p || merged[c].b !== data.b || merged[c].c !== newC || merged[c].ch !== newCh) {
                     merged[c] = { ...merged[c], p: data.p, b: data.b, c: newC, ch: newCh, on: data.p > 0 || data.b > 0 || newC > 0 || newCh > 0 };
@@ -674,17 +687,20 @@ export default function RutasScreen() {
     if (typeof window === 'undefined') return;
     const today = todayStr();
 
-    function applyRow(row: SesionRow) {
+    function applyRow(filaRecibida: SesionRow) {
       // Congelados NO fluye al pool SECO del Enrutador: tiene su propio flujo (fuentes
       // 'congelados-santiago'/'congelados-regiones' → tab CONGELADOS). Sin este guard, los
       // counts de la bodega Congelados inflaban el pool seco (una tienda congelada aparecía
       // como si fuera despacho seco).
-      if ((row.fuente ?? '').startsWith('congelados')) return;
+      if ((filaRecibida.fuente ?? '').startsWith('congelados')) return;
+      const c = norm(filaRecibida.tienda_cod);
+      // La fila EFECTIVA de la tienda: combinada con la de la otra bodega, si la hay. Antes se usaba
+      // la fila recibida tal cual y ganaba la que llegaba última (ver conteoEntreBodegas).
+      const row = registrarFilaSeco(filasPorBodegaRef.current, c, filaRecibida);
       // [Fase 0] Esta suscripción es del día de HOY (`today`, fijo al montar). Si se está mirando
       // otro día, sus conteos no pueden entrar al pool: esa mezcla es la que terminaba guardándose
       // bajo la fecha abierta. Se siguen recordando en `sesionRowsRef` para cuando se vuelva a hoy.
-      if (fechaRef.current !== today) { sesionRowsRef.current.set(norm(row.tienda_cod), row); return; }
-      const c = norm(row.tienda_cod);
+      if (fechaRef.current !== today) { sesionRowsRef.current.set(c, row); return; }
       sesionRowsRef.current.set(c, row);  // recordar para re-aplicar si el calendario carga después
       setCalT(prev => {
         const rowCh = row.chocolates ?? 0;
@@ -1657,7 +1673,8 @@ export default function RutasScreen() {
       // a 2ª vuelta. Ver utils/cargaFechaPasada.
       setCalT(prev => aplicarCargaDelDia(
         prev,
-        rows.filter(r => !esCong(r)).map(r => ({
+        // Una fila por tienda aunque las dos bodegas la hayan reportado (ver conteoEntreBodegas).
+        combinarPorTienda(rows.filter(r => !esCong(r)), norm).map(r => ({
           cod: norm(r.tienda_cod), pallets: r.pallets, bultos: r.bultos,
           contenedores: r.contenedores ?? 0, chocolates: r.chocolates ?? 0,
         })),
