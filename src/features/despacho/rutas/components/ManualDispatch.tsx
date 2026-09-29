@@ -19,6 +19,7 @@ import { etiquetaTipoVehiculo } from '../utils/tipoVehiculo';
 import { esVehiculoDePrueba, AVISO_PRUEBA } from '../utils/vehiculoPrueba';
 import { excesoDe, confirmacionSobreCapacidad, confirmacionCargaSobreCapacidad, textoBotonCerrar, confirmacionVarios } from '../utils/sobreCapacidad';
 import { visiblesEnTablero } from '../utils/flotaPorTablero';
+import { resumenEmpresa, empiezaPlegada, alternarEmpresa, textoResumen } from '../utils/plegadoEmpresa';
 
 interface StoreTag { c: string; p: number; b: number; }
 
@@ -161,6 +162,18 @@ export default function ManualDispatch({
   const scrollRaf    = useRef<number | null>(null);
   const touchState   = useRef<{ active: boolean; item: StoreTag | null; from: string | null; ghost: HTMLElement | null }>({ active: false, item: null, from: null, ghost: null });
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // [Flota plegable] Qué empresas están plegadas. Se recuerda por navegador: con seis empresas, la
+  // persona que trabaja siempre con dos no tiene por qué volver a plegar las otras cuatro cada vez.
+  // La regla por defecto —plegada si no tiene carga— vive en utils/plegadoEmpresa.
+  const [plegadas, setPlegadas] = useState<Record<string, boolean>>(() => {
+    if (typeof window === 'undefined') return {};
+    try { return JSON.parse(localStorage.getItem('enrutador_empresas_plegadas') ?? '{}') as Record<string, boolean>; }
+    catch { return {}; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('enrutador_empresas_plegadas', JSON.stringify(plegadas)); } catch {}
+  }, [plegadas]);
   const scrollerRef  = useRef<HTMLElement | null>(null);
   const ejecutarDropRef = useRef<((target: string, item: DraggingState) => void) | null>(null);
 
@@ -763,19 +776,39 @@ export default function ManualDispatch({
         </div>
       ) : (
         <div className="space-y-4">
-        {agruparCamionesPorEmpresa(flotaDisp, v => v.empresa, v => ordAct[v.p] ?? 0).map(g => (
+        {agruparCamionesPorEmpresa(flotaDisp, v => v.empresa, v => ordAct[v.p] ?? 0).map(g => {
+          const resumen = resumenEmpresa(g.items.map(v => v.p), asignaciones);
+          const plegada = empiezaPlegada(g.empresa, resumen, plegadas);
+          return (
           <div key={g.empresa}>
-            {/* Encabezado de sección por empresa (color de marca / determinista / gris "Sin empresa") */}
-            <div className="flex items-center gap-2 mb-2 px-0.5">
+            {/* Encabezado de sección por empresa (color de marca / determinista / gris "Sin empresa").
+                Es un botón: pliega y despliega su grilla. Plegada sigue diciendo cuánto lleva — si no,
+                esconder una empresa escondería carga y el resumen del día dejaría de cuadrar con lo
+                que se ve. */}
+            <button
+              type="button"
+              onClick={() => setPlegadas(prev => alternarEmpresa(prev, g.empresa, !plegada))}
+              aria-expanded={!plegada}
+              className="w-full flex items-center gap-2 mb-2 px-0.5 py-1 rounded-[6px] hover:bg-black/[0.03] transition-colors text-left"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={g.color} strokeWidth="3"
+                   strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+                   style={{ flexShrink: 0, transform: plegada ? 'rotate(-90deg)' : 'none', transition: 'transform .15s' }}>
+                <path d="M6 9l6 6 6-6" />
+              </svg>
               <span className="w-[10px] h-[10px] rounded-full flex-shrink-0" style={{ background: g.color }} aria-hidden="true" />
               <span className="text-[12px] font-extrabold uppercase tracking-wide" style={{ color: g.color }}>{g.empresa}</span>
               <span className="text-[11px] text-kmuted font-semibold">· {g.items.length}</span>
-            </div>
+              {plegada && (
+                <span className="ml-auto text-[11px] text-kmuted font-semibold truncate">{textoResumen(resumen)}</span>
+              )}
+            </button>
             {/* Grilla ADAPTABLE al ancho real del board (no al viewport): antes era grid-cols-2/3/4
                 por breakpoint, así que al arrastrar el divisor board↔mapa las columnas NO bajaban y
                 las tarjetas se aplastaban (el chip de tienda se estiraba y clipeaba el badge/×). Con
                 auto-fill+minmax, al angostar el board bajan las columnas y la tarjeta nunca cae por
                 debajo de ~186px legibles. */}
+            {!plegada && (
             <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(186px,1fr))]">
             {g.items.map((v) => {
           const m       = getMetrics(v.p, v);
@@ -1019,8 +1052,10 @@ export default function ManualDispatch({
           );
             })}
             </div>
+            )}
           </div>
-        ))}
+          );
+        })}
         </div>
       )}
         </div>
