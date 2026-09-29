@@ -14,7 +14,7 @@ import { ControlFlotaPanel, PersonalCatalogPanel } from '@/features/despacho/con
 import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
 import { useIsMobile } from '../utils/useIsMobile';
 import {
-  clampMapPct, mapaColapsado, anchoCortina,
+  clampMapPct, mapaColapsado, anchoCortina, alTocarCortina,
   MAP_PCT_DEFAULT, LS_MAP_PCT, LS_MAP_OCULTO,
 } from '../utils/mapLayout';
 import type { Vehiculo } from '../data/flota';
@@ -188,6 +188,9 @@ export default function InputSection({
   }, [mapOculto]);
   const contentRowRef = useRef<HTMLDivElement>(null);
   const mapResizingRef = useRef(false);
+  // [Cortina] ¿Está tapando la columna entera? Es un estado aparte del %: el arrastre elige un
+  // ancho libre y el TOQUE la lleva al extremo. Ver utils/mapLayout.
+  const [mapCompleta, setMapCompleta] = useState(false);
   // Un arrastre también dispara `click` al soltar. Esto distingue "arrastré para ajustar el ancho"
   // de "toqué para esconder", que es lo que hace de la manija un control y no solo un divisor.
   const mapArrastradoRef = useRef(false);
@@ -195,6 +198,7 @@ export default function InputSection({
     const move = (clientX: number) => {
       if (!mapResizingRef.current || !contentRowRef.current) return;
       mapArrastradoRef.current = true;
+      setMapCompleta(false);   // arrastrar es elegir un ancho propio: deja de estar "entera"
       const r = contentRowRef.current.getBoundingClientRect();
       setMapPct(Math.min(60, Math.max(20, ((r.right - clientX) / r.width) * 100)));
     };
@@ -233,9 +237,18 @@ export default function InputSection({
       aria-label={hideMap ? 'Mostrar el mapa' : 'Esconder el mapa'}
       onMouseDown={() => { if (hideMap) return; mapResizingRef.current = true; mapArrastradoRef.current = false; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }}
       onTouchStart={() => { if (hideMap) return; mapResizingRef.current = true; mapArrastradoRef.current = false; }}
-      onClick={() => { if (mapArrastradoRef.current) { mapArrastradoRef.current = false; return; } setMapOculto(v => !v); }}
-      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMapOculto(v => !v); } }}
-      title={hideMap ? 'Mostrar el mapa' : 'Arrastra para ajustar · toca para esconder'}
+      onClick={() => {
+        if (mapArrastradoRef.current) { mapArrastradoRef.current = false; return; }
+        const next = alTocarCortina({ colapsada: hideMap, completa: mapCompleta });
+        setMapOculto(next.colapsada); setMapCompleta(next.completa);
+      }}
+      onKeyDown={e => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        const next = alTocarCortina({ colapsada: hideMap, completa: mapCompleta });
+        setMapOculto(next.colapsada); setMapCompleta(next.completa);
+      }}
+      title={hideMap ? 'Mostrar el mapa entero' : mapCompleta ? 'Toca para esconder el mapa' : 'Arrastra para ajustar · toca para taparlo entero'}
       className="group flex-shrink-0 flex flex-col items-center justify-center gap-1.5 relative select-none z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-knavy"
       style={{ width: hideMap ? 14 : 6, background: 'rgba(0,0,0,0.05)', cursor: hideMap ? 'pointer' : 'col-resize' }}
     >
@@ -612,14 +625,14 @@ export default function InputSection({
                 también la forma de volver a abrirlo. */}
             <div
               className="absolute top-0 bottom-0 flex z-20"
-              style={{ right: anchoCortina(hideMap, mapPct) }}
+              style={{ right: anchoCortina({ colapsada: hideMap, completa: mapCompleta, pct: mapPct }) }}
             >
               {mapDivider}
             </div>
             <div
               className="absolute top-0 right-0 bottom-0 overflow-hidden border-l border-black/[0.09] z-10"
               style={{
-                width: anchoCortina(hideMap, mapPct),
+                width: anchoCortina({ colapsada: hideMap, completa: mapCompleta, pct: mapPct }),
                 borderLeftWidth: hideMap ? 0 : undefined,
                 boxShadow: hideMap ? 'none' : '-8px 0 24px rgba(15,23,42,0.10)',
               }}
