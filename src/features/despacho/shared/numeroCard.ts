@@ -11,6 +11,27 @@
 //
 // Consecuencia buscada: los números pueden quedar con huecos (CH2, CH5). El hueco es información
 // —dice que esos se fueron a un pallet— y no un error que haya que "compactar".
+//
+// ── LA ADQUISICIÓN Y EL WEB/RETIRO TIENEN SU PROPIA SERIE (29/09/2026) ────────────────────────
+//
+// Nacieron compartiendo la serie del bulto: la idea era que un tipo nuevo se numerara solo, sin
+// tocar nada, cayendo en el `return 'bulto'` final. Salía gratis, pero salía MAL, y de dos formas:
+//
+//   · En pantalla se llamaban B4, B5 — indistinguibles de un bulto de verdad.
+//   · En RM/Costa el contador del alta era `filter(i => i.tipo === 'Bulto')`, que NUNCA coincide
+//     con 'Adquisicion'. Tres adquisiciones recibían las tres el mismo número, y como el ID de la
+//     fila es `${orden}${cod}${stamp}${prefijo}`, las tres colapsaban en UNA fila de la planilla.
+//
+// Ahora son dos clases propias, con su letra: A1, A2, A3 y W1, W2, W3. La letra ya existía
+// —`PREFIJO_ADQUISICION` / `PREFIJO_WEB_RETIRO`, usadas para el ID— así que lo que se hizo fue
+// que la pantalla y el `orden` digan lo mismo que el ID ya venía diciendo.
+//
+// Los TOTALES no cambian: siguen sumando como bulto donde se cuentan (`getStats`). Lo que cambia
+// es la identidad de cada unidad, que es lo que tiene que ser único.
+
+import {
+  esAdquisicion, esWebRetiro, PREFIJO_ADQUISICION, PREFIJO_WEB_RETIRO,
+} from './adquisicion';
 
 interface ArgsNumeroCard {
   /** Solo el chocolate cambia de regla; el pedido fue explícito en eso. */
@@ -48,6 +69,8 @@ export function ordenDeItem(tipo: string, numero: number): string {
   if (tipo === 'Pallet') return `P${numero}`;
   if (tipo === 'Contenedor') return `C${numero}`;
   if (tipo === 'Chocolate') return `CH${numero}`;
+  if (esAdquisicion(tipo)) return `${PREFIJO_ADQUISICION}${numero}`;
+  if (esWebRetiro(tipo))   return `${PREFIJO_WEB_RETIRO}${numero}`;
   return `${numero}B`;
 }
 
@@ -62,6 +85,8 @@ export function etiquetaCard(tipo: string, numero: number): string {
   if (tipo === 'Pallet') return `P${numero}`;
   if (tipo === 'Contenedor') return `C${numero}`;
   if (tipo === 'Chocolate') return `CH${numero}`;
+  if (esAdquisicion(tipo)) return `${PREFIJO_ADQUISICION}${numero}`;
+  if (esWebRetiro(tipo))   return `${PREFIJO_WEB_RETIRO}${numero}`;
   return `B${numero}`;
 }
 
@@ -69,13 +94,24 @@ export function etiquetaCard(tipo: string, numero: number): string {
  * Las cuatro clases de envase, en el vocabulario neutro del módulo. Cada formulario habla el suyo
  * —Santiago dice 'Pallet'/'Chocolate', Nacional dice 'pallet'/'chocolate'— y traduce al entrar.
  */
-export type ClaseEnvase = 'pallet' | 'bulto' | 'contenedor' | 'chocolate';
+export type ClaseEnvase = 'pallet' | 'bulto' | 'contenedor' | 'chocolate' | 'adquisicion' | 'webretiro';
+
+/** Las clases, en un solo lugar: sirve para los contadores y para no olvidarse de ninguna. */
+export const CLASES_ENVASE: ClaseEnvase[] =
+  ['pallet', 'bulto', 'contenedor', 'chocolate', 'adquisicion', 'webretiro'];
+
+/** Un contador por clase, en cero. */
+export function contadorPorClase(): Record<ClaseEnvase, number> {
+  return { pallet: 0, bulto: 0, contenedor: 0, chocolate: 0, adquisicion: 0, webretiro: 0 };
+}
 
 /** Traduce el `tipo` de Santiago ('Pallet' | 'Bulto' | 'Contenedor' | 'Chocolate'). */
 export function claseSantiago(tipo: string): ClaseEnvase {
   if (tipo === 'Pallet') return 'pallet';
   if (tipo === 'Contenedor') return 'contenedor';
   if (tipo === 'Chocolate') return 'chocolate';
+  if (esAdquisicion(tipo)) return 'adquisicion';
+  if (esWebRetiro(tipo))   return 'webretiro';
   return 'bulto';
 }
 
@@ -84,6 +120,8 @@ export function claseNacional(pkg: string): ClaseEnvase {
   if (pkg === 'pallet') return 'pallet';
   if (pkg === 'contenedor') return 'contenedor';
   if (pkg === 'chocolate') return 'chocolate';
+  if (esAdquisicion(pkg)) return 'adquisicion';
+  if (esWebRetiro(pkg))   return 'webretiro';
   return 'bulto';
 }
 
@@ -106,7 +144,7 @@ export function ordenNacional(clase: ClaseEnvase, numero: number): string {
 export function numerarPorClase<T>(
   items: T[], claseDe: (item: T) => ClaseEnvase, seqDe: (item: T) => number | null | undefined,
 ): { item: T; clase: ClaseEnvase; numero: number }[] {
-  const cuenta: Record<ClaseEnvase, number> = { pallet: 0, bulto: 0, contenedor: 0, chocolate: 0 };
+  const cuenta = contadorPorClase();
   return items.map(item => {
     const clase = claseDe(item);
     const posicion = ++cuenta[clase];
@@ -146,7 +184,7 @@ export function renumerarOrdenNacional<T extends { pkg: string }>(
  * `numeroVisibleCard` cuando no hay `seq`.
  */
 export function renumerarSalvoChocolate<T extends { pkg: string; orden?: string }>(items: T[]): T[] {
-  const cuenta: Record<ClaseEnvase, number> = { pallet: 0, bulto: 0, contenedor: 0, chocolate: 0 };
+  const cuenta = contadorPorClase();
   return items.map(item => {
     const clase = claseNacional(item.pkg);
     const posicion = ++cuenta[clase];

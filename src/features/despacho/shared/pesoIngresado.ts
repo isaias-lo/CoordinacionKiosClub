@@ -46,6 +46,11 @@ export const TOPE_AVISO_KG: Record<ClaseEnvase, number> = {
   contenedor: 600,
   bulto: 150,
   chocolate: 60,
+  // Una adquisición y un web/retiro no se pesan —`pideMedidas` es false y nacen completos—, así
+  // que estos dos no se consultan nunca. Van con el número del bulto, que es el envase al que se
+  // parecen, para que el día que alguno SÍ se pese el aviso ya esté puesto.
+  adquisicion: 150,
+  webretiro: 150,
 };
 
 /**
@@ -66,6 +71,8 @@ export const TOPE_DURO_KG: Record<ClaseEnvase, number> = {
   contenedor: 1000,
   bulto: 500,
   chocolate: 500,
+  adquisicion: 500,
+  webretiro: 500,
 };
 
 /** El mensaje del techo de cordura, o `null` si el peso entra. */
@@ -154,6 +161,7 @@ export function avisoDePeso(kg: number | null, clase: ClaseEnvase): AvisoPeso | 
 
 const NOMBRE: Record<ClaseEnvase, string> = {
   pallet: 'pallet', contenedor: 'contenedor', bulto: 'bulto', chocolate: 'chocolate',
+  adquisicion: 'agregado', webretiro: 'agregado',
 };
 
 /** `9.357` / `353,7` — como se escriben los números en Chile. */
