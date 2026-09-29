@@ -65,3 +65,7 @@ TRABAJO_ISAIAS.md
 
 # Scripts temporales de mantenimiento (borrado de duplicados en Storage, etc.)
 .tmp-cleanup/
+
+# Service worker compilado por @serwist/next desde src/app/sw.ts (artefacto de build)
+public/sw.js
+public/sw.js.map
