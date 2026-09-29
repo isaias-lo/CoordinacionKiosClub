@@ -63,7 +63,7 @@ import CalendarioColumnas     from '@/features/control-interno/CalendarioColumna
 import { PickerGroupCard }    from './components/PickerGroupCard';
 import { StoreListPanel }     from './components/StoreListPanel';
 import { AgregarAdelantoDialog } from './components/AgregarAdelantoDialog';
-import { enqueuePickingItem, flushPickingQueue } from './picking-offline-queue';
+import { enqueuePickingItem, flushPickingQueue, migrarColaVieja } from './picking-offline-queue';
 import type { MedidasPallet } from '@/features/despacho/shared/medidasPallet';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import {
@@ -153,13 +153,26 @@ export function PickingScreen() {
 
   // Online/offline detection + flush de cola offline al reconectar
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  const vaciarCola = useCallback(() => {
+    void flushPickingQueue(
+      pickingFetch,
+      (count) => {
+        showToast(`✓ ${count} acción${count !== 1 ? 'es' : ''} sincronizada${count !== 1 ? 's' : ''} al reconectar`, '#16A34A');
+      },
+      // Un rechazo definitivo del servidor no se puede seguir reintentando en silencio: la cola
+      // vive en este navegador, así que si no se dice acá no se entera nadie y el supervisor sigue
+      // creyendo que quedó registrado.
+      (count) => {
+        showToast(`⚠ ${count} acción${count !== 1 ? 'es' : ''} rechazada${count !== 1 ? 's' : ''} por el servidor — hay que volver a registrarla${count !== 1 ? 's' : ''}`, '#DC2626');
+      },
+    );
+  }, [pickingFetch, showToast]);
+
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      // Flush cualquier operación encolada mientras estaba offline
-      void flushPickingQueue(pickingFetch, (count) => {
-        showToast(`✓ ${count} acción${count !== 1 ? 'es' : ''} sincronizada${count !== 1 ? 's' : ''} al reconectar`, '#16A34A');
-      });
+      vaciarCola();
     };
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online',  handleOnline);
@@ -168,7 +181,26 @@ export function PickingScreen() {
       window.removeEventListener('online',  handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [pickingFetch, showToast]);
+  }, [vaciarCola]);
+
+  // Al abrir: traer lo que haya quedado en la cola vieja de localStorage y vaciar la cola.
+  //
+  // El vaciado al montar no estaba y hace falta: el evento `online` solo se dispara si la conexión
+  // vuelve CON la pestaña abierta. Quien cerraba el navegador sin señal y lo volvía a abrir ya con
+  // señal no disparaba nada, y lo encolado se quedaba ahí hasta la próxima vez que se cortara la
+  // conexión — que es el peor momento posible para que aparezca.
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      const migrados = await migrarColaVieja();
+      if (!vivo) return;
+      if (migrados > 0) {
+        showToast(`${migrados} acción${migrados !== 1 ? 'es' : ''} pendiente${migrados !== 1 ? 's' : ''} de antes, se envía${migrados !== 1 ? 'n' : ''} ahora`, '#D97706');
+      }
+      if (navigator.onLine) vaciarCola();
+    })();
+    return () => { vivo = false; };
+  }, [vaciarCola, showToast]);
 
   // Restaurar sesión al montar
   const session = useMemo(() => loadSession(), []);
@@ -669,7 +701,7 @@ export function PickingScreen() {
         console.error('[picking] addPalletSlot error', res.status, err.error ?? '');
         setPalletSlots(prev => prev.filter(s => s.id !== tempId));
         showToast('⚠ No se pudo agregar el pallet — se reintentará al reconectar', '#D97706');
-        enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, section, refs, date, clientOpId, actorName, medidas });
+        void enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, section, refs, date, clientOpId, actorName, medidas });
         return;
       }
       const json = await res.json() as { data?: PalletSlot };
@@ -699,7 +731,7 @@ export function PickingScreen() {
       console.error('[picking] addPalletSlot network error', e);
       setPalletSlots(prev => prev.filter(s => s.id !== tempId));
       showToast('⚠ Sin conexión — el pallet se agregará al reconectar', '#D97706');
-      enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, section, refs, date, clientOpId, actorName });
+      void enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, section, refs, date, clientOpId, actorName });
     }
   }, [pickingFetch, showToast, loadEventos]);
 
@@ -1222,7 +1254,7 @@ export function PickingScreen() {
               slotTipos.filter(x => x === t).length > slotTipos.filter(x => x === acc).length ? t : acc
             , slotTipos[0]);
           const batch = group.operations.find(o => o.batch)?.batch || (pickerBatch[group.stateKey] ? `BATCH/${pickerBatch[group.stateKey]}` : '');
-          enqueuePickingItem({ op: 'print', stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '', batch });
+          void enqueuePickingItem({ op: 'print', stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '', batch });
         }
       });
     }

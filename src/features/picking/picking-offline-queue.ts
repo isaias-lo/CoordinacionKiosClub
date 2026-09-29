@@ -1,12 +1,15 @@
+import { guardar, listar, eliminar, contar } from '@/lib/offline/almacen';
+import { drenar } from '@/lib/offline/drenar';
+import { clasificarEstado, bloqueados as soloBloqueados } from '@/lib/offline/resultado';
+import type { ItemCola } from '@/lib/offline/tipos';
+
 /**
- * Cola offline para operaciones de picking que fallaron por falta de red.
- * Adoptado del patrón de auditoría (AuditoriaScreen.tsx:62-79).
+ * Cola offline de picking. Desde la cola única (`src/lib/offline/`): antes vivía en localStorage
+ * por su cuenta, con su propio formato y su propia contabilidad de reintentos.
  *
  * Operaciones soportadas:
  *  - add:    Agregar un slot de pallet (POST /api/picking-pallets)
  *  - print:  Registrar una impresión  (POST /api/picking-prints)
- *
- * La cola se persiste en localStorage. Se flushea cuando el usuario reconecta.
  */
 
 export type OfflineQueueItem =
@@ -26,70 +29,138 @@ export type OfflineQueueItem =
       tipo: string; date: string; printedByName: string; batch?: string;
     };
 
-const QUEUE_KEY = 'picking_offline_queue_v1';
+export type PendientePicking = ItemCola<OfflineQueueItem>;
 
-export function loadPickingQueue(): OfflineQueueItem[] {
-  try { return JSON.parse(localStorage.getItem(QUEUE_KEY) ?? '[]') as OfflineQueueItem[]; }
-  catch { return []; }
-}
+/** Clave de la cola vieja en localStorage. Se lee una sola vez, al migrar. Ver `migrarColaVieja`. */
+const CLAVE_VIEJA = 'picking_offline_queue_v1';
 
-export function savePickingQueue(q: OfflineQueueItem[]): void {
-  try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); }
-  catch { /* storage full */ }
-}
-
-export function enqueuePickingItem(item: OfflineQueueItem): void {
-  const q = loadPickingQueue();
-  q.push(item);
-  savePickingQueue(q);
+function nuevoId(): string {
+  try { return crypto.randomUUID(); }
+  catch { return `op-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
 }
 
 /**
- * Intenta enviar todos los ítems de la cola en orden.
- * Los que fallan de nuevo se mantienen en la cola.
- * Retorna el número de ítems enviados exitosamente.
+ * Picking permite el respaldo en localStorage porque su payload es texto puro: no hay ningún Blob
+ * que `JSON.stringify` pueda convertir en `{}` sin avisar. Y lo necesita, porque es justamente de
+ * localStorage de donde viene: sin el respaldo, un navegador con IndexedDB bloqueado perdería una
+ * capacidad que hoy tiene.
+ */
+const OPCIONES = { permiteRespaldo: true } as const;
+
+export async function enqueuePickingItem(op: OfflineQueueItem): Promise<void> {
+  // El `clientOpId` de `add` ya viene armado desde la pantalla, porque el primer intento ONLINE lo
+  // mandó con ese mismo id: si la petición sí llegó y lo que se perdió fue la respuesta, el reenvío
+  // tiene que repetirlo para que el servidor lo reconozca en vez de crear un segundo pallet.
+  const clientOpId = (op.op === 'add' && op.clientOpId) || nuevoId();
+  await guardar<OfflineQueueItem>(
+    { id: nuevoId(), modulo: 'picking', clientOpId, payload: op, intentos: 0, createdAt: Date.now() },
+    OPCIONES,
+  );
+}
+
+export async function loadPickingQueue(): Promise<PendientePicking[]> {
+  return listar<OfflineQueueItem>('picking');
+}
+
+/** Las que el servidor rechazó de forma definitiva: ya no se reintentan y hay que avisarlas. */
+export async function bloqueadasPicking(): Promise<PendientePicking[]> {
+  return soloBloqueados(await loadPickingQueue());
+}
+
+export async function contarPendientesPicking(): Promise<number> {
+  return contar('picking');
+}
+
+/**
+ * Trae lo que haya quedado en la cola vieja de localStorage y borra esa clave.
+ *
+ * Existe por el día del despliegue: quien tenga pallets encolados sin señal cuando le llegue la
+ * versión nueva, los perdería enteros — la pantalla nueva ni miraría esa clave.
+ *
+ * Solo borra la clave vieja si el traspaso se confirmó. Si IndexedDB y el respaldo fallan los dos,
+ * lo de antes se queda donde está y se reintenta la próxima vez que abra: mejor migrar dos veces
+ * (el `client_op_id` de `add` cubre el duplicado) que borrar trabajo que no se guardó en ningún
+ * lado.
+ */
+export async function migrarColaVieja(): Promise<number> {
+  let viejos: OfflineQueueItem[];
+  try {
+    const crudo = localStorage.getItem(CLAVE_VIEJA);
+    if (!crudo) return 0;
+    const datos = JSON.parse(crudo);
+    if (!Array.isArray(datos) || datos.length === 0) { localStorage.removeItem(CLAVE_VIEJA); return 0; }
+    viejos = datos as OfflineQueueItem[];
+  } catch {
+    return 0;
+  }
+
+  let migrados = 0;
+  for (const op of viejos) {
+    const clientOpId = (op.op === 'add' && op.clientOpId) || nuevoId();
+    const ok = await guardar<OfflineQueueItem>(
+      { id: nuevoId(), modulo: 'picking', clientOpId, payload: op, intentos: 0, createdAt: Date.now() },
+      OPCIONES,
+    );
+    if (ok) migrados++;
+  }
+
+  if (migrados === viejos.length) {
+    try { localStorage.removeItem(CLAVE_VIEJA); } catch { /* da igual: al reintentar se deduplica */ }
+  }
+  return migrados;
+}
+
+function cuerpo(op: OfflineQueueItem, clientOpId: string): { url: string; body: string } {
+  if (op.op === 'add') {
+    return {
+      url: '/api/picking-pallets',
+      body: JSON.stringify({
+        date: op.date, store_cod: op.storeCod, state_key: op.stateKey,
+        picker_label: op.pickerLabel, tipo: op.tipo,
+        contenido: op.contenido, section: op.section ?? null, refs: op.refs,
+        client_op_id: clientOpId, actor_name: op.actorName,
+        ...(op.medidas ?? {}),
+      }),
+    };
+  }
+  // Ojo: /api/picking-prints todavía NO mira `client_op_id` — la idempotencia de la cola la da el
+  // servidor, y ese endpoint no la implementa. Se manda igual para que empiece a llegar el día que
+  // se agregue, pero hoy un reintento que sí llegó y perdió la respuesta registra la impresión dos
+  // veces. Es lo mismo que pasaba antes de la cola única; queda anotado para no darlo por resuelto.
+  return {
+    url: '/api/picking-prints',
+    body: JSON.stringify({
+      stateKey: op.stateKey, pickerLabel: op.pickerLabel,
+      pallets: op.pallets, tipo: op.tipo, date: op.date,
+      printedByName: op.printedByName, batch: op.batch ?? '',
+      client_op_id: clientOpId,
+    }),
+  };
+}
+
+/**
+ * Intenta enviar la cola. Lo que falla por falta de señal se queda para el próximo intento; lo que
+ * el servidor rechaza de forma definitiva se marca y deja de reintentarse (ver `bloqueado` en
+ * `src/lib/offline/tipos.ts`).
  */
 export async function flushPickingQueue(
   authedFetch: (url: string, init?: RequestInit) => Promise<Response>,
   onFlushed: (count: number) => void,
+  onBloqueadas?: (count: number) => void,
 ): Promise<void> {
-  const q = loadPickingQueue();
-  if (q.length === 0) return;
+  const items = await loadPickingQueue();
+  if (items.length === 0) return;
 
-  const remaining: OfflineQueueItem[] = [];
-  let flushed = 0;
+  const { enviados, bloqueados } = await drenar<OfflineQueueItem>(
+    items,
+    async item => {
+      const { url, body } = cuerpo(item.payload, item.clientOpId);
+      const res = await authedFetch(url, { method: 'POST', body });
+      return { veredicto: clasificarEstado(res.status), mensaje: `HTTP ${res.status}` };
+    },
+    { guardar: item => guardar(item, OPCIONES), eliminar },
+  );
 
-  for (const item of q) {
-    try {
-      let res: Response;
-      if (item.op === 'add') {
-        res = await authedFetch('/api/picking-pallets', {
-          method: 'POST',
-          body: JSON.stringify({
-            date: item.date, store_cod: item.storeCod, state_key: item.stateKey,
-            picker_label: item.pickerLabel, tipo: item.tipo,
-            contenido: item.contenido, section: item.section ?? null, refs: item.refs,
-            client_op_id: item.clientOpId, actor_name: item.actorName,
-            ...(item.medidas ?? {}),
-          }),
-        });
-      } else {
-        res = await authedFetch('/api/picking-prints', {
-          method: 'POST',
-          body: JSON.stringify({
-            stateKey: item.stateKey, pickerLabel: item.pickerLabel,
-            pallets: item.pallets, tipo: item.tipo, date: item.date,
-            printedByName: item.printedByName, batch: item.batch ?? '',
-          }),
-        });
-      }
-      if (res.ok) { flushed++; }
-      else { remaining.push(item); }
-    } catch {
-      remaining.push(item);
-    }
-  }
-
-  savePickingQueue(remaining);
-  if (flushed > 0) onFlushed(flushed);
+  if (enviados > 0) onFlushed(enviados);
+  if (bloqueados > 0) onBloqueadas?.(bloqueados);
 }
