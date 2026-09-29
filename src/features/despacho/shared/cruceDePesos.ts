@@ -140,10 +140,12 @@ export function pctDiferencia(kgBodega: number, kgOdoo: number): number | null {
 }
 
 /**
- * Las referencias como se escriben en la celda: sin el prefijo, que es igual en todas.
+ * Las referencias como se escriben en la celda: COMPLETAS.
  *
- * `99REC/DT/131559, 99REC/DT/131376` ocupa el doble y no agrega nada; `131559, 131376` se lee.
+ * Al principio les sacaba el prefijo —`131559` en vez de `99REC/DT/131559`— porque es igual en
+ * todas y ocupa el doble. El coordinador pidió la referencia entera, y tiene razón: así se copia
+ * de la celda y se pega en el buscador de Odoo sin tener que reconstruir nada.
  */
 export function refsParaCelda(refs: string[]): string {
-  return refs.map(r => r.replace(/^.*\//, '')).join(', ');
+  return refs.map(r => String(r ?? '').trim()).filter(Boolean).join(', ');
 }

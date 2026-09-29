@@ -151,11 +151,18 @@ describe('pctDiferencia', () => {
 });
 
 describe('refsParaCelda', () => {
-  it('saca el prefijo, que es igual en todas', () => {
-    expect(refsParaCelda(['99REC/DT/131559', '99REC/DT/131376'])).toBe('131559, 131376');
+  it('la referencia va COMPLETA, para poder pegarla en el buscador de Odoo', () => {
+    // Al principio le sacaba el prefijo. El coordinador pidió la referencia entera: así se copia
+    // de la celda y se busca en Odoo sin reconstruir nada.
+    expect(refsParaCelda(['99REC/DT/131559', '99REC/DT/131376']))
+      .toBe('99REC/DT/131559, 99REC/DT/131376');
   });
 
   it('sin referencias, celda vacía', () => {
     expect(refsParaCelda([])).toBe('');
+  });
+
+  it('descarta las vacías en vez de dejar comas sueltas', () => {
+    expect(refsParaCelda(['99REC/DT/131559', '', '  '])).toBe('99REC/DT/131559');
   });
 });
