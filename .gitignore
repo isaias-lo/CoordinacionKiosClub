@@ -62,3 +62,6 @@ TRABAJO_ISAIAS.md
 .opencode/
 
 .vercel
+
+# Scripts temporales de mantenimiento (borrado de duplicados en Storage, etc.)
+.tmp-cleanup/
