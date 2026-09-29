@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../../../../lib/supabase';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
+import { leerPeso, limpiarTecleo } from '../../shared/pesoIngresado';
 
 export interface PickingSlot {
   id:           number;
@@ -68,7 +69,7 @@ function SlotCard({
   const handleSave = async () => {
     setSaving(true);
     const updates: Record<string, number | null> = {
-      peso_kg: parseFloat(peso)  || null,
+      peso_kg: leerPeso(peso),
       alto:    parseInt(alto)    || null,
       largo:   needsLargoAncho ? (parseInt(largo) || null) : (slot.tipo === 'P' ? 120 : null),
       ancho:   needsLargoAncho ? (parseInt(ancho) || null) : (slot.tipo === 'P' ? 100 : null),
@@ -133,8 +134,8 @@ function SlotCard({
         <div>
           <div className="text-[9px] font-bold text-[#64748B] uppercase tracking-wide mb-1">Peso kg</div>
           <input
-            type="number" min="0" step="0.1"
-            value={peso} onChange={e => setPeso(e.target.value)}
+            type="text" inputMode="decimal"
+            value={peso} onChange={e => setPeso(limpiarTecleo(e.target.value))}
             placeholder="—"
             className="w-full border border-[#E2E8F0] rounded-lg px-2 py-1.5 text-[13px] font-mono text-navy focus:outline-none focus:border-blue-400 [-webkit-appearance:none]"
           />
