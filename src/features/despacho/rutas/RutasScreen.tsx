@@ -2412,6 +2412,35 @@ export default function RutasScreen() {
     return faseEnrutador({ poolCount, asignadasCount: asignadas.size, camionesConAsig, cerradasCount: cerradasV1.size, diaCerrado: cerrado });
   }, [calT, manualAsignaciones, cerradasV1, cerrado]);
 
+  // [Fase] La misma función pura para los otros dos tableros: Congelados y 2ª Vuelta también
+  // muestran en qué etapa del día están. Antes el indicador existía solo en Despacho, y quien
+  // trabajaba frío no tenía forma de saberlo sin cambiar de pestaña.
+  //
+  // `diaCerrado` no se les pasa a propósito: "terminar el día" es una acción del despacho seco, y
+  // marcarles la fase 5 por algo que no ocurrió en su tablero sería mentirles.
+  const faseInfoCong = useMemo(() => {
+    const asignadas = new Set(Object.values(asignacionesCong).flat().map(s => s.c));
+    const camionesConAsig = Object.values(asignacionesCong).filter(a => a.length > 0).length;
+    return faseEnrutador({
+      poolCount: codsEnPool(calTCong).length, asignadasCount: asignadas.size,
+      camionesConAsig, cerradasCount: cerradasCong.size, diaCerrado: false,
+    });
+  }, [calTCong, asignacionesCong, cerradasCong]);
+
+  const faseInfoV2 = useMemo(() => {
+    const delDia = asignacionesV2[v2Fecha] ?? {};
+    const asignadas = new Set(Object.values(delDia).flat().map(s => s.c));
+    const camionesConAsig = Object.values(delDia).filter(a => a.length > 0).length;
+    // El "pool" de 2ª vuelta son las pendientes de esa fecha MÁS lo ya asignado: sin sumarlas,
+    // asignar la última tienda dejaría el pool en cero y la fase saltaría a "Esperando Bodega"
+    // justo cuando el camión está listo para cerrar.
+    const pendientes = pendientesV2Origen.filter(p => p.fechaOrigen === v2Fecha).length;
+    return faseEnrutador({
+      poolCount: pendientes + asignadas.size, asignadasCount: asignadas.size,
+      camionesConAsig, cerradasCount: 0, diaCerrado: false,
+    });
+  }, [asignacionesV2, v2Fecha, pendientesV2Origen]);
+
   // [E4·4b] El botón "Asignar" del tablero ahora usa el motor por clusters históricos
   // (autoAsignar, instantáneo). El asistente LLM (construirPayloadIA/solicitarAsignacionIA)
   // queda como columna alternativa opcional en "Calcular" (handleCalcularManual); su botón
@@ -3099,7 +3128,7 @@ export default function RutasScreen() {
             (el split contenido↔mapa + su divisor viven dentro de InputSection, vía mapPanel). */}
           <InputSection
             flota={flota}
-            modo={modo} fase={faseInfo} calT={sortedCalT}
+            modo={modo} fase={faseInfo} faseCong={faseInfoCong} calT={sortedCalT}
             calTCong={sortedCalTCong}
             asignacionesCong={asignacionesCong}
             onAsignacionesCong={setAsignacionesCong}
@@ -3239,6 +3268,7 @@ export default function RutasScreen() {
                       onAsignaciones={a => setAsignacionesV2(prev => ({ ...prev, [v2Fecha]: a }))}
                       onCalcular={() => {}}
                       onCerrarCamion={patente => cerrarCamionV2(v2Fecha, patente)}
+                      fase={faseInfoV2}
                       cerrarSel={cerrarSelV2}
                       onToggleCerrarSel={p => setCerrarSelV2(prev => {
                         const next = new Set(prev);
