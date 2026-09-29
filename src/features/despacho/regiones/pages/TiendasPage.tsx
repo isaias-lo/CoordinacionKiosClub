@@ -70,7 +70,7 @@ import { STORE_CARD_BADGE as SCB, claseTarjetaTienda, claseCodigoTienda, claseEt
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
-import { esAgregado, etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
+import { esAgregado, etiquetaAgregado, etiquetaDeUnidad } from '@/features/despacho/shared/adquisicion';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ──
    [Bug 60PBL, 2026-09-10] Antes esto era un `const` calculado UNA sola vez, al cargar el módulo.
@@ -1922,7 +1922,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     </div>
                     <div className="text-[13px] text-text-2 space-y-0.5 mb-1.5">
                       <div className="font-semibold flex items-center gap-1.5 flex-wrap">
-                        {row.savedItem.peso}kg{row.savedItem.pkg !== 'contenedor' && ` · ${row.savedItem.alto}cm`}
+                        {/* Una adquisición no tiene peso ni medidas: escribir "0kg · 0cm" haría
+                            pasar la AUSENCIA de un dato por un dato. Dice qué es. */}
+                        {etiquetaDeUnidad(row.savedItem)
+                          ?? `${row.savedItem.peso}kg${row.savedItem.pkg !== 'contenedor' ? ` · ${row.savedItem.alto}cm` : ''}`}
                         {esSinPesar(row.savedItem) && (
                           <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
                             style={{ color: '#D97706', background: 'rgba(217,119,6,0.12)' }}>

@@ -13,6 +13,9 @@
 import fs from 'node:fs';
 import { armarCruce, type MovimientoOdoo } from '../src/features/despacho/shared/cruceDePesos';
 import { valoresDeFila } from '../src/features/despacho/shared/hojaCrucePesos';
+import { esAgregado } from '../src/features/despacho/shared/adquisicion';
+
+type Fila = { cod: string; peso_kg: number | null; tipo: string | null };
 
 const env = Object.fromEntries(
   fs.readFileSync(new URL('../.env.local', import.meta.url), 'utf8').split('\n').map(l => {
@@ -80,13 +83,16 @@ async function rest<T>(ruta: string): Promise<T[]> {
 async function deLaBase() {
   const tiendas = await rest<{ codigo: string; nombre: string }>('tiendas?select=codigo,nombre');
   const [rm, reg] = await Promise.all([
-    rest<{ cod: string; peso_kg: number | null }>(`despacho_rm?select=cod,peso_kg&fecha=eq.${encodeURIComponent(fechaDDMM)}`),
-    rest<{ cod: string; peso_kg: number | null }>(`despacho_regiones?select=cod,peso_kg&fecha=eq.${encodeURIComponent(fechaDDMM)}`),
+    rest<Fila>(`despacho_rm?select=cod,peso_kg,tipo&fecha=eq.${encodeURIComponent(fechaDDMM)}`),
+    rest<Fila>(`despacho_regiones?select=cod,peso_kg,tipo&fecha=eq.${encodeURIComponent(fechaDDMM)}`),
   ]);
   const pesos = new Map<string, number>();
   for (const f of [...rm, ...reg]) {
     const cod = String(f.cod ?? '').toUpperCase();
     if (!cod) continue;
+    // Los agregados quedan fuera, igual que en `lib/crucePesosDia.ts`: una adquisición y un
+    // web/retiro no existen del lado de Odoo, así que sumarlos inflaría el TOTAL BODEGA.
+    if (esAgregado(f.tipo)) continue;
     pesos.set(cod, (pesos.get(cod) ?? 0) + (Number(f.peso_kg) || 0));
   }
   return {

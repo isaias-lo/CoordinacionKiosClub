@@ -61,6 +61,8 @@ export interface ResultadoEscritura {
   actualizadas: number;
   /** La pestaña se creó en esta llamada. */
   hojaCreada: boolean;
+  /** Columnas del sistema que la hoja no tenía y se agregaron al final en esta llamada. */
+  columnasAgregadas: string[];
 }
 
 /**
@@ -76,7 +78,7 @@ export async function escribirCruce(
   valores: Record<string, string | number>[],
 ): Promise<ResultadoEscritura> {
   if (!SPREADSHEET_ID) throw new Error('Falta GOOGLE_SPREADSHEET_ID');
-  if (!valores.length) return { agregadas: 0, actualizadas: 0, hojaCreada: false };
+  if (!valores.length) return { agregadas: 0, actualizadas: 0, hojaCreada: false, columnasAgregadas: [] };
 
   const gs = google.sheets({ version: 'v4', auth: auth() });
   const hojaCreada = await asegurarHoja(gs);
@@ -91,10 +93,31 @@ export async function escribirCruce(
   const encabezado = (filasHoja[0] ?? []).map(String);
   const idx = indicesDeEncabezado(encabezado);
 
-  // Si alguien RENOMBRÓ una columna del sistema, esos datos se perderían en silencio. Es lo único
-  // que este diseño no puede absorber solo, así que se niega y dice cuál.
-  const perdidas = ENCABEZADO_CRUCE.filter(c => idx[normalizarColumna(c)] === undefined);
-  if (perdidas.length) throw new ColumnasRenombradas(perdidas);
+  // Las columnas del sistema que la hoja todavía no tiene SE AGREGAN AL FINAL.
+  //
+  // Antes esto lanzaba `ColumnasRenombradas` sin distinguir dos casos que no son lo mismo:
+  //
+  //   · alguien renombró una columna    → la nueva queda vacía y la vieja, huérfana pero INTACTA
+  //   · el sistema estrenó una columna  → simplemente no existe todavía
+  //
+  // Negarse en el segundo caso obligaba a que una persona creara el encabezado a mano antes de
+  // que la hoja volviera a escribirse — y mientras tanto no se escribía NADA. Agregarla no pierde
+  // datos en ninguno de los dos casos, y el resultado dice cuáles se agregaron para que un
+  // renombre accidental se note igual.
+  //
+  // Va al final a propósito: insertar en el medio correría las columnas que alguien acomodó.
+  const faltantes = ENCABEZADO_CRUCE.filter(c => idx[normalizarColumna(c)] === undefined);
+  if (faltantes.length) {
+    const desde = encabezado.length;
+    encabezado.push(...faltantes);
+    faltantes.forEach((c, i) => { idx[normalizarColumna(c)] = desde + i; });
+    await gs.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${HOJA_CRUCE}!A1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [encabezado] },
+    });
+  }
 
   const iFecha = idx[normalizarColumna(COL_LLAVE[0])];
   const iCod   = idx[normalizarColumna(COL_LLAVE[1])];
@@ -133,5 +156,5 @@ export async function escribirCruce(
     });
   }
 
-  return { agregadas: nuevas.length, actualizadas: cambios.length, hojaCreada };
+  return { agregadas: nuevas.length, actualizadas: cambios.length, hojaCreada, columnasAgregadas: faltantes };
 }

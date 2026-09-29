@@ -23,6 +23,7 @@
 import { supabaseServer } from '@/lib/supabaseServer';
 import { armarCruce, type MovimientoOdoo } from '@/features/despacho/shared/cruceDePesos';
 import { valoresDeFila } from '@/features/despacho/shared/hojaCrucePesos';
+import { esAgregado } from '@/features/despacho/shared/adquisicion';
 
 const ODOO_URL = process.env.NEXT_PUBLIC_ODOO_URL ?? '';
 const ODOO_DB  = process.env.NEXT_PUBLIC_ODOO_DB ?? '';
@@ -103,15 +104,26 @@ async function porPaginas<T>(
  * celda salga vacía en vez de decir «−100%», que se leería como "no llegó nada".
  */
 export async function pesosDeBodega(fechaDDMM: string): Promise<Map<string, number>> {
-  type Fila = { cod: string | null; peso_kg: number | null };
+  type Fila = { cod: string | null; peso_kg: number | null; tipo: string | null };
   const [rm, reg] = await Promise.all([
-    porPaginas<Fila>('despacho_rm', 'cod,peso_kg', fechaDDMM),
-    porPaginas<Fila>('despacho_regiones', 'cod,peso_kg', fechaDDMM),
+    porPaginas<Fila>('despacho_rm', 'cod,peso_kg,tipo', fechaDDMM),
+    porPaginas<Fila>('despacho_regiones', 'cod,peso_kg,tipo', fechaDDMM),
   ]);
   const pesos = new Map<string, number>();
   for (const f of [...rm, ...reg]) {
     const cod = String(f.cod ?? '').toUpperCase().trim();
     if (!cod) continue;
+    // LOS AGREGADOS NO ENTRAN AL CRUCE.
+    //
+    // Este cuadro compara lo que Odoo despachó como ABASTECIMIENTO contra lo que Bodega pesó de
+    // ese mismo abastecimiento. Una adquisición es una compra y un web/retiro es un pedido que el
+    // cliente pasa a buscar: ninguno de los dos existe del lado de Odoo, así que sumarlos al
+    // TOTAL BODEGA inflaría ese lado y la tienda aparecería con un excedente que no es real.
+    //
+    // Se descartan por TIPO y no por peso: hoy llegan en 0 —no se pesan—, pero el día que alguien
+    // le ponga un peso a uno, tiene que seguir quedando afuera. Filtrar por "peso 0" habría
+    // funcionado hasta ese día y fallado justo cuando el dato empezara a existir.
+    if (esAgregado(f.tipo)) continue;
     pesos.set(cod, (pesos.get(cod) ?? 0) + (Number(f.peso_kg) || 0));
   }
   return pesos;
