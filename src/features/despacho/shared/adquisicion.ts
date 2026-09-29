@@ -101,3 +101,16 @@ export function etiquetaAgregado(tipoOPkg?: string | null): string | null {
   if (esWebRetiro(tipoOPkg))   return LABEL_WEB_RETIRO;
   return null;
 }
+
+/**
+ * La etiqueta de una unidad guardada, o `null` si no es un agregado.
+ *
+ * Mira los DOS campos porque cada espejo llama distinto a la misma cosa: en RM/Costa `tipo` es el
+ * envase ('Adquisicion'), y en Nacional `tipo` es el CONTENIDO ('comida') y el envase va en `pkg`.
+ *
+ * Sirve para no escribir `0kg · 0cm` en la tarjeta de una adquisición. Ese cero no es un peso: es
+ * la ausencia de uno, y mostrarlo como número invita a creer que la unidad pesa cero.
+ */
+export function etiquetaDeUnidad(item: { tipo?: string | null; pkg?: string | null }): string | null {
+  return etiquetaAgregado(item.tipo) ?? etiquetaAgregado(item.pkg);
+}

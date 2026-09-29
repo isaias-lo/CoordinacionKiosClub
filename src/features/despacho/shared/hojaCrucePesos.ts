@@ -19,7 +19,7 @@
 //
 // El precedente en este repositorio son ENTREGA/TIENDA y RECEPCIÓN/TIENDA, por nombre desde #212.
 
-import { TIPOS_CRUCE, refsParaCelda, pctDiferencia, type FilaCruce } from './cruceDePesos';
+import { TIPOS_CRUCE, refsParaCelda, pctDiferencia, kgDiferencia, type FilaCruce } from './cruceDePesos';
 
 /** Las columnas del sistema, en el orden con que nace la hoja. Después se pueden mover. */
 export const ENCABEZADO_CRUCE = [
@@ -36,6 +36,9 @@ export const ENCABEZADO_CRUCE = [
   'KG CHOCOLATE',
   'TOTAL ODOO',
   'TOTAL BODEGA',
+  // Los kilos de diferencia, al lado del porcentaje: responden cosas distintas y las dos hacen
+  // falta. Un −53,8% no dice si faltan 400 kg o 4.
+  'KG DIF',
   '% DIF',
   'ACTUALIZADO',
 ] as const;
@@ -111,6 +114,9 @@ export function valoresDeFila(d: DatosFila): Record<string, string | number> {
   v['TOTAL BODEGA'] = sinPesar ? '' : redondear(d.kgBodega as number);
   const pct = sinPesar ? null : pctDiferencia(d.kgBodega as number, d.cruce.totalOdoo);
   v['% DIF'] = pct === null ? '' : Math.round(pct * 10) / 10;
+  // Sin pesar queda VACÍO, igual que el porcentaje: un "−606" acá se leería como que faltan 606
+  // kilos, cuando lo que pasa es que todavía nadie pesó.
+  v['KG DIF'] = sinPesar ? '' : redondear(kgDiferencia(d.kgBodega as number, d.cruce.totalOdoo));
 
   return v;
 }

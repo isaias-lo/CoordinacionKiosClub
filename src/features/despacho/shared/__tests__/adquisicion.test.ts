@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   esAdquisicion, esWebRetiro, esAgregado, pideMedidas, naceCompleta, etiquetaAgregado,
   TIPO_ADQUISICION, TIPO_WEB_RETIRO, PKG_ADQUISICION, PKG_WEB_RETIRO,
-  LABEL_ADQUISICION, LABEL_WEB_RETIRO,
+  LABEL_ADQUISICION, LABEL_WEB_RETIRO, etiquetaDeUnidad,
 } from '../adquisicion';
 import { claseSantiago, claseNacional, etiquetaCard, ordenDeItem, renumerarOrden } from '../numeroCard';
 
@@ -74,6 +74,22 @@ describe('etiquetaAgregado — lo que se escribe en la columna TIPO', () => {
     // como adquisición. Sin esto, una fila releída pediría medidas.
     expect(esAdquisicion(etiquetaAgregado(TIPO_ADQUISICION)!)).toBe(true);
     expect(esWebRetiro(etiquetaAgregado(TIPO_WEB_RETIRO)!)).toBe(true);
+  });
+});
+
+describe('etiquetaDeUnidad — para no escribir "0kg · 0cm" en la tarjeta', () => {
+  it('reconoce el agregado en los dos espejos', () => {
+    // RM/Costa guarda el envase en `tipo`; Nacional guarda el CONTENIDO en `tipo` y el envase en
+    // `pkg`. Mirar un solo campo dejaba el arreglo puesto en un espejo y roto en el otro.
+    expect(etiquetaDeUnidad({ tipo: TIPO_ADQUISICION })).toBe(LABEL_ADQUISICION);
+    expect(etiquetaDeUnidad({ pkg: PKG_WEB_RETIRO })).toBe(LABEL_WEB_RETIRO);
+    expect(etiquetaDeUnidad({ tipo: 'comida', pkg: PKG_ADQUISICION })).toBe(LABEL_ADQUISICION);
+  });
+
+  it('devuelve null para lo que sí se pesa, para que la tarjeta muestre los kilos', () => {
+    expect(etiquetaDeUnidad({ tipo: 'Pallet' })).toBeNull();
+    expect(etiquetaDeUnidad({ tipo: 'comida', pkg: 'pallet' })).toBeNull();
+    expect(etiquetaDeUnidad({})).toBeNull();
   });
 });
 

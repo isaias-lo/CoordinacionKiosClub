@@ -140,6 +140,22 @@ export function pctDiferencia(kgBodega: number, kgOdoo: number): number | null {
 }
 
 /**
+ * La diferencia en KILOS: Bodega menos Odoo. Positivo = Bodega pesó de más.
+ *
+ * Va al lado del porcentaje porque responden cosas distintas y las dos hacen falta. Un −53,8% no
+ * dice si faltan 400 kg o 4: en una tienda chica un porcentaje enorme puede ser nada, y en una
+ * grande un 5% pueden ser cien kilos. El porcentaje ordena; los kilos dicen cuánto pesa el
+ * problema.
+ *
+ * A diferencia del porcentaje, esto SÍ tiene sentido con Odoo en cero —significa que llegó carga
+ * que Odoo no registra— así que solo se devuelve `null` cuando no hay peso de Bodega con qué
+ * comparar.
+ */
+export function kgDiferencia(kgBodega: number, kgOdoo: number): number {
+  return (Number(kgBodega) || 0) - (Number(kgOdoo) || 0);
+}
+
+/**
  * Las referencias como se escriben en la celda: COMPLETAS.
  *
  * Al principio les sacaba el prefijo —`131559` en vez de `99REC/DT/131559`— porque es igual en

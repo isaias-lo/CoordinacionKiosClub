@@ -71,7 +71,7 @@ import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { fechaChile } from '@/lib/fechaChile';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
-import { esAgregado, etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
+import { esAgregado, etiquetaAgregado, etiquetaDeUnidad } from '@/features/despacho/shared/adquisicion';
 
 /* ── Calendar localStorage ── */
 const todayKey = fechaChile();
@@ -2469,7 +2469,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                                   {item.tipo}
                                 </span>
                                 <span className="text-[12px] font-semibold text-text-2">{item.contenido === 'Chocolate' ? 'CH' : item.contenido}</span>
-                                <span className="text-[12px] font-bold text-navy">{item.peso}kg</span>
+                                <span className="text-[12px] font-bold text-navy">
+                                  {etiquetaDeUnidad(item) ?? `${item.peso}kg`}
+                                </span>
                               </div>
                               <div className="text-[11px] text-text-3 mt-0.5 truncate">
                                 {item.tipo === 'Bulto' && item.contenido === 'Chocolate'
@@ -2593,7 +2595,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     </div>
                     <div className="text-[14px] text-text-2 space-y-0.5 mb-2">
                       <div className="font-semibold flex items-center gap-1.5 flex-wrap">
-                        {row.savedItem.peso}kg · {row.savedItem.alto}cm
+                        {/* Una adquisición no tiene peso ni medidas: escribir "0kg · 0cm" haría
+                            pasar la AUSENCIA de un dato por un dato. Dice qué es. */}
+                        {etiquetaDeUnidad(row.savedItem) ?? `${row.savedItem.peso}kg · ${row.savedItem.alto}cm`}
                         {esSinPesar(row.savedItem) && (
                           <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
                             style={{ color: '#D97706', background: 'rgba(217,119,6,0.12)' }}>

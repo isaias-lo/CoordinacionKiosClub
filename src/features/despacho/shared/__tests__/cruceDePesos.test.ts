@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  tipoDeOrigen, tiendaDeDestino, armarCruce, pctDiferencia, refsParaCelda,
+  tipoDeOrigen, tiendaDeDestino, armarCruce, pctDiferencia, kgDiferencia, refsParaCelda,
   type MovimientoOdoo,
 } from '../cruceDePesos';
 
@@ -164,5 +164,31 @@ describe('refsParaCelda', () => {
 
   it('descarta las vacías en vez de dejar comas sueltas', () => {
     expect(refsParaCelda(['99REC/DT/131559', '', '  '])).toBe('99REC/DT/131559');
+  });
+});
+
+describe('kgDiferencia — cuánto pesa la diferencia', () => {
+  it('Bodega menos Odoo, con signo', () => {
+    // El ejemplo del coordinador: «Odoo 700, Total bodega 730, Peso diferencia 30».
+    expect(kgDiferencia(730, 700)).toBe(30);
+    expect(kgDiferencia(670, 700)).toBe(-30);
+    expect(kgDiferencia(700, 700)).toBe(0);
+  });
+
+  it('el caso real de 24SPP del 29/09', () => {
+    // Odoo 776,58 · Bodega 358,9 · −53,8%. El porcentaje ordena; los kilos dicen cuánto duele.
+    expect(kgDiferencia(358.9, 776.58)).toBeCloseTo(-417.68, 2);
+  });
+
+  it('con Odoo en cero SÍ devuelve un número, al revés que el porcentaje', () => {
+    // Un porcentaje contra cero no significa nada y por eso `pctDiferencia` devuelve null. Los
+    // kilos sí: quieren decir que llegó carga que Odoo no registra, y eso hay que poder verlo.
+    expect(pctDiferencia(50, 0)).toBeNull();
+    expect(kgDiferencia(50, 0)).toBe(50);
+  });
+
+  it('lo que no es número cuenta como cero, no como NaN', () => {
+    expect(kgDiferencia(NaN, 100)).toBe(-100);
+    expect(kgDiferencia(100, NaN)).toBe(100);
   });
 });

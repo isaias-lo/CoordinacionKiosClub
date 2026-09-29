@@ -57,6 +57,21 @@ describe('valoresDeFila', () => {
     expect(v['% DIF']).toBe('');
   });
 
+  it('KG DIF dice cuánto pesa la diferencia, no solo su porcentaje', () => {
+    // Pedido del coordinador sobre la fila de 24SPP: «Odoo 700, Total bodega 730, Peso diferencia
+    // 30». Un −53,8% no dice si faltan 400 kg o 4: en una tienda chica un porcentaje enorme puede
+    // ser nada, y en una grande un 5% pueden ser cien kilos.
+    expect(valoresDeFila({ ...base, kgBodega: 420.16 })['KG DIF']).toBe(30);      // 420,16 − 390,16
+    expect(valoresDeFila({ ...base, kgBodega: 360.16 })['KG DIF']).toBe(-30);
+    expect(typeof valoresDeFila({ ...base, kgBodega: 420.16 })['KG DIF']).toBe('number');
+  });
+
+  it('SIN PESAR deja KG DIF vacío, no en negativo', () => {
+    // Un «−390» acá se leería como que faltan 390 kilos, cuando lo que pasa es que nadie pesó.
+    expect(valoresDeFila({ ...base, kgBodega: null })['KG DIF']).toBe('');
+    expect(valoresDeFila({ ...base, kgBodega: 0 })['KG DIF']).toBe('');
+  });
+
   it('el % sale redondeado a un decimal', () => {
     expect(valoresDeFila({ ...base, kgBodega: 390.16 })['% DIF']).toBe(0);
     expect(valoresDeFila({ ...base, kgBodega: 351.14 })['% DIF']).toBeCloseTo(-10, 1);
