@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdmin } from '@/lib/apiAuth';
+import { verifyAdmin, verifyAuth } from '@/lib/apiAuth';
+import { construirCruceDelDia } from '@/lib/crucePesosDia';
 import { escribirCruce, ColumnasRenombradas } from '@/lib/crucePesosSheet';
 import { COL_LLAVE } from '@/features/despacho/shared/hojaCrucePesos';
 
@@ -12,19 +13,46 @@ import { COL_LLAVE } from '@/features/despacho/shared/hojaCrucePesos';
 // Solo admin: el cruce compara el trabajo del andén contra Odoo y no es información de operación.
 
 export async function POST(request: NextRequest) {
-  if (!await verifyAdmin(request)) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
-  }
-
-  // Llegan VALORES POR NOMBRE de columna, no filas posicionales: la posición se decide recién
-  // después de leer el encabezado real de la hoja.
-  let valores: Record<string, string | number>[];
+  let body: { valores?: Record<string, string | number>[]; fecha?: string };
   try {
-    const body = await request.json() as { valores?: Record<string, string | number>[] };
-    valores = Array.isArray(body.valores) ? body.valores : [];
+    body = await request.json() as typeof body;
   } catch {
     return NextResponse.json({ error: 'JSON inválido' }, { status: 400 });
   }
+
+  // DOS CAMINOS, con permisos distintos a propósito.
+  //
+  //   { fecha }    Recalcula el día ENTERO desde sus fuentes —Odoo y las dos tablas de Bodega— y
+  //                lo escribe. Es lo que dispara REGISTRAR, así que lo puede hacer cualquiera que
+  //                pueda registrar: no elige qué se escribe, solo pide que se recalcule lo que
+  //                ya está en la base.
+  //
+  //   { valores }  Escribe las filas que le pasen, tal cual. Eso sí es escribir arbitrariamente
+  //                en la planilla, y queda como estaba: solo admin.
+  let valores: Record<string, string | number>[];
+
+  if (typeof body.fecha === 'string') {
+    if (!await verifyAuth(request)) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.fecha)) {
+      return NextResponse.json({ error: 'Fecha inválida (YYYY-MM-DD)' }, { status: 400 });
+    }
+    try {
+      valores = await construirCruceDelDia(body.fecha);
+    } catch (err) {
+      console.error('[cruce-pesos] armar el día', err);
+      return NextResponse.json({ error: 'No se pudo armar el cruce del día' }, { status: 502 });
+    }
+  } else {
+    if (!await verifyAdmin(request)) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    }
+    // Llegan VALORES POR NOMBRE de columna, no filas posicionales: la posición se decide recién
+    // después de leer el encabezado real de la hoja.
+    valores = Array.isArray(body.valores) ? body.valores : [];
+  }
+
   if (!valores.length) return NextResponse.json({ ok: true, agregadas: 0, actualizadas: 0 });
 
   const sinLlave = valores.filter(v => !v?.[COL_LLAVE[0]] || !v?.[COL_LLAVE[1]]);
