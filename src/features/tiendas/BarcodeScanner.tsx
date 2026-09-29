@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { mensajeDeCamara, type MensajeCamara } from '@/lib/camara';
 
 interface Props {
   onDetect: (data: string) => void;
@@ -13,7 +14,7 @@ export function BarcodeScanner({ onDetect }: Props) {
   const detectedRef = useRef(false);
 
   const [status,     setStatus]     = useState<'requesting' | 'active' | 'error'>('requesting');
-  const [errMsg,     setErrMsg]     = useState('');
+  const [errMsg,     setErrMsg]     = useState<MensajeCamara | null>(null);
   const [manual,     setManual]     = useState('');
   const [showManual, setShowManual] = useState(false);
 
@@ -67,7 +68,8 @@ export function BarcodeScanner({ onDetect }: Props) {
       } catch (e) {
         if (!cancelled) {
           setStatus('error');
-          setErrMsg((e as Error).message ?? 'No se pudo acceder a la cámara');
+          // El `message` del navegador viene en inglés y no dice qué hacer. Ver src/lib/camara.ts.
+          setErrMsg(mensajeDeCamara(e));
         }
       }
     }
@@ -145,7 +147,14 @@ export function BarcodeScanner({ onDetect }: Props) {
           background: '#0a0f1e', gap: 16, padding: 32,
         }}>
           <div style={{ fontSize: 42 }}>⚠️</div>
-          <p style={{ margin: 0, color: '#FCA5A5', fontSize: 14, textAlign: 'center' }}>{errMsg}</p>
+          <p style={{ margin: 0, color: '#FCA5A5', fontSize: 15, fontWeight: 700, textAlign: 'center', maxWidth: 340 }}>
+            {errMsg?.titulo ?? 'No se pudo abrir la cámara'}
+          </p>
+          {errMsg?.comoArreglarlo && (
+            <p style={{ margin: 0, color: '#CBD5E1', fontSize: 13, lineHeight: 1.5, textAlign: 'center', maxWidth: 340 }}>
+              {errMsg.comoArreglarlo}
+            </p>
+          )}
           <button onClick={() => setShowManual(true)}
             style={{ background: '#1B2A6B', color: '#fff', border: 'none', borderRadius: 14, padding: '14px 28px', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
             Ingresar código manualmente
