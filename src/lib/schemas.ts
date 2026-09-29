@@ -144,6 +144,10 @@ export const RecepcionSchema = z.object({
   origen:                z.enum(['tienda', 'conductor']).optional(),
   otpToken:              z.string().optional(),
   otpEmail:              z.string().email().optional(),
+  // Comprobante firmado de esa misma verificación, para lo que se envía desde la cola offline.
+  // Vive 72 horas y va atado a esta recepción (ver `alcanceRecepcion`), porque `otpToken` vence a
+  // los 10 minutos y ese plazo es justo el que la cola no puede garantizar.
+  recibo:                z.string().max(512).optional(),
   observaciones:         z.string().max(500).optional().default(''),
   selloEstado:           z.enum(['intacto', 'roto', 'ausente']).optional(),
   selloLlegadaUrl:       z.string().url().optional().or(z.literal('')),
