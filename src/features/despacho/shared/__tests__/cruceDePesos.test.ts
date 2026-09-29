@@ -29,6 +29,14 @@ describe('tipoDeOrigen — el tipo lo declara Odoo', () => {
     expect(tipoDeOrigen('Abastecimiento Meli Full Etiquetado 28/09/2026')).toBeNull();
   });
 
+  it('AUDITORIA queda fuera: es la MISMA mercadería revalidada', () => {
+    // Medido el 28/09: 47 grupos (tipo + tienda) tenían el movimiento normal Y el de auditoría,
+    // con el mismo peso al centavo. Ninguno existía solo como auditoría. Contarlos sumaba
+    // 8.766 kg fantasma en un solo día.
+    expect(tipoDeOrigen('AUDITORIA Abastecimiento Comida 39PSB 28/09/2026')).toBeNull();
+    expect(tipoDeOrigen('auditoria abastecimiento aseo 42ANP 28/09/2026')).toBeNull();
+  });
+
   it('un texto nuevo devuelve null en vez de caer en una columna', () => {
     // El modo de falla que evita: un tipo que aparezca mañana inflando "hogar" sin que nadie lo note.
     expect(tipoDeOrigen('Abastecimiento Bazar 24SPP 29/09/2026')).toBeNull();

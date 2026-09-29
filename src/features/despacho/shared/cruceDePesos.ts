@@ -44,7 +44,16 @@ export interface MovimientoOdoo {
  * inflaría un total sin que nadie pueda notarlo después.
  */
 export function tipoDeOrigen(origen?: string | null): TipoCruce | null {
-  const m = /abastecimiento\s+(comida|aseo|hogar|chocolates?)\b/i.exec(String(origen ?? ''));
+  const texto = String(origen ?? '');
+  // AUDITORIA queda fuera, y esto NO es una precaución teórica: el 28/09, 47 grupos
+  // (tipo + tienda) tenían un movimiento normal Y uno de auditoría con EL MISMO PESO —
+  // 130936 y 131044, los dos 107,88 kg. Ninguno existía solo como auditoría. Son la misma
+  // mercadería revalidada, y contarlos sumaba 8.766 kg fantasma en un día: un 42% de más.
+  //
+  // El endpoint de Odoo ya los excluye. Esto lo repite acá a propósito: la regla que hace o
+  // deshace el número no puede depender de que el llamador se acuerde de filtrar.
+  if (/auditoria/i.test(texto)) return null;
+  const m = /abastecimiento\s+(comida|aseo|hogar|chocolates?)\b/i.exec(texto);
   if (!m) return null;
   return m[1].toLowerCase().replace(/s$/, '') as TipoCruce;
 }
