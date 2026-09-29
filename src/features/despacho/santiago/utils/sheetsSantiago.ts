@@ -1,6 +1,7 @@
 import type { SantiagoItem } from '../types';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import { esSinPesar } from '../../shared/sinPesar';
+import { PREFIJO_ADQUISICION, PREFIJO_WEB_RETIRO, etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
 
 const URBAN_COMMUNES = new Set([
   'Santiago', 'Providencia', 'Las Condes', 'Vitacura', 'Ñuñoa',
@@ -39,8 +40,12 @@ export function buildRows(
     if (!tienda) continue;
 
     for (const item of tiendaItems) {
-      const tipoPrefix = item.tipo === 'Pallet' ? 'P' : item.tipo === 'Bulto' ? 'B' : item.tipo === 'Contenedor' ? 'C' : 'CH';
-      const tipoLabel  = item.tipo === 'Chocolate' ? 'Bulto CH' : item.tipo;
+      const tipoPrefix = item.tipo === 'Pallet' ? 'P' : item.tipo === 'Bulto' ? 'B' : item.tipo === 'Contenedor' ? 'C'
+                       : item.tipo === 'Adquisicion' ? PREFIJO_ADQUISICION
+                       : item.tipo === 'WebRetiro'   ? PREFIJO_WEB_RETIRO : 'CH';
+      // La columna TIPO ya existía y ya distinguía los envases: esto es un valor más, no una
+      // columna nueva. Las hojas son posicionales y acá no se corre ninguna.
+      const tipoLabel  = item.tipo === 'Chocolate' ? 'Bulto CH' : (etiquetaAgregado(item.tipo) ?? item.tipo);
       // [Agregar sin pesar] Si el item no fue pesado, escribimos el NÚMERO 0 (no '') en PESO_KG.
       // sheets-write decide append+mirror-a-DB vs. ruta enrutador con `hasDims = records.some(r =>
       // r.peso_kg !== null)`, y n('') → null. Si TODOS los items del batch fueran sin pesar y

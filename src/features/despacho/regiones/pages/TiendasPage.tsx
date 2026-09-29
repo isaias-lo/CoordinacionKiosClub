@@ -1035,7 +1035,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   // closure (que NO se actualiza dentro del loop) → sin offset los N quedarían con el mismo nº.
   const addFormRowInner = async (pkg: TipoPaquete, existingSlot?: PickingSlot, countOffset = 0) => {
     const cod = selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? '') : '';
-    const PKG_CODE: Record<TipoPaquete, string> = { pallet: 'P', box: 'B', contenedor: 'C', chocolate: 'CH' };
+    const PKG_CODE: Record<TipoPaquete, string> = { pallet: 'P', box: 'B', contenedor: 'C', chocolate: 'CH', adquisicion: 'A', 'web-retiro': 'W' };
     const date = fechaISOLocal();
 
     // Chocolate: se agrega AGREGADO al instante con peso por defecto (sin formulario)
@@ -1168,7 +1168,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const SLOT_TIPO_TO_PKG: Record<string, TipoPaquete> = { P: 'pallet', B: 'box', C: 'contenedor', CH: 'chocolate' };
   // Estado del diálogo "Nuevo / Preexistente"
   const [dialogPkg, setDialogPkg] = useState<TipoPaquete | null>(null);
-  const PKG_LABEL: Record<TipoPaquete, string> = { pallet: 'Pallet', box: 'Bulto', contenedor: 'Contenedor', chocolate: 'Chocolate' };
+  const PKG_LABEL: Record<TipoPaquete, string> = { pallet: 'Pallet', box: 'Bulto', contenedor: 'Contenedor', chocolate: 'Chocolate', adquisicion: 'Adquisición', 'web-retiro': 'Web / retiro' };
   const updateRow = (id: string, field: keyof FormRow, value: string) => {
     // `tocada` marca que esto es de la persona: desde acá, nada remoto lo pisa.
     setFormRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value, tocada: true } : r));

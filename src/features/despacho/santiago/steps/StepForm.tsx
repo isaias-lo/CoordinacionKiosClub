@@ -1321,7 +1321,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     let slotId = row.pickingSlotId;
     let nuevoSlot: PickingSlot | undefined;
     if (!slotId) {
-      const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH' };
+      const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH', Adquisicion: 'A', WebRetiro: 'W' };
       const { slot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: TIPO_CODE[row.tipo], contenido: row.contenido });
       // No seguir sin fila real en picking_pallets: antes esto se tragaba en silencio y el
       // pallet quedaba "confirmado" en el resumen de Bodega pero invisible para Seguimiento/
@@ -1822,7 +1822,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // El offset (índice de la iteración) los numera CH{base+1}..CH{base+N} y hace únicos los ids.
   const addFormRowInner = async (t: TipoCargamento, existingSlot?: PickingSlot, countOffset = 0) => {
     const cod = currentTienda?.cod;
-    const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH' };
+    const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH', Adquisicion: 'A', WebRetiro: 'W' };
     const date = fechaISOLocal();
 
     // Chocolate: se agrega AGREGADO al instante con peso por defecto (sin formulario)
