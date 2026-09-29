@@ -20,6 +20,8 @@ import { esVehiculoDePrueba, AVISO_PRUEBA } from '../utils/vehiculoPrueba';
 import { excesoDe, confirmacionSobreCapacidad, confirmacionCargaSobreCapacidad, textoBotonCerrar, confirmacionVarios } from '../utils/sobreCapacidad';
 import { visiblesEnTablero } from '../utils/flotaPorTablero';
 import { resumenEmpresa, empiezaPlegada, alternarEmpresa, textoResumen } from '../utils/plegadoEmpresa';
+import { FaseEnrutador } from './FaseEnrutador';
+import type { FaseInfo } from '../utils/faseEnrutador';
 
 interface StoreTag { c: string; p: number; b: number; }
 
@@ -80,6 +82,9 @@ interface Props {
   /** [Cerrar en masa] Si se provee `onCerrarVarios`, cada tarjeta de camión cerrable muestra un
    *  checkbox y aparece una barra "Cerrar seleccionados" para cerrarlos todos de una. `cerrarSel`
    *  = patentes seleccionadas; `esCerrada(p)` = true si ya está cerrada (tarjeta en verde). */
+  /** [Fase] Indicador 1-5 arriba de la columna de flota. Vivía FUERA del componente y solo en
+   *  Despacho; acá lo ven los tres tableros. El cálculo sigue en `utils/faseEnrutador`. */
+  fase?: FaseInfo;
   cerrarSel?: Set<string>;
   onToggleCerrarSel?: (patente: string) => void;
   onCerrarVarios?: (patentes: string[]) => void;
@@ -149,6 +154,7 @@ export default function ManualDispatch({
   camionSeleccionadoKm = null,
   onSelectTruck,
   scrollContainerRef,
+  fase,
   cerrarSel,
   onToggleCerrarSel,
   onCerrarVarios,
@@ -716,6 +722,9 @@ export default function ManualDispatch({
       )}
         </div>
         <div className="min-w-0 space-y-3">
+      {/* [Fase] Primero el indicador: la columna derecha es donde se decide, y saber en qué etapa
+          del día está el despacho es lo primero que hay que ver al llegar acá. */}
+      {fase && <FaseEnrutador fase={fase} />}
       {/* [Fase 2] Camiones activos — PRIMERO (activar/desactivar sin salir de DESPACHO) */}
       {onToggleFlota && flota.length > 0 && (
         <div className="rounded-[14px] border border-black/[0.09] bg-white px-3 py-2.5">

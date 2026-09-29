@@ -6,7 +6,6 @@ import ManualMode     from './ManualMode';
 import ManualDispatch from './ManualDispatch';
 import type { PoolScope } from '../utils/poolsSeparados';
 import type { ConfigZonas } from '../utils/zonasTransporte';
-import { FaseEnrutador } from './FaseEnrutador';
 import type { FaseInfo } from '../utils/faseEnrutador';
 import FlotaGrid      from './FlotaGrid';
 import FlotaInternaPanel from './FlotaInternaPanel';
@@ -31,6 +30,8 @@ interface Props {
   flotaStatus?: string;
   modo: string;
   fase: FaseInfo;
+  /** [Fase] La del tablero de Congelados, calculada con la misma función pura. */
+  faseCong?: FaseInfo;
   calT: Record<string, CalData>;
   /** Qué camiones usa cada tablero. Separado de `on` (en servicio, global) — ver
    *  utils/flotaPorTablero: antes eran el mismo interruptor y los dos tableros se pisaban. */
@@ -142,7 +143,7 @@ const MODES: { id: string; Icon: LIcon; label: string; color: string }[] = [
 
 /* ── Main component ──────────────────────────────────────────────── */
 export default function InputSection({
-  flota, flotaStatus, modo, fase, calT, calTCong, asignacionesCong, onAsignacionesCong, manualText, errors,
+  flota, flotaStatus, modo, fase, faseCong, calT, calTCong, asignacionesCong, onAsignacionesCong, manualText, errors,
   onCerrarCamionCong, cerrarSelCong, onToggleCerrarSelCong, onCerrarVariosCong, esCerradaCong,
   seleccionSeco, onToggleSeleccionSeco, seleccionCong, onToggleSeleccionCong,
   tiendas, gps, cd, manualAsignaciones,
@@ -382,7 +383,7 @@ export default function InputSection({
         ) : modo === 'cong' ? (
           <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
             <div className="p-3">
-              <ManualDispatch calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+              <ManualDispatch fase={faseCong} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                 asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
                 seleccion={seleccionCong} onToggleSeleccion={onToggleSeleccionCong}
                 onCalcular={() => {}} hideCalcular
@@ -404,8 +405,7 @@ export default function InputSection({
           <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
             {modo === 'drag' && (
               <div className="p-3">
-                <FaseEnrutador fase={fase} />
-                <ManualDispatch calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+                <ManualDispatch fase={fase} calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                   paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
                 seleccion={seleccionSeco} onToggleSeleccion={onToggleSeleccionSeco}
                   onCalcular={onCalcularManual} onEliminarParada={onEliminarParada}
@@ -518,7 +518,7 @@ export default function InputSection({
       ) : modo === 'cong' ? (
         <div ref={dragScrollRef} className="flex-1 overflow-y-auto">
           <div className="p-4">
-            <ManualDispatch calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+            <ManualDispatch fase={faseCong} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
               asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
                 seleccion={seleccionCong} onToggleSeleccion={onToggleSeleccionCong}
               onCalcular={() => {}} hideCalcular
@@ -546,8 +546,8 @@ export default function InputSection({
           {/* DESPACHO MODE */}
           {modo === 'drag' && (
             <div className="p-4">
-              <FaseEnrutador fase={fase} />
               <ManualDispatch
+                fase={fase}
                 calT={calT}
                 flota={flota}
                 gps={gps}
