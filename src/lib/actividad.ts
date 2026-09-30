@@ -19,6 +19,9 @@ import { fechaChile } from './fechaChile';
  */
 export const ACCIONES_ACTIVIDAD = [
   'registrar_item', 'editar_item', 'eliminar_item', 'unificar', 'sumar', 'registrar_dia', 'revertir', 'reingreso',
+  // Una tienda registrada SOLA, sin cerrar el dia. Es otra accion que `registrar_dia`: contesta
+  // "quien mando esta tienda y cuando", que en un dia largo es la pregunta que se hace.
+  'registrar_tienda',
   // [Instrumentación, 25/09] El merge entre equipos descartó un ítem PESADO de este equipo porque
   // el remoto no lo traía. Es una sospecha con evidencia a medias, y esto la confirma o la mata:
   // ver `mergeItems.ts`. No es una acción de la persona — es el sistema contándose a sí mismo.
@@ -55,7 +58,12 @@ export interface ActividadCtx {
 export function ordenToLabel(orden: string): string {
   const m = orden.match(/^([a-zA-Z]+)(\d+)$/);
   if (!m) return orden;
-  const map: Record<string, string> = { pallet: 'P', bulto: 'B', contenedor: 'C', chocolate: 'CH' };
+  const map: Record<string, string> = {
+    pallet: 'P', bulto: 'B', contenedor: 'C', chocolate: 'CH',
+    // Las dos clases que nacieron en el #611. Sin ellas la bitácora escribía el nombre interno
+    // crudo —"Ingresó adquisicion3"— en vez de la etiqueta que se ve en la tarjeta.
+    adquisicion: 'A', webretiro: 'W',
+  };
   return (map[m[1].toLowerCase()] ?? m[1]) + m[2];
 }
 
@@ -102,6 +110,8 @@ export function buildActividadMensaje(accion: AccionActividad, ctx: ActividadCtx
       const ahora   = ctx.peso != null ? `${ctx.peso}kg` : '?';
       return `Reingresó ${ctx.label ?? 'ítem'} — ya estaba pesado (${antes} → ${ahora})${en}`;
     }
+    case 'registrar_tienda':
+      return `Registro la tienda${en || ' (sin tienda)'}`;
     case 'merge_descarte': {
       const kgs = ctx.peso != null ? ` · ${ctx.peso}kg` : '';
       return `El sync quitó ${ctx.label ?? 'un ítem'}${kgs}${en} — lo tenía este equipo y no vino en el remoto`;

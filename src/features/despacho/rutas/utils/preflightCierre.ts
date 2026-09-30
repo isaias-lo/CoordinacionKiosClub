@@ -76,6 +76,31 @@ const ORDEN: TipoHallazgo[] = ['sin-camion', 'en-camion-apagado', 'cerrado-sin-m
  *
  * Todo se compara por código o por patente normalizada, sin tocar red ni estado.
  */
+/**
+ * Las patentes que el tablero da por CERRADAS y que no tienen manifiesto guardado.
+ *
+ * Se saca de `preflightCierre` para que el tablero pueda avisarlo EN EL MOMENTO. El preflight
+ * corre al apretar «Terminar día», y el 29/09/2026 eso no pasó: no hay `rutas_reg` de ese día y
+ * VRYL52 y VXSX43 quedaron cerrados sin manifiesto —ocho tiendas entre los dos— sin que nadie se
+ * enterara hasta mirar la base al día siguiente.
+ *
+ * El hueco es de diseño, no de este chequeo: cerrar un camión escribe `rutas_cerradas` al
+ * instante, pero el manifiesto lo persiste `ManifiestoPanel` después, en un efecto que corre UNA
+ * vez por montaje. Si falla o el panel no llega a montarse, el tablero dice "cerrado" y el
+ * manifiesto no existe. Un aviso que solo aparece al cerrar el día llega tarde para eso.
+ */
+export function patentesSinManifiesto(
+  cerradas: Iterable<string> = [],
+  manifiestos: { patente?: string | null }[] = [],
+): string[] {
+  const conManifiesto = new Set(
+    manifiestos.map(m => normPatente(m?.patente ?? '')).filter(Boolean),
+  );
+  return [...new Set([...cerradas].map(normPatente).filter(Boolean))]
+    .filter(p => !conManifiesto.has(p))
+    .sort();
+}
+
 export function preflightCierre(entrada: EntradaPreflight): Preflight {
   const { fecha, enElPool, asignaciones, conDatosDeBodega = [], capacidades, cerradas = [], manifiestos = [], patentesActivas } = entrada;
 
@@ -141,12 +166,7 @@ export function preflightCierre(entrada: EntradaPreflight): Preflight {
 
   // Un camión cerrado ya emitió su QR y su carga no la mueve nadie. Si además no dejó manifiesto
   // guardado, salió sin papeles y no hay cómo reconstruir qué llevaba.
-  const conManifiesto = new Set(
-    manifiestos.map(m => normPatente(m?.patente ?? '')).filter(Boolean),
-  );
-  const cerradasSinManifiesto = [...new Set([...cerradas].map(normPatente).filter(Boolean))]
-    .filter(p => !conManifiesto.has(p))
-    .sort();
+  const cerradasSinManifiesto = patentesSinManifiesto(cerradas, manifiestos);
   if (cerradasSinManifiesto.length) {
     hallazgos.push({
       tipo: 'cerrado-sin-manifiesto',

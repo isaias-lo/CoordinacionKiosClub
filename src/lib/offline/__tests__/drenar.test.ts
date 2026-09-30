@@ -85,3 +85,36 @@ describe('drenar', () => {
     expect(a.borrados).toEqual(['1', '3']);
   });
 });
+
+describe('drenar · progreso parcial', () => {
+  it('guarda el progreso que el envío alcanzó a hacer antes de fallar', async () => {
+    // El conductor sube las fotos una por una y recién después manda el PATCH. Si el PATCH falla,
+    // las fotos ya subidas tienen que quedar anotadas: si no, cada reintento las vuelve a subir y
+    // gasta los datos del teléfono de alguien que está en ruta.
+    const a = almacenFalso();
+    await drenar(
+      [item('1', { payload: 'sin-subir' })],
+      async i => ({ veredicto: 'reintentar', mensaje: 'HTTP 503', item: { ...i, payload: 'ya-subida' } }),
+      a,
+    );
+    expect(a.guardados[0].payload).toBe('ya-subida');
+    expect(a.guardados[0].intentos).toBe(1);
+  });
+
+  it('el progreso también se conserva cuando el rechazo es definitivo', async () => {
+    const a = almacenFalso();
+    await drenar(
+      [item('1', { payload: 'sin-subir' })],
+      async i => ({ veredicto: 'bloqueado', mensaje: 'HTTP 403', item: { ...i, payload: 'ya-subida' } }),
+      a,
+    );
+    expect(a.guardados[0].payload).toBe('ya-subida');
+    expect(a.guardados[0].bloqueado).toBe(true);
+  });
+
+  it('sin progreso devuelto se usa el ítem original', async () => {
+    const a = almacenFalso();
+    await drenar([item('1', { payload: 'original' })], async () => ({ veredicto: 'reintentar' }), a);
+    expect(a.guardados[0].payload).toBe('original');
+  });
+});

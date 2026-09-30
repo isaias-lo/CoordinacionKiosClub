@@ -220,9 +220,31 @@ describe('rutasDesdeAsignaciones', () => {
     expect(rutas[0].tb).toBe(7); // 3 + 4
   });
 
-  it('ignora camiones sin tiendas y camiones inactivos', () => {
-    const asig = { AAA111: [store('CLOSE')], CCC333: [store('MID')] }; // CCC333 está off
+  it('ignora camiones SIN TIENDAS', () => {
+    const asig = { AAA111: [store('CLOSE')] };
+    const rutas = rutasDesdeAsignaciones(asig, [V1, V2], GPS, CD, {});
+    expect(rutas.map(r => r.v.p)).toEqual(['AAA111']);
+  });
+
+  it('un camión con tiendas ENTRA aunque `on` sea false', () => {
+    // Cambió el 29/09/2026. Filtraba también por `v.on`, y el coordinador terminó viendo UNA ruta
+    // en el mapa con cinco camiones cerrados: cuatro tenían `en_servicio = false`.
+    //
+    // `v.on` sale de `flota_vehiculos.en_servicio`, que desde que la selección es POR TABLERO
+    // (`flota_sel`) quedó solo como semilla del primer día — lo dice `flotaPorTablero.ts`. El
+    // tablero ya lee la selección (`visiblesEnTablero`); esto seguía leyendo el campo viejo, así
+    // que los dos respondían distinto a la misma pregunta.
+    //
+    // Tener tiendas asignadas es un filtro más fuerte que cualquier interruptor: nadie le carga
+    // tiendas a un camión que no va a usar.
+    const asig = { AAA111: [store('CLOSE')], CCC333: [store('MID')] };
     const rutas = rutasDesdeAsignaciones(asig, [V1, V2, OFF], GPS, CD, {});
+    expect(rutas.map(r => r.v.p).sort()).toEqual(['AAA111', 'CCC333']);
+  });
+
+  it('un camión apagado y SIN tiendas sigue afuera', () => {
+    // El filtro que queda es el de las tiendas, y tiene que seguir alcanzando.
+    const rutas = rutasDesdeAsignaciones({ AAA111: [store('CLOSE')] }, [V1, OFF], GPS, CD, {});
     expect(rutas.map(r => r.v.p)).toEqual(['AAA111']);
   });
 

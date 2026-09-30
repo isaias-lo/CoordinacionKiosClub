@@ -6,6 +6,7 @@ import { useApp } from '../../../../context/AppContext';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import type { TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
+import { leerPeso, limpiarTecleo } from '../../shared/pesoIngresado';
 import { eliminarSlotPicking } from '../../shared/eliminarSlotPicking';
 import { fechaChile } from '@/lib/fechaChile';
 
@@ -95,7 +96,7 @@ export function StepResumen() {
       tipo:            editTipo,
       contenido:       editContenido,
       estado:          editEstado,
-      peso:            parseFloat(editPeso) || 0,
+      peso:            (leerPeso(editPeso) ?? 0),
       alto,
       largo,
       ancho,
@@ -246,8 +247,9 @@ export function StepResumen() {
                               <div className={`grid gap-2 mb-3 ${editTipo === 'Bulto' ? 'grid-cols-4' : 'grid-cols-2'}`}>
                                 <div>
                                   <div className={LABEL_SM}>Peso kg</div>
-                                  <input type="number" value={editPeso} onChange={e => setEditPeso(e.target.value)}
-                                    className={INPUT} step="0.1" />
+                                  <input type="text" inputMode="decimal" value={editPeso}
+                                    onChange={e => setEditPeso(limpiarTecleo(e.target.value))}
+                                    className={INPUT} />
                                 </div>
                                 <div>
                                   <div className={LABEL_SM}>Alto cm</div>

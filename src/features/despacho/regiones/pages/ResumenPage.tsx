@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import { finalizarSlotUnion } from '@/features/despacho/shared/finalizarSlotUnion';
 import { renumerarSalvoChocolate } from '@/features/despacho/shared/numeroCard';
+import { leerPeso, limpiarTecleo } from '@/features/despacho/shared/pesoIngresado';
 import { combinarEnLista } from '@/features/despacho/shared/combinarEnLista';
 import { GripVertical } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
@@ -184,7 +185,7 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
       ...list[idx],
       pkg:   editPkg,
       tipo:  editTipo,
-      peso:  parseFloat(editPeso)  || 0,
+      peso:  (leerPeso(editPeso) ?? 0),
       alto:  parseInt(editAlto)    || 0,
       ancho: parseInt(editAncho)   || 0,
       largo: parseInt(editLargo)   || 0,
@@ -384,14 +385,16 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
                           </div>
                           <div className="grid grid-cols-4 gap-1 mb-1">
                             {([
-                              { label: 'Peso', val: editPeso,  set: setEditPeso  },
+                              { label: 'Peso', val: editPeso,  set: setEditPeso, decimal: true },
                               { label: 'Alto', val: editAlto,  set: setEditAlto, max: editPkg === 'pallet' ? MAX_ALTO_CM : undefined },
                               { label: 'Ancho', val: editAncho, set: setEditAncho },
                               { label: 'Largo', val: editLargo, set: setEditLargo },
-                            ] as { label: string; val: string; set: (v: string) => void; max?: number }[]).map(({ label, val, set, max }) => (
+                            ] as { label: string; val: string; set: (v: string) => void; max?: number; decimal?: boolean }[]).map(({ label, val, set, max, decimal }) => (
                               <div key={label}>
                                 <div className={LABEL_SM}>{label}</div>
-                                <input type="number" value={val} onChange={e => set(e.target.value)} max={max} className={INPUT} />
+                                <input type={decimal ? 'text' : 'number'} inputMode={decimal ? 'decimal' : undefined} value={val}
+                                  onChange={e => set(decimal ? limpiarTecleo(e.target.value) : e.target.value)}
+                                  max={decimal ? undefined : max} className={INPUT} />
                                 {label === 'Alto' && editPkg === 'pallet' && excedeAltoMax(parseFloat(val) || 0) && (
                                   <div className="text-[9px] text-warn">⚠ máx {MAX_ALTO_CM}</div>
                                 )}

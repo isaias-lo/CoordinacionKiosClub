@@ -118,3 +118,23 @@ describe('esFilaCongelados', () => {
     }
   });
 });
+
+describe('partsOf y lineaTotal con agregados', () => {
+  it('los agregados van al FINAL, no mezclados con los bultos', () => {
+    // Confundirlos con un bulto fue justo lo que hizo sospechar que los bultos sin pesar eran
+    // adquisiciones escondidas.
+    expect(partsOf(3, 1, 0, 0, 2, 0)).toBe('3P - 1B - 2A');
+    expect(partsOf(3, 1, 0, 5, 2, 1)).toBe('3P - 1B - 5CH - 2A - 1W');
+  });
+
+  it('las llamadas de cuatro argumentos siguen dando lo mismo', () => {
+    expect(partsOf(3, 1, 0, 0)).toBe('3P - 1B');
+    expect(partsOf(2, 0, 0, 3)).toBe('2P - 3CH');
+  });
+
+  it('el TOTAL los incluye, con los chocolates sumados como bultos', () => {
+    const tot = { p: 74, b: 26, c: 0, ch: 35 };
+    expect(lineaTotal(tot, 28)).toBe('TOTAL: 74P - 61B - 28 TIENDAS');
+    expect(lineaTotal(tot, 28, { a: 8, w: 2 })).toBe('TOTAL: 74P - 61B - 8A - 2W - 28 TIENDAS');
+  });
+});

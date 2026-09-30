@@ -8,7 +8,8 @@ import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { getTiendaSantiagoByCod } from '@/features/despacho/santiago/data/tiendasSantiago';
 import { partsOf, buildManualText, lineaTotal, filasParaManual, type ManualLine, type ManualGrupo } from './manualText';
 import {
-  resumenPesaje, lineasPesaje, avisosAltoPorTienda, textoManualParaCopiar, ALTO_AVISO_CM, type SlotPesaje,
+  resumenPesaje, lineasPesaje, avisosAltoPorTienda, agregadosPorTienda, textoManualParaCopiar,
+  ALTO_AVISO_CM, type SlotPesaje,
 } from './manualPesaje';
 import { MAX_ALTO_CM } from './palletLimits';
 import { supabase } from '@/lib/supabase';
@@ -110,10 +111,12 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
   const resumen      = resumenPesaje(slots, codsVisibles);
   const lineasPeso   = lineasPesaje(resumen);
   const avisos       = avisosAltoPorTienda(slots, codsVisibles);
+  // Los agregados salen de los slots: `despacho_sesion` no tiene columnas para ellos.
+  const agregados    = agregadosPorTienda(slots, codsVisibles);
 
   // Lo copiado dice lo mismo que la pantalla: tiendas CON sus avisos de alto, TOTAL y el pesaje por
   // tipo. Sale de la misma función que arma estas líneas, así que no pueden diferir.
-  const textoCopiar = textoManualParaCopiar(withItems, tot, avisos, resumen);
+  const textoCopiar = textoManualParaCopiar(withItems, tot, avisos, resumen, agregados);
 
   const copy = async () => {
     if (!textoCopiar) return;
@@ -207,7 +210,7 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
                     const n  = av ? av.cerca + av.excede : 0;
                     return (
                       <div key={l.cod} className="flex items-center gap-2 flex-wrap">
-                        <span>{l.cod}: {partsOf(l.p, l.b, l.c, l.ch)}</span>
+                        <span>{l.cod}: {partsOf(l.p, l.b, l.c, l.ch, agregados[l.cod]?.a ?? 0, agregados[l.cod]?.w ?? 0)}</span>
                         {av && (
                           <span
                             title={av.excede
@@ -225,7 +228,7 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
                       </div>
                     );
                   })}
-                  <div className="mt-3 font-bold">{lineaTotal(tot, withItems.length)}</div>
+                  <div className="mt-3 font-bold">{lineaTotal(tot, withItems.length, { a: resumen.a, w: resumen.w })}</div>
                   {lineasPeso.map((l, i) => (
                     // Una línea por tipo (Pallets, Bultos, Chocolates…), cada una con su fracción y %.
                     <div key={l} className={i === 0 ? 'text-text-2 mt-1' : 'text-text-2'}>{l}</div>

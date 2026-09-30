@@ -17,14 +17,27 @@ export interface CalendarStore {
   nombre?: string;
 }
 
-export function partsOf(p: number, b: number, c: number, ch: number): string {
-  return [p && `${p}P`, b && `${b}B`, c && `${c}C`, ch && `${ch}CH`].filter(Boolean).join(' - ');
+/**
+ * "3P - 1B - 2A". Los agregados son opcionales: las llamadas de cuatro argumentos siguen andando
+ * igual, y las que los tienen los muestran al final.
+ *
+ * Van DESPUÉS y no mezclados con los bultos: son carga que sube al camión, pero de otra clase —no
+ * se pesa ni se mide—, y confundirla con un bulto fue justo lo que hizo sospechar que los bultos
+ * sin pesar eran adquisiciones escondidas.
+ */
+export function partsOf(p: number, b: number, c: number, ch: number, a = 0, w = 0): string {
+  return [p && `${p}P`, b && `${b}B`, c && `${c}C`, ch && `${ch}CH`, a && `${a}A`, w && `${w}W`]
+    .filter(Boolean).join(' - ');
 }
 
 /** La línea de cierre: "TOTAL: 5P - 2B - 3 TIENDAS". Los chocolates se suman como bultos,
  *  igual que en el Enrutador. Separada para que la pantalla la muestre sin recalcular el formato. */
-export function lineaTotal(tot: { p: number; b: number; c: number; ch: number }, nTiendas: number): string {
-  return `TOTAL: ${partsOf(tot.p, tot.b + tot.ch, tot.c, 0)} - ${nTiendas} TIENDA${nTiendas === 1 ? '' : 'S'}`;
+export function lineaTotal(
+  tot: { p: number; b: number; c: number; ch: number },
+  nTiendas: number,
+  agregados: { a: number; w: number } = { a: 0, w: 0 },
+): string {
+  return `TOTAL: ${partsOf(tot.p, tot.b + tot.ch, tot.c, 0, agregados.a, agregados.w)} - ${nTiendas} TIENDA${nTiendas === 1 ? '' : 'S'}`;
 }
 
 /** Construye el texto "COD: 2P - 1B" + TOTAL de lo cargado en la pantalla (función pura). */

@@ -29,6 +29,14 @@ import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
 import { pkgCodeNacional } from '../../shared/tipoCode';
+import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
+import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
+import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';
+import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
+import { sheetsRegionesWrite } from '../utils/sheetsRegiones';
+import { useCruceDelDia } from '@/features/despacho/shared/useCruceDelDia';
+import { veElCruce } from '@/features/despacho/shared/cruceTienda';
+import { useAuth } from '@/components/AuthProvider';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { useTiendaTerminada } from '../../shared/useTiendaTerminada';
@@ -50,6 +58,7 @@ import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiqu
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
 import { abreviaturaContenido, nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroVisibleCard, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional } from '@/features/despacho/shared/numeroCard';
+import { leerPeso, limpiarTecleo, avisoDePeso, excedeTopeDuro } from '@/features/despacho/shared/pesoIngresado';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
 import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
@@ -69,7 +78,7 @@ import { STORE_CARD_BADGE as SCB, claseTarjetaTienda, claseCodigoTienda, claseEt
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
-import { esAgregado, etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
+import { esAgregado, etiquetaAgregado, etiquetaDeUnidad } from '@/features/despacho/shared/adquisicion';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ──
    [Bug 60PBL, 2026-09-10] Antes esto era un `const` calculado UNA sola vez, al cargar el módulo.
@@ -306,7 +315,44 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
 
 /* ── Main page ── */
 export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) {
+  // El cruce contra Odoo, solo para administración. `veElCruce` decide quién lo ve, y ese mismo
+  // booleano apaga la consulta: quien no ve el bloque no paga el pedido. Ver `cruceTienda.ts`.
+  const { profile } = useAuth();
+  const verCruce = veElCruce(profile?.role);
+  const cruceDelDia = useCruceDelDia(fechaChile(), verCruce);
+  const registroTiendas = useRegistroDeTiendas(fechaChile());
   const { state, dispatch, showToast, flushPending, canalSano, catchUp } = useApp();
+
+  /**
+   * Registra UNA tienda, sin cerrar el dia. Espejo exacto del de RM/Costa.
+   *
+   * Es la MISMA llamada que hace el modal del dia, con una sola tienda adentro. De ahi sale que
+   * los ids sean identicos, y de eso sale que registrar el dia despues NO duplique:
+   * `api/sheets-write` solo agrega los ids que la hoja no tiene. La fecha de despacho viene de
+   * `fechaDespachoBodega`, la misma funcion que usa el modal.
+   *
+   * Ojo con la llave: aca el estado se indexa por NOMBRE de tienda, no por codigo.
+   */
+  const registrarSoloTienda = async (nombre: string, cod: string): Promise<boolean> => {
+    const lista = state.dispatch[nombre] ?? [];
+    if (!lista.length) return false;
+    const hoyISO = fechaChile();
+    try {
+      await sheetsRegionesWrite({ [nombre]: lista }, 'Luis Fica', fechaDespachoBodega(state.fechaDespacho), hoyISO);
+      await fetch('/api/sync-despacho', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cruce: hoyISO }), keepalive: true,
+      });
+      registroTiendas.marcar(cod);
+      logActividad({ accion: 'registrar_tienda', fuente: 'nacional', tiendaCod: cod, tiendaNombre: nombre });
+      showToast(`OK ${cod} registrada`, '#16A34A');
+      return true;
+    } catch (e) {
+      console.error('[registrar-tienda]', e);
+      showToast('No se pudo registrar la tienda - reintenta', '#D32F2F');
+      return false;
+    }
+  };
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const router = useRouter();
   const odooProgress = useOdooProgress();  // progreso de Odoo (punto gris/naranja/verde) — igual que Santiago
@@ -1239,7 +1285,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
         p = neto.neto;
       } else {
-        p = parseFloat(row.peso);
+        p = (leerPeso(row.peso) ?? 0);
         if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
       }
       a  = isCont ? 150 : isChoc ? (medidasCaja?.alto  ?? 0) : (parseFloat(row.alto)  || 0);
@@ -1253,6 +1299,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       if (row.pkg === 'box' && (!aw || !l)) { showToast('Ingresa ancho y largo', '#D97706'); return; }
       const errores = (isCont || isChoc) ? [] : validarDimensiones(row.pkg, p, a, aw, l);
       if (errores.length) { showToast('⚠ ' + errores[0], '#D32F2F'); return; }
+      // Un peso imposible se ataja ACÁ, con la balanza todavía al lado y el bulto todavía arriba.
+      // El 28/09 un «353,7» al que se le perdió la coma quedó registrado como 9.357 kg y nadie lo
+      // vio hasta cruzarlo contra Odoo al día siguiente. Ver `shared/pesoIngresado.ts`.
+      const duro = excedeTopeDuro(p, claseNacional(row.pkg));
+      if (duro) { showToast(`⚠ ${duro}`, '#D32F2F'); return; }
+      const aviso = avisoDePeso(p, claseNacional(row.pkg));
+      if (aviso && !window.confirm(`⚠ ${aviso.titulo}\n\n${aviso.detalle}\n\n¿Guardar así?`)) return;
+
     }
     // A diferencia de Santiago, este flujo no reintentaba crear el slot al confirmar: si
     // `addFormRow` falló al crearlo (carrera con otra alta concurrente — RC-4), el pallet
@@ -1445,7 +1499,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           contenido: sl?.contenido ?? 'hogar',
           seq: sl?.seq ?? null,
           canonical: sl?.canonical_id ?? it?.canonical_id ?? null,
-          peso:  it?.peso  ?? (parseFloat(r.peso)  || 0),
+          peso:  it?.peso  ?? ((leerPeso(r.peso) ?? 0)),
           alto:  it?.alto  ?? (parseFloat(r.alto)  || 0),
           largo: it?.largo ?? (parseFloat(r.largo) || 0),
           ancho: it?.ancho ?? (parseFloat(r.ancho) || 0),
@@ -1540,8 +1594,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       showToast('No se pudo sumar: recarga la tienda e inténtalo otra vez', '#D97706');
       return;
     }
-    const bultoPeso  = bultoRow.savedItem?.peso  ?? (parseFloat(bultoRow.peso)  || 0);
-    const pesoActual = palletRow.savedItem?.peso ?? (parseFloat(palletRow.peso) || 0);
+    const bultoPeso  = bultoRow.savedItem?.peso  ?? ((leerPeso(bultoRow.peso) ?? 0));
+    const pesoActual = palletRow.savedItem?.peso ?? ((leerPeso(palletRow.peso) ?? 0));
     const nuevoPeso  = sumPeso(pesoActual, bultoPeso);
 
     // El destino se reconfirma ANTES de borrar nada. Antes se borraba el slot del bulto y recién
@@ -1604,8 +1658,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       showToast('No se pudo sumar: recarga la tienda e inténtalo otra vez', '#D97706');
       return;
     }
-    const pesosBultos = bultoRows.map(r => r.savedItem?.peso ?? (parseFloat(r.peso) || 0));
-    const pesoActual  = palletRow.savedItem?.peso ?? (parseFloat(palletRow.peso) || 0);
+    const pesosBultos = bultoRows.map(r => r.savedItem?.peso ?? ((leerPeso(r.peso) ?? 0)));
+    const pesoActual  = palletRow.savedItem?.peso ?? ((leerPeso(palletRow.peso) ?? 0));
     const nuevoPeso   = sumarPesoMultiple(pesoActual, pesosBultos);
     const palletIdx   = formRows.slice(0, formRows.findIndex(r => r.id === palletRowId) + 1).filter(r => r.pkg === 'pallet').length;
     const palletLabel = `P${palletIdx}`;
@@ -1669,8 +1723,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const iniciarUnionInline = (sourceRow: FormRow, targetRow: FormRow, srcLabel?: string, tgtLabel?: string) => {
     if (!selectedTienda) return;
     const name      = selectedTienda;
-    const srcPeso   = sourceRow.savedItem?.peso ?? (parseFloat(sourceRow.peso) || 0);
-    const tgtPeso   = targetRow.savedItem?.peso ?? (parseFloat(targetRow.peso) || 0);
+    const srcPeso   = sourceRow.savedItem?.peso ?? ((leerPeso(sourceRow.peso) ?? 0));
+    const tgtPeso   = targetRow.savedItem?.peso ?? ((leerPeso(targetRow.peso) ?? 0));
     const nuevoPeso = sumPeso(tgtPeso, srcPeso);
     const prevAlto  = targetRow.savedItem?.alto ?? (parseFloat(targetRow.alto) || 0);
     const srcSlot   = sourceRow.pickingSlotId ?? sourceRow.savedItem?.pickingSlotId;
@@ -1775,6 +1829,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
     /* Shared header */
     const header = (
+      <>
       <div className={`bg-navy px-3 py-3 flex flex-col gap-2 flex-shrink-0 ${isMobile ? 'touch-none select-none' : ''}`}
         onTouchStart={isMobile ? onSheetDragStart : undefined}
         onTouchMove={isMobile ? onSheetDragMove : undefined}
@@ -1805,7 +1860,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           </div>
         </div>
         {tienda?.cod && (
-          <div className="flex justify-end touch-auto">
+          <div className="flex justify-end items-center gap-2 touch-auto">
+            {/* A la IZQUIERDA de MARCAR TERMINADA, igual que en RM/Costa. */}
+            <RegistrarTiendaButton rol={profile?.role} terminada={!!terminadas.get(tienda.cod)}
+              unidades={items.length} yaRegistrada={registroTiendas.registrada(tienda.cod)}
+              onRegistrar={() => registrarSoloTienda(selectedTienda ?? '', tienda.cod)} />
             <TiendaTerminadaButton cod={tienda.cod} info={terminadas.get(tienda.cod)} onToggle={marcarTerminada} itemCount={items.length}
               sinPesarCount={items.filter(esSinPesar).length}
               sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[selectedTienda ?? ''] ?? [], items))}
@@ -1813,6 +1872,20 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           </div>
         )}
       </div>
+
+      {/* FUERA del encabezado azul, igual que en RM/Costa.
+          El bloque trae su propia base navy (ver `CruceDePesosCard`). Dentro del encabezado esa
+          base se fundía con el azul de alrededor y el panel quedaba sin marco; acá, apoyado sobre
+          el fondo claro, el marco se ve — que es como se ve en RM/Costa y lo que se pidió.
+          Los dos espejos tienen que mostrar lo mismo en el mismo sitio: es el patrón que ya dejó
+          el chocolate arreglado en un camino y roto en el otro. */}
+      {verCruce && tienda?.cod && (
+        <div className="px-2 pt-2 flex-shrink-0">
+          <CruceDePesosCard cruce={cruceDelDia.porTienda.get(tienda.cod)}
+            items={items} listo={cruceDelDia.listo} />
+        </div>
+      )}
+      </>
     );
 
     /* ── Multi-form (compacta): estado vacío = botones +Pallet/+Bulto/+Cont/+Choc ── */
@@ -1913,7 +1986,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     </div>
                     <div className="text-[13px] text-text-2 space-y-0.5 mb-1.5">
                       <div className="font-semibold flex items-center gap-1.5 flex-wrap">
-                        {row.savedItem.peso}kg{row.savedItem.pkg !== 'contenedor' && ` · ${row.savedItem.alto}cm`}
+                        {/* Una adquisición no tiene peso ni medidas: escribir "0kg · 0cm" haría
+                            pasar la AUSENCIA de un dato por un dato. Dice qué es. */}
+                        {etiquetaDeUnidad(row.savedItem)
+                          ?? `${row.savedItem.peso}kg${row.savedItem.pkg !== 'contenedor' ? ` · ${row.savedItem.alto}cm` : ''}`}
                         {esSinPesar(row.savedItem) && (
                           <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
                             style={{ color: '#D97706', background: 'rgba(217,119,6,0.12)' }}>
@@ -2109,7 +2185,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">
                         Peso{cajaDeFila === 'negra' && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(TARA_CAJA_NEGRA).replace('.', ',')} kg de caja</span>}
                       </label>
-                      <input type="number" value={row.peso} onChange={e => updateRow(row.id, 'peso', e.target.value)}
+                      <input type="text" value={row.peso} onChange={e => updateRow(row.id, 'peso', limpiarTecleo(e.target.value))}
                         onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="kg" inputMode="decimal"
                         className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                     </div>
@@ -2178,7 +2254,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       real de la unificación, así que van por el camino normal. */}
                   <button
                     onClick={() => {
-                      const tienePeso = parseFloat(row.peso) > 0;
+                      const tienePeso = (leerPeso(row.peso) ?? 0) > 0;
                       if (!tienePeso && !row.mergeReopened) {
                         if (window.confirm('¿Agregar sin pesar? El peso y las medidas quedarán en 0.')) {
                           saveRow(row, true);
