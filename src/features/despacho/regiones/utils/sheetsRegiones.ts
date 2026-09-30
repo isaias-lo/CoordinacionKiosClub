@@ -1,7 +1,9 @@
 import { TIENDAS } from '../data/tiendas';
 import type { DispatchItem } from '../../../../types';
 import { esSinPesar } from '../../shared/sinPesar';
-import { etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
+import {
+  etiquetaAgregado, esAdquisicion, esWebRetiro, PREFIJO_ADQUISICION, PREFIJO_WEB_RETIRO,
+} from '@/features/despacho/shared/adquisicion';
 
 const CARGA_LABEL: Record<string, string> = {
   comida:         'Comida',
@@ -35,11 +37,19 @@ function ordenSeq(orden: string): string {
 //   bulto/box   → {seq}B{cod}{stamp}B
 //   chocolate   → CH{seq}{cod}{stamp}CH
 //   contenedor  → C{seq}{cod}{stamp}C
+//   adquisición → A{seq}{cod}{stamp}A
+//   web/retiro  → W{seq}{cod}{stamp}W
+//
+// Los dos últimos caían antes en el default y salían con la B del bulto: un web/retiro y un bulto
+// con el mismo número producían el MISMO id. Ahora cada clase tiene su letra, igual que en
+// RM/Costa (`sheetsSantiago`), que ya usaba A y W para el prefijo.
 function canonicalId(pkg: string, orden: string, cod: string, stamp: string): string {
   const seq = ordenSeq(orden);
   if (pkg === 'pallet')     return `P${seq}${cod}${stamp}P`;
   if (pkg === 'contenedor') return `C${seq}${cod}${stamp}C`;
   if (pkg === 'chocolate')  return `CH${seq}${cod}${stamp}CH`;
+  if (esAdquisicion(pkg))   return `${PREFIJO_ADQUISICION}${seq}${cod}${stamp}${PREFIJO_ADQUISICION}`;
+  if (esWebRetiro(pkg))     return `${PREFIJO_WEB_RETIRO}${seq}${cod}${stamp}${PREFIJO_WEB_RETIRO}`;
   return `${seq}B${cod}${stamp}B`; // bulto / box (default)
 }
 

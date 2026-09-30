@@ -38,6 +38,15 @@ import { fechaISOLocal } from '../../shared/fechaLocal';
 import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
 import { tipoCodeSantiago } from '../../shared/tipoCode';
+import { registrarTiendasSantiagoBD } from '../data/tiendasSantiago';
+import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
+import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
+import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';
+import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
+import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
+import { useCruceDelDia } from '@/features/despacho/shared/useCruceDelDia';
+import { veElCruce } from '@/features/despacho/shared/cruceTienda';
+import { useAuth } from '@/components/AuthProvider';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { useTiendaTerminada, type TerminadaInfo } from '../../shared/useTiendaTerminada';
@@ -71,7 +80,7 @@ import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { fechaChile } from '@/lib/fechaChile';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
-import { esAgregado, etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
+import { esAgregado, etiquetaAgregado, etiquetaDeUnidad } from '@/features/despacho/shared/adquisicion';
 
 /* ── Calendar localStorage ── */
 const todayKey = fechaChile();
@@ -312,7 +321,7 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
 /* ═══════════════════════════════════════
    FORM HEADER
 ═══════════════════════════════════════ */
-function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe, terminadaInfo, onToggleTerminada, sinPesarCount, sinGuardar, viendo, canalSano }: {
+function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe, terminadaInfo, onToggleTerminada, sinPesarCount, sinGuardar, viendo, canalSano, botonRegistrar }: {
   tienda: TiendaSantiago; pallets: number; bultos: number; chocolates?: number; contenedores?: number; onBack: () => void;
   swipe?: { start: (e: React.TouchEvent) => void; move: (e: React.TouchEvent) => void; end: () => void };
   terminadaInfo?: TerminadaInfo; onToggleTerminada: (cod: string, terminada: boolean, por?: string) => void;
@@ -320,6 +329,7 @@ function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedore
   sinGuardar?: string | null;
   viendo?: ViendoInfo[];
   canalSano: boolean;
+  botonRegistrar?: React.ReactNode;
 }) {
   const itemCount = pallets + bultos + chocolates + contenedores;
   return (
@@ -367,6 +377,9 @@ function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedore
             {viendo.map(v => v.name.split(' ')[0]).join(', ')}
           </span>
         )}
+        {/* A la IZQUIERDA de MARCAR TERMINADA, como se pidio. El padre lo arma —necesita los
+            items, la fecha y el escritor— y aca solo se coloca. */}
+        {botonRegistrar}
         <TiendaTerminadaButton cod={tienda.cod} info={terminadaInfo} onToggle={onToggleTerminada} itemCount={itemCount} sinPesarCount={sinPesarCount} sinGuardar={sinGuardar} viendo={viendo} />
       </div>
     </div>
@@ -391,6 +404,44 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const router = useRouter();
   const { state, dispatch, flushPending, canalSano, catchUp } = useSantiago();
   const { showToast } = useApp();
+  // El cruce contra Odoo, solo para administración. `veElCruce` decide quién lo ve, y ese mismo
+  // booleano apaga la consulta: quien no ve el bloque no paga el pedido. Ver `cruceTienda.ts`.
+  const { profile } = useAuth();
+  const verCruce = veElCruce(profile?.role);
+  const cruceDelDia = useCruceDelDia(fechaChile(), verCruce);
+  const registroTiendas = useRegistroDeTiendas(fechaChile());
+
+  /**
+   * Registra UNA tienda, sin cerrar el dia.
+   *
+   * Es EXACTAMENTE la misma llamada que hace el modal del dia, con un solo codigo adentro. Eso no
+   * es casualidad ni ahorro: de ahi sale que los ids sean identicos, y de que los ids sean
+   * identicos sale que registrar el dia despues NO duplique — `api/sheets-write` solo agrega los
+   * ids que la hoja no tiene. La fecha de despacho viene de `fechaDespachoBodega`, la misma
+   * funcion que usa el modal, por el mismo motivo.
+   */
+  const registrarSoloTienda = async (cod: string): Promise<boolean> => {
+    const lista = items[cod] ?? [];
+    if (!lista.length || !regimen) return false;
+    const hoyISO = fechaChile();
+    try {
+      await sheetsSantiagoWrite({ [cod]: lista }, regimen, fechaDespachoBodega(state.fechaDespacho), hoyISO);
+      // El cruce se escribe del lado del servidor, despues del sync. Ver `api/sync-despacho`.
+      await fetch('/api/sync-despacho', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cruce: hoyISO }), keepalive: true,
+      });
+      registroTiendas.marcar(cod);
+      logActividad({ accion: 'registrar_tienda', fuente: 'rmcosta', tiendaCod: cod,
+        tiendaNombre: getTiendaSantiagoByCod(cod)?.tienda ?? cod });
+      showToast(`OK ${cod} registrada`, '#16A34A');
+      return true;
+    } catch (e) {
+      console.error('[registrar-tienda]', e);
+      showToast('No se pudo registrar la tienda - reintenta', '#D32F2F');
+      return false;
+    }
+  };
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const { currentTienda, items, regimen } = state;
   const odooProgress = useOdooProgress();  // tiendas con picking terminado hoy
@@ -706,6 +757,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             diasDespacho:   dias,
           };
         }
+        // El catálogo de RM/Costa era SOLO estático, y una tienda creada en Config no entraba:
+        // al registrar, `sheetsSantiago` la descartaba entera y en silencio. Nacional ya hacía
+        // esto (`registrarTiendasBD`); acá faltaba la otra mitad. Ver `tiendasSantiago.ts`.
+        const nuevas = registrarTiendasSantiagoBD(map);
+        if (nuevas.length) console.info('[bodega] tiendas de la BD sumadas al catálogo RM/Costa:', nuevas.join(', '));
         setSupabaseTiendasMap(map);
         setTipoCatByCod(tcat);
       })
@@ -1330,8 +1386,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     let slotId = row.pickingSlotId;
     let nuevoSlot: PickingSlot | undefined;
     if (!slotId) {
-      const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH', Adquisicion: 'A', WebRetiro: 'W' };
-      const { slot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: TIPO_CODE[row.tipo], contenido: row.contenido });
+      const { slot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: tipoCodeSantiago(row.tipo), contenido: row.contenido });
       // No seguir sin fila real en picking_pallets: antes esto se tragaba en silencio y el
       // pallet quedaba "confirmado" en el resumen de Bodega pero invisible para Seguimiento/
       // Enrutador/Conteo de Flota (RC-4 — colisión de altas concurrentes). Mejor bloquear el
@@ -1345,10 +1400,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     }
 
     const existing = items[cod] || [];
-    const pc  = existing.filter(i => i.tipo === 'Pallet').length + 1;
-    const bc  = existing.filter(i => i.tipo === 'Bulto').length + 1;
-    const cc  = existing.filter(i => i.tipo === 'Contenedor').length + 1;
-    const chc = existing.filter(i => i.tipo === 'Chocolate').length + 1;
+    // Por CLASE, no por igualdad de string. Los cuatro contadores de antes comparaban
+    // `i.tipo === 'Bulto'`, que nunca coincide con 'Adquisicion' ni con 'WebRetiro': las tres
+    // adquisiciones de una tienda recibían el MISMO número y colapsaban en una sola fila del ID.
+    const claseNueva = claseSantiago(row.tipo);
+    const posicionEnClase = existing.filter(i => claseSantiago(i.tipo) === claseNueva).length + 1;
     const pickingSlot = nuevoSlot ?? (slotId
       ? (pickingSlotsFull[cod] ?? []).find(s => s.id === slotId)
       : undefined);
@@ -1359,7 +1415,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       // El CH usa el seq del slot (el número impreso), no su posición entre los que hay ahora.
       orden: ordenDeItem(row.tipo, numeroVisibleCard({
         esChocolate: row.tipo === 'Chocolate',
-        posicion: row.tipo === 'Pallet' ? pc : row.tipo === 'Contenedor' ? cc : row.tipo === 'Chocolate' ? chc : bc,
+        posicion: posicionEnClase,
         seq: pickingSlot?.seq,
       })),
       estado: ESTADO_DEFAULT,
@@ -1831,7 +1887,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // El offset (índice de la iteración) los numera CH{base+1}..CH{base+N} y hace únicos los ids.
   const addFormRowInner = async (t: TipoCargamento, existingSlot?: PickingSlot, countOffset = 0) => {
     const cod = currentTienda?.cod;
-    const TIPO_CODE: Record<TipoCargamento, string> = { Pallet: 'P', Bulto: 'B', Contenedor: 'C', Chocolate: 'CH', Adquisicion: 'A', WebRetiro: 'W' };
+
     const date = fechaISOLocal();
 
     // Chocolate: se agrega AGREGADO al instante con peso por defecto (sin formulario)
@@ -1879,7 +1935,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       if (!cod || !regimen) { showToast('Selecciona régimen', '#D97706'); return; }
       let slot: PickingSlot | undefined = existingSlot;
       if (!slot) {
-        const res = await crearSlotBodega({ date, store_cod: cod, tipo: TIPO_CODE[t], contenido: 'hogar' });
+        const res = await crearSlotBodega({ date, store_cod: cod, tipo: tipoCodeSantiago(t), contenido: 'hogar' });
         slot = res.slot;
         // Sin fila en picking_pallets el ítem queda invisible para Seguimiento, Enrutador y el
         // conteo de flota — el mismo modo de falla silenciosa que ya arregló el chocolate.
@@ -1932,7 +1988,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     // Solo pre-asigna el # a la card vacía todavía sin confirmar — si falla, el row queda sin
     // slot por ahora y `saveRow` (el confirm real, al hacer clic en "Agregar") lo reintenta y
     // ahí sí bloquea/avisa si vuelve a fallar. No hace falta avisar dos veces por lo mismo.
-    const { slot } = await crearSlotBodega({ date, store_cod: cod, tipo: TIPO_CODE[t], contenido: 'hogar' });
+    const { slot } = await crearSlotBodega({ date, store_cod: cod, tipo: tipoCodeSantiago(t), contenido: 'hogar' });
     if (!slot) return;
     setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot] }));
     setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
@@ -2468,7 +2524,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                                   {item.tipo}
                                 </span>
                                 <span className="text-[12px] font-semibold text-text-2">{item.contenido === 'Chocolate' ? 'CH' : item.contenido}</span>
-                                <span className="text-[12px] font-bold text-navy">{item.peso}kg</span>
+                                <span className="text-[12px] font-bold text-navy">
+                                  {etiquetaDeUnidad(item) ?? `${item.peso}kg`}
+                                </span>
                               </div>
                               <div className="text-[11px] text-text-3 mt-0.5 truncate">
                                 {item.tipo === 'Bulto' && item.contenido === 'Chocolate'
@@ -2539,7 +2597,21 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           sinPesarCount={tiendaItems.filter(esSinPesar).length}
           sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[currentTienda.cod] ?? [], tiendaItems))}
           viendo={viendoPorTienda.get(currentTienda.cod)}
-          canalSano={canalSano} />
+          canalSano={canalSano}
+          botonRegistrar={
+            <RegistrarTiendaButton rol={profile?.role} terminada={!!terminadas.get(currentTienda.cod)}
+              unidades={tiendaItems.length} yaRegistrada={registroTiendas.registrada(currentTienda.cod)}
+              onRegistrar={() => registrarSoloTienda(currentTienda.cod)} />
+          } />
+
+        {/* El cruce va JUSTO DEBAJO del encabezado porque contesta la pregunta que se hace un
+            segundo antes de marcar la tienda terminada: ¿está todo lo que tenía que estar? */}
+        {verCruce && (
+          <div className="px-2 pt-2">
+            <CruceDePesosCard cruce={cruceDelDia.porTienda.get(currentTienda.cod)}
+              items={tiendaItems} listo={cruceDelDia.listo} />
+          </div>
+        )}
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           {(() => {
@@ -2592,7 +2664,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     </div>
                     <div className="text-[14px] text-text-2 space-y-0.5 mb-2">
                       <div className="font-semibold flex items-center gap-1.5 flex-wrap">
-                        {row.savedItem.peso}kg · {row.savedItem.alto}cm
+                        {/* Una adquisición no tiene peso ni medidas: escribir "0kg · 0cm" haría
+                            pasar la AUSENCIA de un dato por un dato. Dice qué es. */}
+                        {etiquetaDeUnidad(row.savedItem) ?? `${row.savedItem.peso}kg · ${row.savedItem.alto}cm`}
                         {esSinPesar(row.savedItem) && (
                           <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
                             style={{ color: '#D97706', background: 'rgba(217,119,6,0.12)' }}>

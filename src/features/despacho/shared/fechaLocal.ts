@@ -18,3 +18,28 @@ import { fechaChile, fechaChileDe } from '@/lib/fechaChile';
 export function fechaISOLocal(d?: Date): string {
   return d ? fechaChileDe(d) : fechaChile();
 }
+
+/**
+ * La FECHA DE DESPACHO que usa Bodega al registrar: la elegida, o mañana por defecto.
+ *
+ * ── POR QUÉ VIVE ACÁ Y NO EN CADA MODAL ────────────────────────────────────────────────────────
+ *
+ * De esta fecha sale el `stamp` del id de cada fila (`${orden}${cod}${stamp}${prefijo}`), y de la
+ * igualdad de ese id depende que registrar UNA tienda y después el día entero no duplique nada:
+ * `api/sheets-write` solo agrega los ids que la hoja no tiene.
+ *
+ * Si el botón por tienda y el modal del día calcularan "mañana" cada uno por su lado, bastaría que
+ * uno corriera a las 23:59 y el otro a las 00:01 para que los ids no coincidieran y la tienda
+ * saliera dos veces. Por eso hay UNA sola función, y los dos la llaman.
+ *
+ * El "+1 día" se hace sobre el día del CD, no sobre el reloj del equipo, por la misma razón que
+ * `fechaISOLocal`.
+ */
+export function fechaDespachoBodega(elegida?: string | null, hoy?: Date): string {
+  if (elegida) return elegida;
+  const [y, m, d] = fechaISOLocal(hoy).split('-').map(Number);
+  // `Date.UTC` + getUTC* para que el +1 no dependa de la zona del equipo: acá ya se trabaja con
+  // números de calendario, no con un instante.
+  const manana = new Date(Date.UTC(y, m - 1, d + 1));
+  return `${manana.getUTCFullYear()}-${String(manana.getUTCMonth() + 1).padStart(2, '0')}-${String(manana.getUTCDate()).padStart(2, '0')}`;
+}

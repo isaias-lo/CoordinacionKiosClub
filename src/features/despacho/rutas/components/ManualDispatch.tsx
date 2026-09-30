@@ -962,6 +962,9 @@ export default function ManualDispatch({
                 {/* [m-08] Qué ES el vehículo: tipo + atributos, juntos y en un solo renglón. Antes
                     Portón y Frío iban arriba mezclados con el estado (Apagado / Cerrado / En el
                     mapa), así que la misma ranura decía a veces una cosa y a veces la otra. */}
+                {/* Tipo, atributos y zona en UN SOLO renglón. Estaban en dos, y cada renglón del
+                    encabezado se le resta a lo único que la tarjeta existe para mostrar: las tiendas
+                    cargadas. Con 14 tiendas, el encabezado empujaba la lista fuera de la pantalla. */}
                 {(() => {
                   const tipo = etiquetaTipoVehiculo(v.t);
                   return (
@@ -971,17 +974,15 @@ export default function ManualDispatch({
                       </span>
                       {v.porton      && <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-[2px] rounded font-semibold">Portón</span>}
                       {v.refrigerado && <span className="text-[9px] bg-cyan-50 text-cyan-600 px-1.5 py-[2px] rounded font-semibold">❄ Frío</span>}
+                      {etiquetaZona && (
+                        <span className={`text-[9px] font-bold uppercase tracking-[0.3px] px-1.5 py-[2px] rounded ${
+                          esConsolidado ? 'bg-purple-50 text-purple-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                          {etiquetaZona.label}
+                        </span>
+                      )}
                     </div>
                   );
                 })()}
-                {etiquetaZona && (
-                  <div className="mt-1 inline-flex items-center gap-1">
-                    <span className={`text-[9px] font-bold uppercase tracking-[0.3px] px-1.5 py-[2px] rounded ${
-                      esConsolidado ? 'bg-purple-50 text-purple-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                      {etiquetaZona.label}
-                    </span>
-                  </div>
-                )}
               </div>
 
               {/* ── Métricas: carga + km (compacto) ── */}
@@ -1007,8 +1008,12 @@ export default function ManualDispatch({
                     (sus "km" serían destinos en puntas opuestas del país y no significan nada). */}
                 <div className="flex items-center gap-2 flex-wrap">
                   {esConsolidado ? (
-                    <span className="text-[11px] text-purple-700">
-                      Consolidación · {stores.length} tienda{stores.length !== 1 ? 's' : ''} · sin recorrido
+                    // Sin "· sin recorrido": en una tarjeta angosta envolvía a dos renglones, y ya
+                    // lo dice la palabra "Consolidación" —que además tiene su propio color—. El
+                    // texto completo sigue en el `title`.
+                    <span className="text-[11px] text-purple-700 truncate min-w-0"
+                      title={`Consolidación · ${stores.length} tienda${stores.length !== 1 ? 's' : ''} · sin recorrido`}>
+                      Consolidación · {stores.length} tienda{stores.length !== 1 ? 's' : ''}
                     </span>
                   ) : m.kmEst > 0 ? (
                     <span className="text-[11px] text-kmuted"><span className="font-bold text-ktext">~{m.kmEst} km</span> · {stores.length} parada{stores.length !== 1 ? 's' : ''}</span>
@@ -1399,19 +1404,26 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
         >✓</button>
       )}
       {/* [Opción A] Contenido pegado a la izquierda (código · tipo · carga), sin hueco muerto, y la ×
-          fija al borde derecho (ml-auto). Prioridad ante angostura: el CÓDIGO no se achica (identidad
-          de la tienda) y la × siempre queda visible; la CARGA es la que cede (min-w-0 + truncate). El
-          alto bajó de 38 a 30px; la grilla adaptable evita que la tarjeta llegue a angostarse tanto. */}
+          fija al borde derecho (ml-auto). El alto bajó de 38 a 30px.
+
+          PRIORIDAD ANTE ANGOSTURA — corregida el 29/09/2026. Antes cedía la CARGA, y era la peor
+          elección posible: en una tarjeta angosta `2p·1b` se recortaba a una astilla de un carácter
+          —se veía `46 TRE Mall ⌄ ×`— y desaparecía justo el número con el que se decide qué cabe en
+          el camión. El TIPO de la tienda (Mall / Strip / Tienda) es contexto y además sigue entero
+          en el `title` del chip; los pallets y bultos no se pueden adivinar.
+
+          Ahora el orden de quién cede es: primero el TIPO, después nadie. El código, la carga y la
+          × no se achican nunca. */}
       {pendienteTerminar && <span className="text-[11px] flex-shrink-0" aria-hidden="true">⏳</span>}
       <span className="font-mono font-bold text-[13px] flex-shrink-0 whitespace-nowrap">{formatCod(store.c)}</span>
       {tp && (
-        <span className="text-[9.5px] font-bold px-1 py-px rounded leading-none flex-shrink-0"
+        <span className="text-[9.5px] font-bold px-1 py-px rounded leading-none min-w-0 truncate"
           style={{ color: tp.color, background: `${tp.color}1A`, border: `1px solid ${tp.color}40` }}
           title={tp.label}>
           {tipoLabel}
         </span>
       )}
-      <span className="text-[11px] text-knavy/60 font-semibold min-w-0 truncate">
+      <span className="text-[11px] text-knavy/60 font-semibold flex-shrink-0 whitespace-nowrap">
         {store.p}p{(store.b + ((store as { ch?: number }).ch ?? 0)) > 0 ? `·${store.b + ((store as { ch?: number }).ch ?? 0)}b` : ''}
       </span>
       {onRemove && (

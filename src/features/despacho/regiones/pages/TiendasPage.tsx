@@ -29,6 +29,14 @@ import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
 import { pkgCodeNacional } from '../../shared/tipoCode';
+import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
+import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
+import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';
+import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
+import { sheetsRegionesWrite } from '../utils/sheetsRegiones';
+import { useCruceDelDia } from '@/features/despacho/shared/useCruceDelDia';
+import { veElCruce } from '@/features/despacho/shared/cruceTienda';
+import { useAuth } from '@/components/AuthProvider';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { useTiendaTerminada } from '../../shared/useTiendaTerminada';
@@ -70,7 +78,7 @@ import { STORE_CARD_BADGE as SCB, claseTarjetaTienda, claseCodigoTienda, claseEt
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
-import { esAgregado, etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
+import { esAgregado, etiquetaAgregado, etiquetaDeUnidad } from '@/features/despacho/shared/adquisicion';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ──
    [Bug 60PBL, 2026-09-10] Antes esto era un `const` calculado UNA sola vez, al cargar el módulo.
@@ -307,7 +315,44 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
 
 /* ── Main page ── */
 export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) {
+  // El cruce contra Odoo, solo para administración. `veElCruce` decide quién lo ve, y ese mismo
+  // booleano apaga la consulta: quien no ve el bloque no paga el pedido. Ver `cruceTienda.ts`.
+  const { profile } = useAuth();
+  const verCruce = veElCruce(profile?.role);
+  const cruceDelDia = useCruceDelDia(fechaChile(), verCruce);
+  const registroTiendas = useRegistroDeTiendas(fechaChile());
   const { state, dispatch, showToast, flushPending, canalSano, catchUp } = useApp();
+
+  /**
+   * Registra UNA tienda, sin cerrar el dia. Espejo exacto del de RM/Costa.
+   *
+   * Es la MISMA llamada que hace el modal del dia, con una sola tienda adentro. De ahi sale que
+   * los ids sean identicos, y de eso sale que registrar el dia despues NO duplique:
+   * `api/sheets-write` solo agrega los ids que la hoja no tiene. La fecha de despacho viene de
+   * `fechaDespachoBodega`, la misma funcion que usa el modal.
+   *
+   * Ojo con la llave: aca el estado se indexa por NOMBRE de tienda, no por codigo.
+   */
+  const registrarSoloTienda = async (nombre: string, cod: string): Promise<boolean> => {
+    const lista = state.dispatch[nombre] ?? [];
+    if (!lista.length) return false;
+    const hoyISO = fechaChile();
+    try {
+      await sheetsRegionesWrite({ [nombre]: lista }, 'Luis Fica', fechaDespachoBodega(state.fechaDespacho), hoyISO);
+      await fetch('/api/sync-despacho', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cruce: hoyISO }), keepalive: true,
+      });
+      registroTiendas.marcar(cod);
+      logActividad({ accion: 'registrar_tienda', fuente: 'nacional', tiendaCod: cod, tiendaNombre: nombre });
+      showToast(`OK ${cod} registrada`, '#16A34A');
+      return true;
+    } catch (e) {
+      console.error('[registrar-tienda]', e);
+      showToast('No se pudo registrar la tienda - reintenta', '#D32F2F');
+      return false;
+    }
+  };
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const router = useRouter();
   const odooProgress = useOdooProgress();  // progreso de Odoo (punto gris/naranja/verde) — igual que Santiago
@@ -1784,6 +1829,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
     /* Shared header */
     const header = (
+      <>
       <div className={`bg-navy px-3 py-3 flex flex-col gap-2 flex-shrink-0 ${isMobile ? 'touch-none select-none' : ''}`}
         onTouchStart={isMobile ? onSheetDragStart : undefined}
         onTouchMove={isMobile ? onSheetDragMove : undefined}
@@ -1814,7 +1860,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           </div>
         </div>
         {tienda?.cod && (
-          <div className="flex justify-end touch-auto">
+          <div className="flex justify-end items-center gap-2 touch-auto">
+            {/* A la IZQUIERDA de MARCAR TERMINADA, igual que en RM/Costa. */}
+            <RegistrarTiendaButton rol={profile?.role} terminada={!!terminadas.get(tienda.cod)}
+              unidades={items.length} yaRegistrada={registroTiendas.registrada(tienda.cod)}
+              onRegistrar={() => registrarSoloTienda(selectedTienda ?? '', tienda.cod)} />
             <TiendaTerminadaButton cod={tienda.cod} info={terminadas.get(tienda.cod)} onToggle={marcarTerminada} itemCount={items.length}
               sinPesarCount={items.filter(esSinPesar).length}
               sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[selectedTienda ?? ''] ?? [], items))}
@@ -1822,6 +1872,20 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           </div>
         )}
       </div>
+
+      {/* FUERA del encabezado azul, igual que en RM/Costa.
+          El bloque trae su propia base navy (ver `CruceDePesosCard`). Dentro del encabezado esa
+          base se fundía con el azul de alrededor y el panel quedaba sin marco; acá, apoyado sobre
+          el fondo claro, el marco se ve — que es como se ve en RM/Costa y lo que se pidió.
+          Los dos espejos tienen que mostrar lo mismo en el mismo sitio: es el patrón que ya dejó
+          el chocolate arreglado en un camino y roto en el otro. */}
+      {verCruce && tienda?.cod && (
+        <div className="px-2 pt-2 flex-shrink-0">
+          <CruceDePesosCard cruce={cruceDelDia.porTienda.get(tienda.cod)}
+            items={items} listo={cruceDelDia.listo} />
+        </div>
+      )}
+      </>
     );
 
     /* ── Multi-form (compacta): estado vacío = botones +Pallet/+Bulto/+Cont/+Choc ── */
@@ -1922,7 +1986,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     </div>
                     <div className="text-[13px] text-text-2 space-y-0.5 mb-1.5">
                       <div className="font-semibold flex items-center gap-1.5 flex-wrap">
-                        {row.savedItem.peso}kg{row.savedItem.pkg !== 'contenedor' && ` · ${row.savedItem.alto}cm`}
+                        {/* Una adquisición no tiene peso ni medidas: escribir "0kg · 0cm" haría
+                            pasar la AUSENCIA de un dato por un dato. Dice qué es. */}
+                        {etiquetaDeUnidad(row.savedItem)
+                          ?? `${row.savedItem.peso}kg${row.savedItem.pkg !== 'contenedor' ? ` · ${row.savedItem.alto}cm` : ''}`}
                         {esSinPesar(row.savedItem) && (
                           <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
                             style={{ color: '#D97706', background: 'rgba(217,119,6,0.12)' }}>

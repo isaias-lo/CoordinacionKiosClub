@@ -22,6 +22,8 @@ import { FLOTA_INICIAL } from './data/flota';
 import { CAL_INICIAL, DNOM } from './data/calendar';
 import { getDia, norm, todayStr, fechaTxt, poolPendiente, fechaTrasMedianoche } from './utils/helpers';
 import { grupoArmada } from './utils/flujoArmada';
+import { patentesSinManifiesto } from './utils/preflightCierre';
+import { recordarFila, filaCombinada, type MemoriaSesion } from './utils/conteosPorFuente';
 import { grupoCongelados } from './utils/congeladosPool';
 import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/reconstruirAsignaciones';
 import { esFantasmaCalT } from './utils/calTFantasma';
@@ -485,7 +487,27 @@ export default function RutasScreen() {
   // Últimas filas de despacho_sesion (de otros equipos), por cod normalizado.
   // Se re-aplican al inicializar calT desde el calendario (evita perder counts si
   // los counts llegan antes de que cargue el calendario). #4
-  const sesionRowsRef = useRef<Map<string, SesionRow>>(new Map());
+  //
+  // Son DOS memorias a propósito:
+  //
+  //   · `sesionPorFuenteRef` guarda las filas crudas, una por espejo de Bodega. Una tienda puede
+  //     tener dos —`regiones` y `santiago`—, y antes la segunda pisaba a la primera: así 36CHL
+  //     mostraba 2P·0B teniendo 4P·8B.
+  //   · `sesionRowsRef` guarda UNA fila por tienda, ya combinada. Conserva la forma de siempre,
+  //     así que el re-aplicado del calendario, el backlog y el cierre del día la leen igual.
+  //
+  // La regla de combinación (el máximo por envase, y por qué no la suma) vive en
+  // `utils/conteosPorFuente.ts`, con los ocho casos reales del 29/09 como tests.
+  const sesionPorFuenteRef = useRef<MemoriaSesion>(new Map());
+  const sesionRowsRef      = useRef<Map<string, SesionRow>>(new Map());
+
+  // Anota la fila cruda y deja en `sesionRowsRef` la combinada de esa tienda.
+  const recordarSesion = (cod: string, row: SesionRow): SesionRow => {
+    recordarFila(sesionPorFuenteRef.current, cod, row);
+    const combinada = filaCombinada(sesionPorFuenteRef.current, cod) ?? row;
+    sesionRowsRef.current.set(cod, combinada);
+    return combinada;
+  };
 
   const sessionRestoredRef = useRef(false);
   const restoringRef       = useRef(false);
@@ -683,26 +705,30 @@ export default function RutasScreen() {
       // [Fase 0] Esta suscripción es del día de HOY (`today`, fijo al montar). Si se está mirando
       // otro día, sus conteos no pueden entrar al pool: esa mezcla es la que terminaba guardándose
       // bajo la fecha abierta. Se siguen recordando en `sesionRowsRef` para cuando se vuelva a hoy.
-      if (fechaRef.current !== today) { sesionRowsRef.current.set(norm(row.tienda_cod), row); return; }
+      if (fechaRef.current !== today) { recordarSesion(norm(row.tienda_cod), row); return; }
       const c = norm(row.tienda_cod);
-      sesionRowsRef.current.set(c, row);  // recordar para re-aplicar si el calendario carga después
+      // Se anota la fila CRUDA y se sigue con la COMBINADA: si esta tienda también existe en el
+      // otro espejo, aplicar la cruda borraría lo que aquel reportó (el bug de los bultos en 0).
+      const fila = recordarSesion(c, row);
       setCalT(prev => {
-        const rowCh = row.chocolates ?? 0;
-        const cc = row.contenedores ?? 0;
-        const hasCounts = row.pallets > 0 || row.bultos > 0 || cc > 0 || rowCh > 0;
+        const rowCh = fila.chocolates ?? 0;
+        const cc = fila.contenedores ?? 0;
+        const hasCounts = fila.pallets > 0 || fila.bultos > 0 || cc > 0 || rowCh > 0;
         if (!prev[c]) {
           // Cualquier tienda ARMADA hoy en Bodega con carga fluye al Enrutador aunque no esté en el
           // calendario del día (p. ej. 55ITA agregada desde Picking), colocada en su GRUPO. Guard:
           // solo HOY, con cantidades, y con el calendario ya cargado (calT no vacío) para no
           // saltarse el init. El orden lo resuelve `ordenarCalT` (extras van en su grupo).
           if (fechaRef.current !== today || !hasCounts || Object.keys(prev).length === 0) return prev;
-          const g = grupoArmada(row.fuente, tiendasRef.current[c]?.sector || tiendasRef.current[c]?.z);
-          return { ...prev, [c]: { on: true, p: row.pallets, b: row.bultos, c: cc, ch: rowCh, g } };
+          // La fuente sale de la fila combinada —la del espejo que trajo más carga—, así que una
+          // tienda de Región no cae en el grupo de Santiago por una fila menor de RM/Costa.
+          const g = grupoArmada(fila.fuente, tiendasRef.current[c]?.sector || tiendasRef.current[c]?.z);
+          return { ...prev, [c]: { on: true, p: fila.pallets, b: fila.bultos, c: cc, ch: rowCh, g } };
         }
-        if (prev[c].p === row.pallets && prev[c].b === row.bultos && prev[c].c === cc && (prev[c].ch ?? 0) === rowCh) return prev;
+        if (prev[c].p === fila.pallets && prev[c].b === fila.bultos && prev[c].c === cc && (prev[c].ch ?? 0) === rowCh) return prev;
         return {
           ...prev,
-          [c]: { ...prev[c], p: row.pallets, b: row.bultos, c: cc, ch: rowCh, on: hasCounts },
+          [c]: { ...prev[c], p: fila.pallets, b: fila.bultos, c: cc, ch: rowCh, on: hasCounts },
         };
       });
     }
@@ -3001,6 +3027,34 @@ export default function RutasScreen() {
 
       {/* Banner: manifiestos YA guardados para la fecha (fuente de verdad persistente, cross-device).
           Evita el susto de "0 asignadas" al abrir desde otro equipo con el lienzo vacío. */}
+      {/* CERRADO SIN MANIFIESTO — el aviso que faltaba, en el momento y no al cerrar el día.
+          El 29/09/2026 VRYL52 y VXSX43 quedaron cerrados sin manifiesto —ocho tiendas entre los
+          dos, sin papeles ni QR— y nadie se enteró hasta mirar la base al día siguiente: el único
+          chequeo que lo detecta vive en el preflight de «Terminar día», y ese día no se apretó.
+          Ver `patentesSinManifiesto`. */}
+      {(() => {
+        const sinManif = patentesSinManifiesto(cerradasV1, manifiestosGuardados);
+        if (!sinManif.length) return null;
+        return (
+          <div className="flex-shrink-0 px-4 py-1.5 bg-kred/10 border-b border-kred/30 flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-bold text-kred">
+              ⚠ {sinManif.length === 1
+                ? 'Un camión cerrado no dejó manifiesto'
+                : `${sinManif.length} camiones cerrados no dejaron manifiesto`}: {sinManif.join(', ')}
+            </span>
+            <span className="text-[10px] text-kred/80 font-semibold">
+              salieron sin papeles y sin QR — abre su manifiesto y guárdalo
+            </span>
+            <button
+              onClick={handleVerManifiestosDia}
+              className="text-[10px] font-bold px-2.5 py-1 rounded-[8px] border border-kred text-kred bg-kred/10 hover:bg-kred/20 transition-colors active:scale-95 ml-auto"
+            >
+              Ver manifiestos
+            </button>
+          </div>
+        );
+      })()}
+
       {manifiestosGuardados.length > 0 && (() => {
         const asig = reconstruirAsignaciones(manifiestosGuardados);
         const nCam = Object.keys(asig).length;

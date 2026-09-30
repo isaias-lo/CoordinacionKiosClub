@@ -60,6 +60,9 @@ type BatchPicking = {
   fromLocation: string; toLocation: string; state: string;
   scheduledDate: string; dateDone: string | null; pickingType: string;
   responsible: string; responsibleId: number | null; lineCount: number; batch: string;
+  /** [CRUCE PESOS] `total_weight` de Odoo — la columna «Peso Total» de Traslados internos.
+   *  Viene en la MISMA consulta que ya se hacía: es un campo más, no una llamada más. */
+  pesoTotal: number;
 };
 
 /**
@@ -174,8 +177,11 @@ async function _fetchDayPickings(
   const allPickings = (await odooRpc(url, {
     service: 'object', method: 'execute_kw',
     args: [db, uid, apiKey, 'stock.picking', 'search_read', [domain], {
+      // `total_weight` está ALMACENADO en Odoo (no calculado al vuelo), así que pedirlo no le
+      // agrega trabajo a una consulta que ya traía estos once campos.
       fields: ['name', 'origin', 'partner_id', 'location_id', 'location_dest_id',
-               'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id', 'batch_id'],
+               'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id', 'batch_id',
+               'total_weight'],
       limit: 2000,
       order: 'scheduled_date asc',
     }],
@@ -186,6 +192,7 @@ async function _fetchDayPickings(
     state: string; scheduled_date: string | false; date_done: string | false;
     picking_type_id: [number, string]; user_id: [number, string] | false;
     batch_id: [number, string] | false;
+    total_weight: number | false;
   }>;
 
   const allIds = allPickings.map(p => p.id);
@@ -222,6 +229,7 @@ async function _fetchDayPickings(
     responsibleId: Array.isArray(p.user_id) ? p.user_id[0] : null,
     lineCount:     linesByPicking[p.id] ?? 0,
     batch:         Array.isArray(p.batch_id) ? p.batch_id[1] : '',
+    pesoTotal:     typeof p.total_weight === 'number' ? p.total_weight : 0,
   }));
 }
 
@@ -287,6 +295,8 @@ export async function POST(req: NextRequest) {
       dateFrom?: string;
       dateTo?: string;
       incluyePendientes?: boolean;
+    /** [CRUCE PESOS] Día a cruzar, YYYY-MM-DD. Sin él, hoy. */
+    fecha?: string;
       includeDoneToday?: boolean;
       // config.url accepted only for list_databases; all auth credentials ignored from client
       config?: { url?: string };
@@ -514,6 +524,23 @@ export async function POST(req: NextRequest) {
       const pickings = storeCod ? dayPickings.filter(p => matchesStore(p, storeCod)) : dayPickings;
 
       return NextResponse.json({ pickings });
+    }
+
+    /* ── cruce_pesos_dia ──
+       Los movimientos del día listos para el cruce Bodega ↔ Odoo. NO hace una consulta propia:
+       reusa `getDayPickings`, que ya está cacheada y compartida con Picking. Pedir el cruce de una
+       tienda o de todas cuesta lo mismo que no pedirlo.
+
+       Solo los REALIZADOS: un movimiento que todavía no se hizo no tiene peso definitivo, y
+       compararlo contra lo que hay en el andén daría una diferencia que no significa nada. */
+    if (action === 'cruce_pesos_dia') {
+      const fecha = typeof body.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.fecha)
+        ? body.fecha : localDateStr(new Date());
+      const dayPickings = await getDayPickings(fecha, true);
+      const movimientos = dayPickings
+        .filter(p => p.state === 'done')
+        .map(p => ({ ref: p.name, origen: p.origin, destino: p.toLocation, kg: p.pesoTotal }));
+      return NextResponse.json({ fecha, movimientos });
     }
 
     /* ── picking_batch_operations ── */

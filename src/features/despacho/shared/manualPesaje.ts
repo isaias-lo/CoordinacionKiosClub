@@ -52,6 +52,19 @@ export interface ResumenPesaje {
   c: Cuenta;      // contenedores
   todos: Cuenta;
   pct: number;    // % pesado sobre todos los envases, entero
+  /**
+   * Los AGREGADOS: cuántos hay, y nada más.
+   *
+   * No llevan `pesados` a propósito. Una adquisición y un web/retiro no se pesan —nacen completos,
+   * ver `adquisicion.ts`—, así que una fracción "3/8" sobre ellos no significaría nada y un 0 de
+   * numerador ensuciaría el porcentaje del día con trabajo que nadie dejó pendiente.
+   *
+   * Se cuentan igual, y se muestran, porque el problema anterior era el opuesto: no aparecían en
+   * NINGUNA parte del Manual —ni en las líneas por tienda, ni en el TOTAL, ni acá—, y al no verlos
+   * daba la impresión de que estaban escondidos entre los bultos sin pesar.
+   */
+  a: number;      // adquisiciones
+  w: number;      // web / retiro
 }
 
 const esSinAsignar = (s: SlotPesaje) => (s.picker_label ?? '').trim().toLowerCase() === 'sin asignar';
@@ -69,8 +82,13 @@ export function resumenPesaje(slots: SlotPesaje[], codsVisibles: Set<string>): R
   const b: Cuenta = { pesados: 0, total: 0 };
   const ch: Cuenta = { pesados: 0, total: 0 };
   const c: Cuenta = { pesados: 0, total: 0 };
+  let a = 0, w = 0;
   for (const s of slots) {
     if (!codsVisibles.has(s.store_cod) || esSinAsignar(s)) continue;
+    // Los agregados se cuentan aparte y NO entran en `todos`: no son carga pesable, y meterlos
+    // bajaría el porcentaje del día por un trabajo que nadie dejó sin hacer.
+    if (s.tipo === 'A') { a++; continue; }
+    if (s.tipo === 'W') { w++; continue; }
     const cuenta = s.tipo === 'P' ? p : s.tipo === 'C' ? c : s.tipo === 'CH' ? ch : s.tipo === 'B' ? b : null;
     if (!cuenta) continue;                                   // CC/CN y cualquier tipo desconocido
     cuenta.total++;
@@ -82,7 +100,7 @@ export function resumenPesaje(slots: SlotPesaje[], codsVisibles: Set<string>): R
   };
   // Sin nada cargado el porcentaje es 0 y no NaN: un "NaN%" en pantalla es peor que un 0.
   const pct = todos.total ? Math.round((todos.pesados / todos.total) * 100) : 0;
-  return { p, b, ch, c, todos, pct };
+  return { p, b, ch, c, todos, pct, a, w };
 }
 
 const pctDe = (k: Cuenta) => (k.total ? Math.round((k.pesados / k.total) * 100) : 0);
@@ -91,13 +109,46 @@ const pctDe = (k: Cuenta) => (k.total ? Math.round((k.pesados / k.total) * 100) 
  * Las líneas del pesaje: el total arriba y después UNA LÍNEA POR TIPO, cada una con su fracción y su
  * porcentaje. Un tipo que no tiene ninguno no ocupa línea. Es lo mismo que se ve y lo que se copia.
  */
+/**
+ * La línea de los agregados, o `null` si no hay ninguno.
+ *
+ * Dice CUÁNTOS y dice que no se pesan. Las dos mitades importan: sin la primera parecían
+ * escondidos, y sin la segunda alguien buscaría su fracción de pesados.
+ */
+export function lineaAgregados(r: { a: number; w: number }): string | null {
+  const partes = [r.a && `Adquisiciones: ${r.a}`, r.w && `Web/retiro: ${r.w}`].filter(Boolean);
+  return partes.length ? `${partes.join(' · ')} — no se pesan` : null;
+}
+
 export function lineasPesaje(r: ResumenPesaje): string[] {
-  if (!r.todos.total) return [];
+  const agregados = lineaAgregados(r);
+  if (!r.todos.total) return agregados ? [agregados] : [];
   const porTipo: [string, Cuenta][] = [['Pallets', r.p], ['Bultos', r.b], ['Chocolates', r.ch], ['Contenedores', r.c]];
   return [
     `PESADOS: ${r.todos.pesados} de ${r.todos.total} (${r.pct}%)`,
     ...porTipo.filter(([, k]) => k.total > 0).map(([n, k]) => `${n}: ${k.pesados}/${k.total} (${pctDe(k)}%)`),
+    ...(agregados ? [agregados] : []),
   ];
+}
+
+/**
+ * Cuántos agregados tiene cada tienda, para la línea `01TPS: 3P - 1B - 2A`.
+ *
+ * Sale de los slots y no de `despacho_sesion` porque esa tabla no tiene columnas para ellos: sus
+ * counts se arman con `filter(i => i.tipo === 'Bulto')` y compañía, así que un agregado no entra
+ * en ninguna. Los slots sí los distinguen desde que `tipoCode` los conoce.
+ */
+export function agregadosPorTienda(
+  slots: SlotPesaje[], codsVisibles: Set<string>,
+): Record<string, { a: number; w: number }> {
+  const out: Record<string, { a: number; w: number }> = {};
+  for (const s of slots) {
+    if (!codsVisibles.has(s.store_cod) || esSinAsignar(s)) continue;
+    if (s.tipo !== 'A' && s.tipo !== 'W') continue;
+    const e = (out[s.store_cod] ??= { a: 0, w: 0 });
+    if (s.tipo === 'A') e.a++; else e.w++;
+  }
+  return out;
 }
 
 /** El bloque de pesaje como texto. Vacío si no hay nada. */
@@ -123,13 +174,19 @@ export function textoManualParaCopiar(
   tot: { p: number; b: number; c: number; ch: number },
   avisos: Record<string, { cerca: number; excede: number }>,
   resumen: ResumenPesaje,
+  agregados: Record<string, { a: number; w: number }> = {},
 ): string {
   if (!lines.length) return '';
   const tiendas = lines.map(l => {
     const av = avisos[l.cod];
-    return `${l.cod}: ${partsOf(l.p, l.b, l.c, l.ch)}${av ? `  ${etiquetaAviso(av)}` : ''}`;
+    const ag = agregados[l.cod];
+    return `${l.cod}: ${partsOf(l.p, l.b, l.c, l.ch, ag?.a ?? 0, ag?.w ?? 0)}${av ? `  ${etiquetaAviso(av)}` : ''}`;
   });
-  return [...tiendas, '', lineaTotal(tot, lines.length), ...lineasPesaje(resumen)].join('\n');
+  return [
+    ...tiendas, '',
+    lineaTotal(tot, lines.length, { a: resumen.a, w: resumen.w }),
+    ...lineasPesaje(resumen),
+  ].join('\n');
 }
 
 /**

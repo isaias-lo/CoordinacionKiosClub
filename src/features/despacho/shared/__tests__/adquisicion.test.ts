@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   esAdquisicion, esWebRetiro, esAgregado, pideMedidas, naceCompleta, etiquetaAgregado,
   TIPO_ADQUISICION, TIPO_WEB_RETIRO, PKG_ADQUISICION, PKG_WEB_RETIRO,
-  LABEL_ADQUISICION, LABEL_WEB_RETIRO,
+  LABEL_ADQUISICION, LABEL_WEB_RETIRO, etiquetaDeUnidad,
 } from '../adquisicion';
-import { claseSantiago, claseNacional } from '../numeroCard';
+import { claseSantiago, claseNacional, etiquetaCard, ordenDeItem, renumerarOrden } from '../numeroCard';
 
 describe('reconocer los dos agregados en todas sus escrituras', () => {
   it('la adquisición: RM/Costa, Nacional y la planilla', () => {
@@ -77,14 +77,69 @@ describe('etiquetaAgregado — lo que se escribe en la columna TIPO', () => {
   });
 });
 
-describe('se comportan como BULTO donde se cuenta y se numera', () => {
-  it('en los dos espejos caen en la clase bulto', () => {
-    // Esto NO es casualidad: `claseSantiago` y `claseNacional` caen por defecto en 'bulto', así que
-    // los agregados suman como bulto y se numeran en la misma serie sin tocar esas funciones. El
-    // test lo fija: si alguien cambiara ese `return 'bulto'` final, acá se entera.
-    expect(claseSantiago(TIPO_ADQUISICION)).toBe('bulto');
-    expect(claseSantiago(TIPO_WEB_RETIRO)).toBe('bulto');
-    expect(claseNacional(PKG_ADQUISICION)).toBe('bulto');
-    expect(claseNacional(PKG_WEB_RETIRO)).toBe('bulto');
+describe('etiquetaDeUnidad — para no escribir "0kg · 0cm" en la tarjeta', () => {
+  it('reconoce el agregado en los dos espejos', () => {
+    // RM/Costa guarda el envase en `tipo`; Nacional guarda el CONTENIDO en `tipo` y el envase en
+    // `pkg`. Mirar un solo campo dejaba el arreglo puesto en un espejo y roto en el otro.
+    expect(etiquetaDeUnidad({ tipo: TIPO_ADQUISICION })).toBe(LABEL_ADQUISICION);
+    expect(etiquetaDeUnidad({ pkg: PKG_WEB_RETIRO })).toBe(LABEL_WEB_RETIRO);
+    expect(etiquetaDeUnidad({ tipo: 'comida', pkg: PKG_ADQUISICION })).toBe(LABEL_ADQUISICION);
+  });
+
+  it('devuelve null para lo que sí se pesa, para que la tarjeta muestre los kilos', () => {
+    expect(etiquetaDeUnidad({ tipo: 'Pallet' })).toBeNull();
+    expect(etiquetaDeUnidad({ tipo: 'comida', pkg: 'pallet' })).toBeNull();
+    expect(etiquetaDeUnidad({})).toBeNull();
+  });
+});
+
+describe('cada uno tiene su propia serie: A1 A2 A3 y W1 W2 W3', () => {
+  it('en los dos espejos son su propia clase, NO bulto', () => {
+    // Nacieron cayendo en el `return 'bulto'` final de estas dos funciones, y un test anterior lo
+    // fijaba a propósito. Se cambió el 29/09/2026 porque esa herencia hacía dos daños: en pantalla
+    // eran B4 y B5 —indistinguibles de un bulto— y el contador del alta de RM/Costa comparaba
+    // `i.tipo === 'Bulto'`, que nunca coincide con 'Adquisicion', así que las tres adquisiciones de
+    // una tienda recibían el mismo número y colapsaban en UNA fila de la planilla.
+    expect(claseSantiago(TIPO_ADQUISICION)).toBe('adquisicion');
+    expect(claseSantiago(TIPO_WEB_RETIRO)).toBe('webretiro');
+    expect(claseNacional(PKG_ADQUISICION)).toBe('adquisicion');
+    expect(claseNacional(PKG_WEB_RETIRO)).toBe('webretiro');
+  });
+
+  it('el bulto de verdad sigue siendo bulto', () => {
+    expect(claseSantiago('Bulto')).toBe('bulto');
+    expect(claseNacional('box')).toBe('bulto');
+  });
+
+  it('la tarjeta dice A y W, no B', () => {
+    expect(etiquetaCard(TIPO_ADQUISICION, 1)).toBe('A1');
+    expect(etiquetaCard(TIPO_ADQUISICION, 3)).toBe('A3');
+    expect(etiquetaCard(TIPO_WEB_RETIRO, 2)).toBe('W2');
+    expect(etiquetaCard('Bulto', 2)).toBe('B2');
+  });
+
+  it('el `orden` que va al ID también', () => {
+    // El ID de la fila es `${orden}${cod}${stamp}${prefijo}`. Con el orden en `3B` y el prefijo en
+    // `A`, el ID decía dos cosas distintas sobre la misma unidad.
+    expect(ordenDeItem(TIPO_ADQUISICION, 3)).toBe('A3');
+    expect(ordenDeItem(TIPO_WEB_RETIRO, 3)).toBe('W3');
+    expect(ordenDeItem('Bulto', 3)).toBe('3B');   // el bulto sigue con el número adelante
+  });
+
+  it('EL BUG QUE CIERRA: tres adquisiciones son A1, A2 y A3 — no tres veces la misma', () => {
+    // Es la razón de todo el cambio. Tres unidades con el mismo `orden` producen el mismo ID, y el
+    // ID es lo que decide si una fila se agrega o se pisa: las tres terminaban siendo una.
+    const items = [
+      { tipo: 'Bulto' }, { tipo: TIPO_ADQUISICION }, { tipo: TIPO_ADQUISICION },
+      { tipo: TIPO_ADQUISICION }, { tipo: TIPO_WEB_RETIRO }, { tipo: TIPO_WEB_RETIRO },
+    ];
+    const ordenes = renumerarOrden(items, () => null).map(i => i.orden);
+    expect(ordenes).toEqual(['1B', 'A1', 'A2', 'A3', 'W1', 'W2']);
+    expect(new Set(ordenes).size).toBe(ordenes.length);
+  });
+
+  it('cada serie cuenta sola: la adquisición no corre al bulto', () => {
+    const items = [{ tipo: TIPO_ADQUISICION }, { tipo: 'Bulto' }, { tipo: TIPO_ADQUISICION }];
+    expect(renumerarOrden(items, () => null).map(i => i.orden)).toEqual(['A1', '1B', 'A2']);
   });
 });

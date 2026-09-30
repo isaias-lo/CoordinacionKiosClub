@@ -50,5 +50,45 @@ export function getTiendasSantiagoHoy(): TiendaSantiago[] {
 }
 
 export function getTiendaSantiagoByCod(cod: string): TiendaSantiago | undefined {
-  return TIENDAS_SANTIAGO.find(t => t.cod === cod);
+  const c = String(cod ?? '').trim().toUpperCase();
+  return TIENDAS_SANTIAGO.find(t => t.cod.toUpperCase() === c);
+}
+
+/**
+ * Suma al catálogo las tiendas que vienen de la BASE (Config. Tiendas).
+ *
+ * ── POR QUÉ EXISTE ───────────────────────────────────────────────────────────────────────────
+ *
+ * Este catálogo era SOLO estático: 37 tiendas escritas a mano. Una tienda de RM creada en Config
+ * no entraba nunca, y eso no la dejaba afuera de la pantalla —Bodega la muestra igual, se trabaja,
+ * se pesa y se marca TERMINADA— pero sí la dejaba afuera al REGISTRAR: `sheetsSantiago` hacía
+ * `const tienda = getTiendaSantiagoByCod(cod); if (!tienda) continue;` y descartaba la tienda
+ * ENTERA, en silencio.
+ *
+ * Medido el 29/09/2026: el registro de RM/Costa informó 25 tiendas y escribió 15. Tres de las que
+ * faltaban eran de RM y estaban pesadas —26ALC con 467,5 kg, 56PZA con 665,6 y 59EGN con 1.003—.
+ * Esos kilos no llegaron ni a la planilla ni a la base. El 28/09 había pasado lo mismo con 58TAM
+ * (293 kg). Ninguna de las cuatro está en el arreglo de arriba.
+ *
+ * Bodega Nacional ya hacía esto —`registrarTiendasBD` en `regiones/data/tiendas.ts`, con el
+ * comentario "Una tienda de Región creada en Config. Tiendas YA aparece sola en Bodega"—. RM/Costa
+ * se quedó sin su mitad.
+ *
+ * Las curadas NO se pisan: las 37 de arriba tienen datos afinados a mano (ventanas verificadas con
+ * la tienda, comuna de reparto que no siempre es la del local) que la BD todavía no tiene.
+ */
+export function registrarTiendasSantiagoBD(
+  tiendas: Record<string, TiendaSantiago> | TiendaSantiago[],
+): string[] {
+  const filas = Array.isArray(tiendas) ? tiendas : Object.values(tiendas ?? {});
+  const yaEstan = new Set(TIENDAS_SANTIAGO.map(t => t.cod.toUpperCase()));
+  const agregadas: string[] = [];
+  for (const t of filas) {
+    const cod = String(t?.cod ?? '').trim().toUpperCase();
+    if (!cod || yaEstan.has(cod)) continue;
+    TIENDAS_SANTIAGO.push({ ...t, cod });
+    yaEstan.add(cod);
+    agregadas.push(cod);
+  }
+  return agregadas;
 }
