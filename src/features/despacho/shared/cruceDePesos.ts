@@ -53,7 +53,22 @@ export function tipoDeOrigen(origen?: string | null): TipoCruce | null {
   // El endpoint de Odoo ya los excluye. Esto lo repite acá a propósito: la regla que hace o
   // deshace el número no puede depender de que el llamador se acuerde de filtrar.
   if (/auditoria/i.test(texto)) return null;
-  const m = /abastecimiento\s+(comida|aseo|hogar|chocolates?)\b/i.exec(texto);
+  // EL ORIGEN TIENE QUE EMPEZAR POR "Abastecimiento", no solo contenerlo.
+  //
+  // El filtro de Odoo es `origin like 'Abastecimiento'`, y en Odoo `like` es CONTIENE. Por ahí se
+  // colaban los traslados internos de la propia tienda, cuyo origen es "Guía Abastecimiento Hogar
+  // 29/09/2026" o "Guía de Abastecimiento Aseo 24SPP …" — movimientos del tipo
+  // "<TIENDA>: Traslado internos", que van de su zona de entrada a la sala. No son despachos del
+  // CD: son la MISMA mercadería que el CD ya mandó, movida de lugar dentro del local.
+  //
+  // Medido el 29/09/2026: 10 movimientos, 1.579,3 kg, un 6,8% de más en el total del día, en
+  // 51SER y 24SPP. Y se veía a simple vista: 51SER tenía 184,18 kg de HOGAR el 28 como
+  // `99REC/DT/130817` y otra vez el 29 como `51SER/INT/00574`. El mismo peso, dos veces.
+  //
+  // Anclar al principio cubre esto y cualquier otro prefijo que aparezca mañana. El descarte de
+  // AUDITORIA de arriba queda igual: es redundante con el ancla, pero documenta un incidente
+  // medido y no cuesta nada.
+  const m = /^\s*abastecimiento\s+(comida|aseo|hogar|chocolates?)\b/i.exec(texto);
   if (!m) return null;
   return m[1].toLowerCase().replace(/s$/, '') as TipoCruce;
 }

@@ -192,3 +192,38 @@ describe('kgDiferencia — cuánto pesa la diferencia', () => {
     expect(kgDiferencia(100, NaN)).toBe(100);
   });
 });
+
+describe('los TRASLADOS INTERNOS de la tienda no son abastecimiento', () => {
+  it('"Guía Abastecimiento Hogar" NO cuenta', () => {
+    // El filtro de Odoo es `origin like 'Abastecimiento'`, y en Odoo `like` es CONTIENE. Por ahí
+    // se colaban los movimientos del tipo "<TIENDA>: Traslado internos", que van de la zona de
+    // entrada del local a la sala: la MISMA mercadería que el CD ya mandó, movida de lugar.
+    expect(tipoDeOrigen('Guía Abastecimiento Hogar 29/09/2026')).toBeNull();
+    expect(tipoDeOrigen('Guía de Abastecimiento Aseo 24SPP 29/09/2026')).toBeNull();
+    expect(tipoDeOrigen('Guía Abastecimiento Comida 2  26/09/2026')).toBeNull();
+  });
+
+  it('EL CASO QUE LO DESTAPÓ: el mismo peso contado dos veces', () => {
+    // 51SER tenía 184,18 kg de HOGAR el 28 como `99REC/DT/130817` y otra vez el 29 como
+    // `51SER/INT/00574`. El cruce los tomaba como dos despachos distintos.
+    expect(tipoDeOrigen('Abastecimiento Hogar 51SER 28/09/2026')).toBe('hogar');
+    expect(tipoDeOrigen('Guía Abastecimiento Hogar 29/09/2026')).toBeNull();
+  });
+
+  it('el abastecimiento de verdad sigue contando', () => {
+    expect(tipoDeOrigen('Abastecimiento Comida 51SER 28/09/2026')).toBe('comida');
+    expect(tipoDeOrigen('Abastecimiento Aseo 24SPP 29/09/2026')).toBe('aseo');
+    expect(tipoDeOrigen('Abastecimiento Chocolates 51SER 28/09/2026')).toBe('chocolate');
+    expect(tipoDeOrigen('  Abastecimiento Hogar 51SER ')).toBe('hogar');  // con espacios al inicio
+  });
+
+  it('AUDITORIA sigue afuera, y ahora por partida doble', () => {
+    // El ancla ya lo cubriría, pero el descarte explícito documenta un incidente medido: el 28/09
+    // sumaban 8.766 kg fantasma, un 42% de más.
+    expect(tipoDeOrigen('AUDITORIA Abastecimiento Comida 51SER 28/09/2026')).toBeNull();
+  });
+
+  it('congelados sigue fuera del cruce aunque empiece bien', () => {
+    expect(tipoDeOrigen('Abastecimiento Congelados 51SER 28/09/2026')).toBeNull();
+  });
+});
