@@ -22,6 +22,43 @@ export const MAP_PCT_MIN = 20;
 export const MAP_PCT_MAX = 85;
 
 /**
+ * Hasta dónde llega el ARRASTRE. Menos que `MAP_PCT_MAX`, y a propósito.
+ *
+ * Arrastrar sirve para elegir un ancho de trabajo con las dos cosas a la vista; taparlo entero es
+ * otra intención y tiene su propio gesto —un toque—, que además llega más lejos que cualquier
+ * arrastre (`calc(100% - 360px)`). Dejar que el arrastre se acerque al máximo hacía que las dos
+ * formas compitieran y que uno terminara arrastrando hasta el borde para algo que es un clic.
+ *
+ * Estaba escrito a mano dentro del arrastre (`Math.min(60, Math.max(20, …))`), con el módulo
+ * declarando 85 al lado: dos límites que no conversaban.
+ */
+export const MAP_PCT_DRAG_MAX = 60;
+
+/** Ancho de la manija, en px. Chica se ve, pero hay que poder AGARRARLA. */
+export const MANIJA_PX = 16;
+/** El grosor de la línea que se ve. El resto de la manija es área de agarre transparente. */
+export const MANIJA_LINEA_PX = 6;
+
+/**
+ * Cuánto tarda la cortina en correrse.
+ *
+ * Sin transición el panel SALTA de un ancho a otro, que no se lee como una cortina sino como un
+ * error de dibujo. Es corto a propósito: el gesto tiene que sentirse inmediato.
+ *
+ * No se anima MIENTRAS se arrastra — ahí el ancho tiene que seguir al dedo sin ir un cuadro atrás.
+ *
+ * Animar es gratis en llamadas a Google: el `ResizeObserver` de `MapSection` solo dispara el evento
+ * `resize` del mapa y lo re-centra, y ya viene limitado por `requestAnimationFrame`. Lo que sí
+ * costaría es DESMONTAR el panel, que es de lo que trata todo este módulo.
+ */
+export const CORTINA_MS = 180;
+
+/** El ancho del arrastre, saneado contra los límites del arrastre (no los del panel). */
+export function clampArrastre(pct: number): number {
+  return Math.min(MAP_PCT_DRAG_MAX, Math.max(MAP_PCT_MIN, pct));
+}
+
+/**
  * Ancho de la columna de tiendas, en px. Es el MISMO número que usa la grilla del tablero
  * (`lg:grid-cols-[minmax(0,360px)_...]`). La cortina "entera" tapa todo menos esa columna: cubre la
  * flota, que es lo que estorba mirando el mapa, y deja las tiendas a la vista para poder seguir

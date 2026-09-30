@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   clampMapPct, mapaColapsado, anchoCortina, alTocarCortina, ANCHO_TIENDAS_PX,
-  MAP_PCT_DEFAULT, MAP_PCT_MIN, MAP_PCT_MAX,
+  MAP_PCT_DEFAULT, MAP_PCT_MIN, MAP_PCT_MAX, clampArrastre, MAP_PCT_DRAG_MAX,
 } from '../mapLayout';
 
 describe('anchoCortina — el test que protege la factura', () => {
@@ -128,5 +128,33 @@ describe('alTocarCortina — un toque empuja al extremo', () => {
   it('tocar dos veces desde cerrada vuelve a cerrada', () => {
     const a = alTocarCortina({ colapsada: true, completa: false });
     expect(alTocarCortina(a)).toEqual({ colapsada: true, completa: false });
+  });
+});
+
+describe('clampArrastre — el arrastre y el toque tienen alcances distintos', () => {
+  it('no pasa del tope de ARRASTRE, que es menor que el del panel', () => {
+    // Arrastrar sirve para elegir un ancho de trabajo con las dos cosas a la vista; taparlo entero
+    // es otra intención y tiene su propio gesto. Que el arrastre llegara casi al máximo hacía que
+    // los dos compitieran.
+    expect(clampArrastre(90)).toBe(MAP_PCT_DRAG_MAX);
+    expect(clampArrastre(MAP_PCT_MAX)).toBe(MAP_PCT_DRAG_MAX);
+    expect(MAP_PCT_DRAG_MAX).toBeLessThan(MAP_PCT_MAX);
+  });
+
+  it('no baja del mínimo', () => {
+    expect(clampArrastre(0)).toBe(MAP_PCT_MIN);
+    expect(clampArrastre(-40)).toBe(MAP_PCT_MIN);
+  });
+
+  it('en el medio no toca nada', () => {
+    expect(clampArrastre(37)).toBe(37);
+    expect(clampArrastre(50)).toBe(50);
+  });
+
+  it('el límite estaba escrito a mano y ahora sale del módulo', () => {
+    // Era `Math.min(60, Math.max(20, …))` dentro del arrastre, con el módulo declarando 85 al
+    // lado: dos límites que no conversaban y que nadie podía comparar sin abrir los dos archivos.
+    expect(clampArrastre(60)).toBe(60);
+    expect(clampArrastre(61)).toBe(60);
   });
 });
