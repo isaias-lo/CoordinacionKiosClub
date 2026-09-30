@@ -12,9 +12,53 @@ export function normHeader(h: unknown): string {
   return String(h ?? '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
+/**
+ * Un número de la planilla. **La coma es separador decimal.**
+ *
+ * `sync-despacho` lee las hojas con `values.get` sin `valueRenderOption`, o sea FORMATEADAS, y la
+ * planilla está en formato chileno: una celda que vale `239.5` vuelve como el texto `"239,5"`.
+ * `parseFloat("239,5")` corta en la coma y devuelve **239** sin quejarse.
+ *
+ * Es el MISMO bug de la coma que el #608 arregló en el campo de peso de Bodega, una capa más
+ * abajo: ahí la persona escribía la coma y el navegador la descartaba; acá la escribe Google y la
+ * descarta `parseFloat`.
+ *
+ * Medido el 30/09 sobre las dos hojas: **273 filas** (195 en DESPACHO RM y 78 en DESPACHO
+ * REGIONES) tenían un decimal que se perdía en cada sincronización. Sobre los dos días ya
+ * registrados eran 82 unidades y 39,9 kg — medio kilo por fila, todos los días.
+ *
+ * Por eso ALGUNAS filas conservaban su decimal y otras no, que era lo desconcertante: las que
+ * escribe el espejo de `sheets-write` nunca pasan por la hoja y llegan enteras; las que vuelven
+ * por `sync-despacho` sí pasan, y se truncan.
+ *
+ * ── LA REGLA, Y POR QUÉ ESTA Y NO LA DE `leerPeso` ─────────────────────────────────────────────
+ *
+ * Si hay una coma, la coma es el decimal y los puntos son separadores de miles. Si no hay coma,
+ * el punto es el decimal, **exactamente como hasta hoy**.
+ *
+ * `leerPeso` usa otra regla —"manda el último separador, sea cual sea"— y ahí es correcta porque
+ * en ese campo nada llega a los mil kilos, así que «1.200» es mucho más probablemente 1,2. Acá
+ * no se puede suponer eso: `num` también lee VALOR, que sí puede ser un monto grande, y cambiarle
+ * el sentido a un punto sin coma habría convertido «1.234» en 1,234 en una columna de plata.
+ *
+ * O sea: esto AGREGA el caso de la coma y no toca ninguno de los que ya funcionaban.
+ */
 export function num(v: unknown): number | null {
-  const p = parseFloat(String(v ?? ''));
-  return isNaN(p) ? null : p;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  const crudo = String(v ?? '').trim();
+  if (!crudo.includes(',')) {
+    const p = parseFloat(crudo);
+    return isNaN(p) ? null : p;
+  }
+  // Con coma presente: los puntos son de miles y la coma es el decimal.
+  const negativo = crudo.trimStart().startsWith('-');
+  const limpio = crudo.replace(/[^\d.,]/g, '').replace(/\./g, '');
+  const [entero, ...resto] = limpio.split(',');
+  const decimal = resto.join('');
+  if (!/\d/.test(limpio)) return null;
+  const n = Number(`${entero || '0'}.${decimal || '0'}`);
+  if (!Number.isFinite(n)) return null;
+  return negativo ? -n : n;
 }
 
 /**
