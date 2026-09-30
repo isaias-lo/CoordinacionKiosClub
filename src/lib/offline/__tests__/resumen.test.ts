@@ -3,11 +3,11 @@ import type { ItemCola } from '../tipos';
 
 const almacen = vi.hoisted(() => ({
   items: [] as ItemCola<unknown>[],
-  listar: vi.fn(),
+  listarTodos: vi.fn(),
 }));
 
 vi.mock('../almacen', () => ({
-  listar: vi.fn(async (modulo: string) => almacen.items.filter(i => i.modulo === modulo)),
+  listarTodos: almacen.listarTodos.mockImplementation(async () => [...almacen.items]),
 }));
 
 import { resumenOffline } from '../resumen';
@@ -17,7 +17,7 @@ function item(modulo: 'picking' | 'conductor' | 'recepcion', bloqueado = false):
            intentos: 0, createdAt: 1, ...(bloqueado ? { bloqueado: true } : {}) };
 }
 
-beforeEach(() => { almacen.items.length = 0; });
+beforeEach(() => { almacen.items.length = 0; almacen.listarTodos.mockClear(); });
 
 describe('resumenOffline', () => {
   it('sin nada en la cola devuelve cero', async () => {
@@ -39,5 +39,13 @@ describe('resumenOffline', () => {
   it('cuenta un módulo que todavía no encola sin tener que tocar nada', async () => {
     almacen.items.push(item('recepcion'));
     expect((await resumenOffline()).pendientes).toBe(1);
+  });
+
+  // Esto corre cada 15 segundos en todas las pantallas, y en recepción el payload son hasta ocho
+  // fotos en data URL. Una lectura por módulo traía esos MB tres veces para contarlos.
+  it('lee la cola una sola vez, no una por módulo', async () => {
+    almacen.items.push(item('picking'), item('conductor'), item('recepcion'));
+    await resumenOffline();
+    expect(almacen.listarTodos).toHaveBeenCalledTimes(1);
   });
 });

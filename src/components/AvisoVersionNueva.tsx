@@ -78,7 +78,11 @@ export function AvisoVersionNueva() {
   void tic;  // la dependencia real es el temporizador de abajo
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[1000] print:hidden max-w-[94vw]">
+    // `--kc-barra-estado` lo publica EstadoConexion cuando su barra está abajo; sin ella vale 0.
+    // Los dos avisos pueden salir juntos —sin señal y con una versión nueva esperando— y antes
+    // este quedaba encima del otro tapándolo.
+    <div className="fixed left-1/2 -translate-x-1/2 z-[1000] print:hidden max-w-[94vw]"
+      style={{ bottom: 'calc(1rem + var(--kc-barra-estado, 0px))' }}>
       <div className="flex items-center gap-3 rounded-xl px-4 py-3 shadow-card2"
         style={{ background: '#1A2550', color: '#fff', border: '1px solid rgba(255,255,255,0.15)' }}>
         <div className="text-[13px] leading-tight">

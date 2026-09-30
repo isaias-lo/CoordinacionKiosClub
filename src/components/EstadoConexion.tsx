@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CloudOff, Upload, AlertTriangle } from 'lucide-react';
 import { resumenOffline, type ResumenOffline } from '@/lib/offline/resumen';
 
@@ -26,9 +26,19 @@ const CADA_MS = 15_000;
  * bodega que dedica una franja permanente a decir "todo bien" está gastando pantalla en una tablet
  * donde cada fila de la grilla cuenta.
  */
+/**
+ * Alto real de la barra, publicado en `--kc-barra-estado` para que lo que flota abajo se corra.
+ *
+ * Se mide en vez de fijarlo: en un teléfono angosto el mensaje se va a dos líneas, y un número
+ * escrito a mano acá dejaría el aviso de versión nueva tapando media barra justo en las pantallas
+ * más chicas, que son las que menos lugar tienen.
+ */
+const VAR_ALTO = '--kc-barra-estado';
+
 export function EstadoConexion() {
   const [enLinea, setEnLinea] = useState(true);
   const [resumen, setResumen] = useState<ResumenOffline>({ pendientes: 0, bloqueadas: 0 });
+  const barraRef = useRef<HTMLDivElement>(null);
 
   const contar = useCallback(async () => {
     try { setResumen(await resumenOffline()); } catch { /* la cola nunca puede romper la pantalla */ }
@@ -59,7 +69,26 @@ export function EstadoConexion() {
   }, [contar]);
 
   const { pendientes, bloqueadas } = resumen;
-  if (enLinea && pendientes === 0 && bloqueadas === 0) return null;
+  const visible = !enLinea || pendientes > 0 || bloqueadas > 0;
+
+  // Va antes del `return null` porque los hooks no pueden quedar detrás de una salida temprana.
+  useEffect(() => {
+    const raiz = document.documentElement;
+    const limpiar = () => raiz.style.removeProperty(VAR_ALTO);
+    if (!visible) { limpiar(); return limpiar; }
+
+    const medir = () => {
+      const alto = barraRef.current?.offsetHeight;
+      if (alto) raiz.style.setProperty(VAR_ALTO, `${alto}px`);
+    };
+    medir();
+    // El alto cambia al girar el aparato o al pasar el mensaje a dos líneas.
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(medir) : null;
+    if (ro && barraRef.current) ro.observe(barraRef.current);
+    return () => { ro?.disconnect(); limpiar(); };
+  }, [visible]);
+
+  if (!visible) return null;
 
   const plural = (n: number, uno: string, varios: string) => (n === 1 ? uno : varios);
 
@@ -79,8 +108,12 @@ export function EstadoConexion() {
 
   return (
     <div
+      ref={barraRef}
       role="status"
       aria-live="polite"
+      // El enrutador y el panel de combinaciones imprimen LA PÁGINA con `window.print()`, no una
+      // ventana aparte, así que sin esto la barra sale impresa en cada manifiesto.
+      className="no-print print:hidden"
       style={{
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 60,
         background: fondo, borderTop: `1px solid ${borde}`, color: texto,

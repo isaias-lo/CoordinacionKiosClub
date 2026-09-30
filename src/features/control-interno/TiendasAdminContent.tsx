@@ -1203,7 +1203,8 @@ export default function TiendasAdminContent({
           marcadas quedaron fuera del filtro: actuar sobre tiendas que no están en pantalla es
           legítimo —se marcaron a propósito— pero callarlo haría ver el conteo como un error. */}
       {canEditTiendas && selCods.length > 0 && (
-        <div style={{ position: 'fixed', left: '50%', bottom: 26, transform: 'translateX(-50%)', zIndex: 60,
+        // El `bottom` sube si EstadoConexion tiene su barra abajo; sin ella la var vale 0.
+        <div style={{ position: 'fixed', left: '50%', bottom: 'calc(26px + var(--kc-barra-estado, 0px))', transform: 'translateX(-50%)', zIndex: 60,
                       display: 'flex', alignItems: 'center', gap: 9, height: 52, padding: '0 11px 0 19px',
                       borderRadius: 13, background: '#0F172A', boxShadow: '0 12px 34px rgba(15,23,42,0.34)' }}>
           <span style={{ fontSize: 13.5, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap' }}>

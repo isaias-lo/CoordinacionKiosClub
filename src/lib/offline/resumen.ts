@@ -1,6 +1,5 @@
-import { listar } from './almacen';
+import { listarTodos } from './almacen';
 import { pendientesDeEnvio, bloqueados } from './resultado';
-import type { ModuloOffline } from './tipos';
 
 /**
  * [PWA · fase 4] Cuánto trabajo sin enviar hay en este dispositivo, sumando los tres módulos.
@@ -10,8 +9,6 @@ import type { ModuloOffline } from './tipos';
  * forma de saber que algo seguía colgando.
  */
 
-const MODULOS: ModuloOffline[] = ['picking', 'conductor', 'recepcion'];
-
 export interface ResumenOffline {
   /** Lo que todavía se va a intentar mandar. */
   pendientes: number;
@@ -20,13 +17,12 @@ export interface ResumenOffline {
 }
 
 /**
- * Pregunta por los tres módulos siempre, aunque alguno todavía no escriba nada en la cola: `listar`
- * devuelve vacío y no cuesta nada. Así el contador empieza a incluir cada módulo apenas ese módulo
- * empieza a encolar, sin tener que tocar esto.
+ * Cuenta la cola entera sin mirar de qué módulo es cada ítem. Así un módulo que empiece a encolar
+ * mañana entra en el contador sin tocar esto, y la lectura es una sola aunque los módulos sean
+ * tres — ver `listarTodos` en `almacen.ts` para por qué eso importa.
  */
 export async function resumenOffline(): Promise<ResumenOffline> {
-  const porModulo = await Promise.all(MODULOS.map(m => listar(m)));
-  const todos = porModulo.flat();
+  const todos = await listarTodos();
   return {
     pendientes: pendientesDeEnvio(todos).length,
     bloqueadas: bloqueados(todos).length,
