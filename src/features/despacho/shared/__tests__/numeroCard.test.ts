@@ -1,46 +1,64 @@
 import { describe, it, expect } from 'vitest';
-import { numeroVisibleCard, ordenDeItem, renumerarOrden, renumerarOrdenNacional, claseNacional, etiquetaCard, renumerarSalvoChocolate } from '../numeroCard';
+import { repartirNumeros, numeroParaUnidadNueva, ordenDeItem, renumerarOrden, renumerarOrdenNacional, claseNacional, etiquetaCard, renumerarSoloSinOrden } from '../numeroCard';
 
-describe('numeroVisibleCard', () => {
-  it('un CH muestra su seq, no su posición — es el número impreso en la caja', () => {
-    // El caso reportado: quedan CH3 y CH5 después de sumar los otros a un pallet.
-    // Por posición serían 1 y 2; deben seguir siendo 3 y 5.
-    expect(numeroVisibleCard({ esChocolate: true, posicion: 1, seq: 3 })).toBe(3);
-    expect(numeroVisibleCard({ esChocolate: true, posicion: 2, seq: 5 })).toBe(5);
+describe('repartirNumeros — EL NÚMERO ES EL QUE ESTÁ IMPRESO', () => {
+  it('cada unidad se queda con su seq, sin importar el orden de la lista', () => {
+    // El caso reportado en 16PQA el 30/09: el backfill agrega la tarjeta que faltaba AL FINAL,
+    // así que el pallet impreso P1 llegaba después del P2. Por posición, el P2 pasaba a llamarse
+    // P1 y parecía que habían borrado un pallet. No habían borrado nada.
+    expect(repartirNumeros([2, 1])).toEqual([2, 1]);
   });
 
-  it('borrar un CH no corre a los que quedan', () => {
-    // CH1 CH2 CH3 CH4 → se van el 1, el 2 y el 4. El 3 conserva su número.
-    const quedan = [{ seq: 3 }];
-    const nums = quedan.map((s, i) => numeroVisibleCard({ esChocolate: true, posicion: i + 1, seq: s.seq }));
-    expect(nums).toEqual([3]);
+  it('borrar a un vecino no corre a los que quedan', () => {
+    // P1 P2 P3 P4 → se van el 1, el 2 y el 4. El 3 conserva su número.
+    expect(repartirNumeros([3])).toEqual([3]);
   });
 
-  it('un CH que todavía no se imprimió cae a la posición', () => {
-    // seq se asigna recién al imprimir: antes de eso no hay número físico con el que coincidir.
-    expect(numeroVisibleCard({ esChocolate: true, posicion: 2, seq: null })).toBe(2);
-    expect(numeroVisibleCard({ esChocolate: true, posicion: 2, seq: undefined })).toBe(2);
+  it('los huecos son información, no algo que compactar', () => {
+    expect(repartirNumeros([2, 5])).toEqual([2, 5]);
   });
 
-  it('solo los CH — el resto sigue numerando por posición', () => {
-    // Pedido explícito: "ojo esto solo con los CH". Pallets y bultos no cambian de comportamiento.
-    expect(numeroVisibleCard({ esChocolate: false, posicion: 1, seq: 7 })).toBe(1);
-    expect(numeroVisibleCard({ esChocolate: false, posicion: 4, seq: 9 })).toBe(4);
+  it('LA COLISIÓN QUE ESTO TAPA: la unidad sin seq no puede llevarse un número ya tomado', () => {
+    // Con la regla vieja la tercera caía en su POSICIÓN (3) y salía P3 — el mismo id de fila que
+    // la segunda (`${orden}${cod}${stamp}${prefijo}`), y en la planilla una pisaba a la otra sin
+    // avisar. Ahora toma el menor hueco libre: el 2.
+    expect(repartirNumeros([1, 3, null])).toEqual([1, 3, 2]);
   });
 
-  it('un seq corrupto no rompe la card: cae a la posición', () => {
-    // Nunca debe salir "CH0", "CH-2" ni "CHNaN" en pantalla.
-    expect(numeroVisibleCard({ esChocolate: true, posicion: 2, seq: 0 })).toBe(2);
-    expect(numeroVisibleCard({ esChocolate: true, posicion: 2, seq: -1 })).toBe(2);
-    expect(numeroVisibleCard({ esChocolate: true, posicion: 2, seq: NaN })).toBe(2);
-    expect(numeroVisibleCard({ esChocolate: true, posicion: 2, seq: 1.5 })).toBe(2);
+  it('varias sin seq toman huecos distintos, en orden', () => {
+    expect(repartirNumeros([3, null, null, null])).toEqual([3, 1, 2, 4]);
   });
 
-  it('dos CH pueden quedar con números no consecutivos, y está bien', () => {
-    // Es el punto entero: el hueco que deja el que se fue es información, no un error.
-    const nums = [{ seq: 2 }, { seq: 5 }].map((s, i) =>
-      numeroVisibleCard({ esChocolate: true, posicion: i + 1, seq: s.seq }));
-    expect(nums).toEqual([2, 5]);
+  it('sin ningún seq se numera 1, 2, 3 — el comportamiento de siempre', () => {
+    expect(repartirNumeros([null, undefined, null])).toEqual([1, 2, 3]);
+  });
+
+  it('un seq corrupto no rompe la card: se trata como si no tuviera', () => {
+    // Nunca debe salir "P0", "P-2" ni "PNaN" en pantalla.
+    expect(repartirNumeros([0, -1, NaN, 1.5])).toEqual([1, 2, 3, 4]);
+  });
+
+  it('lista vacía', () => {
+    expect(repartirNumeros([])).toEqual([]);
+  });
+});
+
+describe('numeroParaUnidadNueva — al guardar, el número se fija UNA vez', () => {
+  it('la unidad nueva se queda con su seq impreso', () => {
+    expect(numeroParaUnidadNueva([1, 2], 7)).toBe(7);
+  });
+
+  it('sin seq toma el menor hueco, no la posición siguiente', () => {
+    // Con hermanas 1 y 3, la posición siguiente sería 3 — el número de la segunda.
+    expect(numeroParaUnidadNueva([1, 3], null)).toBe(2);
+  });
+
+  it('la primera de su clase, sin seq, es la 1', () => {
+    expect(numeroParaUnidadNueva([], undefined)).toBe(1);
+  });
+
+  it('las hermanas sin seq también ocupan lugar', () => {
+    expect(numeroParaUnidadNueva([null, null], null)).toBe(3);
   });
 });
 
@@ -85,6 +103,34 @@ describe('renumerarOrden', () => {
     expect(out.map(o => o.orden)).toEqual(['P1', '1B', 'P2', 'C1']);
   });
 
+  it('UN PALLET CON seq CONSERVA SU NÚMERO, venga en el orden que venga', () => {
+    // 16PQA, 30/09: el backfill agregó el P1 impreso DESPUÉS del P2 en la lista. Por posición el
+    // P2 pasaba a llamarse P1 y parecía que faltaba un pallet.
+    const out = renumerarOrden([it_('Pallet', 2), it_('Pallet', 1)], seqDe);
+    expect(out.map(o => o.orden)).toEqual(['P2', 'P1']);
+  });
+
+  it('un bulto con seq también — el pedido fue para los dos', () => {
+    const out = renumerarOrden([it_('Bulto', 4), it_('Bulto', 2)], seqDe);
+    expect(out.map(o => o.orden)).toEqual(['4B', '2B']);
+  });
+
+  it('EL ID DE LA PLANILLA Y EL DEL SLOT DICEN LO MISMO', () => {
+    // Es el daño de fondo que esto arregla. El id de la fila se arma `${orden}${cod}${stamp}${p}`
+    // y el `canonical_id` del slot se arma con el seq. Con 55ITA el 28/09 el slot P1 guardaba
+    // 9.357,5 kg y la fila P2 de la planilla guardaba 335,7: la misma unidad con dos nombres.
+    const cod = '55ITA', stamp = '28092026';
+    const out = renumerarOrden([it_('Pallet', 2), it_('Pallet', 1)], seqDe);
+    const idsPlanilla  = out.map(o => `${o.orden}${cod}${stamp}P`);
+    const canonicalIds = [2, 1].map(seq => `P${seq}${cod}${stamp}P`);
+    expect(idsPlanilla).toEqual(canonicalIds);
+  });
+
+  it('un pallet sin seq no se lleva el número de uno que sí lo tiene', () => {
+    const out = renumerarOrden([it_('Pallet', 1), it_('Pallet', 3), it_('Pallet', null)], seqDe);
+    expect(out.map(o => o.orden)).toEqual(['P1', 'P3', 'P2']);
+  });
+
   it('un CH sin seq cae a su posición ENTRE CH, no a la del arreglo', () => {
     const out = renumerarOrden([it_('Pallet'), it_('Chocolate', null), it_('Chocolate', null)], seqDe);
     expect(out.map(o => o.orden)).toEqual(['P1', 'CH1', 'CH2']);
@@ -126,6 +172,12 @@ describe('renumerarOrdenNacional', () => {
     expect(out.map(o => o.orden)).toEqual(['pallet1', 'bulto1', 'chocolate4']);
   });
 
+  it('el pallet y el bulto también conservan su seq en Nacional', () => {
+    // El cambio va en los DOS espejos o queda arreglado en un camino y roto en el otro.
+    const out = renumerarOrdenNacional([n_('pallet', 2), n_('pallet', 1), n_('box', 5)], seqDe);
+    expect(out.map(o => o.orden)).toEqual(['pallet2', 'pallet1', 'bulto5']);
+  });
+
   it('sacar un CH del medio no renumera a los que quedan', () => {
     const despues = renumerarOrdenNacional([n_('chocolate', 3)], seqDe);
     expect(despues[0].orden).toBe('chocolate3');   // antes daba 'chocolate1'
@@ -143,47 +195,55 @@ describe('renumerarOrdenNacional', () => {
   });
 });
 
-describe('renumerarSalvoChocolate — el renumerado del reducer de Nacional', () => {
+describe('renumerarSoloSinOrden — el renumerado del reducer de Nacional', () => {
   const P = (orden: string) => ({ pkg: 'pallet', orden });
   const B = (orden: string) => ({ pkg: 'box', orden });
   const C = (orden: string) => ({ pkg: 'contenedor', orden });
   const CH = (orden: string) => ({ pkg: 'chocolate', orden });
 
-  it('el bug: renumerar por posición hacía que el CH3 volviera a llamarse CH1', () => {
-    // Quedan el CH3 y el CH5 (los demás se sumaron a un pallet). Agregar cualquier otra cosa
-    // disparaba el renumerado del reducer y los reescribía como chocolate1 y chocolate2.
-    const r = renumerarSalvoChocolate([CH('chocolate3'), CH('chocolate5')]);
+  it('el bug que esto evita: renumerar por posición hacía que el CH3 volviera a llamarse CH1', () => {
+    const r = renumerarSoloSinOrden([CH('chocolate3'), CH('chocolate5')]);
     expect(r.map(i => i.orden)).toEqual(['chocolate3', 'chocolate5']);
   });
 
-  it('pallets, bultos y contenedores SÍ se renumeran por posición', () => {
-    const r = renumerarSalvoChocolate([P('pallet7'), B('bulto9'), P('pallet2'), C('contenedor4')]);
-    expect(r.map(i => i.orden)).toEqual(['pallet1', 'bulto1', 'pallet2', 'contenedor1']);
+  it('AHORA TAMPOCO toca pallets, bultos ni contenedores', () => {
+    // Desde que el pallet usa su `seq`, renumerarlo acá desharía en la acción siguiente lo que
+    // `numerarPorClase` acaba de calcular bien — el mismo bug del CH3, con el P3.
+    const r = renumerarSoloSinOrden([P('pallet7'), B('bulto9'), P('pallet2'), C('contenedor4')]);
+    expect(r.map(i => i.orden)).toEqual(['pallet7', 'bulto9', 'pallet2', 'contenedor4']);
   });
 
-  it('mezclados: los chocolates se quedan quietos y el resto se compacta', () => {
-    const r = renumerarSalvoChocolate([P('pallet5'), CH('chocolate3'), B('bulto8'), CH('chocolate5')]);
-    expect(r.map(i => i.orden)).toEqual(['pallet1', 'chocolate3', 'bulto1', 'chocolate5']);
+  it('mezclados: nadie se mueve', () => {
+    const r = renumerarSoloSinOrden([P('pallet5'), CH('chocolate3'), B('bulto8'), CH('chocolate5')]);
+    expect(r.map(i => i.orden)).toEqual(['pallet5', 'chocolate3', 'bulto8', 'chocolate5']);
   });
 
-  it('un chocolate SIN orden todavía cae a su posición entre los chocolates', () => {
+  it('lo que NO tiene orden todavía sí lo recibe, por posición', () => {
+    // Es provisorio: dura hasta el próximo renumerado con el `seq` a la vista.
     const sinOrden: { pkg: string; orden?: string } = { pkg: 'chocolate' };
-    const r = renumerarSalvoChocolate([CH('chocolate3'), sinOrden]);
+    const r = renumerarSoloSinOrden([CH('chocolate3'), sinOrden]);
     expect(r.map(i => i.orden)).toEqual(['chocolate3', 'chocolate2']);
   });
 
-  it('al chocolate que conserva su número lo devuelve SIN copiarlo', () => {
-    const ch = CH('chocolate3');
-    expect(renumerarSalvoChocolate([ch])[0]).toBe(ch);
+  it('cada clase cuenta su propia posición para lo que no tiene orden', () => {
+    const pSin: { pkg: string; orden?: string } = { pkg: 'pallet' };
+    const bSin: { pkg: string; orden?: string } = { pkg: 'box' };
+    const r = renumerarSoloSinOrden([pSin, bSin]);
+    expect(r.map(i => i.orden)).toEqual(['pallet1', 'bulto1']);
   });
 
-  it('borrar un pallet compacta los pallets pero no mueve los chocolates', () => {
+  it('al que conserva su número lo devuelve SIN copiarlo', () => {
+    const ch = CH('chocolate3');
+    expect(renumerarSoloSinOrden([ch])[0]).toBe(ch);
+  });
+
+  it('borrar un pallet ya no mueve a los que quedan', () => {
     const antes = [P('pallet1'), P('pallet2'), CH('chocolate4'), P('pallet3')];
-    const despues = renumerarSalvoChocolate(antes.filter(i => i.orden !== 'pallet2'));
-    expect(despues.map(i => i.orden)).toEqual(['pallet1', 'chocolate4', 'pallet2']);
+    const despues = renumerarSoloSinOrden(antes.filter(i => i.orden !== 'pallet2'));
+    expect(despues.map(i => i.orden)).toEqual(['pallet1', 'chocolate4', 'pallet3']);
   });
 
   it('lista vacía', () => {
-    expect(renumerarSalvoChocolate([])).toEqual([]);
+    expect(renumerarSoloSinOrden([])).toEqual([]);
   });
 });

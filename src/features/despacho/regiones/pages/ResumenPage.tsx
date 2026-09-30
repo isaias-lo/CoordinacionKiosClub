@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { finalizarSlotUnion } from '@/features/despacho/shared/finalizarSlotUnion';
-import { renumerarSalvoChocolate } from '@/features/despacho/shared/numeroCard';
+import { renumerarSoloSinOrden } from '@/features/despacho/shared/numeroCard';
 import { leerPeso, limpiarTecleo } from '@/features/despacho/shared/pesoIngresado';
 import { combinarEnLista } from '@/features/despacho/shared/combinarEnLista';
 import { GripVertical } from 'lucide-react';
@@ -34,7 +34,7 @@ const LABEL: Record<TipoContenido | TipoPaquete, string> = {
 // aplastaba el número de los chocolates igual que lo hacía el reducer. Como el reducer dejó de
 // renumerar en UPDATE_ITEMS, esta copia era la única que actuaba: combinar o editar un ítem acá
 // bastaba para que el CH3 volviera a llamarse CH1.
-const renumber = renumerarSalvoChocolate;
+const renumber = renumerarSoloSinOrden;
 
 const INPUT = 'w-full border border-border rounded-btn px-2 py-1.5 text-[13px] font-mono text-navy bg-white';
 const LABEL_SM = 'text-[9px] text-text-3 mb-0.5 uppercase tracking-wide';
