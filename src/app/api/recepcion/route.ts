@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { upsertTrazabilidadSheet } from '@/lib/sheetsTraza';
-import { verifyOtpToken } from '@/lib/otpToken';
+import { verifyOtpToken, verifyReciboEntrega } from '@/lib/otpToken';
+import { alcanceRecepcion } from '@/lib/alcances';
 import { verifyAnyUser } from '@/lib/apiAuth';
 import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 import { parseBody, RecepcionSchema } from '@/lib/schemas';
@@ -38,6 +39,7 @@ interface RecepcionBody {
   // Auth fields for conductor OTP flow
   otpToken?: string;
   otpEmail?: string;
+  recibo?: string;
   observaciones?: string;
   selloEstado?: string;
   selloLlegadaUrl?: string;
@@ -166,9 +168,25 @@ export async function POST(request: NextRequest) {
     const sb = supabaseServer();
 
     // Auth: accept OTP verification, Bearer token, or a cod with an active dispatch today
-    const hasOtp = body.otpToken && body.otpEmail && body.codigoVerificacion;
-    if (hasOtp) {
-      if (!verifyOtpToken(body.otpToken!, body.otpEmail!, body.codigoVerificacion!)) {
+    //
+    // La prueba del OTP viene de una de dos formas, y cualquiera vale:
+    //
+    //  - `otpToken`, el del envío en vivo, que dura 10 minutos. Es el camino normal.
+    //  - `recibo`, el comprobante firmado de ESA MISMA verificación, que dura 72 horas y va atado
+    //    a esta recepción. Es el que usa la cola offline, porque una confirmación guardada sin
+    //    señal puede tardar horas en llegar y para entonces el token de 10 minutos ya no vale.
+    //
+    // El comprobante no afloja la garantía: la tienda ingresó su código en vivo, con señal, y eso
+    // ya ocurrió. Lo único que dura más es la PRUEBA de que ocurrió, y solo sirve para esta
+    // recepción — ver `alcanceRecepcion`.
+    const hayCredencialOtp = body.otpEmail && body.codigoVerificacion;
+    const otpEnVivo = !!hayCredencialOtp && !!body.otpToken
+      && verifyOtpToken(body.otpToken, body.otpEmail!, body.codigoVerificacion!);
+    const conRecibo = !!hayCredencialOtp && !!body.recibo
+      && verifyReciboEntrega(body.recibo, body.otpEmail!, body.codigoVerificacion!,
+                             alcanceRecepcion(body.cod, body.canonicalId));
+    if (body.otpToken || body.recibo) {
+      if (!otpEnVivo && !conRecibo) {
         return NextResponse.json({ error: 'Código de verificación inválido o expirado' }, { status: 401 });
       }
     } else if (await verifyAnyUser(request)) {

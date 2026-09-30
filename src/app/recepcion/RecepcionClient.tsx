@@ -7,6 +7,8 @@ import { formatCod } from '../../features/despacho/rutas/utils/helpers';
 import { processPhoto } from '../../features/auditoria/utils/photos';
 import { RECEP_MAX_FOTOS } from '../../lib/recepcionMedia';
 import { formatRut } from '../../lib/rut';
+import { alcanceRecepcion } from '@/lib/alcances';
+import { encolarRecepcion, drenarRecepciones, listarRecepcionesPendientes } from './colaRecepcion';
 
 /** id de operación (idempotencia). crypto.randomUUID con fallback para navegadores viejos. */
 function newOpId(): string {
@@ -114,6 +116,19 @@ export function RecepcionClient() {
   const [otpMasked,   setOtpMasked]   = useState('');
   const [otpBusy,     setOtpBusy]     = useState(false);
   const [otpError,    setOtpError]    = useState('');
+  // Comprobante firmado de la verificación, con 72 h de vida y atado a ESTA recepción. Es lo que
+  // le permite a la cola mandar la confirmación horas después, cuando `otpToken` ya venció.
+  const [otpRecibo,   setOtpRecibo]   = useState('');
+
+  // La confirmación quedó guardada en el dispositivo y todavía no la aceptó el servidor.
+  // NO es un "listo": la pantalla lo dice con todas sus letras y no se mueve de ahí hasta que el
+  // servidor confirma de verdad.
+  const [pendienteDeEnvio, setPendienteDeEnvio] = useState(false);
+  // El efecto que vacía la cola corre una sola vez y no puede depender de este estado sin volver a
+  // suscribirse en cada cambio, así que lo lee por referencia.
+  const pendienteDeEnvioRef = useRef(false);
+  // Cuántas confirmaciones viejas quedaron esperando en este dispositivo, para avisarlo al abrir.
+  const [pendientesPrevias, setPendientesPrevias] = useState(0);
 
   const store = TIENDAS_INICIAL[cod] ?? dbStore ?? undefined;
   const guias = g ? g.split(',').filter(Boolean) : [];
@@ -276,11 +291,13 @@ export function RecepcionClient() {
     try {
       const res = await fetch('/api/recepcion-otp', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_cod: cod, otp: otpCode.trim() }),
+        // `alcance` pide además el comprobante de 72 h para ESTA recepción. Se pide siempre, no
+        // solo cuando falla la red: cuando la señal se corta ya es tarde para ir a buscarlo.
+        body: JSON.stringify({ store_cod: cod, otp: otpCode.trim(), alcance: alcanceRecepcion(cod, canonId) }),
       });
       const d = await res.json();
       if (!res.ok || !d.valid) throw new Error(d.error || 'Código incorrecto');
-      setOtpToken(d.token); setOtpEmail(d.email); setOtpVerified(true);
+      setOtpToken(d.token); setOtpEmail(d.email); setOtpRecibo(d.recibo ?? ''); setOtpVerified(true);
     } catch (e: unknown) {
       setOtpError(e instanceof Error ? e.message : 'Código incorrecto');
     } finally { setOtpBusy(false); }
@@ -296,9 +313,13 @@ export function RecepcionClient() {
     if (fotoBusy) { setError('Espera a que terminen de procesarse las fotos'); return; }
     setError('');
     setLoading(true);
+    // Declarado afuera del try para que el catch pueda encolarlo tal cual se iba a mandar. Queda
+    // en null si la falla ocurrió antes de armarlo (convirtiendo las fotos), y entonces no hay
+    // nada que guardar.
+    let bodyPayload: (Record<string, unknown> & { cod: string; tienda: string }) | null = null;
     try {
       const recepcionFotos = await Promise.all(fotos.map(fileToDataUrl));
-      const bodyPayload = {
+      bodyPayload = {
         cod,
         tienda: store?.n || cod,
         direccion: store?.d || '',
@@ -315,6 +336,9 @@ export function RecepcionClient() {
         canonicalId: canonId || undefined,
         otpToken,
         otpEmail,
+        // Va junto al token: el servidor acepta cualquiera de las dos pruebas, así que lo mismo
+        // que se manda ahora sirve tal cual si esto termina en la cola.
+        recibo: otpRecibo || undefined,
         codigoVerificacion: otpCode.trim(),
         clientOpId: clientOpIdRef.current,   // idempotencia: reenviar el mismo intento no duplica
         // Edición de una recepción ya existente (re-identificando persona):
@@ -330,16 +354,70 @@ export function RecepcionClient() {
       if (!res.ok) throw new Error(data.error || 'Error');
       setDone(true);
     } catch (e: unknown) {
-      // Sin cola offline: si no hay señal, se muestra el error (no un falso "guardado").
-      // El clientOpId hace que reintentar sea idempotente → volver a enviar NO duplica.
+      // Acá NO se muestra un "listo". Esta pantalla siempre falló fuerte para no dejar al
+      // encargado de tienda creyendo que confirmó cuando no salió nada, y eso se conserva entero.
+      //
+      // Lo único que cambia es que ahora, cuando el corte es de red, además de decirlo se guarda
+      // para mandarlo solo. El comprobante de 72 h es lo que lo hace posible: sin él, la
+      // confirmación llegaría con un token vencido y el servidor la rechazaría.
+      //
+      // Un error CON señal es otra cosa: ahí el servidor contestó algo, y reintentarlo a ciegas
+      // repetiría el mismo rechazo. Ese se muestra y ya.
       const online = typeof navigator === 'undefined' || navigator.onLine;
-      setError(online
-        ? (e instanceof Error ? e.message : 'Error al guardar. Intenta de nuevo.')
-        : 'Sin conexión. Revisa la señal e intenta de nuevo — reenviar no duplica el registro.');
+      if (!online && bodyPayload) {
+        const guardada = await encolarRecepcion(bodyPayload, clientOpIdRef.current);
+        if (guardada) {
+          pendienteDeEnvioRef.current = true;
+          setPendienteDeEnvio(true);
+          setError('');
+          return;
+        }
+        // No se pudo ni guardar (almacenamiento bloqueado o lleno). Decirlo: un "queda pendiente"
+        // sobre algo que no quedó en ningún lado sería el falso "listo" que esto evita.
+        setError('Sin conexión, y este dispositivo no pudo guardar la confirmación. No cierres esta pantalla e intenta de nuevo cuando vuelva la señal.');
+        return;
+      }
+      if (!online) {
+        setError('Sin conexión. Revisa la señal e intenta de nuevo — reenviar no duplica el registro.');
+        return;
+      }
+      setError(e instanceof Error ? e.message : 'Error al guardar. Intenta de nuevo.');
     } finally {
       setLoading(false);
     }
   };
+
+  // Al abrir: mandar lo que haya quedado pendiente en este dispositivo, y avisarlo.
+  //
+  // También al volver la señal. Las dos cosas hacen falta: `online` solo se dispara si la conexión
+  // vuelve con la pantalla abierta, y quien confirma desde la bodega de su tienda muchas veces
+  // cierra el navegador antes de eso.
+  useEffect(() => {
+    let vivo = true;
+    const vaciar = async () => {
+      const previas = await listarRecepcionesPendientes();
+      if (!vivo) return;
+      setPendientesPrevias(previas.length);
+      if (previas.length === 0) return;
+      const { enviadas } = await drenarRecepciones();
+      if (!vivo) return;
+      const quedan = await listarRecepcionesPendientes();
+      if (!vivo) return;
+      setPendientesPrevias(quedan.length);
+      // Si lo que se acaba de mandar era justamente lo de esta pantalla, ahora sí está confirmado,
+      // y corresponde decirlo. Limpiar el aviso a secas devolvería al formulario en blanco, que se
+      // lee como que la confirmación se perdió — justo lo contrario de lo que pasó.
+      if (enviadas > 0 && quedan.length === 0 && pendienteDeEnvioRef.current) {
+        pendienteDeEnvioRef.current = false;
+        setPendienteDeEnvio(false);
+        setDone(true);
+      }
+    };
+    void vaciar();
+    const alVolverLaSenal = () => { void vaciar(); };
+    window.addEventListener('online', alVolverLaSenal);
+    return () => { vivo = false; window.removeEventListener('online', alVolverLaSenal); };
+  }, []);
 
   // Header corporativo (navy) reutilizado en el paso OTP y en el formulario.
   const Header = (
@@ -356,6 +434,27 @@ export function RecepcionClient() {
       </div>
     </div>
   );
+
+  /* Confirmaciones de este dispositivo que todavía no llegaron al servidor.
+   *
+   * Se muestra en TODAS las vistas, no solo en la de "falta enviarla": quien confirmó sin señal
+   * lo más probable es que cierre la app y vuelva a entrar más tarde, y al volver caería en el
+   * formulario o en la pantalla del código sin enterarse de que hay algo colgando. */
+  const AvisoPendientes = pendientesPrevias > 0 ? (
+    <div role="status" style={{
+      background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 12,
+      padding: '12px 14px', marginBottom: 12,
+    }}>
+      <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#92400E' }}>
+        {pendientesPrevias === 1
+          ? 'Hay 1 recepción guardada sin enviar'
+          : `Hay ${pendientesPrevias} recepciones guardadas sin enviar`}
+      </p>
+      <p style={{ margin: '6px 0 0', fontSize: 13, color: '#A16207', lineHeight: 1.45 }}>
+        Se {pendientesPrevias === 1 ? 'envía' : 'envían'} sola{pendientesPrevias === 1 ? '' : 's'} cuando haya señal. No {pendientesPrevias === 1 ? 'está' : 'están'} registrada{pendientesPrevias === 1 ? '' : 's'} todavía.
+      </p>
+    </div>
+  ) : null;
 
   /* ── Resolviendo ID canónico o tienda desde la BD ── */
   if (lookupLoading || storeLoading || existLoading) {
@@ -380,6 +479,32 @@ export function RecepcionClient() {
           <p style={{ fontSize: 14, color: '#94A3B8', marginTop: 8 }}>
             {lookupError || 'El QR escaneado no contiene datos válidos.'}
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Guardado en el dispositivo, TODAVÍA NO confirmado ──
+   *
+   * Deliberadamente NO se parece a la pantalla de éxito: ni el check verde, ni "confirmada", ni
+   * el tono de "listo". El encargado de tienda tiene que poder distinguir de un vistazo esto de
+   * una recepción que sí quedó registrada, porque son dos situaciones distintas y una de las dos
+   * le pide algo: no cerrar la app hasta que haya señal.
+   */
+  if (pendienteDeEnvio) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#FFFBEB', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 18 }}>
+        <div style={{ fontSize: 56 }}>📡</div>
+        <div style={{ textAlign: 'center', color: '#0F172A', maxWidth: 380 }}>
+          <p style={{ fontSize: 22, fontWeight: 800, margin: 0, color: '#B45309' }}>Falta enviarla</p>
+          <p style={{ fontSize: 15, color: '#78350F', marginTop: 10, lineHeight: 1.5 }}>
+            No hay señal, así que la recepción quedó guardada en este teléfono con sus fotos.
+            Se envía sola en cuanto vuelva la conexión.
+          </p>
+          <p style={{ fontSize: 15, fontWeight: 700, color: '#92400E', marginTop: 14, lineHeight: 1.5 }}>
+            Todavía no está registrada. Deja esta app abierta o vuelve a entrar cuando tengas señal.
+          </p>
+          <p style={{ fontSize: 13, color: '#A16207', marginTop: 14 }}>{store.n} — {formatCod(cod)}</p>
         </div>
       </div>
     );
@@ -416,6 +541,7 @@ export function RecepcionClient() {
       <div style={S.page}>
         {Header}
         <div style={S.body}>
+          {AvisoPendientes}
           <div style={S.card}>
             <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tienda destino</p>
             <p style={{ margin: 0, fontSize: 30, fontWeight: 900, color: '#1a2550', lineHeight: 1, fontFamily: 'monospace' }}>{formatCod(cod)}</p>
@@ -446,6 +572,7 @@ export function RecepcionClient() {
       <div style={S.page}>
         {Header}
         <div style={S.body}>
+          {AvisoPendientes}
           <div style={S.card}>
             <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tienda destino</p>
             <p style={{ margin: 0, fontSize: 30, fontWeight: 900, color: '#1a2550', lineHeight: 1, fontFamily: 'monospace' }}>{formatCod(cod)}</p>
@@ -496,6 +623,7 @@ export function RecepcionClient() {
       {Header}
 
       <div style={S.body}>
+        {AvisoPendientes}
         {editMode && (
           <div style={{ background: 'rgba(26,37,80,0.06)', border: '1px solid rgba(26,37,80,0.25)', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
             <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#1a2550' }}>✎ Editando recepción</p>
