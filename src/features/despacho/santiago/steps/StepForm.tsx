@@ -69,6 +69,7 @@ import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { combinarEnLista } from '../../shared/combinarEnLista';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
+import { levantarLapidasDeSlotsVivos } from '../../shared/lapidasBorrado';
 import { actualizarSlotPicking, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
 import { leerResultadoDelCruce } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
@@ -868,6 +869,15 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         if (!full[clave]) full[clave] = [];
         full[clave].push(slot);
       }
+      // [Lápidas] Todo lo que la base acaba de devolver EXISTE, así que su lápida no vale.
+      //
+      // Es la red que evitó que el 30/09 se repitiera: una unidad restaurada con el mismo id
+      // quedaba con una lápida encima para siempre y el merge le borraba la tarjeta una y otra
+      // vez. Acá no importa por qué puerta haya vuelto — si está viva, la lápida muere.
+      //
+      // Los recién borrados NO entran: `load` ya los saltó arriba con `fueRecienBorrado`, que es
+      // lo que impide que una consulta en vuelo resucite algo que se acaba de borrar.
+      levantarLapidasDeSlotsVivos(Object.values(full).flat().map(s => s.id));
       setPickingSlotsFull(full);
     };
 

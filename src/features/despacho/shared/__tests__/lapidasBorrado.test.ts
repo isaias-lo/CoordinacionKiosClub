@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { marcarLapida, levantarLapida, tieneLapida, llaveDeSlot, _limpiarLapidas, lapidasComoLista, absorberLapidas } from '../lapidasBorrado';
+import { marcarLapida, levantarLapida, tieneLapida, llaveDeSlot, _limpiarLapidas, lapidasComoLista, absorberLapidas, levantarLapidasDeSlotsVivos } from '../lapidasBorrado';
 import { mergeItemsByTienda, mergeListaPorItem, quitarLapidas } from '../../santiago/context/mergeItems';
 import { stableItemKey } from '../formRowsReconcile';
 
@@ -117,5 +117,66 @@ describe('lapidasBorrado — compartidas entre equipos (29/09)', () => {
     absorberLapidas(undefined);
     absorberLapidas('slot:3');
     expect(lapidasComoLista()).toEqual(['slot:9']);
+  });
+});
+
+// ── UNA LÁPIDA NO PUEDE SOBREVIVIR A SU UNIDAD (30/09/2026) ────────────────────────────────────
+//
+// El archivo se apoyaba en que un id de `picking_pallets` nunca se reutiliza. Es cierto para
+// unidades DISTINTAS, pero existe un RESTAURAR que revive la misma unidad con el mismo id:
+//
+//     16PQA  bulto  borrado 11:15:48  →  RESTAURADO 11:47:48, mismo id 484
+//     12LAS  pallet borrado 17:39:54  →  restaurado después, mismo id 549
+//
+// El coordinador agregó el mismo bulto DOCE veces entre las 15:40 y las 18:29: el peso se guardaba
+// y un segundo después el merge le borraba la tarjeta. No pudo registrar el día.
+
+describe('la unidad volvió a existir — su lápida no vale', () => {
+  it('EL CASO: borrada y restaurada con el MISMO id', () => {
+    marcarLapida(484);
+    expect(tieneLapida('slot:484')).toBe(true);
+    levantarLapidasDeSlotsVivos([484]);          // la recarga de picking la ve viva
+    expect(tieneLapida('slot:484')).toBe(false);
+  });
+
+  it('y el otro equipo NO la puede reinyectar', () => {
+    // Limpiar el estado compartido no servía: cada pestaña tenía las lápidas en memoria y las
+    // volvía a empujar a los pocos segundos. Medido el 30/09: sacarla y verla volver.
+    marcarLapida(484);
+    levantarLapidasDeSlotsVivos([484]);
+    absorberLapidas(['slot:484', 'slot:999']);
+    expect(tieneLapida('slot:484')).toBe(false);  // levantada: no vuelve
+    expect(tieneLapida('slot:999')).toBe(true);   // una ajena normal sí entra
+  });
+
+  it('tampoco se sigue empujando a los demás', () => {
+    marcarLapida(484);
+    marcarLapida(999);
+    levantarLapidasDeSlotsVivos([484]);
+    expect(lapidasComoLista()).toEqual(['slot:999']);
+  });
+
+  it('si DESPUÉS se borra de verdad, la lápida vuelve a valer', () => {
+    // Levantar no puede ser una inmunidad permanente: sería el bug contrario.
+    marcarLapida(484);
+    levantarLapidasDeSlotsVivos([484]);
+    marcarLapida(484);
+    expect(tieneLapida('slot:484')).toBe(true);
+    absorberLapidas(['slot:484']);
+    expect(tieneLapida('slot:484')).toBe(true);
+  });
+
+  it('levanta varias de una, que es como llega la recarga', () => {
+    marcarLapida(549); marcarLapida(550); marcarLapida(484);
+    levantarLapidasDeSlotsVivos([549, 484]);
+    expect(tieneLapida('slot:549')).toBe(false);
+    expect(tieneLapida('slot:484')).toBe(false);
+    expect(tieneLapida('slot:550')).toBe(true);   // esa sí se borró de verdad
+  });
+
+  it('una lista vacía no toca nada', () => {
+    marcarLapida(1);
+    levantarLapidasDeSlotsVivos([]);
+    expect(tieneLapida('slot:1')).toBe(true);
   });
 });
