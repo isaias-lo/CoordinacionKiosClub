@@ -39,6 +39,10 @@ import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
 import { tipoCodeSantiago } from '../../shared/tipoCode';
 import { registrarTiendasSantiagoBD } from '../data/tiendasSantiago';
+import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
+import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
+import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';
+import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
 import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
 import { useCruceDelDia } from '@/features/despacho/shared/useCruceDelDia';
 import { veElCruce } from '@/features/despacho/shared/cruceTienda';
@@ -317,7 +321,7 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
 /* ═══════════════════════════════════════
    FORM HEADER
 ═══════════════════════════════════════ */
-function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe, terminadaInfo, onToggleTerminada, sinPesarCount, sinGuardar, viendo, canalSano }: {
+function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe, terminadaInfo, onToggleTerminada, sinPesarCount, sinGuardar, viendo, canalSano, botonRegistrar }: {
   tienda: TiendaSantiago; pallets: number; bultos: number; chocolates?: number; contenedores?: number; onBack: () => void;
   swipe?: { start: (e: React.TouchEvent) => void; move: (e: React.TouchEvent) => void; end: () => void };
   terminadaInfo?: TerminadaInfo; onToggleTerminada: (cod: string, terminada: boolean, por?: string) => void;
@@ -325,6 +329,7 @@ function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedore
   sinGuardar?: string | null;
   viendo?: ViendoInfo[];
   canalSano: boolean;
+  botonRegistrar?: React.ReactNode;
 }) {
   const itemCount = pallets + bultos + chocolates + contenedores;
   return (
@@ -372,6 +377,9 @@ function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedore
             {viendo.map(v => v.name.split(' ')[0]).join(', ')}
           </span>
         )}
+        {/* A la IZQUIERDA de MARCAR TERMINADA, como se pidio. El padre lo arma —necesita los
+            items, la fecha y el escritor— y aca solo se coloca. */}
+        {botonRegistrar}
         <TiendaTerminadaButton cod={tienda.cod} info={terminadaInfo} onToggle={onToggleTerminada} itemCount={itemCount} sinPesarCount={sinPesarCount} sinGuardar={sinGuardar} viendo={viendo} />
       </div>
     </div>
@@ -401,6 +409,39 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const { profile } = useAuth();
   const verCruce = veElCruce(profile?.role);
   const cruceDelDia = useCruceDelDia(fechaChile(), verCruce);
+  const registroTiendas = useRegistroDeTiendas(fechaChile());
+
+  /**
+   * Registra UNA tienda, sin cerrar el dia.
+   *
+   * Es EXACTAMENTE la misma llamada que hace el modal del dia, con un solo codigo adentro. Eso no
+   * es casualidad ni ahorro: de ahi sale que los ids sean identicos, y de que los ids sean
+   * identicos sale que registrar el dia despues NO duplique — `api/sheets-write` solo agrega los
+   * ids que la hoja no tiene. La fecha de despacho viene de `fechaDespachoBodega`, la misma
+   * funcion que usa el modal, por el mismo motivo.
+   */
+  const registrarSoloTienda = async (cod: string): Promise<boolean> => {
+    const lista = items[cod] ?? [];
+    if (!lista.length || !regimen) return false;
+    const hoyISO = fechaChile();
+    try {
+      await sheetsSantiagoWrite({ [cod]: lista }, regimen, fechaDespachoBodega(state.fechaDespacho), hoyISO);
+      // El cruce se escribe del lado del servidor, despues del sync. Ver `api/sync-despacho`.
+      await fetch('/api/sync-despacho', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cruce: hoyISO }), keepalive: true,
+      });
+      registroTiendas.marcar(cod);
+      logActividad({ accion: 'registrar_tienda', fuente: 'rmcosta', tiendaCod: cod,
+        tiendaNombre: getTiendaSantiagoByCod(cod)?.tienda ?? cod });
+      showToast(`OK ${cod} registrada`, '#16A34A');
+      return true;
+    } catch (e) {
+      console.error('[registrar-tienda]', e);
+      showToast('No se pudo registrar la tienda - reintenta', '#D32F2F');
+      return false;
+    }
+  };
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const { currentTienda, items, regimen } = state;
   const odooProgress = useOdooProgress();  // tiendas con picking terminado hoy
@@ -2556,7 +2597,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           sinPesarCount={tiendaItems.filter(esSinPesar).length}
           sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[currentTienda.cod] ?? [], tiendaItems))}
           viendo={viendoPorTienda.get(currentTienda.cod)}
-          canalSano={canalSano} />
+          canalSano={canalSano}
+          botonRegistrar={
+            <RegistrarTiendaButton rol={profile?.role} terminada={!!terminadas.get(currentTienda.cod)}
+              unidades={tiendaItems.length} yaRegistrada={registroTiendas.registrada(currentTienda.cod)}
+              onRegistrar={() => registrarSoloTienda(currentTienda.cod)} />
+          } />
 
         {/* El cruce va JUSTO DEBAJO del encabezado porque contesta la pregunta que se hace un
             segundo antes de marcar la tienda terminada: ¿está todo lo que tenía que estar? */}
