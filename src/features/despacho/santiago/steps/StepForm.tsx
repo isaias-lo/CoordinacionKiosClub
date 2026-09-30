@@ -69,6 +69,7 @@ import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { combinarEnLista } from '../../shared/combinarEnLista';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
+import { actualizarSlotPicking, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
 import { leerResultadoDelCruce } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
@@ -1467,11 +1468,15 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     // ya fusionadas: un "sin pesar" encima de un bulto pesado no le borra el peso en Picking.
     if (slotId) {
       const { peso: sp, alto: sa, largo: sl, ancho: sw } = savedItem;
-      supabase.from('picking_pallets').update({
+      // Si el slot ya no existe, esto AVISA en vez de decir que guardó. Ver
+      // `actualizarSlotPicking` — un update de cero filas no da error, y por eso el 30/09 en 12LAS
+      // se registraron pesos sobre unidades borradas cuatro minutos antes, con el toast en verde.
+      void actualizarSlotPicking(slotId, {
         peso_kg: sp, alto: sa, ancho: sw, largo: sl,
         peso_v: esSinPesar(savedItem) ? 0 : (Math.round((sa * sl * sw) / 6000 * 10) / 10 || null),
-      }).eq('id', slotId).then(({ error }) => {
-        if (error) console.error('[picking_pallets update]', error.message);
+      }).then(r => {
+        if (r.error) console.error('[picking_pallets update]', r.error);
+        if (r.yaNoExiste) showToast(AVISO_SLOT_BORRADO, '#D32F2F');
       });
     }
   };
