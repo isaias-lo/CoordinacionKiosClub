@@ -22,6 +22,7 @@ import { FLOTA_INICIAL } from './data/flota';
 import { CAL_INICIAL, DNOM } from './data/calendar';
 import { getDia, norm, todayStr, fechaTxt, poolPendiente, fechaTrasMedianoche } from './utils/helpers';
 import { grupoArmada } from './utils/flujoArmada';
+import { patentesSinManifiesto } from './utils/preflightCierre';
 import { recordarFila, filaCombinada, type MemoriaSesion } from './utils/conteosPorFuente';
 import { grupoCongelados } from './utils/congeladosPool';
 import { reconstruirAsignaciones, type ManifiestoGuardado } from './utils/reconstruirAsignaciones';
@@ -3026,6 +3027,34 @@ export default function RutasScreen() {
 
       {/* Banner: manifiestos YA guardados para la fecha (fuente de verdad persistente, cross-device).
           Evita el susto de "0 asignadas" al abrir desde otro equipo con el lienzo vacío. */}
+      {/* CERRADO SIN MANIFIESTO — el aviso que faltaba, en el momento y no al cerrar el día.
+          El 29/09/2026 VRYL52 y VXSX43 quedaron cerrados sin manifiesto —ocho tiendas entre los
+          dos, sin papeles ni QR— y nadie se enteró hasta mirar la base al día siguiente: el único
+          chequeo que lo detecta vive en el preflight de «Terminar día», y ese día no se apretó.
+          Ver `patentesSinManifiesto`. */}
+      {(() => {
+        const sinManif = patentesSinManifiesto(cerradasV1, manifiestosGuardados);
+        if (!sinManif.length) return null;
+        return (
+          <div className="flex-shrink-0 px-4 py-1.5 bg-kred/10 border-b border-kred/30 flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-bold text-kred">
+              ⚠ {sinManif.length === 1
+                ? 'Un camión cerrado no dejó manifiesto'
+                : `${sinManif.length} camiones cerrados no dejaron manifiesto`}: {sinManif.join(', ')}
+            </span>
+            <span className="text-[10px] text-kred/80 font-semibold">
+              salieron sin papeles y sin QR — abre su manifiesto y guárdalo
+            </span>
+            <button
+              onClick={handleVerManifiestosDia}
+              className="text-[10px] font-bold px-2.5 py-1 rounded-[8px] border border-kred text-kred bg-kred/10 hover:bg-kred/20 transition-colors active:scale-95 ml-auto"
+            >
+              Ver manifiestos
+            </button>
+          </div>
+        );
+      })()}
+
       {manifiestosGuardados.length > 0 && (() => {
         const asig = reconstruirAsignaciones(manifiestosGuardados);
         const nCam = Object.keys(asig).length;
