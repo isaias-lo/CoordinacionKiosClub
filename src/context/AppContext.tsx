@@ -3,7 +3,7 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef, useState, ReactNode } from 'react';
 import { debeConsultar, TICK_MS } from '@/lib/ritmoDePoll';
 import { esperaDePush } from '@/lib/esperaDePush';
-import { renumerarSalvoChocolate } from '@/features/despacho/shared/numeroCard';
+import { renumerarSoloSinOrden } from '@/features/despacho/shared/numeroCard';
 import type { AppState, DispatchItem, TipoContenido, TipoPaquete, PdfData } from '../types';
 import { useAuth } from '@/components/AuthProvider';
 import { pushSessionState, subscribeToSessionState, fetchSessionStateMeta, remotoEsMasViejo } from '@/lib/userSessionState';
@@ -78,7 +78,7 @@ function conId(item: DispatchItem): DispatchItem {
  * alcanza con NO tocar a los chocolates, que ya traen su número puesto.
  */
 function renumber(items: DispatchItem[]): DispatchItem[] {
-  return renumerarSalvoChocolate(items).map(conId);
+  return renumerarSoloSinOrden(items).map(conId);
 }
 
 function reducer(state: AppState, action: Action): AppState {

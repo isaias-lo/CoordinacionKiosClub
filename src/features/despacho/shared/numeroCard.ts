@@ -1,16 +1,43 @@
 // El número que muestra una card de Bodega (P1, B2, CH3…). Puro y testeable.
 //
-// Para casi todo ese número es la POSICIÓN dentro de su tipo, recalculada en cada render. Para el
-// chocolate eso no sirve: al sumar un CH a un pallet o borrarlo, los que quedaban atrás se corrían
-// —el CH3 pasaba a llamarse CH1— y el número dejaba de coincidir con la caja que la persona tiene
-// en la mano.
+// ── UNA SOLA REGLA: EL NÚMERO ES EL QUE ESTÁ IMPRESO (30/09/2026) ──────────────────────────────
 //
-// Un CH usa su `seq`, que es el número que quedó IMPRESO en la etiqueta: va dentro del
-// `canonical_id` (`CH3<cod><stamp>CH`) y se congela al imprimir (Picking) o al crear el slot
-// (Bodega). No se recalcula nunca, así que sobrevive a que borren a sus vecinos.
+// El `seq` es el número que quedó IMPRESO en la etiqueta: va dentro del `canonical_id`
+// (`P3<cod><stamp>P`) y se congela al imprimir (Picking) o al crear el slot (Bodega). No se
+// recalcula nunca, así que sobrevive a que borren, unan o sumen a sus vecinos.
 //
-// Consecuencia buscada: los números pueden quedar con huecos (CH2, CH5). El hueco es información
-// —dice que esos se fueron a un pallet— y no un error que haya que "compactar".
+// Hasta hoy SOLO el chocolate lo usaba. Todo lo demás se numeraba por POSICIÓN en la lista, y eso
+// produjo dos daños distintos:
+//
+//   1· EN PANTALLA. El 30/09, en 16PQA, la persona abrió la tienda antes de que terminara de
+//      cargar `picking_pallets`. El formulario se rearmó con lo único que tenía —el pallet ya
+//      pesado— y lo llamó P1; cuando los slots llegaron, el backfill agregó el verdadero P1 AL
+//      FINAL de la lista. Resultado: el P2 pasó a llamarse P1 y pareció que habían borrado un
+//      pallet. No habían borrado nada — el slot estuvo vivo todo el día. Le pasó a dos personas
+//      el mismo día, porque es una carrera de tiempo y no depende de la cuenta.
+//
+//   2· EN LOS DATOS, y es peor. El id de la fila de la planilla se arma con el `orden`
+//      (`${orden}${cod}${stamp}${prefijo}`) y el `canonical_id` del slot se arma con el `seq`. En
+//      cuanto la numeración tiene un hueco, los DOS IDENTIFICADORES DE LA MISMA UNIDAD dejan de
+//      coincidir. Es literalmente lo que pasó con 55ITA el 28/09: el slot `P1` guardaba 9.357,5 kg
+//      y la fila `P2` de la planilla guardaba 335,7. Y es lo que hizo que el rescate de kilos
+//      perdidos solo alcanzara a 19 filas: cruza por `canonical_id = id`, y donde no calzan, no
+//      encuentra nada.
+//
+// Ahora la regla es una sola para todas las clases: **el número es el `seq`**. Medido antes de
+// tocarlo, sobre las unidades vivas: 97,1% de los pallets, 98,2% de los bultos y 98,9% de los
+// chocolates ya tienen `seq`, y NINGUNA pareja de unidades vivas comparte uno.
+//
+// Consecuencia buscada: los números pueden quedar con huecos (P2, P5). El hueco es información
+// —dice que esos se fueron a un pallet o se borraron— y no un error que haya que "compactar".
+//
+// ── LA UNIDAD SIN `seq` NO PUEDE PISAR A NADIE ─────────────────────────────────────────────────
+//
+// El 1-3% que no tiene `seq` (nunca se imprimió) caía a su posición, y ahí había un agujero que
+// esta versión tapa: con `P1(seq 1)`, `P3(seq 3)` y una tercera sin `seq`, la tercera salía en
+// posición 3 → `P3` → **el MISMO id de fila que la segunda**, y una pisaba a la otra en la
+// planilla. Por eso el reparto ya no es "tu posición" sino "el menor número que nadie tomó"
+// (`repartirNumeros`). El agujero existía ya para el chocolate; se tapa para todos de una vez.
 //
 // ── LA ADQUISICIÓN Y EL WEB/RETIRO TIENEN SU PROPIA SERIE (29/09/2026) ────────────────────────
 //
@@ -33,27 +60,48 @@ import {
   esAdquisicion, esWebRetiro, PREFIJO_ADQUISICION, PREFIJO_WEB_RETIRO,
 } from './adquisicion';
 
-interface ArgsNumeroCard {
-  /** Solo el chocolate cambia de regla; el pedido fue explícito en eso. */
-  esChocolate: boolean;
-  /** Posición dentro de su tipo, 1-based. El comportamiento de siempre. */
-  posicion: number;
-  /** `picking_pallets.seq`. Es `null` mientras nadie haya impreso la etiqueta. */
-  seq?: number | null;
+/** ¿Este `seq` sirve como número? Se exige entero positivo: nunca debe salir "P0" ni "PNaN". */
+function seqUsable(seq: unknown): seq is number {
+  return typeof seq === 'number' && Number.isInteger(seq) && seq > 0;
 }
 
 /**
- * Número a mostrar. Para un CH con `seq` válido devuelve el `seq`; en cualquier otro caso, la
- * posición.
+ * Reparte los números de UNA clase: cada unidad se queda con su `seq` impreso, y la que no lo
+ * tiene recibe **el menor número que nadie haya tomado**.
  *
- * El fallback cubre dos situaciones reales: un CH que todavía no se imprimió (no tiene número
- * físico con el cual coincidir) y un `seq` corrupto — nunca debe salir "CH0" ni "CHNaN" en
- * pantalla, así que se exige entero positivo.
+ * Lo segundo no es un detalle. Darle su posición a la unidad sin `seq` era lo que podía hacerle
+ * escupir el número de otra: con `[seq 1, seq 3, sin seq]` la tercera caía en posición 3 y salía
+ * `P3`, el mismo id de fila que la segunda — y en la planilla una pisaba a la otra sin avisar.
+ * Empezando por el 1 y salteando lo ocupado, sale `P2`, que es un hueco libre de verdad.
+ *
+ * El orden de la lista NO influye en el número de quien trae `seq`; solo decide, entre las que no
+ * lo traen, cuál se lleva el primer hueco. Esa es toda la dependencia del orden que queda.
  */
-export function numeroVisibleCard({ esChocolate, posicion, seq }: ArgsNumeroCard): number {
-  if (!esChocolate) return posicion;
-  if (typeof seq !== 'number' || !Number.isInteger(seq) || seq <= 0) return posicion;
-  return seq;
+export function repartirNumeros(seqs: readonly (number | null | undefined)[]): number[] {
+  const propio = seqs.map(s => (seqUsable(s) ? s : null));
+  const tomados = new Set<number>();
+  for (const s of propio) if (s !== null) tomados.add(s);
+  let libre = 1;
+  return propio.map(s => {
+    if (s !== null) return s;
+    while (tomados.has(libre)) libre += 1;
+    tomados.add(libre);
+    return libre;
+  });
+}
+
+/**
+ * El número de una unidad que se está guardando recién, dados los `seq` de sus hermanas de clase.
+ *
+ * Existe porque al guardar el `orden` se fija UNA vez y no se vuelve a calcular: si ahí se usara la
+ * posición, la unidad sin `seq` volvería a poder pisar a otra. Es el mismo reparto, con la nueva
+ * al final.
+ */
+export function numeroParaUnidadNueva(
+  seqsHermanas: readonly (number | null | undefined)[], seqNueva?: number | null,
+): number {
+  const nums = repartirNumeros([...seqsHermanas, seqNueva]);
+  return nums[nums.length - 1];
 }
 
 /**
@@ -131,26 +179,33 @@ export function ordenNacional(clase: ClaseEnvase, numero: number): string {
 }
 
 /**
- * El número que le toca a cada item: por posición dentro de su clase, salvo los CH, que conservan
- * su `seq`.
+ * El número que le toca a cada item: su `seq` impreso, y si no lo tiene, el menor hueco libre de
+ * su clase.
  *
  * Es el corazón de los cinco bloques `let pc = 0, bc = 0, cc = 0, chc = 0; …` que estaban copiados
  * por el formulario —uno por cada operación que rearma la lista (unificar, guardar, sumar, borrar)—.
- * Que estuviera repetido es la razón por la que el renumerado del CH se colaba por todos lados:
- * había que arreglarlo en los cinco o no se arreglaba en ninguno.
+ * Que estuviera repetido es la razón por la que el renumerado se colaba por todos lados: había que
+ * arreglarlo en los cinco o no se arreglaba en ninguno.
  *
- * Un CH sin `seq` (todavía sin imprimir) cae a su posición ENTRE LOS CH, no a la del arreglo.
+ * Cada clase reparte por separado: el `seq` de `picking_pallets` es una serie por
+ * (tienda, fecha, tipo), así que el P3 y el CH3 de una misma tienda son dos unidades distintas y
+ * ninguno estorba al otro.
  */
 export function numerarPorClase<T>(
   items: T[], claseDe: (item: T) => ClaseEnvase, seqDe: (item: T) => number | null | undefined,
 ): { item: T; clase: ClaseEnvase; numero: number }[] {
-  const cuenta = contadorPorClase();
-  return items.map(item => {
-    const clase = claseDe(item);
-    const posicion = ++cuenta[clase];
-    const numero = numeroVisibleCard({ esChocolate: clase === 'chocolate', posicion, seq: seqDe(item) });
-    return { item, clase, numero };
+  const clases = items.map(claseDe);
+  const indicesPorClase = new Map<ClaseEnvase, number[]>();
+  clases.forEach((clase, i) => {
+    const previos = indicesPorClase.get(clase);
+    if (previos) previos.push(i); else indicesPorClase.set(clase, [i]);
   });
+  const numero = new Array<number>(items.length);
+  for (const indices of indicesPorClase.values()) {
+    const repartidos = repartirNumeros(indices.map(i => seqDe(items[i])));
+    indices.forEach((i, k) => { numero[i] = repartidos[k]; });
+  }
+  return items.map((item, i) => ({ item, clase: clases[i], numero: numero[i] }));
 }
 
 /** Reasigna el `orden` de los items de Santiago (`P3` / `3B` / `C3` / `CH3`). */
@@ -170,25 +225,26 @@ export function renumerarOrdenNacional<T extends { pkg: string }>(
 }
 
 /**
- * Renumera por posición **sin tocar a los chocolates**, que conservan el `orden` que ya tienen.
+ * Le pone `orden` a lo que todavía no lo tiene y **no toca lo que ya lo tiene**.
  *
  * Existe para el reducer de Nacional, que renumera en cada alta y en cada borrado y NO puede ver el
- * `seq` (vive en el estado del componente, no en el ítem). Sin esta distinción, el reducer
- * reescribía el número de TODOS los chocolates por posición y deshacía, en la acción siguiente,
- * justo lo que `numerarPorClase` había calculado bien: el CH3 volvía a llamarse CH1.
+ * `seq` (vive en el estado del componente, no en el ítem).
  *
- * Para pallets, bultos y contenedores la posición SÍ es la regla correcta, así que esos se
- * renumeran igual que siempre.
+ * Antes respetaba SOLO al chocolate y renumeraba por posición a los demás. Eso era coherente
+ * mientras el pallet se numerara por posición; desde que el pallet usa su `seq`, renumerarlo acá
+ * desharía en la acción siguiente justo lo que `numerarPorClase` acaba de calcular bien — que es
+ * exactamente el bug que el chocolate ya había sufrido ("el CH3 volvía a llamarse CH1"), a punto
+ * de repetirse con el P3.
  *
- * Un chocolate sin `orden` todavía (recién creado) cae a su posición: es lo mismo que hace
- * `numeroVisibleCard` cuando no hay `seq`.
+ * Una unidad sin `orden` (recién creada, antes de pasar por `numerarPorClase`) cae a su posición:
+ * es provisorio y dura hasta el próximo renumerado con `seq` a la vista.
  */
-export function renumerarSalvoChocolate<T extends { pkg: string; orden?: string }>(items: T[]): T[] {
+export function renumerarSoloSinOrden<T extends { pkg: string; orden?: string }>(items: T[]): T[] {
   const cuenta = contadorPorClase();
   return items.map(item => {
     const clase = claseNacional(item.pkg);
     const posicion = ++cuenta[clase];
-    if (clase === 'chocolate' && item.orden) return item;   // conserva el número impreso
+    if (item.orden) return item;   // ya tiene número: el de la etiqueta, y no se pisa
     return { ...item, orden: ordenNacional(clase, posicion) };
   });
 }

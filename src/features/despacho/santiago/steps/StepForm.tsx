@@ -13,7 +13,7 @@ import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
 import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
 import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
-import { numeroVisibleCard, ordenDeItem, renumerarOrden, etiquetaCard, claseSantiago } from '@/features/despacho/shared/numeroCard';
+import { numeroParaUnidadNueva, numerarPorClase, ordenDeItem, renumerarOrden, etiquetaCard, claseSantiago } from '@/features/despacho/shared/numeroCard';
 import { leerPeso, limpiarTecleo, avisoDePeso, excedeTopeDuro } from '@/features/despacho/shared/pesoIngresado';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
 import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
@@ -902,12 +902,20 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       ? ((pickingSlotsFull[currentTienda?.cod ?? ''] ?? []).find(s => s.id === r.pickingSlotId)?.seq ?? null)
       : null;
 
-  /** Etiqueta visible de una fila: posición dentro de su tipo, salvo el CH, que usa su seq. */
+  /**
+   * Etiqueta visible de una fila: su `seq` impreso.
+   *
+   * Se numera la LISTA ENTERA y se busca la fila, en vez de contar su posición: el reparto de la
+   * unidad sin `seq` necesita ver a todas sus hermanas para no darle un número ya tomado.
+   *
+   * Contar la posición era además lo que hacía que la card cambiara de nombre sola: el backfill
+   * agrega las tarjetas que faltan AL FINAL, así que un slot que llegaba tarde le cedía su número
+   * al de al lado y parecía que alguien había borrado un pallet. Ver la cabecera de `numeroCard`.
+   */
   const labelDeFila = (r: FormRow, lista: FormRow[]): string => {
-    const posicion = lista.slice(0, lista.findIndex(x => x.id === r.id) + 1).filter(x => x.tipo === r.tipo).length;
-    return etiquetaCard(r.tipo, numeroVisibleCard({
-      esChocolate: r.tipo === 'Chocolate', posicion, seq: seqDeFila(r),
-    }));
+    const numerada = numerarPorClase(lista, x => claseSantiago(x.tipo), x => seqDeFila(x));
+    const mia = numerada.find(n => n.item.id === r.id);
+    return etiquetaCard(r.tipo, mia?.numero ?? 1);
   };
 
   /* ── Derived ── */
@@ -1410,20 +1418,20 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     // `i.tipo === 'Bulto'`, que nunca coincide con 'Adquisicion' ni con 'WebRetiro': las tres
     // adquisiciones de una tienda recibían el MISMO número y colapsaban en una sola fila del ID.
     const claseNueva = claseSantiago(row.tipo);
-    const posicionEnClase = existing.filter(i => claseSantiago(i.tipo) === claseNueva).length + 1;
     const pickingSlot = nuevoSlot ?? (slotId
       ? (pickingSlotsFull[cod] ?? []).find(s => s.id === slotId)
       : undefined);
+    // Los `seq` de las hermanas de su misma clase. El número se fija UNA vez acá y no se vuelve a
+    // calcular en un guardado simple, así que el reparto tiene que ser correcto ya en este punto.
+    const seqsHermanas = existing
+      .filter(i => claseSantiago(i.tipo) === claseNueva)
+      .map(i => seqDeSlot(cod, i.pickingSlotId));
     const candidato: SantiagoItem = {
       id: `${cod}-${Date.now()}`, tiendaCod: cod, tipo: row.tipo, contenido: row.contenido,
       peso: p, alto: a, largo: fL, ancho: fA,
       pesoVolumetrico: pesoV, regimen,
-      // El CH usa el seq del slot (el número impreso), no su posición entre los que hay ahora.
-      orden: ordenDeItem(row.tipo, numeroVisibleCard({
-        esChocolate: row.tipo === 'Chocolate',
-        posicion: posicionEnClase,
-        seq: pickingSlot?.seq,
-      })),
+      // El número impreso del slot, no su posición entre los que hay ahora.
+      orden: ordenDeItem(row.tipo, numeroParaUnidadNueva(seqsHermanas, pickingSlot?.seq)),
       estado: ESTADO_DEFAULT,
       pickingSlotId: slotId,
       canonical_id: pickingSlot?.canonical_id ?? undefined,

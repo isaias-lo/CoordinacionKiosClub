@@ -57,7 +57,7 @@ import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/sha
 import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo, pesoPalletConCajas,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
 import { abreviaturaContenido, nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
-import { numeroVisibleCard, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional } from '@/features/despacho/shared/numeroCard';
+import { numeroParaUnidadNueva, numerarPorClase, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional } from '@/features/despacho/shared/numeroCard';
 import { leerPeso, limpiarTecleo, avisoDePeso, excedeTopeDuro } from '@/features/despacho/shared/pesoIngresado';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
 import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
@@ -692,13 +692,18 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const seqDeFila = (r: { pickingSlotId?: number }): number | null =>
     r.pickingSlotId ? ((pickingSlotsFull[selectedTienda ?? ''] ?? []).find(s => s.id === r.pickingSlotId)?.seq ?? null) : null;
 
-  /** Etiqueta visible de una fila: posición dentro de su envase, salvo el CH, que usa su seq. */
-  const labelDeFila = (r: { id: string; pkg: string; pickingSlotId?: number }, lista: { id: string; pkg: string }[]): string => {
-    const posicion = lista.slice(0, lista.findIndex(x => x.id === r.id) + 1).filter(x => x.pkg === r.pkg).length;
+  /**
+   * Etiqueta visible de una fila: su `seq` impreso. Mismo cambio y mismo porqué que en RM/Costa
+   * — ver la cabecera de `numeroCard`: se numera la lista entera para que la unidad sin `seq` no
+   * reciba un número que otra ya tiene.
+   */
+  const labelDeFila = (r: { id: string; pkg: string; pickingSlotId?: number }, lista: { id: string; pkg: string; pickingSlotId?: number }[]): string => {
+    const numerada = numerarPorClase(lista, x => claseNacional(x.pkg), x => seqDeFila(x));
+    const mia = numerada.find(n => n.item.id === r.id);
     const clase = claseNacional(r.pkg);
     return etiquetaCard(
       clase === 'pallet' ? 'Pallet' : clase === 'contenedor' ? 'Contenedor' : clase === 'chocolate' ? 'Chocolate' : 'Bulto',
-      numeroVisibleCard({ esChocolate: clase === 'chocolate', posicion, seq: seqDeFila(r) }),
+      mia?.numero ?? 1,
     );
   };
 
@@ -1359,16 +1364,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), slot] }));
     }
     const currentItems = dispatchData[selectedTienda] || [];
-    // El número del CH sale de su `seq` —el que quedó IMPRESO en la etiqueta—, no de su posición.
-    // RM/Costa ya lo hacía así; acá se numeraba por posición, y el chocolate perdía su número en
-    // cuanto alguien borraba o sumaba a un vecino. Para las otras tres clases la posición sigue
-    // siendo la regla, y `numeroVisibleCard` la devuelve tal cual.
+    // El número sale del `seq` —el que quedó IMPRESO en la etiqueta—, no de la posición. Se pasan
+    // los `seq` de las hermanas porque el número se fija UNA vez acá: una unidad sin `seq` que
+    // cayera en su posición podría quedarse con el id de fila de otra.
     const pickingSlot = (pickingSlotsFull[selectedTienda] ?? []).find(s => s.id === slotId);
     const clase = claseNacional(row.pkg);
-    const posicion = currentItems.filter(i => claseNacional(i.pkg) === clase).length + 1;
-    const orden = ordenNacional(clase, numeroVisibleCard({
-      esChocolate: clase === 'chocolate', posicion, seq: pickingSlot?.seq,
-    }));
+    const seqsHermanas = currentItems
+      .filter(i => claseNacional(i.pkg) === clase)
+      .map(i => seqDeSlotRef(selectedTienda, i.pickingSlotId));
+    const orden = ordenNacional(clase, numeroParaUnidadNueva(seqsHermanas, pickingSlot?.seq));
     // Esta unidad ya puede tener ítem aunque la tarjeta diga "sin guardar": lo guardó otro equipo
     // mientras esta tarjeta estaba abierta. Entonces se completa ese ítem, no se agrega otro.
     const previo = itemDeLaUnidad(currentItems, slotId);
