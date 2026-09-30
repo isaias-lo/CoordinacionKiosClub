@@ -6,7 +6,7 @@ import { norm } from '@/features/despacho/rutas/utils/helpers';
 import { ESTADO_TO_SEGUIMIENTO, syncSeguimientoDespacho } from './seguimientoSync';
 import { fechaChile } from '@/lib/fechaChile';
 import { verifyOtpToken, verifyReciboEntrega } from '@/lib/otpToken';
-import { alcanceEntrega } from '@/lib/alcanceEntrega';
+import { alcanceEntrega } from '@/lib/alcances';
 import { sendComprobanteEntregaEmail } from '@/lib/gmail';
 
 /** Suma `n` días a una fecha ISO YYYY-MM-DD (DST-safe vía UTC). */

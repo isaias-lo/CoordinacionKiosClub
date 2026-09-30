@@ -7,7 +7,7 @@ import { safeStorageKey } from '@/lib/storageKey';
 import { formatRut } from '@/lib/rut';
 import { processPhoto } from '@/features/auditoria/utils/photos';
 import { encolarEntrega, type EntregaPendiente } from '@/app/conductor-hub/offlineQueue';
-import { alcanceEntrega } from '@/lib/alcanceEntrega';
+import { alcanceEntrega } from '@/lib/alcances';
 import { ENTREGA_FOTOS_BUCKET, subirFotoEntrega } from './entregaFotos';
 
 /**
