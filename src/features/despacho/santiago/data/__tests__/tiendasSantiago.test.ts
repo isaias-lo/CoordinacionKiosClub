@@ -4,10 +4,10 @@ import { buildRows } from '../../utils/sheetsSantiago';
 import type { SantiagoItem } from '../../types';
 
 const item = (orden: string): SantiagoItem => ({
-  id: 'x', tiendaCod: '', tipo: 'Pallet', contenido: 'comida',
+  id: 'x', tiendaCod: '', tipo: 'Pallet', contenido: 'Comida',
   peso: 467.5, alto: 120, largo: 120, ancho: 100, pesoVolumetrico: 240,
   regimen: 'Seco', orden, estado: 'Listo para despachar',
-} as SantiagoItem);
+});
 
 describe('EL BUG: una tienda que el catálogo no conoce se perdía entera', () => {
   it('buildRows la ESCRIBE igual, no la descarta', () => {
