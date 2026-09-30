@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { tiposDeUnidad, primeraUnidadPorDefecto, seccionEfectiva, seccionesDeLaPestana, columnaSeco } from '../tiposUnidad';
+import { tiposDeUnidad, primeraUnidadPorDefecto, seccionEfectiva, seccionesDeLaPestana, columnaSeco, conteoPorClave } from '../tiposUnidad';
 
 describe('seccionEfectiva — el filtro guardado vale solo donde tiene sentido', () => {
   it('en la pestaña Congelados siempre es "Todas": ahí no hay secciones de seco', () => {
@@ -140,5 +140,36 @@ describe('el chocolate va abierto en sus dos cajas (22/09/2026)', () => {
 
   it('Congelados sigue siendo solo sus cajas: el chocolate no se mezcla', () => {
     expect(tiposDeUnidad(true, 'all')).toEqual(['CC', 'CN']);
+  });
+});
+
+describe('conteoPorClave — el contador de chocolates dentro de la sección (30/09)', () => {
+  // Lo que ve la tarjeta: busca cada contador por su CLAVE en este mapa.
+  const contador = (slots: { tipo?: string | null; subtipo?: unknown }[], clave: string) => conteoPorClave(slots)[clave] ?? 0;
+
+  it('cuenta cada caja por SU clave: negra y cartón por separado', () => {
+    const slots = [{ tipo: 'CH', subtipo: 'carton' }, { tipo: 'CH', subtipo: 'carton' }, { tipo: 'CH', subtipo: 'negra' }];
+    expect(contador(slots, 'CH:carton')).toBe(2);
+    expect(contador(slots, 'CH:negra')).toBe(1);
+  });
+
+  it('BUG 39PSB: 9 cajas cartón en la base → el contador muestra 9, no 0', () => {
+    const slots = Array.from({ length: 9 }, () => ({ tipo: 'CH', subtipo: 'carton' }));
+    expect(contador(slots, 'CH:carton')).toBe(9);
+  });
+
+  it('un chocolate sin subtipo (anterior al cambio) cuenta como caja negra', () => {
+    expect(contador([{ tipo: 'CH', subtipo: null }], 'CH:negra')).toBe(1);
+  });
+
+  it('pallets, bultos y contenedores siguen contando por su tipo', () => {
+    const c = conteoPorClave([{ tipo: 'P' }, { tipo: 'P' }, { tipo: 'B' }, { tipo: 'C' }, { tipo: null }]);
+    expect(c).toEqual({ P: 3, B: 1, C: 1 });
+  });
+
+  it('cada contador que ofrece la sección Chocolates encuentra sus unidades', () => {
+    const slots = [{ tipo: 'P' }, { tipo: 'CH', subtipo: 'negra' }, { tipo: 'CH', subtipo: 'carton' }];
+    const conteos = conteoPorClave(slots);
+    for (const clave of tiposDeUnidad(false, 'chocolates', conteos)) expect(conteos[clave]).toBe(1);
   });
 });

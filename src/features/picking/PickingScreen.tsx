@@ -53,7 +53,7 @@ import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, categoriasDeSlotsM
 import { pideSeccion, seccionYContenidoManual, normalizarBatch } from './encargadoManual';
 import { slotsYaImpresos } from './reimpresion';
 import { etiquetasDeLaSeleccion } from './seleccionImpresion';
-import { seccionEfectiva, seccionesDeLaPestana, tiposDeUnidad, primeraUnidadPorDefecto, columnaSeco, type ColumnaSeco } from './tiposUnidad';
+import { seccionEfectiva, seccionesDeLaPestana, tiposDeUnidad, primeraUnidadPorDefecto, columnaSeco, conteoPorClave, type ColumnaSeco } from './tiposUnidad';
 import { usePickingOdoo }     from './hooks/usePickingOdoo';
 import { StatsTab }           from './components/StatsTab';
 import { HistorialTab }       from './components/HistorialTab';
@@ -1982,9 +1982,11 @@ export function PickingScreen() {
                           const nums = seccionActiva == null
                             ? (assignedNumsByStateKey[group.stateKey] ?? [])
                             : cardSlots.map(s => palletNumsBySlotId[s.id]).filter((n): n is number => n !== undefined).sort((a, b) => a - b);
+                          // Por CLAVE (CH:negra / CH:carton), igual que en "Todas": contar por tipo dejaba
+                          // los dos contadores de chocolate en 0 dentro de la sección (ver conteoPorClave).
                           const cardPalletsByTipo = seccionActiva == null
                             ? (palletsByTipoAndStateKey[group.stateKey] ?? {})
-                            : cardSlots.reduce<Record<string, number>>((acc, s) => { const t = s.tipo || 'P'; acc[t] = (acc[t] ?? 0) + 1; return acc; }, {});
+                            : conteoPorClave(cardSlots);
                           // Congelados se determina por las categorías del propio grupo (no por el
                           // filtro de página): en la vista "Todas" cada card debe mostrar SOLO Caja
                           // Cartón/Caja Negra si es de Congelados, sin importar en qué columna cae.

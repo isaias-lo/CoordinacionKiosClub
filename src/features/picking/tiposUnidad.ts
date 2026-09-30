@@ -7,6 +7,7 @@
 // como si fueran chocolates.
 
 import type { PickerType, SectionFilter } from './picking-types';
+import { claveUnidad } from '@/features/despacho/shared/subtipoCaja';
 
 /**
  * El filtro que de verdad aplica en la pestaña, a partir del guardado.
@@ -29,6 +30,23 @@ export function seccionesDeLaPestana(esTabCongelados: boolean): SectionFilter[] 
 export type ClaveUnidad = PickerType | 'CH:negra' | 'CH:carton';
 
 const ORDEN: ClaveUnidad[] = ['P', 'C', 'B', 'CH:negra', 'CH:carton', 'CC', 'CN'];
+
+/**
+ * Cuántas unidades hay de cada CLAVE — la misma clave con la que la tarjeta busca sus contadores.
+ *
+ * Existe porque la tarjeta con una sección activa contaba por TIPO (`CH`) mientras los botones
+ * buscaban `CH:negra` / `CH:carton`: en la sección Chocolates los dos contadores leían siempre 0.
+ * El + seguía creando cajas reales que nadie veía, y el − no tenía nada que restar. Medido el
+ * 28-30/09: ráfagas de hasta 9 cajas en 6 segundos (39PSB) de supervisores apretando + otra vez.
+ */
+export function conteoPorClave(slots: { tipo?: string | null; subtipo?: unknown }[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const s of slots) {
+    const k = claveUnidad(s.tipo || 'P', s.subtipo);
+    out[k] = (out[k] ?? 0) + 1;
+  }
+  return out;
+}
 
 /**
  * Los contadores que muestra la tarjeta de un encargado, en orden fijo.
