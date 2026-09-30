@@ -20,6 +20,9 @@ interface Props {
    *  lo agrega (faltaba en pantalla) o solo avisa dónde está. Ver shared/reclamoPreexistente.ts. */
   onExistente: (slot: PickingSlot, yaEnCarga?: boolean) => void;
   onClose: () => void;
+  /** Abrir directo en "preexistente" con este número o código ya puesto: lo usa la handheld al
+   *  escanear una etiqueta de otro día. Reclamar re-data el pallet, así que no se reclama solo. */
+  refInicial?: string;
 }
 
 /**
@@ -27,9 +30,9 @@ interface Props {
  * (como siempre) o registrar uno PREEXISTENTE (adelantado de otro día, ya etiquetado)
  * digitando su #número o escaneando su código de barras.
  */
-export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExistente, onClose }: Props) {
-  const [modo, setModo]         = useState<'elegir' | 'preexistente'>('elegir');
-  const [ref, setRef]           = useState('');
+export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExistente, onClose, refInicial }: Props) {
+  const [modo, setModo]         = useState<'elegir' | 'preexistente'>(refInicial ? 'preexistente' : 'elegir');
+  const [ref, setRef]           = useState(refInicial ?? '');
   const [scanning, setScanning] = useState(false);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState<string | null>(null);

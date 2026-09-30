@@ -75,6 +75,9 @@ import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiqu
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
 import { itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
 import { avisoDeUnidad } from '../../shared/avisoUnidadEscaneada';
+import { useEscaneoBodega } from '../../shared/useEscaneoBodega';
+import { enfocarPeso, tarjetaVisible } from '../../shared/useLectorBodega';
+import { useWakeLock } from '@/hooks/useWakeLock';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { fechaChile } from '@/lib/fechaChile';
@@ -536,9 +539,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // solo (deps en formRows) mientras formRows se sigue reconstruyendo tras abrir la tienda.
   useEffect(() => {
     if (focoPallet == null) return;
-    const el = document.getElementById(`pallet-card-${focoPallet}`);
+    // [Handheld] La que se ve: el formulario está dibujado dos veces (panel y hoja del teléfono).
+    const el = tarjetaVisible(focoPallet);
     if (!el) return;
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // [Handheld] Escanear es para pesar: el cursor queda en Peso de esa tarjeta.
+    enfocarPeso(el);
     const id = focoPallet;
     setFocoPallet(null);
     setResaltado(id);
@@ -2060,6 +2066,37 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const SLOT_TIPO_TO_CARGAMENTO: Record<string, TipoCargamento> = { P: 'Pallet', B: 'Bulto', C: 'Contenedor', CH: 'Chocolate' };
   // Estado del diálogo "Nuevo / Preexistente"
   const [dialogTipo, setDialogTipo] = useState<TipoCargamento | null>(null);
+  // [Handheld] Número o código con que abrir el diálogo directo en "preexistente" (etiqueta escaneada
+  // de otro día). Se borra al cerrar el diálogo.
+  const [dialogRef, setDialogRef] = useState<string | null>(null);
+  useEffect(() => { if (!dialogTipo) setDialogRef(null); }, [dialogTipo]);
+
+  // [Handheld] La etiqueta leída con el lector, esté donde esté el cursor. Ver useEscaneoBodega.ts.
+  useEscaneoBodega({
+    activo: !dialogTipo,
+    slotsPorTienda: pickingSlotsFull,
+    avisoDe: p => avisoDeUnidad(itemDeLaUnidad(items[p.claveTienda] ?? [], p.slot.id)),
+    irA: p => {
+      const tienda = tiendaByCod[p.claveTienda];
+      if (!tienda) return false;
+      setSearch('');
+      setFocoPallet(p.slot.id);
+      selectTienda(tienda);
+      return true;
+    },
+    ofrecerPreexistente: (pallet, codigo) => {
+      const tienda = tiendaByCod[pallet.store_cod];
+      if (!tienda) return false;
+      setSearch('');
+      selectTienda(tienda);
+      setDialogTipo(SLOT_TIPO_TO_CARGAMENTO[pallet.tipo ?? 'P'] ?? 'Pallet');
+      setDialogRef(codigo);
+      return true;
+    },
+    showToast,
+  });
+  // [Handheld] Entre un pallet y otro la pantalla no se apaga mientras haya una tienda abierta.
+  useWakeLock(!!currentTienda);
 
   /* ── Resumen editing ── */
   const rStartEdit = (cod: string, idx: number) => {
@@ -2648,7 +2685,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               const rowLabel = labelDeFila(row, orderedRows);
               if (row.saved && row.savedItem) {
                 return (
-                  <div key={row.id} className={`bg-white rounded-xl border-2 p-2.5 ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : row.tipo === 'Contenedor' ? 'border-[rgba(107,33,168,0.40)]' : row.tipo === 'Chocolate' ? 'border-[rgba(146,64,14,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
+                  // [Handheld] El ancla también en la tarjeta guardada: escanear una unidad ya pesada tiene
+                  // que llegar a ella y mostrarla, no abrir la tienda y quedarse arriba.
+                  <div key={row.id} id={row.pickingSlotId != null ? `pallet-card-${row.pickingSlotId}` : undefined}
+                    className={`bg-white rounded-xl border-2 p-2.5 ${row.pickingSlotId != null && row.pickingSlotId === resaltado ? 'ring-2 ring-[#1E40AF] ring-offset-2' : ''} ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : row.tipo === 'Contenedor' ? 'border-[rgba(107,33,168,0.40)]' : row.tipo === 'Chocolate' ? 'border-[rgba(146,64,14,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-1.5">
                         {(row.tipo === 'Bulto' || row.tipo === 'Chocolate') && (
@@ -2807,6 +2847,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               const esResaltada = row.pickingSlotId != null && row.pickingSlotId === resaltado;
               return (
                 <div key={row.id} id={row.pickingSlotId != null ? `pallet-card-${row.pickingSlotId}` : undefined}
+                  data-tarjeta-bodega="" data-slot={row.pickingSlotId ?? undefined}
                   className={`relative bg-white rounded-xl border px-2 py-2.5 transition-shadow ${esResaltada ? 'ring-2 ring-[#1E40AF] ring-offset-2' : ''} ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
                   {row.pickingSlotId != null && <PresenciaBadge viendo={viendoPorSlot.get(row.pickingSlotId)} contexto="tarjeta" />}
                   <div className="flex items-center justify-between mb-2">
@@ -2851,7 +2892,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       </label>
                       <input type="text" value={row.peso} onChange={e => updateRow(row.id, 'peso', limpiarTecleo(e.target.value))}
                         onFocus={marcarEnFoco} onBlur={quitarFoco}
-                        placeholder="kg" inputMode="decimal"
+                        placeholder="kg" inputMode="decimal" data-campo="peso"
                         className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                     </div>
                     {!isChocRow && !isContRow && !isChocTipo && (
@@ -2859,7 +2900,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                         <label className="text-[11px] text-text-3 uppercase block mb-0.5">alto</label>
                         <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)}
                           onFocus={marcarEnFoco} onBlur={quitarFoco}
-                          placeholder="cm" inputMode="decimal" max={MAX_ALTO_CM}
+                          placeholder="cm" inputMode="decimal" max={MAX_ALTO_CM} data-campo="alto"
                           className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                         {excedeAltoMax(parseFloat(row.alto) || 0) && (
                           <div className="text-[10px] text-warn mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
@@ -2874,7 +2915,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                           <label className="text-[11px] text-text-3 uppercase block mb-0.5">{f}</label>
                           <input type="number" value={row[f]} onChange={e => updateRow(row.id, f, e.target.value)}
                             onFocus={marcarEnFoco} onBlur={quitarFoco}
-                            placeholder="cm" inputMode="decimal"
+                            placeholder="cm" inputMode="decimal" data-campo={f}
                             className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                         </div>
                       ))}
@@ -2932,6 +2973,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       }
                       await saveRow(row);
                     }}
+                    data-accion="guardar"
                     className={`w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer ${row.tipo === 'Pallet' ? 'bg-info' : isContRow ? 'bg-[#6B21A8]' : isChocTipo ? 'bg-[#92400E]' : 'bg-warn'}`}>
                     {row.mergeReopened ? botonReapertura(row.mergeMotivo ?? 'union') : '+ Agregar'}
                   </button>
@@ -3102,6 +3144,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               tipoLabel={dialogTipo}
               storeCod={currentTienda.cod}
               date={fechaISOLocal()}
+              refInicial={dialogRef ?? undefined}
               onClose={() => setDialogTipo(null)}
               onNuevo={(cantidad) => { const t = dialogTipo; setDialogTipo(null); void (async () => { for (let i = 0; i < cantidad; i++) await addFormRow(t, undefined, i); })(); }}
               onExistente={(slot, yaEnCarga) => {
@@ -3180,7 +3223,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
 
         <div className="px-3 pt-2 pb-2.5 bg-bg border-b border-border flex-shrink-0">
           <div className="relative">
-            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)} data-buscador-bodega=""
               // La pistola de radiofrecuencia escribe el código y manda Enter, igual que un teclado.
               // Con esto, escanear termina el salto sin que nadie tenga que tocar el resultado.
               onKeyDown={e => { if (e.key === 'Enter' && palletEncontrado) { e.preventDefault(); saltarAPallet(); } }}
