@@ -1479,13 +1479,23 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, saved: false, savedItem: undefined } : r));
   };
 
-  // Borra el slot de picking_pallets vinculado y lo quita de pickingSlotsFull
-  const deletePickingSlot = (slotId?: number, codArg?: string) => {
+  // Borra el slot de picking_pallets vinculado y lo quita de pickingSlotsFull.
+  //
+  // `ctx` NO es opcional: es lo que hace que el borrado quede en la bitácora con tienda y número.
+  // Ver `eliminarSlotPicking` — de los seis caminos que borran, cuatro no escribían nada.
+  const deletePickingSlot = (
+    slotId: number | undefined,
+    ctx: { label?: string; yaRegistrado?: boolean; codArg?: string; nombreArg?: string },
+  ) => {
     // codArg permite borrar el slot desde contextos sin tienda seleccionada (p. ej. el panel
     // Resumen, que lista items de varias tiendas y no fija `currentTienda`).
-    const cod = codArg ?? currentTienda?.cod;
+    const cod = ctx.codArg ?? currentTienda?.cod;
     if (!slotId || !cod) return;
-    eliminarSlotPicking(slotId); // DB delete + guard anti-revive (RC-3)
+    eliminarSlotPicking(slotId, {   // DB delete + guard anti-revive (RC-3) + bitácora
+      fuente: 'rmcosta', tiendaCod: cod,
+      tiendaNombre: ctx.nombreArg ?? (cod === currentTienda?.cod ? currentTienda?.tienda : undefined),
+      label: ctx.label, yaRegistrado: ctx.yaRegistrado,
+    });
     setPickingSlotsFull(prev => {
       const next = { ...prev };
       if (next[cod]) next[cod] = next[cod].filter(s => s.id !== slotId);
@@ -1500,16 +1510,18 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     if (borrado) {
       const idx = (items[currentTienda.cod] || []).findIndex(i => i.id === borrado.id);
       if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tiendaCod: currentTienda.cod, idx });
-      logActividad({ accion: 'eliminar_item', fuente: 'rmcosta', tiendaCod: currentTienda.cod,
-        tiendaNombre: currentTienda.tienda, label: borrado.orden, slotId: borrado.pickingSlotId });
     }
+    // El `eliminar_item` ya NO se escribe acá: lo escribe `eliminarSlotPicking`, que es por donde
+    // pasan los seis caminos. Acá solo se registraba `if (borrado)` — una fila que había perdido
+    // su `savedItem` borraba el slot y no dejaba rastro. Ese `??` de abajo existe justo porque ese
+    // caso es real.
     // Su número (seq) se lee ANTES de borrar el slot: después ya no hay de dónde sacarlo, y es lo
     // que permite que el Revertir lo devuelva como CH3 y no como el siguiente libre.
     const slotIdBorrado = row?.pickingSlotId ?? borrado?.pickingSlotId;
     const slotAntes = slotIdBorrado != null
       ? (pickingSlotsFullRef.current[currentTienda.cod] ?? []).find(s => s.id === slotIdBorrado)
       : undefined;
-    deletePickingSlot(slotIdBorrado);
+    deletePickingSlot(slotIdBorrado, { label: borrado?.orden ?? (row ? labelDeFila(row, formRows) : undefined) });
     setFormRows(prev => prev.filter(r => r.id !== rowId));
     if (borrado) armarUndo(`${borrado.orden} eliminado`, () => reAgregarItem(borrado, slotAntes));
   };
@@ -1517,7 +1529,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // Quitar un form row sin guardar (✕) — también borra su slot.
   const removeUnsavedRow = (rowId: string) => {
     const row = formRows.find(r => r.id === rowId);
-    deletePickingSlot(row?.pickingSlotId);
+    // Sin pesar también se registra: esa unidad ya tiene una etiqueta IMPRESA de Picking, y si
+    // desaparece sin rastro nadie puede saber si se unió a otra, se creó de más o alguien la sacó.
+    deletePickingSlot(row?.pickingSlotId, { label: row ? labelDeFila(row, formRows) : undefined });
     setFormRows(prev => prev.filter(r => r.id !== rowId));
   };
 
@@ -1701,7 +1715,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     }
     const snap = snapshotSuma(cod, [bultoRow], palletRow, palletLabel, pesoActual);
 
-    deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId);
+    deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId, { yaRegistrado: true });
 
     // Contexto: un solo SET_ITEMS — quita el bulto guardado y suma el peso al pallet guardado,
     // luego renumera. El match es por id ESTABLE (id propio / pickingSlotId), que sobrevive al
@@ -1769,7 +1783,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const snap = snapshotSuma(cod, bultoRows, palletRow, palletLabel, pesoActual);
 
     for (const bultoRow of bultoRows) {
-      deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId);
+      deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId, { yaRegistrado: true });
     }
 
     // Contexto: un solo SET_ITEMS — quita TODOS los bultos guardados seleccionados y suma el
@@ -1851,7 +1865,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     // `delete` a mano y se quedaba sin los DOS guards: sin el anti-revive (la recarga de picking lo
     // resucitaba) y sin la lápida (el merge entre equipos lo devolvía). `eliminarSlotPicking` hace
     // las tres cosas en un solo lugar.
-    else if (srcSlot) eliminarSlotPicking(srcSlot);
+    else if (srcSlot) eliminarSlotPicking(srcSlot, { fuente: 'rmcosta', tiendaCod: cod, yaRegistrado: true });
 
     // 3) Cachés de slots: quitar el del source de AMBOS (full para el rebuild; light para gP/badge,
     //    así no aparece el fantasma), y reflejar el peso sumado en el slot del target (full).
@@ -2585,7 +2599,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                               className="border border-border text-text-3 bg-bg-2 cursor-pointer px-2 py-1.5 rounded-lg text-[15px] active:text-info flex-shrink-0">
                               ✎
                             </button>
-                            <button onClick={() => { deletePickingSlot(item.pickingSlotId, cod); dispatch({ type: 'DELETE_ITEM', tiendaCod: cod, idx }); armarUndo(`${item.orden} eliminado`, () => reAgregarItem(item)); }}
+                            <button onClick={() => { deletePickingSlot(item.pickingSlotId, { label: item.orden, codArg: cod }); dispatch({ type: 'DELETE_ITEM', tiendaCod: cod, idx }); armarUndo(`${item.orden} eliminado`, () => reAgregarItem(item)); }}
                               className="border-none text-text-3 cursor-pointer px-2 py-1.5 rounded-lg text-[15px] bg-bg-2 active:text-red flex-shrink-0">
                               ✕
                             </button>

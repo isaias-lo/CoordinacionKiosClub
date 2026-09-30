@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { finalizarSlotUnion } from '@/features/despacho/shared/finalizarSlotUnion';
+import { logActividad } from '@/lib/actividad';
 import { renumerarSoloSinOrden } from '@/features/despacho/shared/numeroCard';
 import { leerPeso, limpiarTecleo } from '@/features/despacho/shared/pesoIngresado';
 import { combinarEnLista } from '@/features/despacho/shared/combinarEnLista';
@@ -157,6 +158,12 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
       void finalizarSlotUnion(src.pickingSlotId, tgt.pickingSlotId).then(r => {
         if (!r.ok) showToast(`⚠ La unión quedó a medias (${r.error}) — revisá el pallet`, '#D32F2F');
       });
+      // Esta pantalla no escribía NADA en la bitácora — ni un `unificar`. Combinar desde acá hacía
+      // desaparecer una unidad sin dejar rastro, mientras que hacerlo desde el formulario sí lo
+      // dejaba. Los dos espejos ya lo registran; faltaba este tercer camino.
+      logActividad({ accion: 'unificar', fuente: 'nacional',
+        tiendaCod: TIENDAS[tienda]?.cod, tiendaNombre: tienda,
+        label: merged.orden, sourceLabel: tgt.orden, slotId: src.pickingSlotId });
     }
     setCombineModal(null);
     showToast('✓ Items combinados', '#16A34A');
@@ -521,7 +528,10 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
                           e.stopPropagation();
                           // Borra también el slot de picking_pallets: sin esto el ítem reaparecía
                           // al reconstruir el formulario (backfill lo revivía).
-                          eliminarSlotPicking(item.pickingSlotId);
+                          eliminarSlotPicking(item.pickingSlotId, {
+                            fuente: 'nacional', tiendaCod: TIENDAS[name]?.cod, tiendaNombre: name,
+                            label: item.orden,
+                          });
                           dispatch({ type: 'DELETE_ITEM', tienda: name, idx });
                           showToast(`${item.orden} eliminado`, '#D97706');
                         }}

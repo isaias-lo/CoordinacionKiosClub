@@ -1430,11 +1430,20 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, saved: false, savedItem: undefined } : r));
   };
 
-  // Borra el slot de picking_pallets vinculado y lo quita de pickingSlotsFull
-  const deletePickingSlot = (slotId?: number) => {
+  // Borra el slot de picking_pallets vinculado y lo quita de pickingSlotsFull.
+  //
+  // `ctx` NO es opcional: es lo que hace que el borrado quede en la bitácora con tienda y número.
+  // Ver `eliminarSlotPicking` — de los caminos que borran, la mayoría no escribía nada.
+  const deletePickingSlot = (
+    slotId: number | undefined,
+    ctx: { label?: string; yaRegistrado?: boolean },
+  ) => {
     if (!slotId || !selectedTienda) return;
     const name = selectedTienda;
-    eliminarSlotPicking(slotId); // DB delete + guard anti-revive (RC-3)
+    eliminarSlotPicking(slotId, {   // DB delete + guard anti-revive (RC-3) + bitácora
+      fuente: 'nacional', tiendaCod: TIENDAS[name]?.cod, tiendaNombre: name,
+      label: ctx.label, yaRegistrado: ctx.yaRegistrado,
+    });
     setPickingSlotsFull(prev => {
       const next = { ...prev };
       if (next[name]) next[name] = next[name].filter(s => s.id !== slotId);
@@ -1452,8 +1461,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       // Match por clave ESTABLE (pickingSlotId), no por pkg+orden (frágil: borraba el ítem equivocado).
       const idx = currentItems.findIndex(i => sameStableItem(i, borrado));
       if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tienda, idx });
-      logActividad({ accion: 'eliminar_item', fuente: 'nacional', tiendaCod: TIENDAS[tienda]?.cod,
-        tiendaNombre: tienda, label: ordenToLabel(borrado.orden), slotId: borrado.pickingSlotId });
+// El `eliminar_item` ya NO se escribe acá: lo escribe `eliminarSlotPicking`, que es por donde
+      // pasan todos los caminos. Acá solo se registraba si la fila conservaba su `savedItem`.
     }
     // Su número (seq) se lee ANTES de borrar el slot: después ya no hay de dónde sacarlo, y es lo
     // que permite que el Revertir lo devuelva como CH3 y no como el siguiente libre.
@@ -1461,14 +1470,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const slotAntes = slotIdBorrado != null
       ? (pickingSlotsFullRef.current[tienda] ?? []).find(s => s.id === slotIdBorrado)
       : undefined;
-    deletePickingSlot(slotIdBorrado);
+    deletePickingSlot(slotIdBorrado, { label: borrado?.orden ?? (row ? labelDeFila(row, formRows) : undefined) });
     setFormRows(prev => prev.filter(r => r.id !== rowId));
     if (borrado) armarUndo(`${ordenToLabel(borrado.orden)} eliminado`, () => reAgregarItem(borrado, tienda, slotAntes));
   };
 
   const removeUnsavedRow = (rowId: string) => {
     const row = formRows.find(r => r.id === rowId);
-    deletePickingSlot(row?.pickingSlotId);
+    // Sin pesar también se registra: esa unidad ya tiene una etiqueta IMPRESA de Picking.
+    deletePickingSlot(row?.pickingSlotId, { label: row ? labelDeFila(row, formRows) : undefined });
     setFormRows(prev => prev.filter(r => r.id !== rowId));
   };
 
@@ -1650,7 +1660,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     }
     const snap = snapshotSuma(selectedTienda, [bultoRow], palletRow, palletLabel, pesoActual);
 
-    deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId);
+    deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId, { yaRegistrado: true });
 
     // Contexto: un solo UPDATE_ITEMS — quita el bulto guardado (si lo estaba) y suma el peso
     // al pallet guardado (si lo está). El match es por id ESTABLE (pickingSlotId/orden) — no
@@ -1717,7 +1727,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const snap = snapshotSuma(selectedTienda, bultoRows, palletRow, palletLabel, pesoActual);
 
     for (const bultoRow of bultoRows) {
-      deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId);
+      deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId, { yaRegistrado: true });
     }
 
     // Contexto: un solo UPDATE_ITEMS — quita TODOS los bultos guardados seleccionados y suma el
@@ -1795,7 +1805,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // `delete` a mano y se quedaba sin los DOS guards: sin el anti-revive (la recarga de picking lo
     // resucitaba) y sin la lápida (el merge entre equipos lo devolvía). `eliminarSlotPicking` hace
     // las tres cosas en un solo lugar.
-    else if (srcSlot) eliminarSlotPicking(srcSlot);
+    else if (srcSlot) eliminarSlotPicking(srcSlot, {
+      fuente: 'nacional', tiendaCod: TIENDAS[name]?.cod, tiendaNombre: name, yaRegistrado: true,
+    });
 
     // 3) Cachés de slots: quitar el del source de AMBOS (full para el rebuild; light para gP/badge,
     //    así no aparece el fantasma), y reflejar el peso sumado en el slot del target (full).

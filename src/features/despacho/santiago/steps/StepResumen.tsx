@@ -320,7 +320,9 @@ export function StepResumen() {
                             onClick={() => {
                               // Borra también el slot de picking_pallets: sin esto el ítem
                               // reaparecía al reconstruir el formulario (backfill lo revivía).
-                              eliminarSlotPicking(item.pickingSlotId);
+                              eliminarSlotPicking(item.pickingSlotId, {
+                                fuente: 'rmcosta', tiendaCod: cod, label: item.orden,
+                              });
                               dispatch({ type: 'DELETE_ITEM', tiendaCod: cod, idx });
                               showToast(`${item.orden} eliminado`, '#D97706');
                             }}
