@@ -69,6 +69,7 @@ import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { combinarEnLista } from '../../shared/combinarEnLista';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
+import { leerResultadoDelCruce } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo, pesoPalletConCajas,
@@ -430,14 +431,19 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     try {
       await sheetsSantiagoWrite({ [cod]: lista }, regimen, fechaDespachoBodega(state.fechaDespacho), hoyISO);
       // El cruce se escribe del lado del servidor, despues del sync. Ver `api/sync-despacho`.
-      await fetch('/api/sync-despacho', {
+      //
+      // La respuesta SE LEE. Antes se tiraba, así que una tienda podía quedar registrada en la base
+      // y ausente de la hoja sin que nadie se enterara — y el botón decía «OK registrada» igual.
+      const resCruce = await fetch('/api/sync-despacho', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cruce: hoyISO }), keepalive: true,
       });
+      const avisoCruce = await leerResultadoDelCruce(resCruce);
       registroTiendas.marcar(cod);
       logActividad({ accion: 'registrar_tienda', fuente: 'rmcosta', tiendaCod: cod,
         tiendaNombre: getTiendaSantiagoByCod(cod)?.tienda ?? cod });
-      showToast(`OK ${cod} registrada`, '#16A34A');
+      // La tienda SÍ quedó registrada — eso no se discute. Lo que puede haber fallado es el informe.
+      showToast(avisoCruce ?? `OK ${cod} registrada`, avisoCruce ? '#D97706' : '#16A34A');
       return true;
     } catch (e) {
       console.error('[registrar-tienda]', e);

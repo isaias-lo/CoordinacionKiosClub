@@ -24,14 +24,30 @@ export interface RespuestaSync {
   cruce?: { ok: boolean; agregadas?: number; actualizadas?: number; error?: string };
 }
 
-/** El texto del aviso cuando el cruce no se pudo escribir, o `null` si salió bien. */
-export function mensajeDeFalloDelCruce(r: RespuestaSync | null | undefined): string | null {
-  // Sin bloque `cruce` no se pidió, o la respuesta es de una versión anterior: no se inventa un
-  // error donde no hay información.
-  if (!r?.cruce) return null;
-  if (r.cruce.ok) return null;
-  return '⚠ El día quedó registrado, pero no se pudo escribir la hoja CRUCE PESOS. '
-       + 'Avisa para recargarla — no se perdió nada de lo registrado.';
+/** El aviso, en un solo lugar: lo usan la respuesta y el `catch` de quien llama. */
+export const AVISO_CRUCE = '⚠ El día quedó registrado, pero no se pudo escribir la hoja CRUCE '
+  + 'PESOS. Avisa para recargarla — no se perdió nada de lo registrado.';
+
+/**
+ * El texto del aviso cuando el cruce no se pudo escribir, o `null` si salió bien.
+ *
+ * `sePidio` dice si esta llamada IBA a escribir el cruce (mandó `{ cruce: <fecha> }`). Importa
+ * porque una respuesta SIN el bloque `cruce` significa cosas opuestas según el caso:
+ *
+ *   · no se pidió        → no hay nada que avisar;
+ *   · se pidió y no vino → la petición no llegó a ejecutarlo — un 500, un timeout, un deploy a
+ *                            medias — y hay que avisar, porque la hoja quedó sin la fila.
+ *
+ * Sin ese matiz, todo lo segundo caía en `return null` y el 30/09 pasó exactamente eso: el
+ * coordinador apretó REGISTRAR en Nacional, los pesos llegaron a la base, la hoja se quedó sin
+ * las 21 filas del día y **no apareció ningún aviso**. Es justo lo que la cabecera de este archivo
+ * dice que hay que evitar: un informe que falla en silencio es peor que no tenerlo.
+ */
+export function mensajeDeFalloDelCruce(
+  r: RespuestaSync | null | undefined, sePidio = false,
+): string | null {
+  if (r?.cruce) return r.cruce.ok ? null : AVISO_CRUCE;
+  return sePidio ? AVISO_CRUCE : null;
 }
 
 /**
@@ -41,13 +57,15 @@ export function mensajeDeFalloDelCruce(r: RespuestaSync | null | undefined): str
  * `logActividad`.
  */
 export async function leerResultadoDelCruce(res: Response | void): Promise<string | null> {
+  // Se llama SIEMPRE después de pedir el cruce, así que cualquier respuesta que no lo traiga —o
+  // que ni siquiera sea una respuesta, porque el fetch se cayó— es un fallo que hay que avisar.
   try {
-    if (!res || typeof (res as Response).json !== 'function') return null;
+    if (!res || typeof (res as Response).json !== 'function') return AVISO_CRUCE;
     const json = await (res as Response).json() as RespuestaSync;
-    const aviso = mensajeDeFalloDelCruce(json);
-    if (aviso) console.error('[cruce-pesos]', json.cruce?.error);
+    const aviso = mensajeDeFalloDelCruce(json, true);
+    if (aviso) console.error('[cruce-pesos]', json.cruce?.error ?? 'la respuesta no trajo el cruce');
     return aviso;
   } catch {
-    return null;
+    return AVISO_CRUCE;   // respuesta ilegible: tampoco se escribió
   }
 }
