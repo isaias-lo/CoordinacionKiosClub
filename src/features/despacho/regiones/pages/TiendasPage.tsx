@@ -76,6 +76,7 @@ import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBo
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaChile } from '@/lib/fechaChile';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
+import { actualizarSlotPicking, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
 import { leerResultadoDelCruce } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { STORE_CARD_BADGE as SCB, claseTarjetaTienda, claseCodigoTienda, claseEtiquetaTerminada } from '../../shared/storeCardStyles';
@@ -1415,10 +1416,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // faltaba, se creó arriba o la función ya retornó). Con las medidas ya fusionadas: un "sin
     // pesar" encima de un bulto pesado no le borra el peso en Picking.
     const pesoV = esSinPesar(item) ? 0 : (Math.round((item.alto * item.ancho * item.largo) / 6000 * 10) / 10 || null);
-    supabase.from('picking_pallets').update({
+    // Si el slot ya no existe, esto AVISA en vez de decir que guardó. Mismo cambio y mismo porqué
+    // que en RM/Costa — ver `actualizarSlotPicking`.
+    void actualizarSlotPicking(slotId, {
       peso_kg: item.peso, alto: item.alto, ancho: item.ancho, largo: item.largo, peso_v: pesoV,
-    }).eq('id', slotId).then(({ error }) => {
-      if (error) console.error('[picking_pallets update]', error.message);
+    }).then(r => {
+      if (r.error) console.error('[picking_pallets update]', r.error);
+      if (r.yaNoExiste) showToast(AVISO_SLOT_BORRADO, '#D32F2F');
     });
   };
 
