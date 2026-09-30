@@ -1866,7 +1866,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       supabase.from('picking_pallets').update({ peso_kg: nuevoPeso }).eq('id', tgtSlot)
         .then(({ error }) => { if (error) console.error('[union peso]', error.message); });
     }
-    if (tgtSlot && srcSlot) finalizarSlotUnion(tgtSlot, srcSlot);
+    // EL RESULTADO SE MIRA. Antes se tiraba, y por eso una unión rechazada —porque el destino ya
+    // no existía— se veía en pantalla como si hubiera funcionado: los ítems ya se habían fusionado
+    // acá arriba. Es lo que dejó a 12LAS sin una sola unidad el 30/09.
+    if (tgtSlot && srcSlot) {
+      void finalizarSlotUnion(tgtSlot, srcSlot).then(r => {
+        if (!r.ok) showToast(`⚠ No se pudo unir: ${r.error} — recarga la tienda`, '#D32F2F');
+      });
+    }
     // Sin slot de destino no hay refs que fusionar, pero el borrado es el mismo. Antes era un
     // `delete` a mano y se quedaba sin los DOS guards: sin el anti-revive (la recarga de picking lo
     // resucitaba) y sin la lápida (el merge entre equipos lo devolvía). `eliminarSlotPicking` hace
