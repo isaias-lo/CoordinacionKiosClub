@@ -107,7 +107,8 @@ export interface PickerStatRow {
 export interface StatsCache { cachedAt: string; rows: PickerStatRow[]; }
 
 export type PickerType = 'P' | 'C' | 'B' | 'CH' | 'CC' | 'CN';
-export type SectionFilter = 'all' | 'aseo-comida' | 'hogar' | 'chocolates' | 'congelados';
+// 'mixto' = pickers con Hogar Y Aseo/Comida a la vez (30/09). Ver `seccionIncluye` en picking-secciones.
+export type SectionFilter = 'all' | 'aseo-comida' | 'hogar' | 'chocolates' | 'congelados' | 'mixto';
 
 // ─── localStorage keys ────────────────────────────────────────────────────────
 export const SAVED_NAMES_KEY     = 'picking_saved_picker_names';

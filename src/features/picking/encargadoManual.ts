@@ -39,6 +39,8 @@ export function seccionYContenidoManual(
   if (primeraUnidad === 'CH') return { seccion: 'chocolates', contenido: 'chocolate' };
   if (primeraUnidad === 'CC' || primeraUnidad === 'CN') return { seccion: 'congelados', contenido: 'congelados' };
   if (sel === 'all') return { seccion: null, contenido: 'mixto' };
+  // Creado desde el chip Mixto: queda marcado como mixto, con el mismo contenido que "Todas".
+  if (sel === 'mixto') return { seccion: 'mixto', contenido: 'mixto' };
   if (sel === 'chocolates') return { seccion: 'chocolates', contenido: 'chocolate' };
   if (sel === 'congelados') return { seccion: 'congelados', contenido: 'congelados' };
   return { seccion: sel, contenido: 'hogar' };

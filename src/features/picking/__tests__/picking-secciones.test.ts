@@ -6,6 +6,9 @@ import {
   opEnSeccion,
   filtrarOpsPorSeccion,
   seccionDeSlot,
+  slotEnSeccion,
+  seccionIncluye,
+  categoriasDeSlotsManual,
 } from '../picking-secciones';
 import type { PickingOperation, PalletSlot } from '../picking-types';
 
@@ -22,7 +25,8 @@ describe('normalizarSeccion', () => {
     expect(normalizarSeccion('chocolates')).toBe('chocolates');
     expect(normalizarSeccion('congelados')).toBe('congelados');
     expect(normalizarSeccion('all')).toBeNull();   // 'all' no es una sección real
-    expect(normalizarSeccion('mixto')).toBeNull();
+    expect(normalizarSeccion('mixto')).toBe('mixto'); // sección propia desde el 30/09 (chip Mixto)
+    expect(normalizarSeccion('otra-cosa')).toBeNull();
     expect(normalizarSeccion('')).toBeNull();
     expect(normalizarSeccion(null)).toBeNull();
     expect(normalizarSeccion(undefined)).toBeNull();
@@ -102,5 +106,39 @@ describe('seccionDeSlot (columna section con fallback a contenido)', () => {
   });
   it('mixto sin clasificar → null', () => {
     expect(seccionDeSlot(slot({ section: null, contenido: 'mixto' }))).toBeNull();
+  });
+});
+
+describe('seccionIncluye / slotEnSeccion — la regla única de qué unidad entra en un filtro (30/09)', () => {
+  const slot = (section: string | null, contenido = 'hogar') => ({ section, contenido });
+
+  it('las secciones de siempre no cambian: solo entra lo de esa sección', () => {
+    expect(slotEnSeccion(slot('hogar'), 'hogar')).toBe(true);
+    expect(slotEnSeccion(slot('aseo-comida', 'aseo'), 'hogar')).toBe(false);
+    expect(slotEnSeccion(slot('chocolates', 'chocolate'), 'chocolates')).toBe(true);
+    expect(slotEnSeccion(slot(null, 'aseo-hogar'), 'hogar')).toBe(false); // mixto sin sección
+  });
+
+  it('en Mixto entra todo lo de seco del picker, también lo creado antes desde Aseo u Hogar', () => {
+    expect(slotEnSeccion(slot('mixto', 'mixto'), 'mixto')).toBe(true);
+    expect(slotEnSeccion(slot('aseo-comida', 'aseo'), 'mixto')).toBe(true);
+    expect(slotEnSeccion(slot('hogar'), 'mixto')).toBe(true);
+    expect(slotEnSeccion(slot(null, 'mixto'), 'mixto')).toBe(true);
+  });
+
+  it('el chocolate y el congelado NO entran en Mixto: tienen su propia sección', () => {
+    expect(slotEnSeccion(slot('chocolates', 'chocolate'), 'mixto')).toBe(false);
+    expect(slotEnSeccion(slot('congelados', 'congelados'), 'mixto')).toBe(false);
+  });
+
+  it('la impresión decide con la misma regla sobre la sección ya calculada', () => {
+    expect(seccionIncluye('mixto', 'hogar')).toBe(true);
+    expect(seccionIncluye('mixto', null)).toBe(true);
+    expect(seccionIncluye('hogar', null)).toBe(false);
+  });
+
+  it('una unidad guardada como "mixto" se reconoce y su encargado manual cae en Mixto', () => {
+    expect(normalizarSeccion('mixto')).toBe('mixto');
+    expect(categoriasDeSlotsManual([slot('mixto', 'mixto')]).sort()).toEqual(['Aseo', 'Hogar']);
   });
 });

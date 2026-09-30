@@ -49,11 +49,11 @@ import {
   parseSavedNames, serializeSavedNames,
 } from './picking-utils';
 import type { PickingEvento } from './picking-utils';
-import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, categoriasDeSlotsManual, type Seccion } from './picking-secciones';
+import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, categoriasDeSlotsManual, slotEnSeccion, seccionIncluye, type Seccion } from './picking-secciones';
 import { pideSeccion, seccionYContenidoManual, normalizarBatch } from './encargadoManual';
 import { slotsYaImpresos } from './reimpresion';
 import { etiquetasDeLaSeleccion } from './seleccionImpresion';
-import { seccionEfectiva, seccionesDeLaPestana, tiposDeUnidad, primeraUnidadPorDefecto, columnaSeco, conteoPorClave, type ColumnaSeco } from './tiposUnidad';
+import { seccionEfectiva, seccionesDeLaPestana, tiposDeUnidad, primeraUnidadPorDefecto, columnaSeco, conteoPorClave, chipAdmiteGrupo, type ColumnaSeco } from './tiposUnidad';
 import { usePickingOdoo }     from './hooks/usePickingOdoo';
 import { StatsTab }           from './components/StatsTab';
 import { HistorialTab }       from './components/HistorialTab';
@@ -306,6 +306,17 @@ export function PickingScreen() {
     }
     return result;
   }, [palletSlots, palletNumsBySlotId]);
+
+  // Columna de "Todas" de un grupo. La usan la vista "Todas" Y los chips de sección (`chipAdmiteGrupo`),
+  // para que el chip Mixto muestre exactamente la columna Mixto. Un encargado manual no tiene
+  // operaciones de Odoo: su columna sale de la sección de sus unidades. Ver columnaSeco.
+  const columnaDeGrupo = useCallback((g: PickerGroup): ColumnaSeco => {
+    const esManual = g.operations.length === 0;
+    const cats = esManual
+      ? categoriasDeSlotsManual(slotsByStateKey[g.stateKey] ?? [])
+      : g.operations.flatMap(o => o.categories);
+    return columnaSeco(cats, esManual);
+  }, [slotsByStateKey]);
 
   const [labelConfig, setLabelConfig]     = useLocalStorage<LabelConfig>(LABEL_CONFIG_KEY, DEFAULT_LABEL_CONFIG);
   const [canonicalNames, setCanonicalNames] = useLocalStorage<Record<string, string>>(CANONICAL_NAMES_KEY, {});
@@ -776,7 +787,7 @@ export function PickingScreen() {
     // Read from ref (avoids stale closure) and skip pending deletes; filters by tipo for 3-counter accuracy
     const slot = palletSlotsRef.current
       .filter(s => s.state_key === stateKey && (s.tipo || 'P') === tipo
-        && (section == null || seccionDeSlot(s) === section)
+        && (section == null || slotEnSeccion(s, section))
         // Con dos cajas bajo el mismo tipo CH, el "−" tiene que sacar una de LA CAJA que se está
         // descontando. Sin esto, bajar el contador de cartón podía borrar una caja negra.
         && (subtipo == null || subtipoDeCaja(s.subtipo) === subtipoDeCaja(subtipo))
@@ -1143,17 +1154,22 @@ export function PickingScreen() {
         return slots.some(s => (seccionDeSlot(s) === 'congelados') === esTabCongelados);
       });
     if (esTabCongelados || sectionFilter === 'all') return base;
+    const seccion = sectionFilter as Seccion;
+    // Qué pickers van en el chip: lo decide su columna de "Todas" (ver chipAdmiteGrupo). Un mixto
+    // (Hogar + Aseo/Comida) va SOLO en Mixto, con el grupo entero; ya no en Aseo y en Hogar a la vez.
+    const enChip = base.filter(g => chipAdmiteGrupo(sectionFilter, columnaDeGrupo(g)));
+    if (seccion === 'mixto') return enChip;
     // Recorta las operaciones de cada grupo a la sección activa y descarta los grupos sin ops
     // en ella. Antes era un test de inclusión (dejaba ops de otras secciones dentro de un picker
     // mixto → se mostraba/contaba la suma cruzada). Ahora cada sección es independiente.
-    return base
+    return enChip
       .map(g => ({ ...g, operations: filtrarOpsPorSeccion(g.operations, sectionFilter) }))
       .filter(g => {
         if (g.operations.length > 0) return true;
         const slots = slotsByStateKey[g.stateKey] ?? [];
-        return slots.length > 0 && slots.some(s => seccionDeSlot(s) === sectionFilter);
+        return slots.length > 0 && slots.some(s => slotEnSeccion(s, seccion));
       });
-  }, [allGroups, sectionFilter, esTabCongelados, slotsByStateKey]);
+  }, [allGroups, sectionFilter, esTabCongelados, slotsByStateKey, columnaDeGrupo]);
 
   // Grupos de TODAS las secciones por tienda — para calcular offsets globales
   const allGroupedByStore = useMemo(() => {
@@ -1203,7 +1219,7 @@ export function PickingScreen() {
     // Slots de un grupo, recortados a la sección si se imprime una card en un filtro activo.
     const slotsOf = (stateKey: string) => {
       const all = slotsByStateKey[stateKey] ?? [];
-      return section == null ? all : all.filter(s => seccionDeSlot(s) === section);
+      return section == null ? all : all.filter(s => slotEnSeccion(s, section));
     };
     const candidates = groups.filter(group => slotsOf(group.stateKey).length > 0);
     if (candidates.length === 0) return 0;
@@ -1459,7 +1475,7 @@ export function PickingScreen() {
         {(selectionPrint
           ? etiquetasDeLaSeleccion(printableLabels, selectionPrint)
           : printOnlyStateKey
-            ? printableLabels.filter(l => l.stateKey === printOnlyStateKey && (printOnlySection == null || l.secSlot === printOnlySection))
+            ? printableLabels.filter(l => l.stateKey === printOnlyStateKey && (printOnlySection == null || seccionIncluye(printOnlySection, l.secSlot)))
             : printOnlyStore
               ? printableLabels.filter(l => l.storeCod === printOnlyStore)
               : printableLabels
@@ -1721,6 +1737,7 @@ export function PickingScreen() {
                       { key: 'aseo-comida', label: 'Aseo y Comida' },
                       { key: 'hogar',       label: 'Hogar' },
                       { key: 'chocolates',  label: 'Chocolates' },
+                      { key: 'mixto',       label: 'Mixto' },
             ] as { key: SectionFilter; label: string }[])
               // Cada pestaña ofrece lo suyo: Congelados solo "Todas"; Seco sus cuatro secciones, sin
               // "Congelados" (que tiene su propia pestaña — antes aparecía en los dos lados).
@@ -1978,7 +1995,7 @@ export function PickingScreen() {
                           // para que contador, chips e impresión de la card sean independientes por sección.
                           const seccionActiva: Seccion | null = sectionFilter === 'all' ? null : (sectionFilter as Seccion);
                           const allCardSlots = slotsByStateKey[group.stateKey] ?? [];
-                          const cardSlots = seccionActiva == null ? allCardSlots : allCardSlots.filter(s => seccionDeSlot(s) === seccionActiva);
+                          const cardSlots = seccionActiva == null ? allCardSlots : allCardSlots.filter(s => slotEnSeccion(s, seccionActiva));
                           const nums = seccionActiva == null
                             ? (assignedNumsByStateKey[group.stateKey] ?? [])
                             : cardSlots.map(s => palletNumsBySlotId[s.id]).filter((n): n is number => n !== undefined).sort((a, b) => a - b);
@@ -2085,15 +2102,9 @@ export function PickingScreen() {
                           mixto:         { label: 'Mixto',         color: '#7C3AED', bg: 'rgba(124,58,237,0.06)', border: 'rgba(124,58,237,0.22)' },
                         } as const;
 
-                        // Un encargado manual no tiene operaciones de Odoo: su columna sale de la sección
-                        // de sus unidades (antes caían TODOS en Hogar). Ver columnaSeco.
-                        const getSection = (g: PickerGroup): ColumnaSeco => {
-                          const esManual = g.operations.length === 0;
-                          const cats = esManual
-                            ? categoriasDeSlotsManual(slotsByStateKey[g.stateKey] ?? [])
-                            : g.operations.flatMap(o => o.categories);
-                          return columnaSeco(cats, esManual);
-                        };
+                        // Misma regla que decide los chips (columnaDeGrupo): la columna Mixto de acá y el
+                        // chip Mixto muestran siempre los mismos pickers.
+                        const getSection = columnaDeGrupo;
 
                         const countSlots = (gs: PickerGroup[]) =>
                           gs.reduce((sum, g) => sum + Object.values(palletsByTipoAndStateKey[g.stateKey] ?? {}).reduce((a, b) => a + b, 0), 0);

@@ -80,3 +80,13 @@ describe('normalizarBatch', () => {
     expect(normalizarBatch('007')).toBe('007');
   });
 });
+
+describe('seccionYContenidoManual · chip Mixto (30/09)', () => {
+  it('creado desde Mixto queda marcado como mixto', () => {
+    expect(seccionYContenidoManual('mixto')).toEqual({ seccion: 'mixto', contenido: 'mixto' });
+    expect(seccionYContenidoManual('mixto', 'P')).toEqual({ seccion: 'mixto', contenido: 'mixto' });
+  });
+  it('en Mixto no se pregunta la sección: ya está elegida', () => {
+    expect(pideSeccion('mixto')).toBe(false);
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { tiposDeUnidad, primeraUnidadPorDefecto, seccionEfectiva, seccionesDeLaPestana, columnaSeco, conteoPorClave } from '../tiposUnidad';
+import { tiposDeUnidad, primeraUnidadPorDefecto, seccionEfectiva, seccionesDeLaPestana, columnaSeco, conteoPorClave, chipAdmiteGrupo } from '../tiposUnidad';
 
 describe('seccionEfectiva — el filtro guardado vale solo donde tiene sentido', () => {
   it('en la pestaña Congelados siempre es "Todas": ahí no hay secciones de seco', () => {
@@ -22,8 +22,8 @@ describe('seccionEfectiva — el filtro guardado vale solo donde tiene sentido',
 });
 
 describe('seccionesDeLaPestana', () => {
-  it('Seco ofrece sus cuatro secciones y NO Congelados', () => {
-    expect(seccionesDeLaPestana(false)).toEqual(['all', 'aseo-comida', 'hogar', 'chocolates']);
+  it('Seco ofrece sus secciones (con Mixto) y NO Congelados', () => {
+    expect(seccionesDeLaPestana(false)).toEqual(['all', 'aseo-comida', 'hogar', 'chocolates', 'mixto']);
   });
 
   it('Congelados solo ofrece "Todas"', () => {
@@ -171,5 +171,40 @@ describe('conteoPorClave — el contador de chocolates dentro de la sección (30
     const slots = [{ tipo: 'P' }, { tipo: 'CH', subtipo: 'negra' }, { tipo: 'CH', subtipo: 'carton' }];
     const conteos = conteoPorClave(slots);
     for (const clave of tiposDeUnidad(false, 'chocolates', conteos)) expect(conteos[clave]).toBe(1);
+  });
+});
+
+describe('chip Mixto (30/09) — qué pickers aparecen en cada chip', () => {
+  it('el chip Mixto muestra exactamente la columna Mixto de "Todas"', () => {
+    expect(chipAdmiteGrupo('mixto', columnaSeco(['Hogar', 'Aseo'], false))).toBe(true);
+    expect(chipAdmiteGrupo('mixto', columnaSeco(['Hogar', 'Comida'], false))).toBe(true);
+    expect(chipAdmiteGrupo('mixto', columnaSeco(['Hogar'], false))).toBe(false);
+    expect(chipAdmiteGrupo('mixto', columnaSeco(['Aseo'], false))).toBe(false);
+    expect(chipAdmiteGrupo('mixto', columnaSeco(['Chocolates'], false))).toBe(false);
+  });
+
+  it('un picker mixto YA NO aparece en Aseo y Comida ni en Hogar', () => {
+    const mixto = columnaSeco(['Hogar', 'Aseo'], false);
+    expect(chipAdmiteGrupo('aseo-comida', mixto)).toBe(false);
+    expect(chipAdmiteGrupo('hogar', mixto)).toBe(false);
+  });
+
+  it('los pickers de una sola sección siguen donde estaban', () => {
+    expect(chipAdmiteGrupo('aseo-comida', columnaSeco(['Aseo'], false))).toBe(true);
+    expect(chipAdmiteGrupo('hogar', columnaSeco(['Hogar'], false))).toBe(true);
+    expect(chipAdmiteGrupo('chocolates', columnaSeco(['Chocolates'], false))).toBe(true);
+  });
+
+  it('Chocolates no cambia: un mixto con chocolate sigue apareciendo ahí', () => {
+    expect(chipAdmiteGrupo('chocolates', columnaSeco(['Hogar', 'Aseo', 'Chocolates'], false))).toBe(true);
+  });
+
+  it('un encargado manual creado desde "Todas" (sin sección) va a Mixto, como en su columna', () => {
+    expect(chipAdmiteGrupo('mixto', columnaSeco([], true))).toBe(true);
+  });
+
+  it('en Mixto se ofrecen las mismas unidades que en Aseo y Hogar (sin chocolate)', () => {
+    expect(tiposDeUnidad(false, 'mixto')).toEqual(tiposDeUnidad(false, 'hogar'));
+    expect(tiposDeUnidad(false, 'mixto')).not.toContain('CH:negra');
   });
 });

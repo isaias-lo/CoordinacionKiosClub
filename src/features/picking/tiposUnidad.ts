@@ -22,7 +22,7 @@ export function seccionEfectiva(guardada: SectionFilter, esTabCongelados: boolea
 
 /** Los chips de sección que ofrece cada pestaña. */
 export function seccionesDeLaPestana(esTabCongelados: boolean): SectionFilter[] {
-  return esTabCongelados ? ['all'] : ['all', 'aseo-comida', 'hogar', 'chocolates'];
+  return esTabCongelados ? ['all'] : ['all', 'aseo-comida', 'hogar', 'chocolates', 'mixto'];
 }
 
 /** Las claves que puede ofrecer una pestaña. El chocolate se abre en sus dos cajas (`subtipoCaja.ts`);
@@ -68,7 +68,7 @@ export function tiposDeUnidad(
     // Antes ofrecía un único 'CH', que no distinguía cuál era y dejaba a Bodega pidiendo medidas
     // a una caja que no las tiene.
     if (seccion === 'chocolates') return t === 'P' || esChocolate;
-    if (seccion === 'aseo-comida' || seccion === 'hogar') return !esChocolate;
+    if (seccion === 'aseo-comida' || seccion === 'hogar' || seccion === 'mixto') return !esChocolate;
     return true;
   };
   return ORDEN.filter(t => permitido(t) || (conteos[t] ?? 0) > 0);
@@ -92,6 +92,21 @@ export function primeraUnidadPorDefecto(seccion: SectionFilter): ClaveUnidad {
 
 /** Las columnas de la vista "Todas" de Seco. Congelados tiene su propia pestaña. */
 export type ColumnaSeco = 'aseo-comida' | 'hogar' | 'chocolates' | 'mixto';
+
+/**
+ * ¿Un grupo aparece bajo este chip de Seco? Se decide por su columna de "Todas" (`columnaSeco`),
+ * para que el chip y la columna nunca se contradigan.
+ *
+ * - **Mixto**: solo los pickers de la columna Mixto — el chip ES esa columna (30/09).
+ * - **Aseo y Comida / Hogar**: nunca un mixto; esos se trabajan aparte, en Mixto. Antes aparecían
+ *   en los dos chips y cada pallet quedaba en la sección desde donde se agregaba.
+ * - **Chocolates**: sin cambios — un picker mixto con operaciones de chocolate sigue ahí.
+ */
+export function chipAdmiteGrupo(chip: SectionFilter, columna: ColumnaSeco): boolean {
+  if (chip === 'mixto') return columna === 'mixto';
+  if (chip === 'aseo-comida' || chip === 'hogar') return columna !== 'mixto';
+  return true;
+}
 
 /**
  * En qué columna de "Todas" (Seco) cae una tarjeta.

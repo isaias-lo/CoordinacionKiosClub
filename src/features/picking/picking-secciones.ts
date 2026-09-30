@@ -7,7 +7,7 @@ import type { SectionFilter, PickingOperation, PalletSlot } from './picking-type
  */
 export type Seccion = Exclude<SectionFilter, 'all'>;
 
-const SECCIONES: readonly Seccion[] = ['aseo-comida', 'hogar', 'chocolates', 'congelados'];
+const SECCIONES: readonly Seccion[] = ['aseo-comida', 'hogar', 'chocolates', 'congelados', 'mixto'];
 
 /** Normaliza un string suelto (p.ej. `slot.section` de la BD) a una `Seccion` válida o `null`. */
 export function normalizarSeccion(raw: string | null | undefined): Seccion | null {
@@ -59,7 +59,30 @@ export function opEnSeccion(categories: string[], section: Seccion): boolean {
   if (section === 'aseo-comida') return cats.has('Aseo') || cats.has('Comida');
   if (section === 'hogar') return cats.has('Hogar');
   if (section === 'chocolates') return cats.has('Chocolates');
+  // Mixto se decide por GRUPO (ver `columnaSeco`), no por operación: dentro de un picker mixto
+  // entran todas sus operaciones de seco que no son chocolate.
+  if (section === 'mixto') return cats.has('Hogar') || cats.has('Aseo') || cats.has('Comida');
   return cats.has('Congelados');
+}
+
+/**
+ * ¿Una unidad de esta sección entra en el filtro? LA regla única que usan la tarjeta (lo que se
+ * ve), su contador, el − (qué se puede borrar), la impresión y su registro. Si cada uno decidiera
+ * por su cuenta pasaría lo del contador de chocolates: algo que existe, pero que un lugar ve y
+ * otro no.
+ *
+ * Mixto (30/09) es la sección de los pickers con Hogar Y Aseo/Comida: sus unidades de seco son
+ * todas del mismo picker, así que entran todas — las marcadas 'mixto', las que se crearon antes
+ * desde Aseo o Hogar y las sin sección. El chocolate y el congelado siguen en su propia sección.
+ */
+export function seccionIncluye(filtro: Seccion, deLaUnidad: Seccion | null): boolean {
+  if (filtro === 'mixto') return deLaUnidad !== 'chocolates' && deLaUnidad !== 'congelados';
+  return deLaUnidad === filtro;
+}
+
+/** `seccionIncluye` sobre una unidad de picking. */
+export function slotEnSeccion(slot: Pick<PalletSlot, 'section' | 'contenido'>, filtro: Seccion): boolean {
+  return seccionIncluye(filtro, seccionDeSlot(slot));
 }
 
 /** Recorta las operaciones a las de una sección. Con 'all' devuelve todas (sin copiar). */
@@ -84,6 +107,7 @@ const SECCION_A_CATEGORIAS: Record<Seccion, string[]> = {
   hogar: ['Hogar'],
   chocolates: ['Chocolates'],
   congelados: ['Congelados'],
+  mixto: ['Hogar', 'Aseo'],
 };
 
 /**
