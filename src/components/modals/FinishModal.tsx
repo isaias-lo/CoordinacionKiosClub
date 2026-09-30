@@ -8,7 +8,7 @@ import { sheetsRegionesWrite } from '../../features/despacho/regiones/utils/shee
 import type { HistoryEntry } from '../../types';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { logActividad } from '@/lib/actividad';
-import { leerResultadoDelCruce } from '@/features/despacho/shared/avisarCruce';
+import { leerResultadoDelCruce, AVISO_CRUCE } from '@/features/despacho/shared/avisarCruce';
 import { fechaChile } from '@/lib/fechaChile';
 
 // Hoy en horario LOCAL (Chile). NO toISOString() (da UTC → de tarde rueda al día siguiente).
@@ -95,7 +95,10 @@ export function FinishModal({ open, onClose }: Props) {
       }))
       .then(leerResultadoDelCruce)
       .then(aviso => { if (aviso) showToast(aviso, '#D97706'); })
-      .catch(() => {});
+      // El `catch` vacío se tragaba el caso en que la cadena ni llega al sync — y entonces la hoja
+      // se queda sin el día sin que nadie se entere. El registro ya está guardado; lo que falta es
+      // el informe, y eso se dice.
+      .catch(() => showToast(AVISO_CRUCE, '#D97706'));
     showToast('✓ Guardado · enviando a Sheets…', '#16A34A');
 
     dispatch({ type: 'SET_REGISTRADO', payload: true });

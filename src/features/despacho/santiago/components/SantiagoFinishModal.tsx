@@ -8,7 +8,7 @@ import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { logActividad } from '@/lib/actividad';
-import { leerResultadoDelCruce } from '@/features/despacho/shared/avisarCruce';
+import { leerResultadoDelCruce, AVISO_CRUCE } from '@/features/despacho/shared/avisarCruce';
 import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
 
 interface Props { open: boolean; onClose: () => void; }
@@ -67,7 +67,10 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
       }))
       .then(leerResultadoDelCruce)
       .then(aviso => { if (aviso) showToast(aviso, '#D97706'); })
-      .catch(() => {});
+      // El `catch` vacío se tragaba el caso en que la cadena ni llega al sync — y entonces la hoja
+      // se queda sin el día sin que nadie se entere. El registro ya está guardado; lo que falta es
+      // el informe, y eso se dice.
+      .catch(() => showToast(AVISO_CRUCE, '#D97706'));
 
     // 2. Marcar como terminado (badge COMPLETADO en el header).
     localStorage.setItem(SANTIAGO_TERMINADO_KEY,

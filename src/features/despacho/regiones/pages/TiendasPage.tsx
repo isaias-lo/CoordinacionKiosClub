@@ -76,6 +76,7 @@ import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBo
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaChile } from '@/lib/fechaChile';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
+import { leerResultadoDelCruce } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { STORE_CARD_BADGE as SCB, claseTarjetaTienda, claseCodigoTienda, claseEtiquetaTerminada } from '../../shared/storeCardStyles';
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
@@ -342,13 +343,17 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const hoyISO = fechaChile();
     try {
       await sheetsRegionesWrite({ [nombre]: lista }, 'Luis Fica', fechaDespachoBodega(state.fechaDespacho), hoyISO);
-      await fetch('/api/sync-despacho', {
+      // La respuesta SE LEE. Antes se tiraba, así que una tienda podía quedar registrada en la base
+      // y ausente de la hoja sin que nadie se enterara — y el botón decía «OK registrada» igual.
+      const resCruce = await fetch('/api/sync-despacho', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cruce: hoyISO }), keepalive: true,
       });
+      const avisoCruce = await leerResultadoDelCruce(resCruce);
       registroTiendas.marcar(cod);
       logActividad({ accion: 'registrar_tienda', fuente: 'nacional', tiendaCod: cod, tiendaNombre: nombre });
-      showToast(`OK ${cod} registrada`, '#16A34A');
+      // La tienda SÍ quedó registrada — eso no se discute. Lo que puede haber fallado es el informe.
+      showToast(avisoCruce ?? `OK ${cod} registrada`, avisoCruce ? '#D97706' : '#16A34A');
       return true;
     } catch (e) {
       console.error('[registrar-tienda]', e);
