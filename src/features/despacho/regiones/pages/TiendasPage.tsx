@@ -69,6 +69,9 @@ import { combinarEnLista } from '../../shared/combinarEnLista';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
 import { avisoDeUnidad } from '../../shared/avisoUnidadEscaneada';
+import { useEscaneoBodega } from '../../shared/useEscaneoBodega';
+import { enfocarPeso, tarjetaVisible } from '../../shared/useLectorBodega';
+import { useWakeLock } from '@/hooks/useWakeLock';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaChile } from '@/lib/fechaChile';
@@ -403,9 +406,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const [resaltado,  setResaltado]  = useState<number | null>(null);
   useEffect(() => {
     if (focoPallet == null) return;
-    const el = document.getElementById(`pallet-card-${focoPallet}`);
+    // [Handheld] La que se ve: el formulario está dibujado dos veces (panel y hoja del teléfono).
+    const el = tarjetaVisible(focoPallet);
     if (!el) return;
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // [Handheld] Escanear es para pesar: el cursor queda en Peso de esa tarjeta.
+    enfocarPeso(el);
     const id = focoPallet;
     setFocoPallet(null);
     setResaltado(id);
@@ -1249,6 +1255,39 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const SLOT_TIPO_TO_PKG: Record<string, TipoPaquete> = { P: 'pallet', B: 'box', C: 'contenedor', CH: 'chocolate' };
   // Estado del diálogo "Nuevo / Preexistente"
   const [dialogPkg, setDialogPkg] = useState<TipoPaquete | null>(null);
+  // [Handheld] Número o código con que abrir el diálogo directo en "preexistente" (etiqueta escaneada
+  // de otro día). Se borra al cerrar el diálogo.
+  const [dialogRef, setDialogRef] = useState<string | null>(null);
+  useEffect(() => { if (!dialogPkg) setDialogRef(null); }, [dialogPkg]);
+
+  // [Handheld] La etiqueta leída con el lector, esté donde esté el cursor. Ver useEscaneoBodega.ts.
+  useEscaneoBodega({
+    activo: !dialogPkg,
+    slotsPorTienda: pickingSlotsFull,
+    avisoDe: p => avisoDeUnidad(itemDeLaUnidad(dispatchData[p.claveTienda] ?? [], p.slot.id)),
+    irA: p => {
+      const tienda = TIENDAS[p.claveTienda];
+      if (!tienda) return false;
+      setSearch('');
+      setFocoPallet(p.slot.id);
+      dispatch({ type: 'SET_TIENDA', payload: tienda.name });
+      catchUp();
+      return true;
+    },
+    ofrecerPreexistente: (pallet, codigo) => {
+      const tienda = Object.values(TIENDAS).find(t => t.cod === pallet.store_cod);
+      if (!tienda) return false;
+      setSearch('');
+      dispatch({ type: 'SET_TIENDA', payload: tienda.name });
+      catchUp();
+      setDialogPkg(SLOT_TIPO_TO_PKG[pallet.tipo ?? 'P'] ?? 'pallet');
+      setDialogRef(codigo);
+      return true;
+    },
+    showToast,
+  });
+  // [Handheld] Entre un pallet y otro la pantalla no se apaga mientras haya una tienda abierta.
+  useWakeLock(!!selectedTienda);
   const PKG_LABEL: Record<TipoPaquete, string> = { pallet: 'Pallet', box: 'Bulto', contenedor: 'Contenedor', chocolate: 'Chocolate', adquisicion: 'Adquisición', 'web-retiro': 'Web / retiro' };
   const updateRow = (id: string, field: keyof FormRow, value: string) => {
     // `tocada` marca que esto es de la persona: desde acá, nada remoto lo pisa.
@@ -1961,7 +2000,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               const rowLabel = labelDeFila(row, orderedRows);
               if (row.saved && row.savedItem) {
                 return (
-                  <div key={row.id} className="bg-white rounded-lg border-2 p-2" style={{ borderColor: rowColor.border }}>
+                  // [Handheld] El ancla también en la tarjeta guardada: escanear una unidad ya pesada tiene
+                  // que llegar a ella y mostrarla, no abrir la tienda y quedarse arriba.
+                  <div key={row.id} id={row.pickingSlotId != null ? `pallet-card-${row.pickingSlotId}` : undefined}
+                    className={`bg-white rounded-lg border-2 p-2 ${row.pickingSlotId != null && row.pickingSlotId === resaltado ? 'ring-2 ring-[#1E40AF] ring-offset-2' : ''}`}
+                    style={{ borderColor: rowColor.border }}>
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center gap-1.5">
                         {(row.pkg === 'box' || row.pkg === 'chocolate') && (
@@ -2127,6 +2170,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               const esResaltada = row.pickingSlotId != null && row.pickingSlotId === resaltado;
               return (
                 <div key={row.id} id={row.pickingSlotId != null ? `pallet-card-${row.pickingSlotId}` : undefined}
+                  data-tarjeta-bodega="" data-slot={row.pickingSlotId ?? undefined}
                   className={`relative bg-white rounded-lg border px-2 py-2 transition-shadow ${esResaltada ? 'ring-2 ring-[#1E40AF] ring-offset-2' : ''}`}
                   style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isContRow ? 'rgba(107,33,168,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
                   {row.pickingSlotId != null && <PresenciaBadge viendo={viendoPorSlot.get(row.pickingSlotId)} contexto="tarjeta" />}
@@ -2186,14 +2230,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                         Peso{cajaDeFila === 'negra' && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(TARA_CAJA_NEGRA).replace('.', ',')} kg de caja</span>}
                       </label>
                       <input type="text" value={row.peso} onChange={e => updateRow(row.id, 'peso', limpiarTecleo(e.target.value))}
-                        onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="kg" inputMode="decimal"
+                        onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="kg" inputMode="decimal" data-campo="peso"
                         className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                     </div>
                     {!isChocRow && !isContRow && (
                       <div>
                         <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Alto</label>
                         <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)}
-                          onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="cm" inputMode="decimal"
+                          onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="cm" inputMode="decimal" data-campo="alto"
                           max={row.pkg === 'pallet' ? MAX_ALTO_CM : undefined}
                           className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                         {row.pkg === 'pallet' && excedeAltoMax(parseFloat(row.alto) || 0) && (
@@ -2207,13 +2251,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       <div>
                         <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Ancho</label>
                         <input type="number" value={row.ancho} onChange={e => updateRow(row.id, 'ancho', e.target.value)}
-                          onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="cm" inputMode="decimal"
+                          onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="cm" inputMode="decimal" data-campo="ancho"
                           className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                       </div>
                       <div>
                         <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Largo</label>
                         <input type="number" value={row.largo} onChange={e => updateRow(row.id, 'largo', e.target.value)}
-                          onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="cm" inputMode="decimal"
+                          onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="cm" inputMode="decimal" data-campo="largo"
                           className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
                       </div>
                     </div>
@@ -2264,6 +2308,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       }
                       saveRow(row);
                     }}
+                    data-accion="guardar"
                     className="w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer transition-all"
                     style={{ background: row.pkg === 'pallet' ? '#2563EB' : isContRow ? '#6B21A8' : isChocRow ? '#92400E' : '#D97706' }}>
                     {row.mergeReopened ? botonReapertura(row.mergeMotivo ?? 'union') : '+ Agregar'}
@@ -2460,6 +2505,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               tipoLabel={PKG_LABEL[dialogPkg]}
               storeCod={TIENDAS[selectedTienda]?.cod ?? ''}
               date={fechaISOLocal()}
+              refInicial={dialogRef ?? undefined}
               onClose={() => setDialogPkg(null)}
               onNuevo={(cantidad) => { const p = dialogPkg; setDialogPkg(null); void (async () => { for (let i = 0; i < cantidad; i++) await addFormRow(p, undefined, i); })(); }}
               onExistente={(slot, yaEnCarga) => {
@@ -2531,7 +2577,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         {/* Search */}
         <div className="px-2 py-2 bg-bg border-b border-border flex-shrink-0">
           <div className="relative">
-            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)} data-buscador-bodega=""
               // La pistola de radiofrecuencia escribe el código y manda Enter, igual que un teclado.
               // Con esto, escanear termina el salto sin que nadie tenga que tocar el resultado.
               onKeyDown={e => { if (e.key === 'Enter' && palletEncontrado) { e.preventDefault(); saltarAPallet(); } }}

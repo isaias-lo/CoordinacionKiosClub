@@ -236,3 +236,16 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); 
     border: 1px solid #ddd !important;
   }
 }
+
+/* Handheld de Bodega: en pantallas táctiles, los campos de la tarjeta y su botón de guardar con
+   al menos 48 px de alto y el número más grande. Se teclea con el pulgar, a veces con guantes, y
+   la pantalla es de 4 a 5 pulgadas. En escritorio (mouse) la tarjeta queda como estaba. */
+@media (pointer: coarse) {
+  [data-tarjeta-bodega] input[data-campo] {
+    min-height: 48px;
+    font-size: 18px;
+  }
+  [data-tarjeta-bodega] [data-accion="guardar"] {
+    min-height: 48px;
+  }
+}

@@ -8,6 +8,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { useTheme } from '@/context/ThemeContext';
 import { MODULE_GROUPS } from '@/config/routes';
 import { Card } from '@/components/ui/card';
+import { ProbarLector } from '@/features/despacho/shared/ProbarLector';
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 function getInitials(name: string): string {
@@ -492,6 +493,10 @@ export default function PerfilPage() {
             </div>
           ))}
         </Card>
+
+        {/* ── Lector de códigos ── Para configurar la handheld de Bodega. */}
+        <SectionTitle>Probar lector de códigos</SectionTitle>
+        <ProbarLector />
 
         {/* ── Sesión ── */}
         <SectionTitle>Sesión</SectionTitle>
