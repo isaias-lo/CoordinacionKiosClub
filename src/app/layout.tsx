@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { Providers } from './providers';
 import { AvisoVersionNueva } from '@/components/AvisoVersionNueva';
+import { EstadoConexion } from '@/components/EstadoConexion';
+import { pantallasDeInicio } from '@/lib/splash';
 import '../index.css';
 
 // Auth-protected app — disable static prerendering for all routes
@@ -21,6 +23,10 @@ export const metadata: Metadata = {
     // hay ningún `env(safe-area-inset-*)` en el CSS que lo compense: el título del encabezado
     // quedaría tapado por la hora en cualquier iPhone con notch.
     statusBarStyle: 'black',
+
+    // Sin esto, la app instalada en iPhone se abre con una pantalla en blanco de varios segundos
+    // mientras carga: iOS no tiene splash propia como Android. Ver src/lib/splash.ts.
+    startupImage: pantallasDeInicio(),
   },
 
   // `appleWebApp.capable` hace que Next emita el nombre moderno, `mobile-web-app-capable`, y solo
@@ -59,6 +65,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
           {/* Avisa si esta pestaña quedó con una versión vieja (arreglos publicados durante el día) */}
           <AvisoVersionNueva />
+          {/* Sin señal, o con trabajo guardado sin enviar. No dibuja nada cuando no hay nada que decir. */}
+          <EstadoConexion />
         </Providers>
       </body>
     </html>

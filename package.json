@@ -15,6 +15,7 @@
     "sync": "node scripts/run.cjs sync",
     "pr": "node scripts/run.cjs pr",
     "nueva-tarea": "node scripts/run.cjs nueva-tarea",
+    "splash": "node scripts/generar-splash.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

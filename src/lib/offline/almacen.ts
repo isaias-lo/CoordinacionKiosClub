@@ -116,6 +116,22 @@ export async function guardar<P>(
  * ella; mandarlas al revés registra una impresión de pallets que todavía no existen.
  */
 export async function listar<P>(modulo: ModuloOffline): Promise<ItemCola<P>[]> {
+  return (await listarTodos<P>()).filter(i => i.modulo === modulo);
+}
+
+/**
+ * Todos los ítems de los tres módulos, del más viejo al más nuevo, con UNA sola lectura.
+ *
+ * Existe para el contador global (`src/lib/offline/resumen.ts`), que necesita los tres a la vez y
+ * corre cada 15 segundos en todas las pantallas. Llamar a `listar` tres veces abría la base tres
+ * veces y traía TODO el contenido tres veces — y en recepción el payload son hasta ocho fotos en
+ * data URL, o sea varios MB de texto que se parsean enteros solo para contarlos.
+ *
+ * Sigue trayendo los payloads, que para contar sobran; sacarlos pide un índice por módulo, y eso
+ * es subir la versión de una base que ya está en los dispositivos. Cuando haga falta, ese es el
+ * paso; por ahora alcanza con leer una vez en vez de tres.
+ */
+export async function listarTodos<P>(): Promise<ItemCola<P>[]> {
   const db = await abrirDB();
   const deIDB = db
     ? await new Promise<ItemCola<P>[]>(resolve => {
@@ -130,9 +146,7 @@ export async function listar<P>(modulo: ModuloOffline): Promise<ItemCola<P>[]> {
       })
     : [];
   const delRespaldo = leerRespaldo() as ItemCola<P>[];
-  return [...deIDB, ...delRespaldo]
-    .filter(i => i.modulo === modulo)
-    .sort((a, b) => a.createdAt - b.createdAt);
+  return [...deIDB, ...delRespaldo].sort((a, b) => a.createdAt - b.createdAt);
 }
 
 export async function eliminar(id: string): Promise<void> {
