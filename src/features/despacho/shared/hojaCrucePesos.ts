@@ -14,10 +14,25 @@
 //   · Se puede agregar una columna a mano —una nota, un responsable— y el sistema NO la pisa:
 //     al actualizar una fila solo toca las celdas que conoce y deja el resto como estaba.
 //
-// Lo único que no se puede es RENOMBRAR una columna del sistema: ahí deja de encontrarse. Por eso
-// el nombre se compara sin acentos ni mayúsculas, para que «CODIGO» y «Código» sigan calzando.
+// Renombrar una columna del sistema tampoco rompe ya, si el nombre nuevo está en `ALIAS_COLUMNA`.
+// Pasó el 30/09: alguien renombró TOTAL BODEGA a «TOTAL Fisico», que describe mejor lo que hay
+// adentro. Sin alias, la siguiente escritura habría AGREGADO una columna TOTAL BODEGA vacía al
+// final y «TOTAL Fisico» se habría quedado congelada con los datos de esa noche, sin que nadie lo
+// notara hasta comparar dos filas a mano. El nombre se compara sin acentos ni mayúsculas, para que
+// «CODIGO» y «Código» sigan calzando.
 //
 // El precedente en este repositorio son ENTREGA/TIENDA y RECEPCIÓN/TIENDA, por nombre desde #212.
+//
+// ── % DIF SE ESCRIBE COMO FÓRMULA ──────────────────────────────────────────────────────────────
+//
+// La columna llevaba un número calculado acá. En la hoja le pusieron a mano `=(E2-D2)/D2` y la
+// arrastraron hasta abajo, que es lo correcto: así el porcentaje sigue vivo si alguien corrige un
+// peso en la celda, y la celda con formato de porcentaje muestra la fracción como corresponde
+// (el número que escribía el sistema, `-16,2`, en una celda con ese formato se vería «-1620%»).
+//
+// El problema es que la siguiente escritura la habría pisado con el número otra vez. Así que ahora
+// la fórmula la escribe el sistema — con las LETRAS que esas dos columnas tengan hoy en la hoja,
+// no con una E y una D fijas, porque acá las columnas se pueden mover de lugar.
 
 import { TIPOS_CRUCE, refsParaCelda, pctDiferencia, kgDiferencia, type FilaCruce } from './cruceDePesos';
 
@@ -57,14 +72,80 @@ export function normalizarColumna(nombre: string): string {
     .replace(/\s+/g, ' ');
 }
 
-/** Dónde está cada columna en la hoja REAL. `-1` si esa columna no existe. */
+/**
+ * Nombres que la gente le puso a una columna del sistema y que también valen.
+ *
+ * La llave va ya normalizada (sin acentos, en mayúsculas), así que «TOTAL Físico» entra por la
+ * misma puerta que «TOTAL FISICO».
+ */
+export const ALIAS_COLUMNA: Record<string, string> = {
+  'TOTAL FISICO': 'TOTAL BODEGA',
+};
+
+/**
+ * Dónde está cada columna del sistema en la hoja REAL, resolviendo los alias.
+ *
+ * Si la hoja tuviera el nombre nuevo Y el viejo, manda el que aparezca primero — misma regla que
+ * para un nombre repetido.
+ */
 export function indicesDeEncabezado(encabezado: string[]): Record<string, number> {
   const out: Record<string, number> = {};
   encabezado.forEach((c, i) => {
-    const k = normalizarColumna(c);
-    if (k && !(k in out)) out[k] = i;   // ante un nombre repetido, manda el primero
+    const bruto = normalizarColumna(c);
+    if (!bruto) return;
+    const k = ALIAS_COLUMNA[bruto] ?? bruto;
+    if (!(k in out)) out[k] = i;   // ante un nombre repetido, manda el primero
   });
   return out;
+}
+
+/** `A`, `B`, … `Z`, `AA`. La letra de una columna de Sheets a partir de su índice 0-based. */
+export function letraDeColumna(indice: number): string {
+  if (!Number.isInteger(indice) || indice < 0) return '';
+  let n = indice, letra = '';
+  do {
+    letra = String.fromCharCode(65 + (n % 26)) + letra;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return letra;
+}
+
+/**
+ * La primera fila de un rango como el que devuelve `append`: `'CRUCE PESOS'!A60:P62` → `60`.
+ *
+ * Se lee del rango y NO se calcula sumando al largo de la hoja: la planilla tenía filas al final
+ * con la fórmula arrastrada y ningún dato, así que «la última fila» depende de a qué se le llame
+ * dato — y si la cuenta se corre una fila, la fórmula queda apuntando a la de al lado.
+ */
+export function primeraFilaDe(rango?: string | null): number | null {
+  const m = /![A-Z]+(\d+)/.exec(String(rango ?? ''));
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isInteger(n) && n >= 2 ? n : null;
+}
+
+/**
+ * La fórmula de `% DIF` para UNA fila, con las letras que TOTAL BODEGA y TOTAL ODOO tengan hoy.
+ *
+ * Es la misma que pusieron a mano en la hoja: `=(E2-D2)/D2`. Se arma con las letras reales porque
+ * esta hoja se escribe por nombre y las columnas se pueden mover; dejar la E y la D fijas
+ * significaría que el día que alguien corra una columna, el porcentaje pasa a calcular otra cosa.
+ *
+ * Sin separadores de argumentos a propósito: una fórmula con `,` o `;` depende del idioma de la
+ * planilla, y esta no tiene ninguno.
+ *
+ * Devuelve `null` si falta alguna de las dos columnas o la fila no es válida; quien llama escribe
+ * entonces el número, como antes.
+ */
+export function formulaPctDif(encabezado: string[], filaExcel: number): string | null {
+  if (!Number.isInteger(filaExcel) || filaExcel < 2) return null;
+  const idx = indicesDeEncabezado(encabezado);
+  const iOdoo = idx[normalizarColumna('TOTAL ODOO')];
+  const iBodega = idx[normalizarColumna('TOTAL BODEGA')];
+  if (iOdoo === undefined || iBodega === undefined) return null;
+  const bodega = `${letraDeColumna(iBodega)}${filaExcel}`;
+  const odoo = `${letraDeColumna(iOdoo)}${filaExcel}`;
+  return `=(${bodega}-${odoo})/${odoo}`;
 }
 
 export interface DatosFila {
@@ -130,11 +211,16 @@ export function valoresDeFila(d: DatosFila): Record<string, string | number> {
  *
  * Una columna del sistema que no exista en la hoja simplemente no se escribe: es preferible a
  * desplazar todo lo demás para hacerle lugar.
+ *
+ * `filaExcel` es el número de fila REAL en la planilla (1-based, con el encabezado en la 1). Si se
+ * pasa, `% DIF` se escribe como FÓRMULA en vez de como número — ver la cabecera. Sin pesar sigue
+ * quedando VACÍO: la fórmula sobre una celda vacía daría −100%, que se lee como «no vino nada».
  */
 export function aFilaPosicional(
   valores: Record<string, string | number>,
   encabezado: string[],
   filaPrevia: (string | number)[] = [],
+  filaExcel?: number,
 ): (string | number)[] {
   const idx = indicesDeEncabezado(encabezado);
   const fila: (string | number)[] = [];
@@ -144,6 +230,12 @@ export function aFilaPosicional(
     const i = idx[normalizarColumna(nombre)];
     if (i === undefined) continue;
     fila[i] = valor;
+  }
+
+  const iPct = idx[normalizarColumna('% DIF')];
+  if (iPct !== undefined && filaExcel !== undefined && fila[iPct] !== '') {
+    const f = formulaPctDif(encabezado, filaExcel);
+    if (f) fila[iPct] = f;
   }
   return fila;
 }

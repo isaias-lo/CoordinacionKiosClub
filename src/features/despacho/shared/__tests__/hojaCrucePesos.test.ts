@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ENCABEZADO_CRUCE, valoresDeFila, aFilaPosicional, indicesDeEncabezado,
-  normalizarColumna, llaveDeFila,
+  normalizarColumna, llaveDeFila, letraDeColumna, formulaPctDif, primeraFilaDe,
 } from '../hojaCrucePesos';
 import type { FilaCruce } from '../cruceDePesos';
 
@@ -154,5 +154,145 @@ describe('llaveDeFila — lo que evita duplicar al registrar dos veces', () => {
   it('distinto día o distinta tienda, distinta llave', () => {
     expect(llaveDeFila('28/09/2026', '24SPP')).not.toBe(llaveDeFila('29/09/2026', '24SPP'));
     expect(llaveDeFila('28/09/2026', '24SPP')).not.toBe(llaveDeFila('28/09/2026', '31TLC'));
+  });
+});
+
+// ── Lo que pasó el 30/09 en la planilla de verdad ──────────────────────────────────────────────
+//
+// Dos cambios que hizo una persona a mano y que el sistema tenía que aprender a respetar:
+// renombraron TOTAL BODEGA a «TOTAL Fisico», y le pusieron a «% DIF» la fórmula `=(E2-D2)/D2`
+// arrastrada hasta el final. Además movieron las cuatro columnas de totales al principio.
+
+/** El encabezado REAL de la hoja al 30/09/2026, leído de la planilla. */
+const HOJA_REAL = [
+  'FECHA', 'CÓDIGO', 'TIENDA', 'TOTAL ODOO', 'TOTAL Fisico', '% DIF', 'KG DIF',
+  'REF COMIDA', 'KG COMIDA', 'REF ASEO', 'KG ASEO', 'REF HOGAR', 'KG HOGAR',
+  'REF CHOCOLATE', 'KG CHOCOLATE', 'ACTUALIZADO',
+];
+
+describe('ALIAS_COLUMNA — renombraron TOTAL BODEGA a «TOTAL Fisico»', () => {
+  it('la encuentra igual, en la posición nueva', () => {
+    const idx = indicesDeEncabezado(HOJA_REAL);
+    expect(idx[normalizarColumna('TOTAL BODEGA')]).toBe(4);   // la E
+  });
+
+  it('SIN el alias la columna quedaba huérfana — esto es lo que se evitó', () => {
+    // El escritor agrega al final las columnas del sistema que no encuentra. Sin alias habría
+    // nacido una TOTAL BODEGA vacía en la Q, y «TOTAL Fisico» se quedaba congelada con los datos
+    // de esa noche sin que nadie lo notara.
+    const faltantes = ENCABEZADO_CRUCE.filter(
+      c => indicesDeEncabezado(HOJA_REAL)[normalizarColumna(c)] === undefined);
+    expect(faltantes).toEqual([]);
+  });
+
+  it('con acento también, y sin importar mayúsculas', () => {
+    for (const nombre of ['TOTAL Físico', 'total fisico', '  TOTAL   FISICO  ']) {
+      const idx = indicesDeEncabezado(['FECHA', nombre]);
+      expect(idx[normalizarColumna('TOTAL BODEGA')], nombre).toBe(1);
+    }
+  });
+
+  it('si la hoja tuviera los dos nombres, manda el primero', () => {
+    const idx = indicesDeEncabezado(['TOTAL BODEGA', 'TOTAL Fisico']);
+    expect(idx[normalizarColumna('TOTAL BODEGA')]).toBe(0);
+  });
+});
+
+describe('letraDeColumna', () => {
+  it('las de siempre', () => {
+    expect([0, 3, 4, 5, 25].map(letraDeColumna)).toEqual(['A', 'D', 'E', 'F', 'Z']);
+  });
+
+  it('pasando la Z', () => {
+    expect([26, 27, 51, 52].map(letraDeColumna)).toEqual(['AA', 'AB', 'AZ', 'BA']);
+  });
+
+  it('un índice inválido no inventa una letra', () => {
+    expect(letraDeColumna(-1)).toBe('');
+    expect(letraDeColumna(1.5)).toBe('');
+  });
+});
+
+describe('formulaPctDif — la misma que pusieron a mano', () => {
+  it('reproduce exactamente `=(E2-D2)/D2`', () => {
+    expect(formulaPctDif(HOJA_REAL, 2)).toBe('=(E2-D2)/D2');
+    expect(formulaPctDif(HOJA_REAL, 59)).toBe('=(E59-D59)/D59');
+  });
+
+  it('USA LAS LETRAS DE HOY, no una E y una D fijas', () => {
+    // Es el punto de que la hoja sea por nombre: el día que alguien mueva una columna, la fórmula
+    // tiene que seguir apuntando a los totales y no a lo que haya quedado en la E.
+    const movida = ['FECHA', 'CÓDIGO', 'TIENDA', 'NOTA', 'TOTAL ODOO', 'TOTAL BODEGA', '% DIF'];
+    expect(formulaPctDif(movida, 7)).toBe('=(F7-E7)/E7');
+  });
+
+  it('sin separadores de argumentos: no depende del idioma de la planilla', () => {
+    expect(formulaPctDif(HOJA_REAL, 2)).not.toMatch(/[,;]/);
+  });
+
+  it('si falta una de las dos columnas no inventa nada', () => {
+    expect(formulaPctDif(['FECHA', 'TOTAL ODOO'], 2)).toBeNull();
+    expect(formulaPctDif(['FECHA', 'TOTAL BODEGA'], 2)).toBeNull();
+  });
+
+  it('la fila 1 es el encabezado: nunca lleva fórmula', () => {
+    expect(formulaPctDif(HOJA_REAL, 1)).toBeNull();
+    expect(formulaPctDif(HOJA_REAL, 0)).toBeNull();
+  });
+});
+
+describe('primeraFilaDe — dónde cayeron las filas nuevas', () => {
+  it('lo saca del rango que devuelve el append', () => {
+    expect(primeraFilaDe("'CRUCE PESOS'!A60:P62")).toBe(60);
+    expect(primeraFilaDe('CRUCE PESOS!A7:P7')).toBe(7);
+  });
+
+  it('sin rango, null — y el que llama escribe el número, como antes', () => {
+    expect(primeraFilaDe(undefined)).toBeNull();
+    expect(primeraFilaDe(null)).toBeNull();
+    expect(primeraFilaDe('')).toBeNull();
+    expect(primeraFilaDe('A60:P62')).toBeNull();
+  });
+
+  it('la fila 1 no vale: es el encabezado', () => {
+    expect(primeraFilaDe("'CRUCE PESOS'!A1:P1")).toBeNull();
+  });
+});
+
+describe('aFilaPosicional con fórmula', () => {
+  const valores = {
+    'FECHA': '28/09/2026', 'CÓDIGO': '02SCL', 'TIENDA': 'San Carlos',
+    'TOTAL ODOO': 561.1, 'TOTAL BODEGA': 470, '% DIF': -16.2, 'KG DIF': -91.1,
+  };
+
+  it('escribe la FÓRMULA en % DIF, en la columna que le toca', () => {
+    const fila = aFilaPosicional(valores, HOJA_REAL, [], 2);
+    expect(fila[5]).toBe('=(E2-D2)/D2');
+  });
+
+  it('los kilos siguen yendo como NÚMERO — solo el porcentaje es fórmula', () => {
+    const fila = aFilaPosicional(valores, HOJA_REAL, [], 2);
+    expect(fila[4]).toBe(470);     // TOTAL Fisico
+    expect(fila[6]).toBe(-91.1);   // KG DIF
+  });
+
+  it('SIN PESAR queda VACÍO, no con la fórmula', () => {
+    // La fórmula sobre una celda vacía da −100%, que se lee como «no vino nada» — la afirmación
+    // que todo este módulo se cuida de no hacer.
+    const sinPesar = { ...valores, 'TOTAL BODEGA': '', '% DIF': '', 'KG DIF': '' };
+    const fila = aFilaPosicional(sinPesar, HOJA_REAL, [], 2);
+    expect(fila[5]).toBe('');
+  });
+
+  it('sin número de fila escribe el número, como antes', () => {
+    // Es el caso de una fila que se va a AGREGAR: todavía no se sabe dónde va a caer.
+    expect(aFilaPosicional(valores, HOJA_REAL, [])[5]).toBe(-16.2);
+  });
+
+  it('una columna agregada a mano se conserva CON su fórmula', () => {
+    const conNota = [...HOJA_REAL, 'REVISADO POR'];
+    const previa = ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '=A2&" ok"'];
+    const fila = aFilaPosicional(valores, conNota, previa, 2);
+    expect(fila[16]).toBe('=A2&" ok"');
   });
 });
