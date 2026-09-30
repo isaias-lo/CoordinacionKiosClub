@@ -3,15 +3,23 @@
 // El bloque CRUCE DE PESOS dentro de la tarjeta de una tienda. Solo dibuja: toda la regla vive en
 // `cruceTienda.ts`, con sus tests.
 //
-// ── VA SOBRE AZUL MARINO ───────────────────────────────────────────────────────────────────────
+// ── TRAE SU PROPIO FONDO ───────────────────────────────────────────────────────────────────────
 //
-// Esto no es un detalle de estilo. La primera versión se dibujó con blancos semitransparentes
-// (`bg-white/70`) y grises suaves, que es lo correcto sobre una superficie clara. Pero el bloque
-// vive DENTRO del encabezado de la tienda, que es navy: cada blanco al 70% se volvió lavanda y
-// cada gris perdió el contraste. Se veía, pero no se leía.
+// Este bloque se rompió DOS VECES por depender de lo que tuviera detrás, así que ya no depende.
 //
-// La regla que queda: este bloque es un PANEL BLANCO SÓLIDO apoyado sobre el navy. Nada de
-// transparencias. El color del estado no tiñe el fondo —eso fue lo que ensució todo— sino que vive
+//   1ª  Se dibujó con blancos semitransparentes (`bg-white/70`) y grises suaves — correcto sobre
+//       una superficie clara. Pero cayó sobre el navy del encabezado: cada blanco al 70% se volvió
+//       lavanda y cada gris perdió contraste. Se veía, pero no se leía.
+//
+//   2ª  Se pasó a panel blanco sólido, que sobre navy quedó impecable… y en la otra pantalla,
+//       donde el fondo es claro, el panel blanco sobre blanco dejó de leerse como panel: flotaba.
+//
+// La conclusión no es "elegir bien el fondo" —eso ya falló dos veces, una por lado— sino que el
+// COMPONENTE SE LO TRAIGA. Va montado sobre su propia base navy, así que se ve idéntico esté donde
+// esté: sobre el encabezado azul la base se funde y no se nota, y sobre blanco da el marco que le
+// faltaba. Un componente que se ve distinto según dónde lo pongan es un componente a medias.
+//
+// El color del estado no tiñe el fondo —eso fue lo que ensució todo la primera vez— sino que vive
 // en tres lugares precisos: la barra de la izquierda, el número de la diferencia, y la franja de
 // la frase final.
 //
@@ -54,13 +62,16 @@ export function CruceDePesosCard({ cruce, items, listo = true }: Props) {
 
   if (!listo) {
     return (
-      <div className="rounded-[10px] bg-white/95 px-3 py-2.5 text-[12px] text-[#6B7280]">
-        Cruce de pesos · cargando los movimientos del día…
-      </div>
+      <Base>
+        <div className="rounded-[10px] bg-white px-3 py-2.5 text-[12px] text-[#6B7280]">
+          Cruce de pesos · cargando los movimientos del día…
+        </div>
+      </Base>
     );
   }
 
   return (
+    <Base>
     <div className="rounded-[10px] overflow-hidden bg-white"
       style={{ borderLeft: `4px solid ${tono.barra}`, boxShadow: '0 2px 10px rgba(0,0,0,0.18)' }}>
 
@@ -124,7 +135,18 @@ export function CruceDePesosCard({ cruce, items, listo = true }: Props) {
         {fraseDeEstado(b)}
       </div>
     </div>
+    </Base>
   );
+}
+
+/**
+ * La base navy sobre la que se apoya el panel.
+ *
+ * Es el mismo `navy.DEFAULT` que usan los encabezados de las dos bodegas: sobre ellos se funde y no
+ * se nota; sobre un fondo claro, le da al panel blanco el marco sin el cual no se lee como panel.
+ */
+function Base({ children }: { children: React.ReactNode }) {
+  return <div className="bg-navy rounded-[12px] p-2">{children}</div>;
 }
 
 function Celda({ rotulo, valor, pie, apagado, color, borde, piePeso }: {
