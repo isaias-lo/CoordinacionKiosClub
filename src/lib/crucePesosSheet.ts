@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import {
   ENCABEZADO_CRUCE, HOJA_CRUCE, COL_LLAVE,
   llaveDeFila, indicesDeEncabezado, aFilaPosicional, normalizarColumna,
+  formulaPctDif, letraDeColumna, primeraFilaDe,
 } from '../features/despacho/shared/hojaCrucePesos';
 
 // Escribir la hoja CRUCE PESOS. Vive acá y no dentro de la ruta para que la carga inicial de días
@@ -93,6 +94,20 @@ export async function escribirCruce(
   const encabezado = (filasHoja[0] ?? []).map(String);
   const idx = indicesDeEncabezado(encabezado);
 
+  // La MISMA hoja, pero con las fórmulas en vez de su resultado. Es de acá que sale `filaPrevia`,
+  // o sea lo que se conserva de una fila al actualizarla.
+  //
+  // Con la lectura formateada, una columna que alguien agregó a mano con una fórmula adentro se
+  // guardaba de vuelta como TEXTO — el resultado de ese momento, congelado — y la fórmula
+  // desaparecía en el próximo registro sin que nadie lo notara. La lectura formateada sigue
+  // haciendo falta para la LLAVE: ahí la fecha tiene que decir «28/09/2026» y no su número de serie.
+  const leidoFormulas = await gs.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: HOJA_CRUCE,
+    valueRenderOption: 'FORMULA',
+  });
+  const filasPrevias = leidoFormulas.data.values ?? filasHoja;
+
   // Las columnas del sistema que la hoja todavía no tiene SE AGREGAN AL FINAL.
   //
   // Antes esto lanzaba `ColumnasRenombradas` sin distinguir dos casos que no son lo mismo:
@@ -134,8 +149,10 @@ export async function escribirCruce(
   for (const v of valores) {
     const llave  = llaveDeFila(String(v[COL_LLAVE[0]]), String(v[COL_LLAVE[1]]));
     const nFila  = existentes.get(llave);
-    const previa = nFila ? (filasHoja[nFila - 1] ?? []).map(x => String(x ?? '')) : [];
-    const fila   = aFilaPosicional(v, encabezado, previa);
+    const previa = nFila ? (filasPrevias[nFila - 1] ?? []).map(x => String(x ?? '')) : [];
+    // La fórmula de `% DIF` necesita el número de fila. Al actualizar se sabe; al agregar todavía
+    // no — lo dice el `append` cuando responde, y recién ahí se escriben (ver más abajo).
+    const fila   = aFilaPosicional(v, encabezado, previa, nFila);
     if (nFila) cambios.push({ range: `${HOJA_CRUCE}!A${nFila}`, values: [fila] });
     else nuevas.push(fila);
   }
@@ -147,13 +164,36 @@ export async function escribirCruce(
     });
   }
   if (nuevas.length) {
-    await gs.spreadsheets.values.append({
+    const res = await gs.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: `${HOJA_CRUCE}!A1`,
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
       requestBody: { values: nuevas },
     });
+    // Las filas nuevas llevan el número en `% DIF`, porque al armarlas no se sabía en qué fila
+    // iban a caer. Ahora sí: lo dice el rango que devuelve el `append`. No se calcula sumando al
+    // largo de la hoja — la planilla tenía filas al final con la fórmula arrastrada y sin datos, y
+    // ahí la cuenta habría dado un número equivocado y la fórmula apuntaría a otra fila.
+    const desdeFila = primeraFilaDe(res.data.updates?.updatedRange);
+    const iPct = idx[normalizarColumna('% DIF')];
+    if (desdeFila && iPct !== undefined) {
+      const letra = letraDeColumna(iPct);
+      const celdas = nuevas
+        .map((fila, k) => ({ fila, n: desdeFila + k }))
+        .filter(({ fila }) => fila[iPct] !== '')
+        .map(({ n }) => ({
+          range: `${HOJA_CRUCE}!${letra}${n}`,
+          values: [[formulaPctDif(encabezado, n) ?? '']],
+        }))
+        .filter(c => c.values[0][0] !== '');
+      if (celdas.length) {
+        await gs.spreadsheets.values.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: { valueInputOption: 'USER_ENTERED', data: celdas },
+        });
+      }
+    }
   }
 
   return { agregadas: nuevas.length, actualizadas: cambios.length, hojaCreada, columnasAgregadas: faltantes };
