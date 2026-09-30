@@ -187,9 +187,38 @@ export function asignar(
   return rutas.filter(r => r.ts.length > 0);
 }
 
-/** Construye Ruta[] desde una asignación patente→tiendas (manual o IA), ordenando cada camión con
- *  `nn`. Solo camiones activos (v.on) con tiendas asignadas. Puro y testeable. Se usa para armar
- *  tanto la ruta manual del coordinador como la propuesta de la IA en la comparación. */
+/**
+ * Construye Ruta[] desde una asignación patente→tiendas (manual o IA), ordenando cada camión con
+ * `nn`. Un camión entra si TIENE TIENDAS ASIGNADAS. Puro y testeable. Se usa para armar tanto la
+ * ruta manual del coordinador como la propuesta de la IA en la comparación.
+ *
+ * ── POR QUÉ YA NO SE FILTRA POR `v.on` (29/09/2026) ─────────────────────────────────────────────
+ *
+ * Filtraba además por `v.on`, y eso dejó al coordinador viendo UNA sola ruta en el mapa con cinco
+ * camiones cerrados. Medido ese día:
+ *
+ *     patente   en_servicio   tiendas asignadas
+ *     TDCV15       true             3        ← la única que se dibujaba
+ *     VRYL52       false            5
+ *     TYKK42       false            4
+ *     PTFZ21       false            3
+ *     VXSX43       false            3
+ *
+ * `v.on` viene de `flota_vehiculos.en_servicio`, y ese campo YA NO ES la verdad de "lo estoy
+ * usando": desde que la selección pasó a ser POR TABLERO (`flota_sel`), `en_servicio` quedó solo
+ * como semilla del primer día. Lo dice el encabezado de `flotaPorTablero.ts`, y `visiblesEnTablero`
+ * —lo que dibuja el tablero— ya lee la selección y no `on`.
+ *
+ * O sea: el tablero mostraba seis camiones y el ruteo reconocía uno. Los dos leían campos distintos
+ * para la misma pregunta.
+ *
+ * El filtro correcto ya estaba acá abajo y es más fuerte que cualquier interruptor: **tener tiendas
+ * asignadas**. Nadie le asigna carga a un camión que no va a usar, y si se la asignó, va.
+ *
+ * Esto además desarma un peligro que estaba documentado en tres comentarios del Enrutador —"el
+ * camión no emite manifiesto porque `rutasDesdeAsignaciones` filtra por `v.on`, y esa carga no
+ * sale"—. Ya no hay nada que filtre carga asignada.
+ */
 export function rutasDesdeAsignaciones(
   asig: Record<string, StoreItem[]>,
   flota: Vehiculo[],
@@ -198,7 +227,6 @@ export function rutasDesdeAsignaciones(
   tiendas: Record<string, TiendaInfo & { v?: string }>,
 ): Ruta[] {
   return flota
-    .filter(v => v.on)
     .map(v => {
       const stores = (asig[v.p] || []).map(s => ({ ...s, _v: tiendas[s.c]?.v || '' }));
       if (!stores.length) return null;
