@@ -42,10 +42,50 @@
  * lo que viva su pestaña. En los datos hay reapariciones a los 13 segundos y a los 49 minutos.
  *
  * Un `id` de `picking_pallets` es una secuencia: no se reutiliza nunca, así que una lápida vieja no
- * puede tapar por error a una unidad distinta. La memoria se va con la pestaña, y el día siguiente
+ * puede tapar por error a una unidad DISTINTA. La memoria se va con la pestaña, y el día siguiente
  * empieza limpio porque el estado se indexa por fecha.
+ *
+ * ── PERO SÍ PUEDE TAPAR A LA MISMA UNIDAD, SI VUELVE (30/09/2026) ───────────────────────────────
+ *
+ * Esa premisa de arriba dejaba fuera un caso: existe un RESTAURAR que revive la misma unidad con
+ * el MISMO id. Y entonces la lápida —que no vence, que viaja a todos los equipos y que nadie
+ * podía quitar— queda encima de algo que existe, para siempre.
+ *
+ * Pasó dos veces el mismo día:
+ *
+ *     16PQA  bulto  borrado 11:15:48  →  RESTAURADO 11:47:48, mismo id 484
+ *     12LAS  pallet borrado 17:39:54  →  restaurado después, mismo id 549
+ *
+ * El coordinador agregó el mismo bulto DOCE veces entre las 15:40 y las 18:29: el peso se guardaba
+ * bien y un segundo después el merge le borraba la tarjeta. No pudo registrar el día.
+ *
+ * Y limpiar el estado compartido no servía: cada pestaña tenía las lápidas en memoria y las volvía
+ * a empujar a los pocos segundos, porque `absorberLapidas` solo sabía SUMAR.
+ *
+ * El archivo ya lo había anticipado, en el comentario de `levantarLapida`: «una lápida que no se
+ * levanta nunca es exactamente el bug contrario al que esto arregla».
+ *
+ * ── LA RED DE SEGURIDAD ────────────────────────────────────────────────────────────────────────
+ *
+ * Arreglar el `restaurar` no alcanza: la próxima puerta que revive un id vuelve a romperlo. Así
+ * que la regla es otra, y no depende de que nadie se acuerde:
+ *
+ *   **si la unidad EXISTE en `picking_pallets`, su lápida no vale.**
+ *
+ * La recarga de picking —que ya corre en los dos espejos con 600 ms de debounce— levanta la lápida
+ * de cada slot que la base le devuelve. Si la unidad está viva, su lápida muere sola, venga de
+ * donde venga. Y se recuerda que se levantó, para que el push de otro equipo no la reinyecte.
  */
 const lapidas = new Set<string>();
+
+/**
+ * Llaves cuya lápida se levantó porque la unidad VOLVIÓ A EXISTIR.
+ *
+ * Sin esto, levantar no servía de nada: `absorberLapidas` recibe la lista del otro equipo —que
+ * todavía la trae— y la volvía a poner. Medido el 30/09: sacar la lápida de la base y verla
+ * volver en segundos, empujada por una pestaña que nadie había recargado.
+ */
+const levantadas = new Set<string>();
 
 /** La llave de una unidad de Picking, en el mismo formato que `stableItemKey`. */
 export function llaveDeSlot(slotId: number): string {
@@ -58,7 +98,9 @@ export function llaveDeSlot(slotId: number): string {
  */
 export function marcarLapida(slotId?: number | null): void {
   if (slotId == null) return;
-  lapidas.add(llaveDeSlot(slotId));
+  const k = llaveDeSlot(slotId);
+  levantadas.delete(k);   // se borró otra vez: deja de estar «resucitada»
+  lapidas.add(k);
 }
 
 /**
@@ -71,7 +113,9 @@ export function marcarLapida(slotId?: number | null): void {
  */
 export function levantarLapida(slotId?: number | null): void {
   if (slotId == null) return;
-  lapidas.delete(llaveDeSlot(slotId));
+  const k = llaveDeSlot(slotId);
+  lapidas.delete(k);
+  levantadas.add(k);      // que el push de otro equipo no la reinyecte
 }
 
 /** ¿Esta llave —la de `stableItemKey`— corresponde a algo que se borró (acá o en otro equipo)? */
@@ -89,13 +133,29 @@ export function lapidasComoLista(): string[] {
   return [...lapidas];
 }
 
+/**
+ * La unidad existe en `picking_pallets`, así que su lápida no vale. Lo llama la recarga de picking
+ * de los dos espejos, con cada slot que la base devuelve.
+ *
+ * Es la red que hace que esto no dependa de acordarse: no importa por qué puerta haya vuelto la
+ * unidad —restaurar, revertir, o una que todavía no existe— si está viva, la lápida muere.
+ */
+export function levantarLapidasDeSlotsVivos(ids: Iterable<number>): void {
+  for (const id of ids) levantarLapida(id);
+}
+
 /** Incorpora las lápidas que trae un remoto. Solo llaves de slot: un id de slot no se reutiliza. */
 export function absorberLapidas(llaves: unknown): void {
   if (!Array.isArray(llaves)) return;
-  for (const k of llaves) if (typeof k === 'string' && k.startsWith('slot:')) lapidas.add(k);
+  for (const k of llaves) {
+    // Una lápida que YA se levantó no vuelve a entrar. El otro equipo todavía la trae porque
+    // nadie recargó su pestaña; acá ya se sabe que la unidad existe.
+    if (typeof k === 'string' && k.startsWith('slot:') && !levantadas.has(k)) lapidas.add(k);
+  }
 }
 
 /** Solo para tests: vacía el registro. */
 export function _limpiarLapidas(): void {
   lapidas.clear();
+  levantadas.clear();
 }

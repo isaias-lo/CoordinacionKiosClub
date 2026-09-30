@@ -76,6 +76,7 @@ import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBo
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaChile } from '@/lib/fechaChile';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
+import { levantarLapidasDeSlotsVivos } from '../../shared/lapidasBorrado';
 import { actualizarSlotPicking, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
 import { leerResultadoDelCruce } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
@@ -671,6 +672,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         if (!full[clave]) full[clave] = [];
         full[clave].push(slot);
       }
+      // [Lápidas] Todo lo que la base acaba de devolver EXISTE, así que su lápida no vale. Mismo
+      // cambio y mismo porqué que en RM/Costa — ver la cabecera de `lapidasBorrado`.
+      levantarLapidasDeSlotsVivos(Object.values(full).flat().map(x => x.id));
       setPickingSlotsFull(full);
     };
 
