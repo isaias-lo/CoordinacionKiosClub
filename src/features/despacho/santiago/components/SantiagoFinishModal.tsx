@@ -9,6 +9,7 @@ import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { logActividad } from '@/lib/actividad';
 import { leerResultadoDelCruce } from '@/features/despacho/shared/avisarCruce';
+import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
 
 interface Props { open: boolean; onClose: () => void; }
 
@@ -41,10 +42,10 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
   // Fecha de ARMADO = HOY en horario LOCAL (Chile). NO usar toISOString() (da fecha UTC → de
   // tarde en Chile rueda al día siguiente y el registro salía con la fecha de mañana).
   const todayISO = todayStr();
-  const fechaDespacho = state.fechaDespacho ?? (() => {
-    const d = new Date(); d.setDate(d.getDate() + 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  })();
+  // LA MISMA funcion que usa el boton por tienda. De esta fecha sale el `stamp` del id de cada
+  // fila, y de que los ids coincidan depende que registrar una tienda y despues el dia entero no
+  // duplique nada. Ver `fechaDespachoBodega`.
+  const fechaDespacho = fechaDespachoBodega(state.fechaDespacho);
 
   const finish = async () => {
     setSaving(true);

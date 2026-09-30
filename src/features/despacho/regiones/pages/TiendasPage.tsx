@@ -30,6 +30,10 @@ import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
 import { pkgCodeNacional } from '../../shared/tipoCode';
 import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
+import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
+import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';
+import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
+import { sheetsRegionesWrite } from '../utils/sheetsRegiones';
 import { useCruceDelDia } from '@/features/despacho/shared/useCruceDelDia';
 import { veElCruce } from '@/features/despacho/shared/cruceTienda';
 import { useAuth } from '@/components/AuthProvider';
@@ -316,7 +320,39 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const { profile } = useAuth();
   const verCruce = veElCruce(profile?.role);
   const cruceDelDia = useCruceDelDia(fechaChile(), verCruce);
+  const registroTiendas = useRegistroDeTiendas(fechaChile());
   const { state, dispatch, showToast, flushPending, canalSano, catchUp } = useApp();
+
+  /**
+   * Registra UNA tienda, sin cerrar el dia. Espejo exacto del de RM/Costa.
+   *
+   * Es la MISMA llamada que hace el modal del dia, con una sola tienda adentro. De ahi sale que
+   * los ids sean identicos, y de eso sale que registrar el dia despues NO duplique:
+   * `api/sheets-write` solo agrega los ids que la hoja no tiene. La fecha de despacho viene de
+   * `fechaDespachoBodega`, la misma funcion que usa el modal.
+   *
+   * Ojo con la llave: aca el estado se indexa por NOMBRE de tienda, no por codigo.
+   */
+  const registrarSoloTienda = async (nombre: string, cod: string): Promise<boolean> => {
+    const lista = state.dispatch[nombre] ?? [];
+    if (!lista.length) return false;
+    const hoyISO = fechaChile();
+    try {
+      await sheetsRegionesWrite({ [nombre]: lista }, 'Luis Fica', fechaDespachoBodega(state.fechaDespacho), hoyISO);
+      await fetch('/api/sync-despacho', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cruce: hoyISO }), keepalive: true,
+      });
+      registroTiendas.marcar(cod);
+      logActividad({ accion: 'registrar_tienda', fuente: 'nacional', tiendaCod: cod, tiendaNombre: nombre });
+      showToast(`OK ${cod} registrada`, '#16A34A');
+      return true;
+    } catch (e) {
+      console.error('[registrar-tienda]', e);
+      showToast('No se pudo registrar la tienda - reintenta', '#D32F2F');
+      return false;
+    }
+  };
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const router = useRouter();
   const odooProgress = useOdooProgress();  // progreso de Odoo (punto gris/naranja/verde) — igual que Santiago
@@ -1824,7 +1860,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           </div>
         </div>
         {tienda?.cod && (
-          <div className="flex justify-end touch-auto">
+          <div className="flex justify-end items-center gap-2 touch-auto">
+            {/* A la IZQUIERDA de MARCAR TERMINADA, igual que en RM/Costa. */}
+            <RegistrarTiendaButton rol={profile?.role} terminada={!!terminadas.get(tienda.cod)}
+              unidades={items.length} yaRegistrada={registroTiendas.registrada(tienda.cod)}
+              onRegistrar={() => registrarSoloTienda(selectedTienda ?? '', tienda.cod)} />
             <TiendaTerminadaButton cod={tienda.cod} info={terminadas.get(tienda.cod)} onToggle={marcarTerminada} itemCount={items.length}
               sinPesarCount={items.filter(esSinPesar).length}
               sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[selectedTienda ?? ''] ?? [], items))}
