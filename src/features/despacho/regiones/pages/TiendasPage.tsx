@@ -1793,6 +1793,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
     /* Shared header */
     const header = (
+      <>
       <div className={`bg-navy px-3 py-3 flex flex-col gap-2 flex-shrink-0 ${isMobile ? 'touch-none select-none' : ''}`}
         onTouchStart={isMobile ? onSheetDragStart : undefined}
         onTouchMove={isMobile ? onSheetDragMove : undefined}
@@ -1830,15 +1831,21 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               viendo={viendoPorTienda.get(tienda.cod)} />
           </div>
         )}
-        {/* Mismo lugar que en RM/Costa: los dos espejos tienen que mostrar lo mismo, en el mismo
-            sitio. Es el patrón que ya dejó el chocolate arreglado en un camino y roto en el otro. */}
-        {verCruce && tienda?.cod && (
-          <div className="pt-2">
-            <CruceDePesosCard cruce={cruceDelDia.porTienda.get(tienda.cod)}
-              items={items} listo={cruceDelDia.listo} />
-          </div>
-        )}
       </div>
+
+      {/* FUERA del encabezado azul, igual que en RM/Costa.
+          El bloque trae su propia base navy (ver `CruceDePesosCard`). Dentro del encabezado esa
+          base se fundía con el azul de alrededor y el panel quedaba sin marco; acá, apoyado sobre
+          el fondo claro, el marco se ve — que es como se ve en RM/Costa y lo que se pidió.
+          Los dos espejos tienen que mostrar lo mismo en el mismo sitio: es el patrón que ya dejó
+          el chocolate arreglado en un camino y roto en el otro. */}
+      {verCruce && tienda?.cod && (
+        <div className="px-2 pt-2 flex-shrink-0">
+          <CruceDePesosCard cruce={cruceDelDia.porTienda.get(tienda.cod)}
+            items={items} listo={cruceDelDia.listo} />
+        </div>
+      )}
+      </>
     );
 
     /* ── Multi-form (compacta): estado vacío = botones +Pallet/+Bulto/+Cont/+Choc ── */
