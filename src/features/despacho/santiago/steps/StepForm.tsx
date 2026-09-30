@@ -39,6 +39,10 @@ import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
 import { tipoCodeSantiago } from '../../shared/tipoCode';
 import { registrarTiendasSantiagoBD } from '../data/tiendasSantiago';
+import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
+import { useCruceDelDia } from '@/features/despacho/shared/useCruceDelDia';
+import { veElCruce } from '@/features/despacho/shared/cruceTienda';
+import { useAuth } from '@/components/AuthProvider';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { useTiendaTerminada, type TerminadaInfo } from '../../shared/useTiendaTerminada';
@@ -392,6 +396,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const router = useRouter();
   const { state, dispatch, flushPending, canalSano, catchUp } = useSantiago();
   const { showToast } = useApp();
+  // El cruce contra Odoo, solo para administración. `veElCruce` decide quién lo ve, y ese mismo
+  // booleano apaga la consulta: quien no ve el bloque no paga el pedido. Ver `cruceTienda.ts`.
+  const { profile } = useAuth();
+  const verCruce = veElCruce(profile?.role);
+  const cruceDelDia = useCruceDelDia(fechaChile(), verCruce);
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const { currentTienda, items, regimen } = state;
   const odooProgress = useOdooProgress();  // tiendas con picking terminado hoy
@@ -2548,6 +2557,15 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[currentTienda.cod] ?? [], tiendaItems))}
           viendo={viendoPorTienda.get(currentTienda.cod)}
           canalSano={canalSano} />
+
+        {/* El cruce va JUSTO DEBAJO del encabezado porque contesta la pregunta que se hace un
+            segundo antes de marcar la tienda terminada: ¿está todo lo que tenía que estar? */}
+        {verCruce && (
+          <div className="px-2 pt-2">
+            <CruceDePesosCard cruce={cruceDelDia.porTienda.get(currentTienda.cod)}
+              items={tiendaItems} listo={cruceDelDia.listo} />
+          </div>
+        )}
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           {(() => {

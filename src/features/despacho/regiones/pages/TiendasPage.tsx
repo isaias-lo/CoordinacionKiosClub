@@ -29,6 +29,10 @@ import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
 import { pkgCodeNacional } from '../../shared/tipoCode';
+import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
+import { useCruceDelDia } from '@/features/despacho/shared/useCruceDelDia';
+import { veElCruce } from '@/features/despacho/shared/cruceTienda';
+import { useAuth } from '@/components/AuthProvider';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { useTiendaTerminada } from '../../shared/useTiendaTerminada';
@@ -307,6 +311,11 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
 
 /* ── Main page ── */
 export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) {
+  // El cruce contra Odoo, solo para administración. `veElCruce` decide quién lo ve, y ese mismo
+  // booleano apaga la consulta: quien no ve el bloque no paga el pedido. Ver `cruceTienda.ts`.
+  const { profile } = useAuth();
+  const verCruce = veElCruce(profile?.role);
+  const cruceDelDia = useCruceDelDia(fechaChile(), verCruce);
   const { state, dispatch, showToast, flushPending, canalSano, catchUp } = useApp();
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const router = useRouter();
@@ -1819,6 +1828,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               sinPesarCount={items.filter(esSinPesar).length}
               sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[selectedTienda ?? ''] ?? [], items))}
               viendo={viendoPorTienda.get(tienda.cod)} />
+          </div>
+        )}
+        {/* Mismo lugar que en RM/Costa: los dos espejos tienen que mostrar lo mismo, en el mismo
+            sitio. Es el patrón que ya dejó el chocolate arreglado en un camino y roto en el otro. */}
+        {verCruce && tienda?.cod && (
+          <div className="pt-2">
+            <CruceDePesosCard cruce={cruceDelDia.porTienda.get(tienda.cod)}
+              items={items} listo={cruceDelDia.listo} />
           </div>
         )}
       </div>
