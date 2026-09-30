@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { preflightCierre, textoPreflight } from '../preflightCierre';
+import { preflightCierre, textoPreflight, patentesSinManifiesto } from '../preflightCierre';
 
 const t = (c: string, p = 1) => ({ c, p });
 
@@ -295,5 +295,42 @@ describe('preflightCierre · camión apagado', () => {
       patentesActivas: [],
     });
     expect(r.hallazgos.map(h => h.tipo)).toEqual(['sin-camion', 'en-camion-apagado']);
+  });
+});
+
+describe('patentesSinManifiesto — el aviso que llegaba tarde', () => {
+  it('EL CASO REAL del 29/09: dos cerrados sin manifiesto', () => {
+    // El tablero daba por cerrados seis camiones y `rutas_despacho` tenía cinco. VRYL52 y VXSX43
+    // salieron sin papeles ni QR —ocho tiendas entre los dos— y nadie se enteró hasta mirar la
+    // base al día siguiente: el único chequeo que lo detecta vive en el preflight de «Terminar
+    // día», y ese día no se apretó (no hay `rutas_reg` del 29/09).
+    const cerradas = ['VRYL52', 'VXSX43', 'TYKK42', 'PTFZ21', 'RGZJ70', 'TDCV15'];
+    const manifiestos = [{ patente: 'JKHC78' }, { patente: 'TDCV15' }, { patente: 'TYKK42' },
+                         { patente: 'PTFZ21' }, { patente: 'RGZJ70' }];
+    expect(patentesSinManifiesto(cerradas, manifiestos)).toEqual(['VRYL52', 'VXSX43']);
+  });
+
+  it('con todos guardados no avisa nada', () => {
+    expect(patentesSinManifiesto(['AAA111'], [{ patente: 'AAA111' }])).toEqual([]);
+  });
+
+  it('un manifiesto SIN cerrar el camión no es un problema', () => {
+    // JKHC78 tenía manifiesto y no estaba en `rutas_cerradas`. Eso no es un hueco: la carga salió
+    // con sus papeles, que es lo que importa.
+    expect(patentesSinManifiesto([], [{ patente: 'JKHC78' }])).toEqual([]);
+  });
+
+  it('compara patentes normalizadas', () => {
+    expect(patentesSinManifiesto([' vryl52 '], [{ patente: 'VRYL52' }])).toEqual([]);
+  });
+
+  it('no se cae con datos vacíos o sucios', () => {
+    expect(patentesSinManifiesto()).toEqual([]);
+    expect(patentesSinManifiesto(['AAA111'], [{ patente: null }, { patente: '' }])).toEqual(['AAA111']);
+    expect(patentesSinManifiesto(['', '  '], [])).toEqual([]);
+  });
+
+  it('sin repetir, y ordenado', () => {
+    expect(patentesSinManifiesto(['BBB222', 'AAA111', 'AAA111'], [])).toEqual(['AAA111', 'BBB222']);
   });
 });
