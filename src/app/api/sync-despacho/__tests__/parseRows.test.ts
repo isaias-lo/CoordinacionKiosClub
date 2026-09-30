@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normHeader, isDataRow, makeReader, makeRmMapper, makeRegionesMapper, missingHeaders, RM_HEADERS, REGIONES_HEADERS } from '../parseRows';
+import { normHeader, isDataRow, makeReader, makeRmMapper, makeRegionesMapper, missingHeaders, num, RM_HEADERS, REGIONES_HEADERS } from '../parseRows';
 
 // Encabezados reales de las hojas (30 cols, idénticos en RM y REGIONES).
 const HEADERS = [
@@ -114,5 +114,63 @@ describe('makeRegionesMapper', () => {
     expect(rec.valor).toBe(15000);
     expect(rec.cod).toBe('49PTA');
     expect(rec.seguimiento).toBe('Registrado');
+  });
+});
+
+// ── LA COMA DECIMAL DE LA PLANILLA (30/09/2026) ────────────────────────────────────────────────
+//
+// `sync-despacho` lee las hojas FORMATEADAS y la planilla está en formato chileno: una celda que
+// vale 239.5 vuelve como el texto "239,5". `parseFloat` cortaba en la coma y devolvía 239.
+//
+// Medido ese día: 273 filas de las dos hojas de DESPACHO tenían un decimal que se perdía en cada
+// sincronización. Es el mismo bug del #608, una capa más abajo.
+
+describe('num — la coma es separador decimal', () => {
+  it('EL CASO REAL: la hoja devuelve «239,5» y son 239,5 kg, no 239', () => {
+    expect(num('239,5')).toBe(239.5);
+    expect(num('108,5')).toBe(108.5);
+    expect(num('12,5')).toBe(12.5);
+  });
+
+  it('con coma, los puntos son de miles', () => {
+    expect(num('1.234,5')).toBe(1234.5);
+    expect(num('1.234.567,8')).toBe(1234567.8);
+  });
+
+  it('SIN coma no cambia NADA — el punto sigue siendo el decimal', () => {
+    // `num` también lee VALOR, que puede ser un monto grande: darle otro sentido al punto habría
+    // convertido «1.234» en 1,234 en una columna de plata.
+    expect(num('239.5')).toBe(239.5);
+    expect(num('1.234')).toBe(1.234);
+    expect(num('1234')).toBe(1234);
+    expect(num('0')).toBe(0);
+  });
+
+  it('el cero se conserva: «sin pesar» no es lo mismo que «no hay dato»', () => {
+    expect(num('0')).toBe(0);
+    expect(num('0,0')).toBe(0);
+    expect(num('')).toBeNull();
+    expect(num(null)).toBeNull();
+    expect(num(undefined)).toBeNull();
+  });
+
+  it('un número ya numérico pasa intacto', () => {
+    expect(num(239.5)).toBe(239.5);
+    expect(num(0)).toBe(0);
+    expect(num(NaN)).toBeNull();
+    expect(num(Infinity)).toBeNull();
+  });
+
+  it('negativos con coma', () => {
+    expect(num('-12,5')).toBe(-12.5);
+  });
+
+  it('texto que no es número', () => {
+    expect(num('sin peso')).toBeNull();
+    expect(num(',')).toBeNull();
+  });
+
+  it('la unidad de kilos pegada no estorba', () => {
+    expect(num('239,5 kg')).toBe(239.5);
   });
 });
