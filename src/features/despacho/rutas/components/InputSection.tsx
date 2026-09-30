@@ -15,6 +15,7 @@ import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
 import { useIsMobile } from '../utils/useIsMobile';
 import {
   clampMapPct, mapaColapsado, anchoCortina, alTocarCortina,
+  clampArrastre, CORTINA_MS, MANIJA_PX, MANIJA_LINEA_PX,
   MAP_PCT_DEFAULT, LS_MAP_PCT, LS_MAP_OCULTO,
 } from '../utils/mapLayout';
 import type { Vehiculo } from '../data/flota';
@@ -194,19 +195,22 @@ export default function InputSection({
   // Un arrastre también dispara `click` al soltar. Esto distingue "arrastré para ajustar el ancho"
   // de "toqué para esconder", que es lo que hace de la manija un control y no solo un divisor.
   const mapArrastradoRef = useRef(false);
+  // Mientras se arrastra NO se anima: el ancho tiene que seguir al dedo, no ir un cuadro atras.
+  const [mapArrastrando, setMapArrastrando] = useState(false);
   useEffect(() => {
     const move = (clientX: number) => {
       if (!mapResizingRef.current || !contentRowRef.current) return;
       mapArrastradoRef.current = true;
       setMapCompleta(false);   // arrastrar es elegir un ancho propio: deja de estar "entera"
       const r = contentRowRef.current.getBoundingClientRect();
-      setMapPct(Math.min(60, Math.max(20, ((r.right - clientX) / r.width) * 100)));
+      setMapPct(clampArrastre(((r.right - clientX) / r.width) * 100));
     };
     const onMouse = (e: MouseEvent) => move(e.clientX);
     const onTouch = (e: TouchEvent) => { if (e.touches[0]) move(e.touches[0].clientX); };
     const stop = () => {
       if (!mapResizingRef.current) return;
       mapResizingRef.current = false;
+      setMapArrastrando(false);
       document.body.style.cursor = ''; document.body.style.userSelect = '';
       setMapPct(p => { try { localStorage.setItem(LS_MAP_PCT, String(Math.round(p))); } catch {} return p; });
     };
@@ -235,8 +239,8 @@ export default function InputSection({
       tabIndex={0}
       aria-expanded={!hideMap}
       aria-label={hideMap ? 'Mostrar el mapa' : 'Esconder el mapa'}
-      onMouseDown={() => { if (hideMap) return; mapResizingRef.current = true; mapArrastradoRef.current = false; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }}
-      onTouchStart={() => { if (hideMap) return; mapResizingRef.current = true; mapArrastradoRef.current = false; }}
+      onMouseDown={() => { if (hideMap) return; mapResizingRef.current = true; mapArrastradoRef.current = false; setMapArrastrando(true); document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }}
+      onTouchStart={() => { if (hideMap) return; mapResizingRef.current = true; mapArrastradoRef.current = false; setMapArrastrando(true); }}
       onClick={() => {
         if (mapArrastradoRef.current) { mapArrastradoRef.current = false; return; }
         const next = alTocarCortina({ colapsada: hideMap, completa: mapCompleta });
@@ -250,18 +254,44 @@ export default function InputSection({
       }}
       title={hideMap ? 'Mostrar el mapa entero' : mapCompleta ? 'Toca para esconder el mapa' : 'Arrastra para ajustar · toca para taparlo entero'}
       className="group flex-shrink-0 flex flex-col items-center justify-center gap-1.5 relative select-none z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-knavy"
-      style={{ width: hideMap ? 14 : 6, background: 'rgba(0,0,0,0.05)', cursor: hideMap ? 'pointer' : 'col-resize' }}
+      // El ANCHO es area de agarre, no lo que se ve: la linea sigue siendo fina (6 px) y vive
+      // adentro. Antes la manija medía esos mismos 6 px en total y había que apuntarle: un blanco
+      // de 6 px es la mitad de lo que cualquier guía de toque considera agarrable.
+      style={{ width: hideMap ? MANIJA_PX + 6 : MANIJA_PX, cursor: hideMap ? 'pointer' : 'col-resize' }}
     >
-      <div className="absolute inset-0 group-hover:bg-knavy/20 transition-colors duration-150" />
-      <div className="flex flex-col gap-[4px] relative z-10 opacity-40 group-hover:opacity-100 transition-opacity duration-150">
-        {[0, 1, 2].map(i => <div key={i} className="w-[4px] h-[4px] rounded-full bg-knavy" />)}
-      </div>
-      <span className="relative z-10 text-[10px] leading-none text-knavy opacity-50 group-hover:opacity-100 transition-opacity" aria-hidden="true">
-        {hideMap ? '‹' : '›'}
-      </span>
-      <div className="flex flex-col gap-[4px] relative z-10 opacity-40 group-hover:opacity-100 transition-opacity duration-150">
-        {[0, 1, 2].map(i => <div key={i} className="w-[4px] h-[4px] rounded-full bg-knavy" />)}
-      </div>
+      {/* La línea. Centrada dentro del área de agarre, así que ensancharla no movió el borde. */}
+      <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 group-hover:bg-knavy/25 transition-colors duration-150"
+        style={{ width: hideMap ? MANIJA_PX : MANIJA_LINEA_PX, background: 'rgba(0,0,0,0.05)' }} />
+      {hideMap ? (
+        // Cerrada, una franja gris con tres puntos no dice qué es. Con el rótulo, sí.
+        //
+        // La flecha va FUERA del rótulo vertical y sin rotar. Dentro de `writing-mode: vertical-rl`
+        // el navegador gira cada carácter latino 90°, y el `rotate(180deg)` que endereza la
+        // lectura le suma otros 180: un ‹ terminaba apuntando hacia ABAJO. Una flecha que apunta a
+        // cualquier lado menos al que se mueve la cortina es peor que no poner ninguna.
+        <>
+          <span className="relative z-10 text-[11px] leading-none text-knavy/60 group-hover:text-knavy transition-colors" aria-hidden="true">‹</span>
+          <span className="relative z-10 text-[9px] font-extrabold tracking-[0.18em] text-knavy/70 group-hover:text-knavy transition-colors"
+            style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+            MAPA
+          </span>
+        </>
+      ) : (
+        <>
+          <div className="flex flex-col gap-[4px] relative z-10 opacity-40 group-hover:opacity-100 transition-opacity duration-150">
+            {[0, 1, 2].map(i => <div key={i} className="w-[4px] h-[4px] rounded-full bg-knavy" />)}
+          </div>
+          <span className="relative z-10 text-[10px] leading-none text-knavy opacity-50 group-hover:opacity-100 transition-opacity" aria-hidden="true">
+            {/* Hacia dónde mueve el borde el próximo toque, según `alTocarCortina`: estando
+                entera lo CIERRA (el borde se va a la derecha); a medias la abre entera (el borde
+                se va a la izquierda). Antes decía '›' en los dos casos. */}
+            {mapCompleta ? '›' : '‹'}
+          </span>
+          <div className="flex flex-col gap-[4px] relative z-10 opacity-40 group-hover:opacity-100 transition-opacity duration-150">
+            {[0, 1, 2].map(i => <div key={i} className="w-[4px] h-[4px] rounded-full bg-knavy" />)}
+          </div>
+        </>
+      )}
     </div>
   ) : null;
   // `MapSection` guarda en `lastDrawnRef` la firma de lo último dibujado para no re-llamar a
@@ -625,7 +655,12 @@ export default function InputSection({
                 también la forma de volver a abrirlo. */}
             <div
               className="absolute top-0 bottom-0 flex z-20"
-              style={{ right: anchoCortina({ colapsada: hideMap, completa: mapCompleta, pct: mapPct }) }}
+              style={{
+                right: anchoCortina({ colapsada: hideMap, completa: mapCompleta, pct: mapPct }),
+                // La manija viaja CON el borde, así que se anima igual que la cortina o se
+                // despegaría de ella durante los 180 ms.
+                transition: mapArrastrando ? undefined : `right ${CORTINA_MS}ms ease`,
+              }}
             >
               {mapDivider}
             </div>
@@ -635,6 +670,10 @@ export default function InputSection({
                 width: anchoCortina({ colapsada: hideMap, completa: mapCompleta, pct: mapPct }),
                 borderLeftWidth: hideMap ? 0 : undefined,
                 boxShadow: hideMap ? 'none' : '-8px 0 24px rgba(15,23,42,0.10)',
+                // SE CORRE, no salta. Sin esto el panel cambia de ancho de un cuadro al otro y no
+                // se lee como una cortina sino como un error de dibujo.
+                // Mientras se arrastra NO se anima: ahí el ancho tiene que seguir al dedo.
+                transition: mapArrastrando ? undefined : `width ${CORTINA_MS}ms ease`,
               }}
               aria-hidden={hideMap || undefined}
               inert={hideMap || undefined}
