@@ -38,6 +38,7 @@ import { fechaISOLocal } from '../../shared/fechaLocal';
 import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
 import { tipoCodeSantiago } from '../../shared/tipoCode';
+import { registrarTiendasSantiagoBD } from '../data/tiendasSantiago';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { useTiendaTerminada, type TerminadaInfo } from '../../shared/useTiendaTerminada';
@@ -706,6 +707,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             diasDespacho:   dias,
           };
         }
+        // El catálogo de RM/Costa era SOLO estático, y una tienda creada en Config no entraba:
+        // al registrar, `sheetsSantiago` la descartaba entera y en silencio. Nacional ya hacía
+        // esto (`registrarTiendasBD`); acá faltaba la otra mitad. Ver `tiendasSantiago.ts`.
+        const nuevas = registrarTiendasSantiagoBD(map);
+        if (nuevas.length) console.info('[bodega] tiendas de la BD sumadas al catálogo RM/Costa:', nuevas.join(', '));
         setSupabaseTiendasMap(map);
         setTipoCatByCod(tcat);
       })

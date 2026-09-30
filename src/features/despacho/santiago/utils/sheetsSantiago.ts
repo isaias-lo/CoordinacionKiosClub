@@ -33,11 +33,31 @@ export function buildRows(
     : `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
 
   const rows: (string | number)[][] = [];
+  // Las que hubo que escribir sin datos de catalogo. Se avisa, no se descarta.
+  const sinCatalogo: string[] = [];
 
   for (const [cod, tiendaItems] of Object.entries(items)) {
     if (!tiendaItems.length) continue;
-    const tienda = getTiendaSantiagoByCod(cod);
-    if (!tienda) continue;
+    // NUNCA SE DESCARTA UNA TIENDA POR NO CONOCERLA.
+    //
+    // Acá había un `if (!tienda) continue;`. Una tienda de RM creada en Config. Tiendas no estaba
+    // en el catálogo estático, así que al registrar se descartaba ENTERA, en silencio: se trabajó,
+    // se pesó, se marcó TERMINADA, y sus filas no llegaron ni a la planilla ni a la base. El
+    // 29/09/2026 el registro informó 25 tiendas y escribió 15; 26ALC (467,5 kg), 56PZA (665,6) y
+    // 59EGN (1.003) se perdieron así. El 28/09, 58TAM (293 kg).
+    //
+    // El catálogo ahora se hidrata desde la BD (`registrarTiendasSantiagoBD`), pero eso depende de
+    // que un fetch haya vuelto. Esto es la red: si igual no se la conoce, la fila SE ESCRIBE con
+    // los datos que sí hay. Lo que importa —el id, el código, el peso y las medidas— no sale del
+    // catálogo; de ahí salen el nombre, la región, la comuna y la ventana, que son metadatos.
+    //
+    // Perder una fila de carga por no saber la comuna es desproporcionado. Que salga con la comuna
+    // vacía se ve y se corrige; que no salga no se ve hasta cruzarla contra Odoo días después.
+    const tienda = getTiendaSantiagoByCod(cod) ?? {
+      cod, tienda: cod, region: '', direccion: '', comuna: '',
+      tipo: 'STRIPCENTER' as const, ventanaHoraria: '', diasDespacho: [],
+    };
+    if (!getTiendaSantiagoByCod(cod)) sinCatalogo.push(cod);
 
     for (const item of tiendaItems) {
       const tipoPrefix = item.tipo === 'Pallet' ? 'P' : item.tipo === 'Bulto' ? 'B' : item.tipo === 'Contenedor' ? 'C'
@@ -87,6 +107,9 @@ export function buildRows(
     }
   }
 
+  if (sinCatalogo.length) {
+    console.warn('[sheetsSantiago] tiendas sin datos de catálogo (se escribieron igual):', sinCatalogo.join(', '));
+  }
   return rows;
 }
 
