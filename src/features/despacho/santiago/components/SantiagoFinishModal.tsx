@@ -3,16 +3,19 @@
 import { useState } from 'react';
 import { Check } from 'lucide-react';
 import { useSantiago, SANTIAGO_TERMINADO_KEY } from '../context/SantiagoContext';
+import { useApp } from '../../../../context/AppContext';
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { logActividad } from '@/lib/actividad';
-import { escribirCruceDelDia } from '@/features/despacho/shared/avisarCruce';
+import { leerResultadoDelCruce } from '@/features/despacho/shared/avisarCruce';
 
 interface Props { open: boolean; onClose: () => void; }
 
 export function SantiagoFinishModal({ open, onClose }: Props) {
   const { state, dispatch } = useSantiago();
+  // Un informe que falla en silencio es peor que no tenerlo, porque se confía en él.
+  const { showToast } = useApp();
   const [saving, setSaving] = useState(false);
   const { items, regimen } = state;
 
@@ -50,12 +53,19 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
     //    Los IDs ya tienen el formato canónico: P{seq}{cod}{stamp}P, {seq}B{cod}{stamp}B, etc.
     //    Tras la escritura, refrescar la base de datos (sync-despacho) para que el
     //    dashboard de Inicio quede al día. keepalive: sobrevive al cierre/desmonte.
-    // El CRUCE PESOS se escribe DESPUÉS del sync: lee los pesos de despacho_rm/despacho_regiones,
-    // y hasta que ese sync no termina esas tablas no tienen lo que se acaba de registrar.
-    // No rompe el registro si falla — ver `shared/avisarCruce.ts`.
+    // El CRUCE PESOS viaja EN ESTA petición (`cruce: <fecha>`), no en una tercera encadenada
+    // detrás. Encadenada no se emitía nunca si la persona navegaba apenas registrar —`keepalive`
+    // protege lo ya enviado, no lo que falta enviar— y así el 29/09 la hoja quedó vacía con el
+    // día bien registrado. Ver el comentario de `api/sync-despacho`.
     sheetsSantiagoWrite(items, regimen!, fechaDespacho, todayISO)
-      .then(() => fetch('/api/sync-despacho', { method: 'POST', keepalive: true }))
-      .then(() => escribirCruceDelDia(todayISO))
+      .then(() => fetch('/api/sync-despacho', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cruce: todayISO }),
+        keepalive: true,
+      }))
+      .then(leerResultadoDelCruce)
+      .then(aviso => { if (aviso) showToast(aviso, '#D97706'); })
       .catch(() => {});
 
     // 2. Marcar como terminado (badge COMPLETADO en el header).
