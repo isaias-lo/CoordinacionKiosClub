@@ -8,6 +8,7 @@ import { sheetsRegionesWrite } from '../../features/despacho/regiones/utils/shee
 import type { HistoryEntry } from '../../types';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { logActividad } from '@/lib/actividad';
+import { marcarRegistro } from '@/features/despacho/shared/registroPorFecha';
 import { leerResultadoDelCruce, AVISO_CRUCE } from '@/features/despacho/shared/avisarCruce';
 import { fechaChile } from '@/lib/fechaChile';
 
@@ -101,12 +102,16 @@ export function FinishModal({ open, onClose }: Props) {
       .catch(() => showToast(AVISO_CRUCE, '#D97706'));
     showToast('✓ Guardado · enviando a Sheets…', '#16A34A');
 
+    // El `registros` se CALCULA acá y se empuja en la misma vuelta. Un `dispatch` no actualiza
+    // `stateRef` hasta el próximo efecto, así que empujar «sin más» mandaba el estado de ANTES y
+    // el día quedaba como no registrado. Ver `flushPending`.
+    const registrosNuevos = marcarRegistro(state.registros, state.fechaDespacho ?? '', true);
     dispatch({ type: 'SET_REGISTRADO', payload: true });
     logActividad({ accion: 'registrar_dia', fuente: 'nacional', tiendas: withItems.length, pallets: tp, bultos: tb });
     localStorage.setItem(REGIONES_TERMINADO_KEY, new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }));
     // Forzar el push inmediato del estado con registrado=true a shared_session_state,
     // así el banner "sin registrar" no reaparece al día siguiente ni en otro equipo.
-    flushPending();
+    flushPending({ registrado: true, registros: registrosNuevos });
   };
 
   return (

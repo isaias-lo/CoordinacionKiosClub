@@ -89,3 +89,40 @@ describe('migrarRegistroViejo — lo que ya está guardado', () => {
     expect(migrarRegistroViejo({}, undefined, HOY)).toEqual({});
   });
 });
+
+// ── EL DÍA QUE SE REGISTRÓ Y EL BANNER DIJO QUE NO (30/09/2026) ────────────────────────────────
+//
+// Los dos registros del 30/09 quedaron en `actividad_bodega` y en la planilla, pero el estado
+// compartido siguió diciendo `registrado: false` y `registros: {}`. Al día siguiente el banner
+// avisaba «DESPACHO SIN REGISTRAR · 30 SEP» sobre un día que sí se había registrado.
+//
+// La causa no estaba acá —`marcarRegistro` siempre hizo lo suyo— sino en QUÉ se empujaba: el
+// modal llamaba a `flushPending()` en la misma vuelta que el `dispatch`, y `stateRef` todavía
+// tenía el estado de antes. En RM/Costa directamente no se empujaba nada.
+//
+// Estos tests fijan la pieza pura: lo que el modal calcula y empuja es lo mismo que el reducer
+// deja en el estado. Si esas dos cuentas se separan, vuelve el bug.
+
+describe('lo que empuja el modal == lo que deja el reducer', () => {
+  it('marcar el día de despacho deja ese día, no el de armado', () => {
+    // El 30/09 se armaba para despachar el 01/10: el registro va bajo la fecha de DESPACHO.
+    const r = marcarRegistro({}, '2026-10-01', true);
+    expect(estaRegistrado(r, '2026-10-01')).toBe(true);
+    expect(estaRegistrado(r, '2026-09-30')).toBe(false);
+  });
+
+  it('calcularlo dos veces da lo mismo — el modal y el reducer no pueden divergir', () => {
+    const base = { '2026-09-30': true };
+    expect(marcarRegistro(base, '2026-10-01', true))
+      .toEqual(marcarRegistro(base, '2026-10-01', true));
+  });
+
+  it('no pierde los días anteriores', () => {
+    const r = marcarRegistro({ '2026-09-29': true, '2026-09-30': true }, '2026-10-01', true);
+    expect(Object.keys(r).sort()).toEqual(['2026-09-29', '2026-09-30', '2026-10-01']);
+  });
+
+  it('sin fecha no inventa una clave vacía', () => {
+    expect(marcarRegistro({ '2026-09-30': true }, '', true)).toEqual({ '2026-09-30': true });
+  });
+});

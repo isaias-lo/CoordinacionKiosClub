@@ -204,7 +204,9 @@ interface AppContextValue {
   dispatch: React.Dispatch<Action>;
   showToast: (msg: string, color?: string) => void;
   getStats: () => { pallets: number; bultos: number; contenedores: number; chocolates: number; tiendas: number };
-  flushPending: () => void;
+  /** `extra` pisa campos del estado: hace falta cuando se llama en la misma vuelta que un
+   *  `dispatch`, porque ahí `stateRef` todavía tiene el valor viejo. */
+  flushPending: (extra?: { registrado?: boolean; registros?: RegistroPorFecha }) => void;
   /** [Bodega · indicador visible] El canal de tiempo real puede quedar unido y mudo sin avisar
    *  (reinicio/rebalanceo del servidor, throttle) — el respaldo por polling ya no se apaga en ese
    *  caso (ver lib/ritmoDePoll.ts), pero hasta ahora nadie en pantalla se enteraba. `canalSano`
@@ -507,9 +509,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [state.dispatch]);
 
   // Flush any pending debounced push immediately — call before navigating away so data is never lost.
-  const flushPending = useCallback(() => {
+  /**
+   * Empuja YA lo que estuviera pendiente. Se llama antes de navegar.
+   *
+   * `extra` pisa campos del estado. NO es un adorno: `stateRef.current` se actualiza en un efecto,
+   * así que justo después de un `dispatch` todavía tiene el estado VIEJO. Quien llama a esto en la
+   * misma vuelta que un dispatch —el modal de REGISTRAR— empujaba el estado de ANTES.
+   *
+   * El 30/09 los dos registros del día quedaron en `actividad_bodega` y en la planilla, pero el
+   * estado compartido siguió diciendo `registrado: false` y `registros: {}`. Al día siguiente el
+   * banner avisaba «DESPACHO SIN REGISTRAR · 30 SEP» sobre un día que sí se había registrado — y
+   * ofrecía registrarlo otra vez.
+   */
+  const flushPending = useCallback((extra?: { registrado?: boolean; registros?: RegistroPorFecha }) => {
     if (!isInitializedRef.current) return;
-    const payload = { dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData, fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado, registros: stateRef.current.registros, borrados: lapidasComoLista() };
+    const payload = { dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData, fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado, registros: stateRef.current.registros, borrados: lapidasComoLista(), ...extra };
     const current = JSON.stringify(payload);
     if (current === lastPushedFullRef.current) return;
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }

@@ -8,13 +8,14 @@ import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { logActividad } from '@/lib/actividad';
+import { marcarRegistro } from '@/features/despacho/shared/registroPorFecha';
 import { leerResultadoDelCruce, AVISO_CRUCE } from '@/features/despacho/shared/avisarCruce';
 import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
 
 interface Props { open: boolean; onClose: () => void; }
 
 export function SantiagoFinishModal({ open, onClose }: Props) {
-  const { state, dispatch } = useSantiago();
+  const { state, dispatch, flushPending } = useSantiago();
   // Un informe que falla en silencio es peor que no tenerlo, porque se confía en él.
   const { showToast } = useApp();
   const [saving, setSaving] = useState(false);
@@ -82,7 +83,15 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
     // registrado=true → el contexto lo empuja INMEDIATO a shared_session_state (sin esperar el
     // debounce de 2.5s), así el banner "sin registrar" no reaparece al día siguiente aunque el
     // usuario navegue a Inicio enseguida. Ver SantiagoContext (push effect).
+    // El `registros` se CALCULA acá y se empuja en la misma vuelta. Un `dispatch` no actualiza
+    // `stateRef` hasta el próximo efecto, así que empujar «sin más» mandaba el estado de ANTES y
+    // el día quedaba como no registrado. Ver `flushPending`.
+    //
+    // Y acá NO SE EMPUJABA NADA: el registro quedaba esperando al debounce de 2,5 s, así que
+    // recargar o navegar antes lo perdía. El 30/09 pasó exactamente eso.
+    const registrosNuevos = marcarRegistro(state.registros, state.fechaDespacho ?? '', true);
     dispatch({ type: 'SET_REGISTRADO', payload: true });
+    flushPending({ registrado: true, registros: registrosNuevos });
     logActividad({ accion: 'registrar_dia', fuente: 'rmcosta', tiendas: withItems.length, pallets: tp, bultos: tb });
 
     onClose();
