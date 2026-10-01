@@ -2,12 +2,31 @@ import { ALIAS } from '../data/tiendas';
 import { enElPool } from './pool';
 import { fechaChile } from '@/lib/fechaChile';
 
+/**
+ * Distancia en km entre dos puntos (Haversine).
+ *
+ * ── EL `Math.min(1, ...)` NO ES DECORATIVO ─────────────────────────────────────────────────────
+ *
+ * Sin él, dos puntos casi ANTIPODALES devuelven **NaN**: `x` pasa de 1 por error de punto flotante
+ * y `Math.sqrt(1 - x)` saca la raíz de un negativo. Lo encontró el test de propiedades el
+ * 30/09/2026, con este contraejemplo:
+ *
+ *     dkm([-0.12, -0.1], [0.12, 179.9])  →  NaN
+ *
+ * Es el modo de falla más feo posible para una distancia: no tira error, se propaga callado.
+ * Una comparación contra NaN siempre da `false`, así que un `if (dkm(...) < limite)` se saltea la
+ * tienda sin que nadie se entere, y una suma de kilómetros contaminada hace NaN toda la ruta.
+ *
+ * En Chile no hay pares antipodales, pero sí hay cómo llegar acá: una tienda con coordenadas mal
+ * cargadas —un signo cambiado, un (0,0) de relleno— contra otra del otro lado del mundo. El tope
+ * cuesta una comparación y convierte un NaN silencioso en los 20.015 km que corresponden.
+ */
 export function dkm(a: [number, number] | number[], b: [number, number] | number[]): number {
   const R = 6371;
   const dL = (b[0] - a[0]) * Math.PI / 180;
   const dl = (b[1] - a[1]) * Math.PI / 180;
-  const x = Math.sin(dL/2)*Math.sin(dL/2) +
-            Math.cos(a[0]*Math.PI/180)*Math.cos(b[0]*Math.PI/180)*Math.sin(dl/2)*Math.sin(dl/2);
+  const x = Math.min(1, Math.sin(dL/2)*Math.sin(dL/2) +
+            Math.cos(a[0]*Math.PI/180)*Math.cos(b[0]*Math.PI/180)*Math.sin(dl/2)*Math.sin(dl/2));
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
 }
 
