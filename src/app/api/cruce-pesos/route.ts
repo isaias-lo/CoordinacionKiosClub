@@ -12,6 +12,22 @@ import { COL_LLAVE } from '@/features/despacho/shared/hojaCrucePesos';
 //
 // Solo admin: el cruce compara el trabajo del andén contra Odoo y no es información de operación.
 
+/**
+ * 60 segundos, los mismos que `sync-despacho`.
+ *
+ * Sin esto la ruta toma el tope POR DEFECTO de la plataforma —10-15 s— y armar el cruce no entra:
+ * medido el 01/10, construirlo y escribirlo tarda entre 7 y 8 segundos desde una conexión rápida,
+ * y desde el servidor hay que sumarle la ida a Odoo y la lectura de la planilla.
+ *
+ * Importa especialmente desde el #641. Hasta ahí el cruce viajaba DENTRO de `sync-despacho` y
+ * heredaba sus 60 s; al separarlo para que no esperara al volcado, quedó con el tope por defecto
+ * — o sea que el arreglo le bajó el presupuesto sin querer. El 01/10 el registro de Nacional dejó
+ * sus 4.246 kg bien en la base y la hoja se quedó vacía, con el aviso naranja del #637 en pantalla.
+ *
+ * El tope se declara en la ruta y no se hereda: cada función tiene el suyo.
+ */
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   let body: { valores?: Record<string, string | number>[]; fecha?: string };
   try {
