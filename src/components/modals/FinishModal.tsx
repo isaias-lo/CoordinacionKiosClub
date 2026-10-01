@@ -76,7 +76,19 @@ export function FinishModal({ open, onClose }: Props) {
     hist.push(entry);
     localStorage.setItem('dispatchHistory', JSON.stringify(hist.slice(-100)));
 
-    const fechaDespacho = state.fechaDespacho;
+    // LA MISMA cuenta que RM/Costa. De esta fecha sale el `stamp` del id de cada fila.
+    //
+    // Acá se pasaba `state.fechaDespacho` CRUDO, y ese campo está VACÍO mientras nadie toque el
+    // selector a mano — verificado en vivo el 01/10. Con la fecha vacía, la función cae a HOY, así
+    // que Nacional sellaba sus ids con el día de ARMADO mientras RM/Costa los sellaba con el de
+    // DESPACHO. Medido el mismo día:
+    //
+    //     RM/Costa  sello 01102026  fecha 30/09   ← día siguiente, correcto
+    //     Nacional  sello 01102026  fecha 01/10   ← mismo día, y el despacho era el 02/10
+    //
+    // Dos espejos sellando distinto es justo lo que hace que una misma unidad termine con dos ids
+    // y se cuente dos veces. Ver `fechaDespachoBodega`: existe para que no haya dos cuentas.
+    const fechaDespacho = fechaDespachoBodega(state.fechaDespacho);
     // Tras escribir en Sheets, refrescar la base de datos (despacho_regiones)
     // para que el dashboard de Inicio quede al día sin depender del botón
     // manual "Sincronizar". keepalive: sobrevive si el usuario navega.
@@ -88,7 +100,11 @@ export function FinishModal({ open, onClose }: Props) {
     //
     // La fecha se toma ACÁ y no del `todayKey` de arriba: ese se fija al importar el módulo, así
     // que una pestaña abierta desde ayer registraría el cruce bajo el día equivocado.
-    sheetsRegionesWrite(dispatchData, 'Luis Fica', fechaDespacho, todayKey)
+    // `fechaChile()` y NO `todayKey`: ese se fija al IMPORTAR el módulo, así que una pestaña
+    // abierta desde ayer escribiría la columna FECHA con el día de ayer. El comentario de arriba ya
+    // avisaba de esto para el cruce; faltaba aplicarlo a la escritura de la planilla, que es
+    // donde cambia el id de la fila.
+    sheetsRegionesWrite(dispatchData, 'Luis Fica', fechaDespacho, fechaChile())
       .then(() => Promise.all([
         // Las DOS salen juntas y ninguna espera a la otra. El cruce no necesita al sync: lee
         // `despacho_rm` / `despacho_regiones`, donde el espejo de `sheets-write` ya dejó los pesos.
