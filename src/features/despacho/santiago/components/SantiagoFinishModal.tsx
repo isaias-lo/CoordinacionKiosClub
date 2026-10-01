@@ -8,7 +8,7 @@ import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { logActividad } from '@/lib/actividad';
-import { leerResultadoDelCruce, AVISO_CRUCE } from '@/features/despacho/shared/avisarCruce';
+import { escribirCruceDelDia, AVISO_CRUCE } from '@/features/despacho/shared/avisarCruce';
 import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
 
 interface Props { open: boolean; onClose: () => void; }
@@ -59,17 +59,19 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
     // protege lo ya enviado, no lo que falta enviar— y así el 29/09 la hoja quedó vacía con el
     // día bien registrado. Ver el comentario de `api/sync-despacho`.
     sheetsSantiagoWrite(items, regimen!, fechaDespacho, todayISO)
-      .then(() => fetch('/api/sync-despacho', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cruce: todayISO }),
-        keepalive: true,
-      }))
-      .then(leerResultadoDelCruce)
-      .then(aviso => { if (aviso) showToast(aviso, '#D97706'); })
-      // El `catch` vacío se tragaba el caso en que la cadena ni llega al sync — y entonces la hoja
-      // se queda sin el día sin que nadie se entere. El registro ya está guardado; lo que falta es
-      // el informe, y eso se dice.
+      .then(() => Promise.all([
+        // Las DOS salen juntas y ninguna espera a la otra. El cruce no necesita al sync: lee
+        // `despacho_rm` / `despacho_regiones`, donde el espejo de `sheets-write` ya dejó los pesos.
+        // Ver `escribirCruceDelDia` — ahí está por qué dejó de viajar adentro del sync.
+        fetch('/api/sync-despacho', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dia: todayISO }),
+          keepalive: true,
+        }).catch(e => { console.error('[sync-despacho]', e); }),
+        escribirCruceDelDia(todayISO),
+      ]))
+      .then(([, aviso]) => { if (aviso) showToast(aviso, '#D97706'); })
       .catch(() => showToast(AVISO_CRUCE, '#D97706'));
 
     // 2. Marcar como terminado (badge COMPLETADO en el header).

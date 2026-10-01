@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normHeader, isDataRow, makeReader, makeRmMapper, makeRegionesMapper, missingHeaders, num, RM_HEADERS, REGIONES_HEADERS } from '../parseRows';
+import { normHeader, isDataRow, makeReader, makeRmMapper, makeRegionesMapper, missingHeaders, num, soloDelDia, aFechaDeHoja, RM_HEADERS, REGIONES_HEADERS } from '../parseRows';
 
 // Encabezados reales de las hojas (30 cols, idénticos en RM y REGIONES).
 const HEADERS = [
@@ -172,5 +172,58 @@ describe('num — la coma es separador decimal', () => {
 
   it('la unidad de kilos pegada no estorba', () => {
     expect(num('239,5 kg')).toBe(239.5);
+  });
+});
+
+// ── EL VOLCADO QUE ENGORDABA SOLO (30/09/2026) ─────────────────────────────────────────────────
+//
+// `sync-despacho` mandaba a Supabase LA PLANILLA ENTERA en cada REGISTRAR, para insertar las ~230
+// filas del día: 8.986 filas y 4,66 MB, creciendo a diario. Y el cruce iba DETRÁS de eso, dentro
+// de un presupuesto de 60 segundos. Ese día los dos registros dejaron los pesos bien en la base y
+// la hoja CRUCE PESOS se quedó vacía las dos veces.
+
+describe('aFechaDeHoja', () => {
+  it('la planilla escribe DD/MM/YYYY', () => {
+    expect(aFechaDeHoja('2026-09-30')).toBe('30/09/2026');
+    expect(aFechaDeHoja('2026-01-05')).toBe('05/01/2026');
+  });
+
+  it('lo que no es una fecha ISO no filtra nada', () => {
+    for (const v of ['30/09/2026', '', 'hoy', null, undefined, 20260930]) {
+      expect(aFechaDeHoja(v), String(v)).toBeNull();
+    }
+  });
+});
+
+describe('soloDelDia — el REGISTRAR deja de pagar el histórico', () => {
+  const f = (fecha: string | null, id: string) => ({ fecha, id });
+  const hoja = [f('30/09/2026', 'a'), f('29/09/2026', 'b'), f('30/09/2026', 'c'), f('11/08/2026', 'd')];
+
+  it('con día, solo ese día', () => {
+    expect(soloDelDia(hoja, '30/09/2026').map(r => r.id)).toEqual(['a', 'c']);
+  });
+
+  it('SIN día, TODO — el volcado completo no se saca', () => {
+    // Existe como reparación: sin él la hoja sería el único lugar donde viven esos datos, que es
+    // justo lo que falló durante meses en el #492. Queda en el botón manual «Sincronizar».
+    expect(soloDelDia(hoja, null).map(r => r.id)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('una fila SIN fecha no se descarta', () => {
+    // No se puede afirmar que no sea del día, y perderla en silencio es peor que sincronizar de más.
+    expect(soloDelDia([...hoja, f(null, 'e'), f('', 'g')], '30/09/2026').map(r => r.id))
+      .toEqual(['a', 'c', 'e', 'g']);
+  });
+
+  it('ignora espacios al comparar', () => {
+    expect(soloDelDia([f(' 30/09/2026 ', 'x')], '30/09/2026').map(r => r.id)).toEqual(['x']);
+  });
+
+  it('un día sin filas devuelve vacío, no todo', () => {
+    expect(soloDelDia(hoja, '01/01/2026')).toEqual([]);
+  });
+
+  it('lista vacía', () => {
+    expect(soloDelDia([], '30/09/2026')).toEqual([]);
   });
 });

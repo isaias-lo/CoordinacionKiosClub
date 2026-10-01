@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { isDataRow, makeRmMapper, makeRegionesMapper, missingHeaders, RM_HEADERS, REGIONES_HEADERS } from './parseRows';
+import { isDataRow, makeRmMapper, makeRegionesMapper, missingHeaders, soloDelDia, aFechaDeHoja, RM_HEADERS, REGIONES_HEADERS } from './parseRows';
 import { repartirCongelados } from './congelados';
 import { isRegionesCod } from '@/features/despacho/regiones/data/tiendas';
 import { getTiendaSantiagoByCod } from '@/features/despacho/santiago/data/tiendasSantiago';
@@ -66,12 +66,17 @@ export async function POST(request: NextRequest) {
   // Con la fecha en el body, el orden lo garantiza el servidor: primero sincroniza —que es lo que
   // llena `despacho_rm` / `despacho_regiones`— y recién después arma el cruce, que las lee. Una
   // sola petición del cliente, con keepalive, y ninguna cadena que se pueda cortar.
+  // `cruce` sigue aceptado para no romper a una pestaña que todavía no se recargó. `dia` es lo
+  // nuevo: limita el volcado a esa jornada. Sin ninguno de los dos se sincroniza TODO, que es lo
+  // que hace el botón manual «Sincronizar». Ver `soloDelDia`.
   let cruceFecha: string | null = null;
+  let diaDeHoja: string | null = null;
   try {
-    const body = await request.json() as { cruce?: unknown };
+    const body = await request.json() as { cruce?: unknown; dia?: unknown };
     const f = body?.cruce;
     if (typeof f === 'string' && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(f)) cruceFecha = f;
-  } catch { /* sin body: sincroniza y nada más, como siempre */ }
+    diaDeHoja = aFechaDeHoja(body?.dia ?? body?.cruce);
+  } catch { /* sin body: sincroniza todo, como siempre */ }
 
   try {
     const auth = await getAuth();
@@ -91,15 +96,17 @@ export async function POST(request: NextRequest) {
     if (rmMiss.length)  console.warn('[sync-despacho] DESPACHO RM: encabezados no encontrados (fallback posicional):', rmMiss);
     if (regMiss.length) console.warn('[sync-despacho] DESPACHO REGIONES: encabezados no encontrados (fallback posicional):', regMiss);
 
-    const rmRecords  = rmValues.filter(isDataRow).map(makeRmMapper(rmValues[0] ?? []));
-    const regRecords = regValues.filter(isDataRow).map(makeRegionesMapper(regValues[0] ?? []));
+    // Con `dia`, solo esa jornada. El REGISTRAR mandaba la planilla ENTERA — 8.986 filas y 4,66 MB
+    // el 30/09, creciendo a diario — para insertar las ~230 del día. Ver `soloDelDia`.
+    const rmRecords  = soloDelDia(rmValues.filter(isDataRow).map(makeRmMapper(rmValues[0] ?? [])), diaDeHoja);
+    const regRecords = soloDelDia(regValues.filter(isDataRow).map(makeRegionesMapper(regValues[0] ?? [])), diaDeHoja);
 
     // ── DESPACHO CONGELADOS: una hoja, dos tablas ──────────────────────────────
     // La hoja usa los mismos encabezados que DESPACHO RM (se creó copiándolos), así que se parsea
     // con el mapper de RM. Lo que cambia es el destino: cada fila va a la tabla de su catálogo.
     // Sin esto, la hoja sería el ÚNICO lugar donde viven esos datos y la base dependería solo del
     // espejo directo — que es justo lo que falló durante meses (PR #492).
-    const congRecords = congValues.filter(isDataRow).map(makeRmMapper(congValues[0] ?? []));
+    const congRecords = soloDelDia(congValues.filter(isDataRow).map(makeRmMapper(congValues[0] ?? [])), diaDeHoja);
     const cong = repartirCongelados(
       congRecords,
       cod => isRegionesCod(cod),
