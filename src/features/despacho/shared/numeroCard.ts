@@ -153,6 +153,35 @@ export function contadorPorClase(): Record<ClaseEnvase, number> {
   return { pallet: 0, bulto: 0, contenedor: 0, chocolate: 0, adquisicion: 0, webretiro: 0 };
 }
 
+/**
+ * Cuántas unidades hay de cada clase. UN SOLO contador para toda la pantalla.
+ *
+ * ── POR QUÉ (01/10/2026) ───────────────────────────────────────────────────────────────────────
+ *
+ * El coordinador preguntó por qué las adquisiciones y los web/retiro no se sumaban en el
+ * encabezado de la tienda. Al mirarlo apareció algo peor: había DOS cuentas distintas para la
+ * misma tienda, en la misma pantalla, y daban números distintos.
+ *
+ *   · La tarjeta de la lista contaba los bultos POR RESTA — `total − pallets − contenedores −
+ *     chocolates—, así que las adquisiciones y los web/retiro caían ahí adentro. 07CCR decía 5B.
+ *   · El encabezado los contaba por IGUALDAD de texto (`i.tipo === 'Bulto'`), que nunca coincide
+ *     con 'Adquisicion' ni con 'WebRetiro', así que no los contaba en ningún lado. Decía 1B.
+ *
+ * Es el mismo error de siempre en este archivo — comparar `tipo` con un string en vez de usar la
+ * clase — y ya había mordido dos veces: en el contador del alta (#611, tres adquisiciones con el
+ * mismo número colapsándose en una fila) y en el Manual (#617, invisibles en todas las líneas).
+ *
+ * Esta función existe para que no haya una tercera. Las seis clases salen de `CLASES_ENVASE`, así
+ * que una clase nueva aparece sola en los dos lugares.
+ */
+export function contarPorClase<T>(
+  items: readonly T[], claseDe: (item: T) => ClaseEnvase,
+): Record<ClaseEnvase, number> {
+  const cuenta = contadorPorClase();
+  for (const item of items) cuenta[claseDe(item)] += 1;
+  return cuenta;
+}
+
 /** Traduce el `tipo` de Santiago ('Pallet' | 'Bulto' | 'Contenedor' | 'Chocolate'). */
 export function claseSantiago(tipo: string): ClaseEnvase {
   if (tipo === 'Pallet') return 'pallet';

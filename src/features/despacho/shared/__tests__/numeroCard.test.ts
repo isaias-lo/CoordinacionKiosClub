@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { repartirNumeros, numeroParaUnidadNueva, ordenDeItem, renumerarOrden, renumerarOrdenNacional, claseNacional, etiquetaCard, renumerarSoloSinOrden } from '../numeroCard';
+import { repartirNumeros, numeroParaUnidadNueva, ordenDeItem, renumerarOrden, renumerarOrdenNacional, claseNacional, claseSantiago, contarPorClase, etiquetaCard, renumerarSoloSinOrden } from '../numeroCard';
 
 describe('repartirNumeros — EL NÚMERO ES EL QUE ESTÁ IMPRESO', () => {
   it('cada unidad se queda con su seq, sin importar el orden de la lista', () => {
@@ -245,5 +245,53 @@ describe('renumerarSoloSinOrden — el renumerado del reducer de Nacional', () =
 
   it('lista vacía', () => {
     expect(renumerarSoloSinOrden([])).toEqual([]);
+  });
+});
+
+// ── LAS DOS CUENTAS QUE DABAN DISTINTO (01/10/2026) ────────────────────────────────────────────
+//
+// El coordinador preguntó por qué las adquisiciones y los web/retiro no se sumaban en el
+// encabezado de la tienda. Al mirarlo apareció que había DOS cuentas distintas para la misma
+// tienda, en la misma pantalla:
+//
+//   · la TARJETA contaba los bultos por RESTA → las metía entre los bultos → 07CCR decía 5B
+//   · el ENCABEZADO los contaba por IGUALDAD de texto → no los contaba → decía 1B
+
+describe('contarPorClase — un solo contador para toda la pantalla', () => {
+  const i = (tipo: string) => ({ tipo });
+
+  it('EL CASO: una adquisición no es un bulto', () => {
+    const c = contarPorClase([i('Pallet'), i('Bulto'), i('Adquisicion')], x => claseSantiago(x.tipo));
+    expect(c.bulto).toBe(1);          // NO 2: la adquisición tiene su propia serie
+    expect(c.adquisicion).toBe(1);
+  });
+
+  it('el web/retiro tampoco', () => {
+    const c = contarPorClase([i('Bulto'), i('WebRetiro'), i('WebRetiro')], x => claseSantiago(x.tipo));
+    expect(c.bulto).toBe(1);
+    expect(c.webretiro).toBe(2);
+  });
+
+  it('el total por clases es el total de items — nada se pierde ni se cuenta dos veces', () => {
+    // La cuenta por RESTA garantizaba el total pero mentía en el reparto; la cuenta por IGUALDAD
+    // repartía bien pero perdía unidades. Esto tiene que cumplir las dos cosas.
+    const items = [i('Pallet'), i('Bulto'), i('Adquisicion'), i('WebRetiro'), i('Chocolate'), i('Contenedor')];
+    const c = contarPorClase(items, x => claseSantiago(x.tipo));
+    expect(Object.values(c).reduce((a, b) => a + b, 0)).toBe(items.length);
+  });
+
+  it('las seis clases arrancan en cero, aunque no haya ninguna', () => {
+    const c = contarPorClase([], x => claseSantiago((x as { tipo: string }).tipo));
+    expect(c).toEqual({ pallet: 0, bulto: 0, contenedor: 0, chocolate: 0, adquisicion: 0, webretiro: 0 });
+  });
+
+  it('sirve igual con el vocabulario de Nacional', () => {
+    const n = (pkg: string) => ({ pkg });
+    const c = contarPorClase([n('pallet'), n('box'), n('adquisicion')], x => claseNacional(x.pkg));
+    expect(c).toMatchObject({ pallet: 1, bulto: 1, adquisicion: 1 });
+  });
+
+  it('un tipo desconocido cae en bulto, como siempre', () => {
+    expect(contarPorClase([i('Otro')], x => claseSantiago(x.tipo)).bulto).toBe(1);
   });
 });

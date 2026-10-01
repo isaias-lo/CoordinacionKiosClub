@@ -13,7 +13,7 @@ import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
 import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
 import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
-import { numeroParaUnidadNueva, numerarPorClase, ordenDeItem, renumerarOrden, etiquetaCard, claseSantiago } from '@/features/despacho/shared/numeroCard';
+import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, ordenDeItem, renumerarOrden, etiquetaCard, claseSantiago } from '@/features/despacho/shared/numeroCard';
 import { leerPeso, limpiarTecleo, avisoDePeso, excedeTopeDuro } from '@/features/despacho/shared/pesoIngresado';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
 import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
@@ -179,7 +179,8 @@ interface ResumenEditState {
    STORE GRID CARD
 ═══════════════════════════════════════ */
 function TiendaGridCard({
-  t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
+  t, isActive, isToday, palletCount, contenedorCount, chocolateCount,
+  bultoCount, adquisicionCount = 0, webRetiroCount = 0,
   despachoP, despachoB, despachoC, despachoCH, hasGuide, storeDoneOps = 0, storeTotalOps = 0,
   tipoCat, terminada, viendo, sinPesarCount,
   onSelect, onAddToday, onRemoveFromToday,
@@ -201,8 +202,13 @@ function TiendaGridCard({
   onSelect: () => void;
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
+  bultoCount: number;
+  adquisicionCount?: number;
+  webRetiroCount?: number;
 }) {
-  const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
+  // El bulto ya NO sale por resta. Así salía antes, y por eso las adquisiciones y los web/retiro
+  // caían adentro: 07CCR mostraba 5B acá y 1B en el encabezado, para las mismas unidades.
+  const boxCount = bultoCount;
   const expP     = despachoP ?? 0;
   const expB     = despachoB ?? 0;
   const expC     = despachoC ?? 0;
@@ -274,6 +280,9 @@ function TiendaGridCard({
         {boxCount        > 0 && <span title="Bultos" className={`text-[11px] font-bold ${SCB.bulto.textCls} px-1.5 py-0.5 rounded leading-none`} style={{ background: SCB.bulto.bg }}>{boxCount}B</span>}
         {contenedorCount > 0 && <span title="Contenedores" className={`text-[11px] font-bold ${SCB.contenedor.textCls} px-1.5 py-0.5 rounded leading-none`} style={{ background: SCB.contenedor.bg }}>{contenedorCount}C</span>}
         {chocolateCount  > 0 && <span title="Chocolates" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ color: SCB.chocolate.color, background: SCB.chocolate.bg }}>{chocolateCount}CH</span>}
+        {/* Adquisición y web/retiro con SU letra. No se pesan, pero existen y hay que verlas. */}
+        {(adquisicionCount ?? 0) > 0 && <span title="Adquisiciones — no se pesan" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ color: '#92400E', background: '#FEF3C7' }}>{adquisicionCount}A</span>}
+        {(webRetiroCount ?? 0)   > 0 && <span title="Web / retiro — no se pesan" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ color: '#065F46', background: '#D1FAE5' }}>{webRetiroCount}W</span>}
       </div>
       <StoreProgressBar total={storeTotalOps} done={storeDoneOps} variant="grid" showCount />
     </div>
@@ -327,8 +336,9 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
 /* ═══════════════════════════════════════
    FORM HEADER
 ═══════════════════════════════════════ */
-function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, onBack, swipe, terminadaInfo, onToggleTerminada, sinPesarCount, sinGuardar, viendo, canalSano, botonRegistrar }: {
-  tienda: TiendaSantiago; pallets: number; bultos: number; chocolates?: number; contenedores?: number; onBack: () => void;
+function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, adquisiciones = 0, webRetiro = 0, onBack, swipe, terminadaInfo, onToggleTerminada, sinPesarCount, sinGuardar, viendo, canalSano, botonRegistrar }: {
+  tienda: TiendaSantiago; pallets: number; bultos: number; chocolates?: number; contenedores?: number;
+  adquisiciones?: number; webRetiro?: number; onBack: () => void;
   swipe?: { start: (e: React.TouchEvent) => void; move: (e: React.TouchEvent) => void; end: () => void };
   terminadaInfo?: TerminadaInfo; onToggleTerminada: (cod: string, terminada: boolean, por?: string) => void;
   sinPesarCount?: number;
@@ -337,7 +347,7 @@ function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedore
   canalSano: boolean;
   botonRegistrar?: React.ReactNode;
 }) {
-  const itemCount = pallets + bultos + chocolates + contenedores;
+  const itemCount = pallets + bultos + chocolates + contenedores + adquisiciones + webRetiro;
   return (
     <div className="bg-navy px-3 py-3 flex flex-col gap-2 flex-shrink-0 touch-none select-none"
       onTouchStart={swipe?.start}
@@ -368,6 +378,18 @@ function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedore
             <div className="font-barlow-condensed text-[22px] font-extrabold text-[#E9A178] leading-none">{chocolates}</div>
             <div className="text-[9px] text-white/50 uppercase tracking-widest">CH</div>
           </div>
+          {adquisiciones > 0 && (
+            <div className="text-center" title="Adquisiciones — no se pesan">
+              <div className="font-barlow-condensed text-[22px] font-extrabold text-[#F59E0B] leading-none">{adquisiciones}</div>
+              <div className="text-[9px] text-white/50 uppercase tracking-widest">A</div>
+            </div>
+          )}
+          {webRetiro > 0 && (
+            <div className="text-center" title="Web / retiro en tienda — no se pesan">
+              <div className="font-barlow-condensed text-[22px] font-extrabold text-[#34D399] leading-none">{webRetiro}</div>
+              <div className="text-[9px] text-white/50 uppercase tracking-widest">W</div>
+            </div>
+          )}
           {contenedores > 0 && (
             <div className="text-center" title="Contenedores">
               <div className="font-barlow-condensed text-[22px] font-extrabold text-[#C4A3E8] leading-none">{contenedores}</div>
@@ -995,10 +1017,17 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     ...Object.entries(items).filter(([c, it]) => it.length > 0 && !allTodayCods.includes(c)),
   ];
   const tiendaItems        = currentTienda ? (items[currentTienda.cod] || []) : [];
-  const tiendaPallets      = tiendaItems.filter(i => i.tipo === 'Pallet').length;
-  const tiendaBultos       = tiendaItems.filter(i => i.tipo === 'Bulto').length;
-  const tiendaChocolates   = tiendaItems.filter(i => i.tipo === 'Chocolate').length;
-  const tiendaContenedores = tiendaItems.filter(i => i.tipo === 'Contenedor').length;
+  // UN SOLO contador, por CLASE. Antes esto comparaba `i.tipo === 'Bulto'`, que nunca coincide con
+  // 'Adquisicion' ni con 'WebRetiro': las dos clases no se contaban en ningún lado del encabezado,
+  // mientras la tarjeta de la lista las metía entre los bultos. Dos cuentas distintas en la misma
+  // pantalla — 07CCR decía 5B arriba y 1B acá. Ver `contarPorClase`.
+  const tiendaConteo       = contarPorClase(tiendaItems, i => claseSantiago(i.tipo));
+  const tiendaPallets      = tiendaConteo.pallet;
+  const tiendaBultos       = tiendaConteo.bulto;
+  const tiendaChocolates   = tiendaConteo.chocolate;
+  const tiendaContenedores = tiendaConteo.contenedor;
+  const tiendaAdquis       = tiendaConteo.adquisicion;
+  const tiendaWeb          = tiendaConteo.webretiro;
 
   // #6 — líneas del "Manual" (lo cargado en esta pantalla). El calendario del sheet es
   // el general de Picking (CalendarioColumnas), no una lista por zona.
@@ -2212,10 +2241,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               return (
                 <TiendaGridCard key={t.cod} t={t} tipoCat={tipoCatByCod[t.cod]}
                   isActive={currentTienda?.cod === t.cod} isToday
-                  itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
+                  itemCount={tI.length} palletCount={contarPorClase(tI, i => claseSantiago(i.tipo)).pallet}
                   sinPesarCount={tI.filter(esSinPesar).length}
-                  contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
-                  chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
+                  contenedorCount={contarPorClase(tI, i => claseSantiago(i.tipo)).contenedor}
+                  chocolateCount={contarPorClase(tI, i => claseSantiago(i.tipo)).chocolate}
+                  bultoCount={contarPorClase(tI, i => claseSantiago(i.tipo)).bulto}
+                  adquisicionCount={contarPorClase(tI, i => claseSantiago(i.tipo)).adquisicion}
+                  webRetiroCount={contarPorClase(tI, i => claseSantiago(i.tipo)).webretiro}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
                   hasGuide={!!guides[guideKey(t.cod)]} storeStatus={prog?.status ?? 'none'} storeDoneOps={storeDoneOpsSeco} storeTotalOps={storeTotalOpsSeco}
@@ -2252,10 +2284,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               return (
                 <TiendaGridCard key={t.cod} t={t} tipoCat={tipoCatByCod[t.cod]}
                   isActive={currentTienda?.cod === t.cod} isToday={false}
-                  itemCount={tI.length} palletCount={tI.filter(i => i.tipo === 'Pallet').length}
+                  itemCount={tI.length} palletCount={contarPorClase(tI, i => claseSantiago(i.tipo)).pallet}
                   sinPesarCount={tI.filter(esSinPesar).length}
-                  contenedorCount={tI.filter(i => i.tipo === 'Contenedor').length}
-                  chocolateCount={tI.filter(i => i.tipo === 'Chocolate').length}
+                  contenedorCount={contarPorClase(tI, i => claseSantiago(i.tipo)).contenedor}
+                  chocolateCount={contarPorClase(tI, i => claseSantiago(i.tipo)).chocolate}
+                  bultoCount={contarPorClase(tI, i => claseSantiago(i.tipo)).bulto}
+                  adquisicionCount={contarPorClase(tI, i => claseSantiago(i.tipo)).adquisicion}
+                  webRetiroCount={contarPorClase(tI, i => claseSantiago(i.tipo)).webretiro}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
                   hasGuide={!!guides[guideKey(t.cod)]} storeStatus="none" storeDoneOps={0} storeTotalOps={0}
@@ -2683,7 +2718,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
     return (
       <>
-        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} chocolates={tiendaChocolates} contenedores={tiendaContenedores} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} terminadaInfo={terminadas.get(currentTienda.cod)} onToggleTerminada={marcarTerminada}
+        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} chocolates={tiendaChocolates} contenedores={tiendaContenedores} adquisiciones={tiendaAdquis} webRetiro={tiendaWeb} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} terminadaInfo={terminadas.get(currentTienda.cod)} onToggleTerminada={marcarTerminada}
           sinPesarCount={tiendaItems.filter(esSinPesar).length}
           sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[currentTienda.cod] ?? [], tiendaItems))}
           viendo={viendoPorTienda.get(currentTienda.cod)}
