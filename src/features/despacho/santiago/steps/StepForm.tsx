@@ -71,7 +71,7 @@ import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBo
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { levantarLapidasDeSlotsVivos } from '../../shared/lapidasBorrado';
 import { actualizarSlotPicking, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
-import { leerResultadoDelCruce } from '../../shared/avisarCruce';
+import { escribirCruceDelDia } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo, pesoPalletConCajas,
@@ -434,13 +434,16 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       await sheetsSantiagoWrite({ [cod]: lista }, regimen, fechaDespachoBodega(state.fechaDespacho), hoyISO);
       // El cruce se escribe del lado del servidor, despues del sync. Ver `api/sync-despacho`.
       //
-      // La respuesta SE LEE. Antes se tiraba, así que una tienda podía quedar registrada en la base
-      // y ausente de la hoja sin que nadie se enterara — y el botón decía «OK registrada» igual.
-      const resCruce = await fetch('/api/sync-despacho', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cruce: hoyISO }), keepalive: true,
-      });
-      const avisoCruce = await leerResultadoDelCruce(resCruce);
+      // Las DOS salen juntas y ninguna espera a la otra. El cruce no necesita al sync: lee
+      // `despacho_rm` / `despacho_regiones`, donde el espejo de `sheets-write` ya dejó los pesos.
+      // Ver `escribirCruceDelDia` — ahí está por qué dejó de viajar adentro del sync.
+      const [, avisoCruce] = await Promise.all([
+        fetch('/api/sync-despacho', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dia: hoyISO }), keepalive: true,
+        }).catch(e => { console.error('[sync-despacho]', e); }),
+        escribirCruceDelDia(hoyISO),
+      ]);
       registroTiendas.marcar(cod);
       logActividad({ accion: 'registrar_tienda', fuente: 'rmcosta', tiendaCod: cod,
         tiendaNombre: getTiendaSantiagoByCod(cod)?.tienda ?? cod });

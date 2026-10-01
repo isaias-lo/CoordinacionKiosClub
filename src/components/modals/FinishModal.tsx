@@ -8,7 +8,7 @@ import { sheetsRegionesWrite } from '../../features/despacho/regiones/utils/shee
 import type { HistoryEntry } from '../../types';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { logActividad } from '@/lib/actividad';
-import { leerResultadoDelCruce, AVISO_CRUCE } from '@/features/despacho/shared/avisarCruce';
+import { escribirCruceDelDia, AVISO_CRUCE } from '@/features/despacho/shared/avisarCruce';
 import { fechaChile } from '@/lib/fechaChile';
 
 // Hoy en horario LOCAL (Chile). NO toISOString() (da UTC → de tarde rueda al día siguiente).
@@ -87,17 +87,19 @@ export function FinishModal({ open, onClose }: Props) {
     // La fecha se toma ACÁ y no del `todayKey` de arriba: ese se fija al importar el módulo, así
     // que una pestaña abierta desde ayer registraría el cruce bajo el día equivocado.
     sheetsRegionesWrite(dispatchData, 'Luis Fica', fechaDespacho, todayKey)
-      .then(() => fetch('/api/sync-despacho', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cruce: fechaChile() }),
-        keepalive: true,
-      }))
-      .then(leerResultadoDelCruce)
-      .then(aviso => { if (aviso) showToast(aviso, '#D97706'); })
-      // El `catch` vacío se tragaba el caso en que la cadena ni llega al sync — y entonces la hoja
-      // se queda sin el día sin que nadie se entere. El registro ya está guardado; lo que falta es
-      // el informe, y eso se dice.
+      .then(() => Promise.all([
+        // Las DOS salen juntas y ninguna espera a la otra. El cruce no necesita al sync: lee
+        // `despacho_rm` / `despacho_regiones`, donde el espejo de `sheets-write` ya dejó los pesos.
+        // Ver `escribirCruceDelDia` — ahí está por qué dejó de viajar adentro del sync.
+        fetch('/api/sync-despacho', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dia: fechaChile() }),
+          keepalive: true,
+        }).catch(e => { console.error('[sync-despacho]', e); }),
+        escribirCruceDelDia(fechaChile()),
+      ]))
+      .then(([, aviso]) => { if (aviso) showToast(aviso, '#D97706'); })
       .catch(() => showToast(AVISO_CRUCE, '#D97706'));
     showToast('✓ Guardado · enviando a Sheets…', '#16A34A');
 

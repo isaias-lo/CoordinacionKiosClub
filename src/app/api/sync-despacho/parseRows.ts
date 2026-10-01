@@ -170,3 +170,46 @@ export function makeRegionesMapper(headers: (string | number)[]) {
     seguimiento: 'Registrado',
   });
 }
+
+
+/**
+ * `2026-09-30` → `30/09/2026`, que es como la planilla escribe la fecha.
+ *
+ * Devuelve `null` si no es una fecha ISO: quien llama trata eso como «sin filtro» y sincroniza
+ * todo, que es el comportamiento de siempre.
+ */
+export function aFechaDeHoja(iso: unknown): string | null {
+  const s = String(iso ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const [a, m, d] = s.split('-');
+  return `${d}/${m}/${a}`;
+}
+
+/**
+ * Solo las filas de UN día. Sin día, todas — el volcado completo sigue existiendo.
+ *
+ * ── POR QUÉ (30/09/2026) ───────────────────────────────────────────────────────────────────────
+ *
+ * `sync-despacho` mandaba a Supabase LA PLANILLA ENTERA en cada REGISTRAR, para insertar las ~230
+ * filas del día. Medido ese día: **8.986 filas · 4,66 MB** — 6.783 de DESPACHO RM, 1.914 de
+ * REGIONES y 289 de CONGELADOS. Y crece todos los días, porque esas hojas solo se agregan.
+ *
+ * Con el filtro, el registro de un día manda ~230 filas y ~0,12 MB.
+ *
+ * El volcado COMPLETO no se saca: existe como reparación —sin él la hoja sería el único lugar
+ * donde viven esos datos, que es justo lo que falló durante meses en el #492— y queda en el botón
+ * manual «Sincronizar», que no manda día. Lo que cambia es que el REGISTRAR de cada jornada deje
+ * de pagar el costo de todo el histórico.
+ *
+ * Una fila sin fecha NO se descarta cuando hay filtro: no se puede afirmar que no sea del día, y
+ * perderla en silencio es peor que sincronizarla de más.
+ */
+export function soloDelDia<T extends { fecha?: string | null }>(
+  filas: T[], fechaDeHoja: string | null,
+): T[] {
+  if (!fechaDeHoja) return filas;
+  return filas.filter(f => {
+    const v = String(f.fecha ?? '').trim();
+    return v === '' || v === fechaDeHoja;
+  });
+}
