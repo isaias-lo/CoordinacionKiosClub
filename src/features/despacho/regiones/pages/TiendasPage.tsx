@@ -57,7 +57,7 @@ import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/sha
 import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo, pesoPalletConCajas,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
 import { abreviaturaContenido, nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
-import { numeroParaUnidadNueva, numerarPorClase, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional } from '@/features/despacho/shared/numeroCard';
+import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional } from '@/features/despacho/shared/numeroCard';
 import { leerPeso, limpiarTecleo, avisoDePeso, excedeTopeDuro } from '@/features/despacho/shared/pesoIngresado';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
 import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
@@ -167,6 +167,10 @@ interface GridCardProps {
   isToday: boolean;
   itemCount: number;
   palletCount: number;
+  bultoCount: number;
+  /** No se pesan, pero existen y hay que verlas. Ver `contarPorClase`. */
+  adquisicionCount?: number;
+  webRetiroCount?: number;
   contenedorCount: number;
   chocolateCount: number;
   pickingP?: number;
@@ -196,9 +200,12 @@ interface GridCardProps {
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, sinPesarCount, onSelect, onDragStart, onAddToday, onRemoveFromToday }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, bultoCount, adquisicionCount = 0, webRetiroCount = 0, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, sinPesarCount, onSelect, onDragStart, onAddToday, onRemoveFromToday }: GridCardProps) {
   const t = TIENDAS[name];
-  const boxCount = itemCount - palletCount - contenedorCount - chocolateCount;
+  // El bulto ya NO sale por resta. Así salía antes, y por eso las adquisiciones y los web/retiro
+  // caían adentro, mientras el encabezado —que contaba por igualdad de texto— no los contaba en
+  // ningún lado. Dos cuentas distintas para la misma tienda. Ver `contarPorClase`.
+  const boxCount = bultoCount;
   // Desconta los ya ingresados: el badge punteado muestra SOLO lo que Picking imprimió y Bodega
   // todavía no pesó. Es una señal distinta de la marca de esquina (`MarcaSinPesar`), que cuenta lo
   // que SÍ se cargó pero quedó guardado sin peso. Las dos dicen "falta pesar" y son cosas
@@ -268,6 +275,9 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
         {boxCount       > 0 && <span title="Bultos" className={`text-[11px] font-bold ${SCB.bulto.textCls} px-1.5 py-0.5 rounded leading-none`} style={{ background: SCB.bulto.bg }}>{boxCount}B</span>}
         {contenedorCount > 0 && <span title="Contenedores" className={`text-[11px] font-bold ${SCB.contenedor.textCls} px-1.5 py-0.5 rounded leading-none`} style={{ background: SCB.contenedor.bg }}>{contenedorCount}C</span>}
         {chocolateCount > 0 && <span title="Chocolates" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ color: SCB.chocolate.color, background: SCB.chocolate.bg }}>{chocolateCount}CH</span>}
+        {/* Adquisición y web/retiro con SU letra. No se pesan, pero existen y hay que verlas. */}
+        {adquisicionCount > 0 && <span title="Adquisiciones — no se pesan" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ color: '#92400E', background: '#FEF3C7' }}>{adquisicionCount}A</span>}
+        {webRetiroCount   > 0 && <span title="Web / retiro — no se pesan" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ color: '#065F46', background: '#D1FAE5' }}>{webRetiroCount}W</span>}
         {/* Preset fallback (solo cuando no hay picking ni items) */}
         {!hasGhost && preset && itemCount === 0 && (preset.pallets > 0 || preset.bultos > 0) && (
           <span className="text-[11px] text-text-3/50 leading-none">
@@ -1920,22 +1930,40 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             </div>
             <div className="font-mono text-[11px] text-white/50 mt-0.5">{tienda?.cod ? formatCod(tienda.cod) : ''} · {tienda?.calle} {tienda?.numero}</div>
           </div>
+          {/* UN SOLO contador, por CLASE — el mismo que usa la tarjeta de la lista. Antes acá se
+              comparaba `i.pkg === 'box'`, que nunca coincide con una adquisición ni con un
+              web/retiro: no se contaban en ningún lado, mientras la tarjeta los metía entre los
+              bultos. Dos cuentas distintas en la misma pantalla. Ver `contarPorClase`. */}
+          {(() => { const c = contarPorClase(items, i => claseNacional(i.pkg)); return (
           <div className="flex gap-2.5 ml-2 flex-shrink-0">
             <div className="text-center" title="Pallets">
-              <div className="font-barlow-condensed text-[26px] font-extrabold text-[#93C5FD] leading-none">{items.filter(i => i.pkg === 'pallet').length}</div>
+              <div className="font-barlow-condensed text-[26px] font-extrabold text-[#93C5FD] leading-none">{c.pallet}</div>
               <div className="text-[10px] text-white/50 uppercase tracking-widest">P</div>
             </div>
             <div className="text-center" title="Bultos">
-              <div className="font-barlow-condensed text-[26px] font-extrabold text-[#FCD34D] leading-none">{items.filter(i => i.pkg === 'box').length}</div>
+              <div className="font-barlow-condensed text-[26px] font-extrabold text-[#FCD34D] leading-none">{c.bulto}</div>
               <div className="text-[10px] text-white/50 uppercase tracking-widest">B</div>
             </div>
-            {items.filter(i => i.pkg === 'chocolate').length > 0 && (
+            {c.chocolate > 0 && (
               <div className="text-center" title="Chocolates">
-                <div className="font-barlow-condensed text-[26px] font-extrabold text-[#FBB6A0] leading-none">{items.filter(i => i.pkg === 'chocolate').length}</div>
+                <div className="font-barlow-condensed text-[26px] font-extrabold text-[#FBB6A0] leading-none">{c.chocolate}</div>
                 <div className="text-[10px] text-white/50 uppercase tracking-widest">CH</div>
               </div>
             )}
+            {c.adquisicion > 0 && (
+              <div className="text-center" title="Adquisiciones — no se pesan">
+                <div className="font-barlow-condensed text-[26px] font-extrabold text-[#F59E0B] leading-none">{c.adquisicion}</div>
+                <div className="text-[10px] text-white/50 uppercase tracking-widest">A</div>
+              </div>
+            )}
+            {c.webretiro > 0 && (
+              <div className="text-center" title="Web / retiro en tienda — no se pesan">
+                <div className="font-barlow-condensed text-[26px] font-extrabold text-[#34D399] leading-none">{c.webretiro}</div>
+                <div className="text-[10px] text-white/50 uppercase tracking-widest">W</div>
+              </div>
+            )}
           </div>
+          ); })()}
         </div>
         {tienda?.cod && (
           <div className="flex justify-end items-center gap-2 touch-auto">
@@ -2715,9 +2743,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]}
                       isActive={selectedTienda === t.name} isToday
                       itemCount={cardItems.length} sinPesarCount={cardItems.filter(esSinPesar).length}
-                      palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
-                      contenedorCount={cardItems.filter(i => i.pkg === 'contenedor').length}
-                      chocolateCount={cardItems.filter(i => i.pkg === 'chocolate').length}
+                      palletCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).pallet}
+                      contenedorCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).contenedor}
+                      chocolateCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).chocolate}
+                      bultoCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).bulto}
+                      adquisicionCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).adquisicion}
+                      webRetiroCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).webretiro}
                       pickingP={Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - consumed.p)}
                       pickingB={Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - consumed.b)}
                       pickingC={Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - consumed.c)}
@@ -2770,9 +2801,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]}
                         isActive={selectedTienda === t.name} isToday={false}
                         itemCount={cardItems.length} sinPesarCount={cardItems.filter(esSinPesar).length}
-                        palletCount={cardItems.filter(i => i.pkg === 'pallet').length}
-                        contenedorCount={cardItems.filter(i => i.pkg === 'contenedor').length}
-                        chocolateCount={cardItems.filter(i => i.pkg === 'chocolate').length}
+                        palletCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).pallet}
+                        contenedorCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).contenedor}
+                        chocolateCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).chocolate}
+                        bultoCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).bulto}
+                        adquisicionCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).adquisicion}
+                        webRetiroCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).webretiro}
                         pickingP={Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - consumed.p)}
                         pickingB={Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - consumed.b)}
                         pickingC={Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - consumed.c)}
