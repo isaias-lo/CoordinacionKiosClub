@@ -47,6 +47,7 @@ import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
 import { useCruceDelDia } from '@/features/despacho/shared/useCruceDelDia';
 import { veElCruce } from '@/features/despacho/shared/cruceTienda';
 import { useAuth } from '@/components/AuthProvider';
+import { TraerOdooButton } from '../../shared/TraerOdooButton';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { useTiendaTerminada, type TerminadaInfo } from '../../shared/useTiendaTerminada';
@@ -2384,6 +2385,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               {todayTiendas.length > 0 && pendingTiendas.length === 0 && (
                 <span className="font-barlow-condensed text-[12px] font-bold text-[#86EFAC] bg-[rgba(134,239,172,0.15)] px-2 py-0.5 rounded">✓ Hoy completo</span>
               )}
+              {/* El lado de Odoo no depende de Bodega: existe desde temprano y se puede traer sin
+                  esperar al registro. Solo admin. Ver `TraerOdooButton`. */}
+              <TraerOdooButton rol={profile?.role} fechaISO={fechaChile()} showToast={showToast} />
             </div>
           </div>
           <div className="flex gap-5 mb-2">

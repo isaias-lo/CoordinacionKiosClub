@@ -104,6 +104,24 @@ export async function leerResultadoDelCruce(res: Response | void): Promise<strin
  * Devuelve el aviso para mostrar, o `null` si salió bien. No lanza nunca.
  */
 export async function escribirCruceDelDia(fechaISO: string): Promise<string | null> {
+  return (await traerOdooDelDia(fechaISO)).aviso;
+}
+
+export interface ResultadoCruce {
+  /** El aviso para mostrar, o `null` si salió bien. */
+  aviso: string | null;
+  agregadas?: number;
+  actualizadas?: number;
+}
+
+/**
+ * Lo mismo, pero devolviendo CUÁNTAS filas se tocaron.
+ *
+ * Existe para el botón «Traer Odoo del día»: ahí la persona apretó a propósito y quiere ver que
+ * pasó algo. En el registro automático, en cambio, el silencio es la respuesta correcta y solo
+ * interesa el fallo — por eso `escribirCruceDelDia` se queda con el aviso y descarta el resto.
+ */
+export async function traerOdooDelDia(fechaISO: string): Promise<ResultadoCruce> {
   try {
     const res = await fetch('/api/cruce-pesos', {
       method: 'POST',
@@ -113,14 +131,23 @@ export async function escribirCruceDelDia(fechaISO: string): Promise<string | nu
     });
     if (!res.ok) {
       console.error('[cruce-pesos] HTTP', res.status);
-      return AVISO_CRUCE;
+      return { aviso: AVISO_CRUCE };
     }
-    const json = await res.json() as { ok?: boolean; error?: string };
-    if (json?.ok) return null;
+    const json = await res.json() as { ok?: boolean; error?: string; agregadas?: number; actualizadas?: number };
+    if (json?.ok) return { aviso: null, agregadas: json.agregadas, actualizadas: json.actualizadas };
     console.error('[cruce-pesos]', json?.error ?? 'la respuesta no trajo ok');
-    return AVISO_CRUCE;
+    return { aviso: AVISO_CRUCE };
   } catch (e) {
     console.error('[cruce-pesos]', e);
-    return AVISO_CRUCE;
+    return { aviso: AVISO_CRUCE };
   }
+}
+
+/** El texto del toast cuando el botón terminó bien. Puro, para poder probarlo. */
+export function resumenDeCruce(r: ResultadoCruce): string {
+  const total = (r.agregadas ?? 0) + (r.actualizadas ?? 0);
+  if (total === 0) return 'Odoo no tiene movimientos para este día todavía';
+  const nuevas = r.agregadas ? `${r.agregadas} nueva${r.agregadas === 1 ? '' : 's'}` : '';
+  const viejas = r.actualizadas ? `${r.actualizadas} actualizada${r.actualizadas === 1 ? '' : 's'}` : '';
+  return `✓ CRUCE PESOS al día — ${[nuevas, viejas].filter(Boolean).join(' y ')}`;
 }
