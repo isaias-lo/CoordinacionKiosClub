@@ -69,3 +69,58 @@ export async function leerResultadoDelCruce(res: Response | void): Promise<strin
     return AVISO_CRUCE;   // respuesta ilegible: tampoco se escribió
   }
 }
+
+
+/**
+ * Escribe CRUCE PESOS del día, por su cuenta.
+ *
+ * ── POR QUÉ NO VIAJA MÁS ADENTRO DEL SYNC (30/09/2026) ─────────────────────────────────────────
+ *
+ * El cruce vivía dentro de `sync-despacho`, después del volcado de las hojas. Se hizo así en el
+ * #619 para que el orden lo garantizara el servidor — antes eran tres peticiones encadenadas y la
+ * tercera no alcanzaba a salir si la persona navegaba.
+ *
+ * Eso resolvió aquello y creó esto: el cruce pasó a ser rehén de una operación que engorda sola.
+ * `sync-despacho` manda a Supabase LA PLANILLA ENTERA en cada llamada, y esas hojas solo crecen.
+ * Medido el 30/09: **8.986 filas · 4,66 MB** por delante del cruce, dentro de un presupuesto de
+ * 60 segundos. El cruce solo tarda 8.
+ *
+ * Ese día los dos registros —Nacional a las 17:57 y RM/Costa a las 18:57— dejaron sus pesos bien
+ * en la base y la hoja se quedó vacía las dos veces.
+ *
+ * ── POR QUÉ SEPARARLO NO TRAE DE VUELTA EL BUG DEL #619 ────────────────────────────────────────
+ *
+ * Aquel se rompía porque el tercer eslabón **solo se emitía si el segundo resolvía**: la pestaña
+ * se iba antes de que esa petición saliera, y `keepalive` protege lo que ya se envió, no lo que
+ * todavía no se envió.
+ *
+ * Acá las dos peticiones **salen juntas**, apenas resuelve la escritura de la planilla. Ninguna
+ * espera a la otra, así que no hay cadena que cortar.
+ *
+ * Y el cruce puede correr sin esperar al sync porque no lo necesita: lee `despacho_rm` /
+ * `despacho_regiones`, y ahí los pesos ya los dejó el espejo de `sheets-write`. El 30/09 estaban
+ * en la base a las 18:58:02, diecisiete segundos después del REGISTRAR.
+ *
+ * Devuelve el aviso para mostrar, o `null` si salió bien. No lanza nunca.
+ */
+export async function escribirCruceDelDia(fechaISO: string): Promise<string | null> {
+  try {
+    const res = await fetch('/api/cruce-pesos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fecha: fechaISO }),
+      keepalive: true,
+    });
+    if (!res.ok) {
+      console.error('[cruce-pesos] HTTP', res.status);
+      return AVISO_CRUCE;
+    }
+    const json = await res.json() as { ok?: boolean; error?: string };
+    if (json?.ok) return null;
+    console.error('[cruce-pesos]', json?.error ?? 'la respuesta no trajo ok');
+    return AVISO_CRUCE;
+  } catch (e) {
+    console.error('[cruce-pesos]', e);
+    return AVISO_CRUCE;
+  }
+}

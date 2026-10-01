@@ -78,7 +78,7 @@ import { fechaChile } from '@/lib/fechaChile';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { levantarLapidasDeSlotsVivos } from '../../shared/lapidasBorrado';
 import { actualizarSlotPicking, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
-import { leerResultadoDelCruce } from '../../shared/avisarCruce';
+import { escribirCruceDelDia } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { STORE_CARD_BADGE as SCB, claseTarjetaTienda, claseCodigoTienda, claseEtiquetaTerminada } from '../../shared/storeCardStyles';
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
@@ -345,13 +345,16 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const hoyISO = fechaChile();
     try {
       await sheetsRegionesWrite({ [nombre]: lista }, 'Luis Fica', fechaDespachoBodega(state.fechaDespacho), hoyISO);
-      // La respuesta SE LEE. Antes se tiraba, así que una tienda podía quedar registrada en la base
-      // y ausente de la hoja sin que nadie se enterara — y el botón decía «OK registrada» igual.
-      const resCruce = await fetch('/api/sync-despacho', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cruce: hoyISO }), keepalive: true,
-      });
-      const avisoCruce = await leerResultadoDelCruce(resCruce);
+      // Las DOS salen juntas y ninguna espera a la otra. El cruce no necesita al sync: lee
+      // `despacho_rm` / `despacho_regiones`, donde el espejo de `sheets-write` ya dejó los pesos.
+      // Ver `escribirCruceDelDia` — ahí está por qué dejó de viajar adentro del sync.
+      const [, avisoCruce] = await Promise.all([
+        fetch('/api/sync-despacho', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dia: hoyISO }), keepalive: true,
+        }).catch(e => { console.error('[sync-despacho]', e); }),
+        escribirCruceDelDia(hoyISO),
+      ]);
       registroTiendas.marcar(cod);
       logActividad({ accion: 'registrar_tienda', fuente: 'nacional', tiendaCod: cod, tiendaNombre: nombre });
       // La tienda SÍ quedó registrada — eso no se discute. Lo que puede haber fallado es el informe.
