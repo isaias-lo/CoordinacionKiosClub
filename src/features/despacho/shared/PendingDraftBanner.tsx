@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { sheetsSantiagoWrite } from '../santiago/utils/sheetsSantiago';
+import { fechaDespachoBodega } from './fechaLocal';
 import { sheetsRegionesWrite } from '../regiones/utils/sheetsRegiones';
 import { getTiendaSantiagoByCod } from '../santiago/data/tiendasSantiago';
 import { fechaChile } from '@/lib/fechaChile';
@@ -119,10 +120,30 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
   const registrar = async (d: PendingDraft) => {
     setBusy(d.fecha);
     try {
+      // LAS DOS FECHAS, Y EN SU LUGAR.
+      //
+      // La firma es `(items, regimen, fechaDeDESPACHO, fechaDeARMADO)`. Acá se pasaba `d.fecha`
+      // —que es el día en que se ARMÓ el borrador— en el lugar de la de DESPACHO, y la de armado se
+      // omitía: cae a HOY, el día en que alguien aprieta el botón.
+      //
+      // El resultado es una fila con las dos fechas cruzadas. El sello del id sale de la de
+      // despacho (30/09) y la columna FECHA de la de armado (hoy, 01/10), así que la unidad queda
+      // «despachada antes de armarse» — y con un id que NO es el que escribió el registro normal.
+      // Por eso no actualiza en su lugar: entra como fila NUEVA, y la unidad queda contada dos
+      // veces.
+      //
+      // Medido el 01/10: 71 filas duplicadas del 30/09 (12.622,8 kg) y 1.021 filas con esa forma
+      // desde el 08/07 — una por cada vez que alguien apretó este botón.
+      //
+      // La fecha de despacho del borrador sale de su propio estado; si no la trae, se deduce de la
+      // de armado igual que lo hace Bodega. Nunca se deja que caiga a hoy: el borrador es de otro
+      // día, y ESA es toda la razón por la que este banner existe.
+      // El mediodía evita que la zona horaria corra el día al construir la fecha.
+      const fechaDespacho = fechaDespachoBodega(d.state?.fechaDespacho, new Date(`${d.fecha}T12:00:00`));
       if (fuente === 'santiago') {
-        sheetsSantiagoWrite(d.state.items ?? {}, d.state.regimen ?? 'Seco', d.fecha);
+        sheetsSantiagoWrite(d.state.items ?? {}, d.state.regimen ?? 'Seco', fechaDespacho, d.fecha);
       } else {
-        sheetsRegionesWrite(d.state.dispatch ?? {}, 'Luis Fica', d.fecha);
+        sheetsRegionesWrite(d.state.dispatch ?? {}, 'Luis Fica', fechaDespacho, d.fecha);
       }
       await marcarAtendido(d.fecha);
       setDrafts(prev => prev.filter(x => x.fecha !== d.fecha));
