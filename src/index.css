@@ -249,3 +249,32 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); 
     min-height: 48px;
   }
 }
+
+/* La tarjeta del último pallet escaneado en Bodega. Queda marcada hasta el próximo escaneo: con el
+   pallet en la balanza, la persona vuelve a mirar la pantalla y tiene que encontrarla de un vistazo.
+   Fondo azul, borde grueso, una etiqueta "ESCANEADO" y dos destellos al llegar. */
+.tarjeta-escaneada {
+  background: #DBEAFE !important;
+  box-shadow: 0 0 0 3px #2563EB, 0 0 0 7px rgba(37, 99, 235, 0.25) !important;
+  animation: destello-escaneo 0.8s ease-out 2;
+}
+.tarjeta-escaneada::after {
+  content: 'ESCANEADO';
+  position: absolute;
+  top: -11px;
+  left: 10px;
+  background: #2563EB;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  pointer-events: none;
+}
+@keyframes destello-escaneo {
+  0%   { box-shadow: 0 0 0 3px #2563EB, 0 0 0 16px rgba(37, 99, 235, 0.45); }
+  100% { box-shadow: 0 0 0 3px #2563EB, 0 0 0 7px rgba(37, 99, 235, 0.25); }
+}
+/* El salto deja la tarjeta arriba de la lista con aire para la etiqueta "ESCANEADO". */
+[id^="pallet-card-"] { scroll-margin-top: 18px; }

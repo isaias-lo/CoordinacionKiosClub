@@ -99,6 +99,61 @@ export function enfocarPeso(tarjeta: Element): void {
   peso.select();
 }
 
+/** Cuándo fue el último salto a una tarjeta. Ver `huboSaltoReciente`. */
+let ultimoSalto = 0;
+
+/**
+ * ¿Hubo un salto a una tarjeta en el último segundo?
+ *
+ * Al abrir una tienda, el formulario vuelve arriba con un `scrollTo({ top: 0 })` diferido. Si el
+ * salto ya había bajado hasta la tarjeta, ese scroll lo deshacía: en una tienda con muchos pallets
+ * se llegaba a la tienda pero había que bajar a buscar el escaneado. Quien vuelve arriba pregunta
+ * esto antes.
+ */
+export function huboSaltoReciente(): boolean {
+  return performance.now() - ultimoSalto < 1000;
+}
+
+/**
+ * Lleva la tarjeta del slot arriba de la lista, deja el cursor en Peso, y la mantiene ahí un momento.
+ *
+ * "Un momento" porque justo después de un salto la pantalla se mueve sola: el formulario de la
+ * tienda recién abierta se reconstruye (y puede volver a dibujar las tarjetas), y al poner el
+ * cursor en Peso el teclado del teléfono se abre y achica la pantalla. Cualquiera de las dos cosas
+ * puede dejar la tarjeta fuera de la vista o sin cursor. Durante `ms` se revisa y se corrige; si la
+ * persona toca o desplaza la pantalla, se deja de corregir para no pelearle.
+ *
+ * Devuelve `false` si la tarjeta todavía no está en pantalla (el llamador reintenta).
+ */
+export function llevarATarjeta(slotId: number, ms = 1500): boolean {
+  if (typeof window === 'undefined' || !tarjetaVisible(slotId)) return false;
+  ultimoSalto = performance.now();
+  const fin = ultimoSalto + ms;
+  let vivo = true;
+  const soltar = () => { vivo = false; };
+  const eventos = ['touchstart', 'pointerdown', 'wheel'] as const;
+  for (const ev of eventos) window.addEventListener(ev, soltar, { once: true, passive: true });
+
+  const paso = () => {
+    if (!vivo || performance.now() > fin) {
+      for (const ev of eventos) window.removeEventListener(ev, soltar);
+      return;
+    }
+    ultimoSalto = performance.now();
+    const el = tarjetaVisible(slotId);
+    if (el) {
+      const alto = window.visualViewport?.height ?? window.innerHeight;
+      const { top } = el.getBoundingClientRect();
+      // Arriba y no al centro: con el teclado abierto, el centro queda tapado.
+      if (top < 0 || top > alto * 0.45) el.scrollIntoView({ block: 'start', behavior: 'auto' });
+      if (!el.contains(document.activeElement)) enfocarPeso(el);
+    }
+    setTimeout(paso, 120);
+  };
+  paso();
+  return true;
+}
+
 /**
  * ¿Hay una tarjeta a medio llenar que un salto a otra unidad dejaría atrás?
  *

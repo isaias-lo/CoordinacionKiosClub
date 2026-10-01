@@ -80,7 +80,7 @@ import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiqu
 import { itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
 import { avisoDeUnidad } from '../../shared/avisoUnidadEscaneada';
 import { useEscaneoBodega } from '../../shared/useEscaneoBodega';
-import { enfocarPeso, tarjetaVisible } from '../../shared/useLectorBodega';
+import { llevarATarjeta, huboSaltoReciente } from '../../shared/useLectorBodega';
 import { useWakeLock } from '@/hooks/useWakeLock';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
@@ -524,7 +524,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const [search, setSearch] = useState('');
   // [Buscar por número de pallet] `focoPallet` = pickingSlotId al que hay que saltar en cuanto su
   // tarjeta exista en el DOM (recién se abrió la tienda, formRows tarda un tick en reconstruirse).
-  // `resaltado` es el destello visual una vez que el salto ya ocurrió — se apaga solo.
+  // `resaltado` es la tarjeta del último salto, marcada hasta el próximo (`.tarjeta-escaneada`).
   const [focoPallet, setFocoPallet] = useState<number | null>(null);
   const [resaltado,  setResaltado]  = useState<number | null>(null);
 
@@ -573,17 +573,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // solo (deps en formRows) mientras formRows se sigue reconstruyendo tras abrir la tienda.
   useEffect(() => {
     if (focoPallet == null) return;
-    // [Handheld] La que se ve: el formulario está dibujado dos veces (panel y hoja del teléfono).
-    const el = tarjetaVisible(focoPallet);
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    // [Handheld] Escanear es para pesar: el cursor queda en Peso de esa tarjeta.
-    enfocarPeso(el);
-    const id = focoPallet;
+    // [Handheld] Baja hasta la tarjeta visible, deja el cursor en Peso y la sostiene ahí mientras el
+    // formulario termina de armarse y se abre el teclado. Ver `llevarATarjeta`.
+    if (!llevarATarjeta(focoPallet)) return;
+    // El resaltado queda hasta el próximo salto: con el pallet en la balanza, la persona vuelve a
+    // mirar la pantalla y tiene que saber de un vistazo cuál es el que escaneó.
+    setResaltado(focoPallet);
     setFocoPallet(null);
-    setResaltado(id);
-    const t = setTimeout(() => setResaltado(prev => (prev === id ? null : prev)), 2500);
-    return () => clearTimeout(t);
   }, [focoPallet, formRows]);
 
   const [showTodas, setShowTodas] = useState(false);
@@ -1121,6 +1117,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   useLayoutEffect(() => {
     if (currentTienda) {
       setTimeout(() => {
+        // [Handheld] Si se abrió la tienda escaneando un pallet, el salto ya bajó hasta él: volver
+        // arriba lo deshacía (en tiendas con muchos pallets había que ir a buscarlo a mano).
+        if (huboSaltoReciente()) return;
         formScrollRef.current?.scrollTo({ top: 0 });
         formScrollDesktopRef.current?.scrollTo({ top: 0 });
       }, 60);
@@ -2772,7 +2771,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   // [Handheld] El ancla también en la tarjeta guardada: escanear una unidad ya pesada tiene
                   // que llegar a ella y mostrarla, no abrir la tienda y quedarse arriba.
                   <div key={row.id} id={row.pickingSlotId != null ? `pallet-card-${row.pickingSlotId}` : undefined}
-                    className={`bg-white rounded-xl border-2 p-2.5 ${row.pickingSlotId != null && row.pickingSlotId === resaltado ? 'ring-2 ring-[#1E40AF] ring-offset-2' : ''} ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : row.tipo === 'Contenedor' ? 'border-[rgba(107,33,168,0.40)]' : row.tipo === 'Chocolate' ? 'border-[rgba(146,64,14,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
+                    className={`bg-white rounded-xl border-2 p-2.5 ${row.pickingSlotId != null && row.pickingSlotId === resaltado ? 'relative tarjeta-escaneada' : ''} ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : row.tipo === 'Contenedor' ? 'border-[rgba(107,33,168,0.40)]' : row.tipo === 'Chocolate' ? 'border-[rgba(146,64,14,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-1.5">
                         {(row.tipo === 'Bulto' || row.tipo === 'Chocolate') && (
@@ -2927,12 +2926,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               const marcarEnFoco = () => row.pickingSlotId && setSlotEnFoco(row.pickingSlotId);
               const quitarFoco = () => setSlotEnFoco(prev => prev === row.pickingSlotId ? null : prev);
               // [Buscar por número de pallet] `id` para que el salto directo la encuentre con
-              // scrollIntoView; el resaltado es el destello temporal tras el salto.
+              // scrollIntoView; el resaltado marca la última escaneada hasta el próximo salto.
               const esResaltada = row.pickingSlotId != null && row.pickingSlotId === resaltado;
               return (
                 <div key={row.id} id={row.pickingSlotId != null ? `pallet-card-${row.pickingSlotId}` : undefined}
                   data-tarjeta-bodega="" data-slot={row.pickingSlotId ?? undefined}
-                  className={`relative bg-white rounded-xl border px-2 py-2.5 transition-shadow ${esResaltada ? 'ring-2 ring-[#1E40AF] ring-offset-2' : ''} ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
+                  className={`relative bg-white rounded-xl border px-2 py-2.5 transition-shadow ${esResaltada ? 'tarjeta-escaneada' : ''} ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
                   {row.pickingSlotId != null && <PresenciaBadge viendo={viendoPorSlot.get(row.pickingSlotId)} contexto="tarjeta" />}
                   <div className="flex items-center justify-between mb-2">
                     <span className={`font-barlow-condensed text-[16px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>
