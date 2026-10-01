@@ -165,7 +165,9 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
 interface SantiagoContextValue {
   state: SantiagoState;
   dispatch: React.Dispatch<SantiagoAction>;
-  flushPending: () => void;
+  /** `extra` pisa campos del estado: hace falta cuando se llama en la misma vuelta que un
+   *  `dispatch`, porque ahí `stateRef` todavía tiene el valor viejo. */
+  flushPending: (extra?: { registrado?: boolean; registros?: RegistroPorFecha }) => void;
   /** [Bodega · indicador visible] Ver el mismo campo en AppContext.tsx — misma señal, mismo
    *  motivo: el canal puede quedar unido y mudo sin avisar, y hasta ahora nadie en pantalla se
    *  enteraba (el respaldo por polling ya no se apaga, pero seguía siendo invisible). */
@@ -399,13 +401,25 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     };
   }, [state.step, state.regimen, state.items, state.fechaDespacho, state.registrado, state]);
 
-  // Flush any pending debounced push immediately — call before navigating away
-  const flushPending = useCallback(() => {
+  /**
+   * Empuja YA lo que estuviera pendiente. Se llama antes de navegar.
+   *
+   * `extra` pisa campos del estado. NO es un adorno: `stateRef.current` se actualiza en un efecto,
+   * así que justo después de un `dispatch` todavía tiene el estado VIEJO. Quien llama a esto en la
+   * misma vuelta que un dispatch —el modal de REGISTRAR— empujaba el estado de ANTES.
+   *
+   * El 30/09 los dos registros del día quedaron en `actividad_bodega` y en la planilla, pero el
+   * estado compartido siguió diciendo `registrado: false` y `registros: {}`. Al día siguiente el
+   * banner avisaba «DESPACHO SIN REGISTRAR · 30 SEP» sobre un día que sí se había registrado — y
+   * ofrecía registrarlo otra vez.
+   */
+  const flushPending = useCallback((extra?: { registrado?: boolean; registros?: RegistroPorFecha }) => {
     if (!isInitializedRef.current) return;
     const payload: SyncableState = {
       step: stateRef.current.step, regimen: stateRef.current.regimen, items: stateRef.current.items,
       fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado, registros: stateRef.current.registros,
       borrados: lapidasComoLista(),
+      ...extra,
     };
     const current = JSON.stringify(payload);
     if (current === lastPushedFullRef.current) return;
