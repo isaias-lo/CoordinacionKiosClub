@@ -3,6 +3,9 @@
 import { useState, useRef } from 'react';
 import { finalizarSlotUnion } from '@/features/despacho/shared/finalizarSlotUnion';
 import { logActividad } from '@/lib/actividad';
+import { useAuth } from '@/components/AuthProvider';
+import { TraerOdooButton } from '@/features/despacho/shared/TraerOdooButton';
+import { fechaChile } from '@/lib/fechaChile';
 import { renumerarSoloSinOrden } from '@/features/despacho/shared/numeroCard';
 import { leerPeso, limpiarTecleo } from '@/features/despacho/shared/pesoIngresado';
 import { combinarEnLista } from '@/features/despacho/shared/combinarEnLista';
@@ -48,6 +51,7 @@ interface ResumenPageProps {
 
 export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
   const { state, dispatch, showToast } = useApp();
+  const { profile } = useAuth();
   const { dispatch: dispatchData, selection } = state;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -711,6 +715,9 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
         {/* Panel header */}
         <div className="bg-navy px-3 py-2 flex-shrink-0 flex items-center gap-2">
           <span className="font-barlow-condensed text-[13px] font-bold text-white/70 uppercase tracking-widest flex-1">Resumen del día</span>
+          {/* El lado de Odoo no depende de Bodega: existe desde temprano y se puede traer sin
+              esperar al registro. Solo admin. Ver `TraerOdooButton`. */}
+          <TraerOdooButton rol={profile?.role} fechaISO={fechaChile()} showToast={showToast} />
           {names.length > 0 && (() => {
             const totalItems = names.reduce((a, n) => a + (dispatchData[n]?.length ?? 0), 0);
             const totalSel   = names.reduce((a, n) => a + (selection[n]?.size ?? 0), 0);

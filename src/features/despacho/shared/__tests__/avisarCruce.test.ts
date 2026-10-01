@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mensajeDeFalloDelCruce, leerResultadoDelCruce, AVISO_CRUCE } from '../avisarCruce';
+import { mensajeDeFalloDelCruce, leerResultadoDelCruce, AVISO_CRUCE, traerOdooDelDia, escribirCruceDelDia, resumenDeCruce } from '../avisarCruce';
 
 describe('mensajeDeFalloDelCruce — que el fallo deje de ser invisible', () => {
   it('avisa cuando el cruce falló', () => {
@@ -84,5 +84,64 @@ describe('leerResultadoDelCruce — se llama SIEMPRE después de pedirlo', () =>
 
   it('el cruce falló del lado del servidor: avisa', async () => {
     expect(await leerResultadoDelCruce(resp({ cruce: { ok: false, error: 'timeout' } }))).toBe(AVISO_CRUCE);
+  });
+});
+
+// ── El botón «Traer Odoo del día» ──────────────────────────────────────────────────────────────
+//
+// «Ya es la tarde y no veo nada, al menos la parte del total de Odoo, la tienda y demás, ¿o debo
+// dar clic en registrar para que esto pase?» — sí, debía. El lado de Odoo no depende de Bodega:
+// existe desde temprano y no había cómo traerlo sin cerrar el día.
+
+describe('resumenDeCruce — qué dice el botón cuando terminó', () => {
+  it('cuenta las dos cosas por separado', () => {
+    expect(resumenDeCruce({ aviso: null, agregadas: 21, actualizadas: 0 })).toContain('21 nuevas');
+    expect(resumenDeCruce({ aviso: null, agregadas: 0, actualizadas: 30 })).toContain('30 actualizadas');
+    const mixto = resumenDeCruce({ aviso: null, agregadas: 1, actualizadas: 29 });
+    expect(mixto).toContain('1 nueva');
+    expect(mixto).toContain('29 actualizadas');
+  });
+
+  it('singular y plural', () => {
+    expect(resumenDeCruce({ aviso: null, agregadas: 1 })).toContain('1 nueva');
+    expect(resumenDeCruce({ aviso: null, actualizadas: 1 })).toContain('1 actualizada');
+  });
+
+  it('cero filas NO se anuncia como éxito vacío', () => {
+    // Apretar y que no pase nada es una pregunta sin responder. Si Odoo todavía no despachó, eso
+    // es lo que hay que decir — no un «✓ listo» que haga pensar que la hoja quedó al día.
+    expect(resumenDeCruce({ aviso: null })).toBe('Odoo no tiene movimientos para este día todavía');
+    expect(resumenDeCruce({ aviso: null, agregadas: 0, actualizadas: 0 }))
+      .toBe('Odoo no tiene movimientos para este día todavía');
+  });
+});
+
+describe('traerOdooDelDia y escribirCruceDelDia comparten el camino', () => {
+  const resp = (json: unknown, ok = true) => ({ ok, status: ok ? 200 : 500, json: async () => json }) as unknown as Response;
+  const conFetch = (r: Response | Error) => {
+    globalThis.fetch = (() => (r instanceof Error ? Promise.reject(r) : Promise.resolve(r))) as typeof fetch;
+  };
+
+  it('devuelve los conteos cuando salió bien', async () => {
+    conFetch(resp({ ok: true, agregadas: 21, actualizadas: 0 }));
+    expect(await traerOdooDelDia('2026-10-01')).toEqual({ aviso: null, agregadas: 21, actualizadas: 0 });
+  });
+
+  it('un fallo devuelve el aviso y NINGÚN conteo', async () => {
+    // El fallo manda: si no se escribió, no se dice cuántas filas se tocaron.
+    conFetch(resp({ error: 'timeout' }, false));
+    const r = await traerOdooDelDia('2026-10-01');
+    expect(r.aviso).toBe(AVISO_CRUCE);
+    expect(r.agregadas).toBeUndefined();
+  });
+
+  it('el fetch caído también avisa', async () => {
+    conFetch(new Error('offline'));
+    expect((await traerOdooDelDia('2026-10-01')).aviso).toBe(AVISO_CRUCE);
+  });
+
+  it('el registro automático se queda solo con el aviso', async () => {
+    conFetch(resp({ ok: true, agregadas: 21 }));
+    expect(await escribirCruceDelDia('2026-10-01')).toBeNull();
   });
 });
