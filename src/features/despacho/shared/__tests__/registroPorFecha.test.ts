@@ -3,6 +3,7 @@ import {
   estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo,
   type RegistroPorFecha,
 } from '../registroPorFecha';
+import { fechaDespachoBodega } from '../fechaLocal';
 
 const HOY = '2026-09-28';
 const MANANA = '2026-09-29';
@@ -124,5 +125,42 @@ describe('lo que empuja el modal == lo que deja el reducer', () => {
 
   it('sin fecha no inventa una clave vacía', () => {
     expect(marcarRegistro({ '2026-09-30': true }, '', true)).toEqual({ '2026-09-30': true });
+  });
+});
+
+// ── LA FECHA VACÍA (01/10/2026) ────────────────────────────────────────────────────────────────
+//
+// Verificado en vivo: después de registrar, `shared_session_state` tenía `fechaDespacho: (VACIO)`
+// en los DOS espejos, mientras la pantalla mostraba 02/10/2026 — porque la pantalla CALCULA el día
+// hábil siguiente para mostrarlo, y el estado solo guarda algo si alguien toca el selector.
+//
+// Marcar el registro con esa fecha vacía no hace nada, y el día quedaba como no registrado: el
+// botón volvía a rojo y al otro día salía el banner «DESPACHO SIN REGISTRAR» sobre un día que sí
+// se había registrado. Es lo que el #643 creyó arreglar y no arregló.
+
+describe('marcar con la fecha CALCULADA, no con la cruda', () => {
+  const alMediodia = (iso: string) => new Date(`${iso}T12:00:00`);
+
+  it('la fecha cruda vacía NO marca nada — por eso fallaba', () => {
+    expect(marcarRegistro({}, '', true)).toEqual({});
+    expect(estaRegistrado(marcarRegistro({}, '', true), '2026-10-02')).toBe(false);
+  });
+
+  it('la fecha CALCULADA sí marca, aunque el selector esté sin tocar', () => {
+    const calculada = fechaDespachoBodega(undefined, alMediodia('2026-10-01'));
+    expect(calculada).toBe('2026-10-02');
+    expect(estaRegistrado(marcarRegistro({}, calculada, true), '2026-10-02')).toBe(true);
+  });
+
+  it('marcar y leer usan la MISMA cuenta — si divergen, vuelve el bug', () => {
+    // El síntoma no era que no se guardara: era que se guardaba bajo una fecha y se leía bajo otra.
+    const hoy = alMediodia('2026-10-01');
+    const r = marcarRegistro({}, fechaDespachoBodega(undefined, hoy), true);
+    expect(estaRegistrado(r, fechaDespachoBodega(undefined, hoy))).toBe(true);
+  });
+
+  it('si alguien SÍ tocó el selector, manda esa fecha', () => {
+    const elegida = fechaDespachoBodega('2026-10-05', alMediodia('2026-10-01'));
+    expect(estaRegistrado(marcarRegistro({}, elegida, true), '2026-10-05')).toBe(true);
   });
 });

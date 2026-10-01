@@ -91,7 +91,7 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
     //
     // Y acá NO SE EMPUJABA NADA: el registro quedaba esperando al debounce de 2,5 s, así que
     // recargar o navegar antes lo perdía. El 30/09 pasó exactamente eso.
-    const registrosNuevos = marcarRegistro(state.registros, state.fechaDespacho ?? '', true);
+    const registrosNuevos = marcarRegistro(state.registros, fechaDespachoBodega(state.fechaDespacho), true);
     dispatch({ type: 'SET_REGISTRADO', payload: true });
     flushPending({ registrado: true, registros: registrosNuevos });
     logActividad({ accion: 'registrar_dia', fuente: 'rmcosta', tiendas: withItems.length, pallets: tp, bultos: tb });

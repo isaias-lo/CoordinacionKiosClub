@@ -15,6 +15,7 @@ import { stableItemKey } from '@/features/despacho/shared/formRowsReconcile';
 import { serializarBase } from '@/features/despacho/shared/syncBase';
 import { tieneLapida, lapidasComoLista, absorberLapidas } from '@/features/despacho/shared/lapidasBorrado';
 import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, type RegistroPorFecha } from '@/features/despacho/shared/registroPorFecha';
+import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
 
 const today = new Date();
 const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
@@ -178,7 +179,7 @@ function reducer(state: AppState, action: Action): AppState {
         pdfData:    action.payload.pdfData     ?? state.pdfData,
         registros,
         // `registrado` pasa a ser DERIVADO del mapa: los componentes lo siguen leyendo igual.
-        registrado: estaRegistrado(registros, state.fechaDespacho ?? ''),
+        registrado: estaRegistrado(registros, fechaDespachoBodega(state.fechaDespacho)),
       };
     }
     case 'SET_FECHA_DESPACHO':
@@ -191,7 +192,19 @@ function reducer(state: AppState, action: Action): AppState {
         registrado: estaRegistrado(state.registros, action.payload),
       };
     case 'SET_REGISTRADO': {
-      const registros = marcarRegistro(state.registros, state.fechaDespacho ?? '', action.payload);
+      // LA FECHA DE DESPACHO SE CALCULA, NO SE LEE CRUDA.
+      //
+      // `state.fechaDespacho` está VACÍO mientras nadie toque el selector a mano — verificado en vivo el
+      // 01/10: los dos espejos tenían `(VACIO)` en el estado compartido mientras la pantalla mostraba
+      // 02/10/2026, porque la pantalla CALCULA el día hábil siguiente para mostrarlo.
+      //
+      // Marcar el registro con esa fecha vacía no hace nada: `marcarRegistro` devuelve el mapa sin
+      // cambios, así que `registros` quedaba en `{}` y el día se leía como NO registrado. El botón
+      // volvía a rojo y al otro día salía el banner «DESPACHO SIN REGISTRAR» sobre un día que sí se
+      // había registrado — que es lo que el #643 creyó arreglar y no arregló.
+      //
+      // `fechaDespachoBodega` es la MISMA función que usan el selector y la escritura de la planilla.
+      const registros = marcarRegistro(state.registros, fechaDespachoBodega(state.fechaDespacho), action.payload);
       return { ...state, registros, registrado: action.payload };
     }
     default:
