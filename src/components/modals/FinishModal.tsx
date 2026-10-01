@@ -8,6 +8,7 @@ import { sheetsRegionesWrite } from '../../features/despacho/regiones/utils/shee
 import type { HistoryEntry } from '../../types';
 import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { logActividad } from '@/lib/actividad';
+import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
 import { marcarRegistro } from '@/features/despacho/shared/registroPorFecha';
 import { escribirCruceDelDia, AVISO_CRUCE } from '@/features/despacho/shared/avisarCruce';
 import { fechaChile } from '@/lib/fechaChile';
@@ -107,7 +108,7 @@ export function FinishModal({ open, onClose }: Props) {
     // El `registros` se CALCULA acá y se empuja en la misma vuelta. Un `dispatch` no actualiza
     // `stateRef` hasta el próximo efecto, así que empujar «sin más» mandaba el estado de ANTES y
     // el día quedaba como no registrado. Ver `flushPending`.
-    const registrosNuevos = marcarRegistro(state.registros, state.fechaDespacho ?? '', true);
+    const registrosNuevos = marcarRegistro(state.registros, fechaDespachoBodega(state.fechaDespacho), true);
     dispatch({ type: 'SET_REGISTRADO', payload: true });
     logActividad({ accion: 'registrar_dia', fuente: 'nacional', tiendas: withItems.length, pallets: tp, bultos: tb });
     localStorage.setItem(REGIONES_TERMINADO_KEY, new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }));

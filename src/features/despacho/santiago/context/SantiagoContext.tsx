@@ -16,6 +16,7 @@ import { stableItemKey } from '../../shared/formRowsReconcile';
 import { serializarBaseSantiago } from '../../shared/syncBase';
 import { fechaChile, fechaChileDe } from '@/lib/fechaChile';
 import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, type RegistroPorFecha } from '@/features/despacho/shared/registroPorFecha';
+import { fechaDespachoBodega } from '../../shared/fechaLocal';
 
 // Se eliminó el paso de selección de Régimen: se entra directo a la bodega (lista de
 // tiendas) con régimen 'Seco' por defecto (es el que se escribe en Sheets/despacho_rm).
@@ -137,7 +138,7 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
         fechaDespacho: fechaTrasCarga,
         registros:     registrosTrasCarga,
         // `registrado` pasa a ser DERIVADO del mapa: los componentes lo siguen leyendo igual.
-        registrado:    estaRegistrado(registrosTrasCarga, fechaTrasCarga ?? ''),
+        registrado:    estaRegistrado(registrosTrasCarga, fechaDespachoBodega(fechaTrasCarga)),
       };
     }
 
@@ -153,7 +154,19 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
     }
 
     case 'SET_REGISTRADO': {
-      const registros = marcarRegistro(state.registros, state.fechaDespacho ?? '', action.payload);
+      // LA FECHA DE DESPACHO SE CALCULA, NO SE LEE CRUDA.
+      //
+      // `state.fechaDespacho` está VACÍO mientras nadie toque el selector a mano — verificado en vivo el
+      // 01/10: los dos espejos tenían `(VACIO)` en el estado compartido mientras la pantalla mostraba
+      // 02/10/2026, porque la pantalla CALCULA el día hábil siguiente para mostrarlo.
+      //
+      // Marcar el registro con esa fecha vacía no hace nada: `marcarRegistro` devuelve el mapa sin
+      // cambios, así que `registros` quedaba en `{}` y el día se leía como NO registrado. El botón
+      // volvía a rojo y al otro día salía el banner «DESPACHO SIN REGISTRAR» sobre un día que sí se
+      // había registrado — que es lo que el #643 creyó arreglar y no arregló.
+      //
+      // `fechaDespachoBodega` es la MISMA función que usan el selector y la escritura de la planilla.
+      const registros = marcarRegistro(state.registros, fechaDespachoBodega(state.fechaDespacho), action.payload);
       return { ...state, registros, registrado: action.payload };
     }
 
