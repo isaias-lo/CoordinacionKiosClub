@@ -33,6 +33,18 @@ describe('dkm — propiedades matemáticas', () => {
     }));
   });
 
+  it('NUNCA devuelve NaN — ni con puntos antipodales', () => {
+    // El 30/09/2026 el test de la desigualdad triangular falló con este contraejemplo:
+    //     dkm([-0.12, -0.1], [0.12, 179.9])  →  NaN
+    // `x` pasaba de 1 por error de punto flotante y `Math.sqrt(1 - x)` sacaba la raíz de un
+    // negativo. Es el modo de falla más feo para una distancia: no tira error, se propaga callado,
+    // y toda comparación contra NaN da `false`.
+    expect(Number.isFinite(dkm([-0.12, -0.1], [0.12, 179.9]))).toBe(true);
+    expect(dkm([0, 0], [0, 180])).toBeCloseTo(20015, 0);        // media vuelta por el ecuador
+    expect(dkm([-90, 0], [90, 0])).toBeCloseTo(20015, 0);       // polo a polo
+    fc.assert(fc.property(coord, coord, (a, b) => Number.isFinite(dkm(a, b))));
+  });
+
   it('cumple desigualdad triangular: dkm(A,C) <= dkm(A,B) + dkm(B,C)', () => {
     fc.assert(fc.property(coord, coord, coord, (a, b, c) => {
       const epsilon = 0.001; // tolerancia punto flotante
