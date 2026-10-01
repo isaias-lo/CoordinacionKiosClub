@@ -104,13 +104,48 @@ async function porPaginas<T>(
  * celda salga vacía en vez de decir «−100%», que se leería como "no llegó nada".
  */
 export async function pesosDeBodega(fechaDDMM: string): Promise<Map<string, number>> {
-  type Fila = { cod: string | null; peso_kg: number | null; tipo: string | null };
   const [rm, reg] = await Promise.all([
-    porPaginas<Fila>('despacho_rm', 'cod,peso_kg,tipo', fechaDDMM),
-    porPaginas<Fila>('despacho_regiones', 'cod,peso_kg,tipo', fechaDDMM),
+    porPaginas<FilaDePeso>('despacho_rm', 'cod,peso_kg,tipo,picking_slot_id', fechaDDMM),
+    porPaginas<FilaDePeso>('despacho_regiones', 'cod,peso_kg,tipo,picking_slot_id', fechaDDMM),
   ]);
+  return sumarPesosPorTienda([...rm, ...reg]);
+}
+
+export interface FilaDePeso {
+  cod: string | null;
+  peso_kg: number | null;
+  tipo: string | null;
+  /** La unidad de Picking detrás de la fila. `null` en las que no tienen vínculo. */
+  picking_slot_id?: number | null;
+}
+
+/**
+ * Suma por tienda, **contando cada unidad UNA sola vez**.
+ *
+ * ── POR QUÉ HACE FALTA DEDUPLICAR (01/10/2026) ─────────────────────────────────────────────────
+ *
+ * El 30/09 cada unidad de RM terminó con DOS filas pesadas: una con el sello del armado y otra con
+ * el del despacho, con el MISMO peso y apuntando al MISMO slot. Normalmente la del armado va sin
+ * peso — esa es la señal de que una es el borrador y la otra el registro.
+ *
+ * Fueron **71 filas en 19 tiendas, 12.622,8 kg de más**. La hoja mostraba todavía los valores
+ * buenos porque se había escrito antes, pero la siguiente carga habría puesto el doble: 05LP en
+ * 2.309,4 en vez de 1.154,7, 07CCR en 1.218 en vez de 609. Esa hoja la mira Jefatura.
+ *
+ * ── QUÉ DEDUPLICA, Y QUÉ NO ────────────────────────────────────────────────────────────────────
+ *
+ * Solo las copias EXACTAS: mismo slot y mismo peso. Eso es lo que se midió — de las 71, ninguna
+ * tenía un peso distinto— y es lo único que se puede descartar sin elegir por nadie.
+ *
+ * Dos filas del mismo slot con pesos DISTINTOS se siguen sumando las dos. No es un descuido: ahí
+ * no hay forma de saber cuál vale sin mirar la balanza, y quedarse con una en silencio sería
+ * decidir por el coordinador. Que el número salga alto es molesto y se ve; que el sistema elija mal
+ * y no lo diga es lo que vinimos arreglando toda la semana.
+ */
+export function sumarPesosPorTienda(filas: readonly FilaDePeso[]): Map<string, number> {
   const pesos = new Map<string, number>();
-  for (const f of [...rm, ...reg]) {
+  const vistas = new Set<string>();
+  for (const f of filas) {
     const cod = String(f.cod ?? '').toUpperCase().trim();
     if (!cod) continue;
     // LOS AGREGADOS NO ENTRAN AL CRUCE.
@@ -124,7 +159,16 @@ export async function pesosDeBodega(fechaDDMM: string): Promise<Map<string, numb
     // le ponga un peso a uno, tiene que seguir quedando afuera. Filtrar por "peso 0" habría
     // funcionado hasta ese día y fallado justo cuando el dato empezara a existir.
     if (esAgregado(f.tipo)) continue;
-    pesos.set(cod, (pesos.get(cod) ?? 0) + (Number(f.peso_kg) || 0));
+    const kg = Number(f.peso_kg) || 0;
+    // La misma unidad con el mismo peso, otra vez: es la copia, no carga nueva. Sin `slot` no hay
+    // cómo saber si es la misma unidad, así que esa fila entra igual — perder carga real sería
+    // peor que contar de más.
+    if (f.picking_slot_id != null) {
+      const llave = `${f.picking_slot_id}:${kg}`;
+      if (vistas.has(llave)) continue;
+      vistas.add(llave);
+    }
+    pesos.set(cod, (pesos.get(cod) ?? 0) + kg);
   }
   return pesos;
 }
