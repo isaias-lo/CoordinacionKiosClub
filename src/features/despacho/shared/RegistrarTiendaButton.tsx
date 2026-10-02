@@ -17,9 +17,11 @@ interface Props {
   yaRegistrada?: string | null;
   /** Hace la escritura. Devuelve `true` si salió bien. */
   onRegistrar: () => Promise<boolean>;
+  /** `navy` sobre el encabezado oscuro; `claro` en el menú ⋯ de la tienda abierta. */
+  variante?: 'navy' | 'claro';
 }
 
-export function RegistrarTiendaButton({ rol, terminada, unidades, yaRegistrada, onRegistrar }: Props) {
+export function RegistrarTiendaButton({ rol, terminada, unidades, yaRegistrada, onRegistrar, variante = 'navy' }: Props) {
   const [enviando, setEnviando] = useState(false);
   const estado = puedeRegistrarTienda({ rol, terminada, unidades, yaRegistrada });
 
@@ -45,7 +47,12 @@ export function RegistrarTiendaButton({ rol, terminada, unidades, yaRegistrada, 
       }}
       onMouseDown={e => e.stopPropagation()}
       onTouchStart={e => e.stopPropagation()}
-      className={`h-[38px] px-4 rounded-full border-none font-barlow-condensed text-[15px] font-bold tracking-wide whitespace-nowrap transition-all flex items-center gap-1.5 ${
+      className={variante === 'claro'
+        ? `w-full min-h-[44px] px-3 rounded-btn border font-barlow-condensed text-cuerpo font-bold whitespace-nowrap transition-all flex items-center justify-center gap-1.5 ${
+            apagado ? 'bg-bg-2 text-text-3 border-border cursor-not-allowed'
+              : hecho ? 'bg-card text-text-2 border-border cursor-pointer active:scale-[0.98]'
+                : 'bg-navy text-white border-navy cursor-pointer active:scale-[0.98]'}`
+        : `h-[38px] px-4 rounded-full border-none font-barlow-condensed text-[15px] font-bold tracking-wide whitespace-nowrap transition-all flex items-center gap-1.5 ${
         apagado
           ? 'bg-white/10 text-white/35 cursor-not-allowed'
           : hecho

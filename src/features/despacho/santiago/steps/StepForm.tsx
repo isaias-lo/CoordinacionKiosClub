@@ -32,6 +32,9 @@ import { finalizarSlotUnion } from '../../shared/finalizarSlotUnion';
 import { tipoBadge } from '../tipoTienda';
 import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
+import { avanceTienda, claseUnidad, type AvanceTienda } from '../../shared/unidadVisual';
+import { useTarjetaActiva } from '../../shared/useTarjetaActiva';
+import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad } from '../../shared/TiendaAbierta';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { buscarPallet } from '../../shared/buscarPallet';
 import { fechaISOLocal } from '../../shared/fechaLocal';
@@ -62,7 +65,8 @@ import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
 import { mergeEntriesByKey } from '../context/mergeItems';
 import { processPdf } from '../../regiones/utils/pdfUtils';
-import { isRegionesCod } from '../../regiones/data/tiendas';
+import { isRegionesCod, codsRegionesDeBD, registrarCodsRegiones } from '../../regiones/data/tiendas';
+import { esDeOtroEspejo, espejoDeTienda, avisoDeOtroEspejo } from '../../shared/duenoDeTienda';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
@@ -162,6 +166,15 @@ interface FormRow {
   mergeReopened?: boolean;
   mergeMotivo?: MotivoReapertura;
 }
+
+// La tarjeta que se está pesando lleva el color de su tipo en el borde; peso y alto van en cifras
+// grandes, que es como se leen en la balanza con el pallet delante. Igual que en Nacional.
+const ESTILO_ACTIVA: Record<string, string> = {
+  pallet: 'border-uni-pallet', bulto: 'border-uni-bulto', contenedor: 'border-uni-contenedor',
+  chocolate: 'border-uni-chocolate', agregado: 'border-border-2',
+};
+const CAMPO = 'w-full bg-card border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-cuerpo outline-none focus:border-navy [-webkit-appearance:none]';
+const CAMPO_GRANDE = 'w-full bg-card border-[1.5px] border-border rounded-btn px-3 py-2 text-text font-barlow-condensed text-cifra font-extrabold tabular-nums outline-none focus:border-navy [-webkit-appearance:none]';
 
 /* ── Resumen inline state type ── */
 interface ResumenEditState {
@@ -337,9 +350,16 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
 /* ═══════════════════════════════════════
    FORM HEADER
 ═══════════════════════════════════════ */
-function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedores = 0, adquisiciones = 0, webRetiro = 0, onBack, swipe, terminadaInfo, onToggleTerminada, sinPesarCount, sinGuardar, viendo, canalSano, botonRegistrar }: {
-  tienda: TiendaSantiago; pallets: number; bultos: number; chocolates?: number; contenedores?: number;
-  adquisiciones?: number; webRetiro?: number; onBack: () => void;
+/**
+ * La cabecera de la tienda abierta en RM/Costa. Misma pieza que en Nacional (`CabeceraTienda`):
+ * lo primero que se lee es cuánto falta, y Registrar / Marcar terminada viven en el menú ⋯ para
+ * que no compitan con el pesaje. Los contadores por tipo ahora van en la barra de avance.
+ */
+function TiendaFormHeader({ tienda, avance, onBack, swipe, terminadaInfo, onToggleTerminada, itemCount, sinPesarCount, sinGuardar, viendo, canalSano, botonRegistrar }: {
+  tienda: TiendaSantiago;
+  avance: AvanceTienda;
+  itemCount: number;
+  onBack: () => void;
   swipe?: { start: (e: React.TouchEvent) => void; move: (e: React.TouchEvent) => void; end: () => void };
   terminadaInfo?: TerminadaInfo; onToggleTerminada: (cod: string, terminada: boolean, por?: string) => void;
   sinPesarCount?: number;
@@ -348,70 +368,36 @@ function TiendaFormHeader({ tienda, pallets, bultos, chocolates = 0, contenedore
   canalSano: boolean;
   botonRegistrar?: React.ReactNode;
 }) {
-  const itemCount = pallets + bultos + chocolates + contenedores + adquisiciones + webRetiro;
   return (
-    <div className="bg-navy px-3 py-3 flex flex-col gap-2 flex-shrink-0 touch-none select-none"
-      onTouchStart={swipe?.start}
-      onTouchMove={swipe?.move}
-      onTouchEnd={swipe?.end}>
-      <div className="flex items-center gap-2">
-        <button onClick={onBack}
-          className="flex items-center justify-center w-8 h-8 text-white/70 text-[20px] cursor-pointer border-none bg-white/10 rounded-full flex-shrink-0 active:bg-white/20 touch-auto">
-          ←
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <div className="font-barlow-condensed text-[18px] font-bold text-white leading-tight truncate">{tienda.tienda}</div>
-            <IndicadorCanalSano canalSano={canalSano} />
-          </div>
-          <div className="font-mono text-[10px] text-white/50">{formatCod(tienda.cod)} · {tienda.ventanaHoraria}</div>
-        </div>
-        <div className="flex gap-3 flex-shrink-0">
-          <div className="text-center" title="Pallets">
-            <div className="font-barlow-condensed text-[22px] font-extrabold text-[#93C5FD] leading-none">{pallets}</div>
-            <div className="text-[9px] text-white/50 uppercase tracking-widest">P</div>
-          </div>
-          <div className="text-center" title="Bultos">
-            <div className="font-barlow-condensed text-[22px] font-extrabold text-[#FCD34D] leading-none">{bultos}</div>
-            <div className="text-[9px] text-white/50 uppercase tracking-widest">B</div>
-          </div>
-          <div className="text-center" title="Chocolates">
-            <div className="font-barlow-condensed text-[22px] font-extrabold text-[#E9A178] leading-none">{chocolates}</div>
-            <div className="text-[9px] text-white/50 uppercase tracking-widest">CH</div>
-          </div>
-          {adquisiciones > 0 && (
-            <div className="text-center" title="Adquisiciones — no se pesan">
-              <div className="font-barlow-condensed text-[22px] font-extrabold text-[#F59E0B] leading-none">{adquisiciones}</div>
-              <div className="text-[9px] text-white/50 uppercase tracking-widest">A</div>
-            </div>
+    <CabeceraTienda
+      nombre={tienda.tienda}
+      subtitulo={`${formatCod(tienda.cod)} · ${tienda.ventanaHoraria}`}
+      avance={avance}
+      onVolver={onBack}
+      arrastre={swipe ? { onTouchStart: swipe.start, onTouchMove: swipe.move, onTouchEnd: swipe.end } : undefined}
+      indicador={
+        <>
+          <IndicadorCanalSano canalSano={canalSano} />
+          {!!viendo?.length && (
+            <span className="flex items-center gap-1 text-apoyo font-semibold text-text-sub flex-shrink-0"
+              title={`${viendo.map(v => v.name).join(', ')} viendo esta tienda ahora`}>
+              <span className="w-[7px] h-[7px] rounded-full bg-est-ok" />
+              {viendo.map(v => v.name.split(' ')[0]).join(', ')}
+            </span>
           )}
-          {webRetiro > 0 && (
-            <div className="text-center" title="Web / retiro en tienda — no se pesan">
-              <div className="font-barlow-condensed text-[22px] font-extrabold text-[#34D399] leading-none">{webRetiro}</div>
-              <div className="text-[9px] text-white/50 uppercase tracking-widest">W</div>
-            </div>
-          )}
-          {contenedores > 0 && (
-            <div className="text-center" title="Contenedores">
-              <div className="font-barlow-condensed text-[22px] font-extrabold text-[#C4A3E8] leading-none">{contenedores}</div>
-              <div className="text-[9px] text-white/50 uppercase tracking-widest">C</div>
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="flex items-center justify-end gap-2 touch-auto">
-        {!!viendo?.length && (
-          <span className="flex items-center gap-1 text-[11px] font-semibold text-white/70" title={`${viendo.map(v => v.name).join(', ')} viendo esta tienda ahora`}>
-            <span className="w-[7px] h-[7px] rounded-full bg-[#16A34A]" />
-            {viendo.map(v => v.name.split(' ')[0]).join(', ')}
-          </span>
-        )}
-        {/* A la IZQUIERDA de MARCAR TERMINADA, como se pidio. El padre lo arma —necesita los
-            items, la fecha y el escritor— y aca solo se coloca. */}
-        {botonRegistrar}
-        <TiendaTerminadaButton cod={tienda.cod} info={terminadaInfo} onToggle={onToggleTerminada} itemCount={itemCount} sinPesarCount={sinPesarCount} sinGuardar={sinGuardar} viendo={viendo} />
-      </div>
-    </div>
+        </>
+      }
+      estado={terminadaInfo?.terminada
+        ? <span className="text-rotulo font-bold uppercase text-est-ok bg-est-ok-suave rounded-full px-2.5 py-1 flex-shrink-0">✓ Terminada</span>
+        : undefined}
+      acciones={
+        <>
+          {botonRegistrar}
+          <TiendaTerminadaButton cod={tienda.cod} info={terminadaInfo} onToggle={onToggleTerminada}
+            itemCount={itemCount} variante="claro"
+            sinPesarCount={sinPesarCount} sinGuardar={sinGuardar} viendo={viendo} />
+        </>
+      } />
   );
 }
 
@@ -798,6 +784,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         // esto (`registrarTiendasBD`); acá faltaba la otra mitad. Ver `tiendasSantiago.ts`.
         const nuevas = registrarTiendasSantiagoBD(map);
         if (nuevas.length) console.info('[bodega] tiendas de la BD sumadas al catálogo RM/Costa:', nuevas.join(', '));
+        // Y las de Regiones que vienen de Config se CLASIFICAN como tales, aunque esta pantalla no
+        // las muestre. Sin esto, `isRegionesCod` acá solo conocía las 17 curadas a mano y una
+        // tienda de Regiones creada en Config —60PBL— aparecía en la lista de RM/Costa como si
+        // fuera de Santiago. Y el resultado dependía del ORDEN de las pestañas: el Set solo se
+        // llenaba si alguien había abierto Nacional antes, en la misma carga de la página.
+        registrarCodsRegiones(codsRegionesDeBD(data));
         setSupabaseTiendasMap(map);
         setTipoCatByCod(tcat);
       })
@@ -992,6 +984,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     : undefined);
   const saltarAPallet = () => {
     if (!palletEncontrado || !tiendaDelPallet) return;
+    // El salto llega a CUALQUIER tienda, y eso incluía las de Nacional. Escanear una etiqueta de
+    // Puerto Varas acá metía 47PTV en el estado de RM/Costa, y al registrar los dos espejos
+    // escribían la misma tienda con sellos distintos: el cruce sumó las dos. Ver `duenoDeTienda`.
+    if (esDeOtroEspejo(tiendaDelPallet.cod, 'rmcosta', isRegionesCod)) {
+      showToast(avisoDeOtroEspejo(tiendaDelPallet.cod, espejoDeTienda(tiendaDelPallet.cod, isRegionesCod)), '#D97706');
+      return;
+    }
     setSearch('');
     setFocoPallet(palletEncontrado.slot.id);
     selectTienda(tiendaDelPallet);
@@ -1014,17 +1013,40 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     ...Object.entries(items).filter(([c, it]) => it.length > 0 && !allTodayCods.includes(c)),
   ];
   const tiendaItems        = currentTienda ? (items[currentTienda.cod] || []) : [];
-  // UN SOLO contador, por CLASE. Antes esto comparaba `i.tipo === 'Bulto'`, que nunca coincide con
-  // 'Adquisicion' ni con 'WebRetiro': las dos clases no se contaban en ningún lado del encabezado,
-  // mientras la tarjeta de la lista las metía entre los bultos. Dos cuentas distintas en la misma
-  // pantalla — 07CCR decía 5B arriba y 1B acá. Ver `contarPorClase`.
-  const tiendaConteo       = contarPorClase(tiendaItems, i => claseSantiago(i.tipo));
-  const tiendaPallets      = tiendaConteo.pallet;
-  const tiendaBultos       = tiendaConteo.bulto;
-  const tiendaChocolates   = tiendaConteo.chocolate;
-  const tiendaContenedores = tiendaConteo.contenedor;
-  const tiendaAdquis       = tiendaConteo.adquisicion;
-  const tiendaWeb          = tiendaConteo.webretiro;
+
+  const cod = currentTienda?.cod ?? '';
+  const pkSlots = pickingSlotsFull[cod] ?? [];
+  const cns = consumedSlotsSant[cod] || { p: 0, b: 0, c: 0 };
+  const tiendaItemsList = items[cod] || [];
+  const gP  = Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - tiendaItemsList.filter(i => i.tipo === 'Pallet').length     - cns.p);
+  const gB  = Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - tiendaItemsList.filter(i => i.tipo === 'Bulto').length      - cns.b);
+  const gC  = Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - tiendaItemsList.filter(i => i.tipo === 'Contenedor').length  - cns.c);
+  // Ghosts absorbed by unsaved form cards; remainder shown as standalone cards
+  const unsavedP = formRows.filter(r => !r.saved && r.tipo === 'Pallet').length;
+  const unsavedB = formRows.filter(r => !r.saved && r.tipo === 'Bulto').length;
+  const unsavedC = formRows.filter(r => !r.saved && r.tipo === 'Contenedor').length;
+  type GC = { type: 'p' | 'b' | 'c'; border: string; text: string; bg: string; label: string; key: string };
+  const ghostCards: GC[] = [
+    ...Array.from({ length: Math.max(0, gP - unsavedP) }, (_, i) => ({ type: 'p'  as const, border: 'rgba(37,99,235,0.35)',   text: '#2563EB', bg: 'rgba(37,99,235,0.03)',   label: 'Pallet', key: `gP${i}`  })),
+    ...Array.from({ length: Math.max(0, gB - unsavedB) }, (_, i) => ({ type: 'b'  as const, border: 'rgba(217,119,6,0.35)',  text: '#D97706', bg: 'rgba(217,119,6,0.03)',   label: 'Bulto',  key: `gB${i}`  })),
+    ...Array.from({ length: Math.max(0, gC - unsavedC) }, (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',  key: `gC${i}`  })),
+  ];
+  // [Req 3] Orden visual: Pallet → Contenedor → Bulto → Chocolate (estable). El estado
+  // formRows queda igual; solo se ordena la VISTA. Los handlers operan por row.id.
+  const orderedRows = ordenarCardsPorTipo(formRows, r => r.tipo);
+  // Lo que falta pesar y lo ya pesado: así se lee ahora la tienda abierta. Una unidad guardada
+  // «sin pesar» no cuenta como pesada — el aviso de la tienda terminada ya existe por eso.
+  const pendientes = orderedRows.filter(r => !(r.saved && r.savedItem));
+  const pesadas    = orderedRows.filter(r => r.saved && r.savedItem);
+  const avance = avanceTienda(
+    orderedRows.map(r => ({ tipo: r.tipo, pesada: !!(r.saved && r.savedItem && !esSinPesar(r.savedItem)) })),
+    { pallet: ghostCards.filter(g => g.type === 'p').length,
+      bulto:  ghostCards.filter(g => g.type === 'b').length,
+      contenedor: ghostCards.filter(g => g.type === 'c').length },
+  );
+  // Cuál de las pendientes va abierta: la del último escaneo, la que se tocó, o la primera.
+  const { activaId, elegir: elegirActiva, esperarNueva } = useTarjetaActiva(pendientes, focoPallet);
+
 
   // #6 — líneas del "Manual" (lo cargado en esta pantalla). El calendario del sheet es
   // el general de Picking (CalendarioColumnas), no una lista por zona.
@@ -2087,6 +2109,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // creación está en vuelo; el "agregar de a N" hace `await` de cada llamada y no se ve afectado.
   const addingSlotRef = useRef<Set<string>>(new Set());
   const addFormRow = async (t: TipoCargamento, existingSlot?: PickingSlot, countOffset = 0) => {
+    // La unidad que alguien agrega a mano se abre sola en «Ahora»: es la que viene a pesar. Las
+    // que aparecen solas desde Picking NO, porque le cambiarían la tarjeta a quien está escribiendo.
+    esperarNueva();
     const key = `${currentTienda?.cod ?? ''}:${t}`;
     if (addingSlotRef.current.has(key)) {
       // Salir mudo hacía que el segundo toque pareciera no haber pasado nada, y la reacción
@@ -2712,113 +2737,44 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     );
   };
 
-  /* ════════════════════════════════════
-     RIGHT PANEL — MULTI-FORM
-  ════════════════════════════════════ */
-  const renderMultiForm = (isMobile = false) => {
-    if (!currentTienda) return null;
-    const pkSlots = pickingSlotsFull[currentTienda.cod] ?? [];
-    const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
-    return (
-      <>
-        <TiendaFormHeader tienda={currentTienda} pallets={tiendaPallets} bultos={tiendaBultos} chocolates={tiendaChocolates} contenedores={tiendaContenedores} adquisiciones={tiendaAdquis} webRetiro={tiendaWeb} onBack={() => { dispatch({ type: 'CLEAR_TIENDA' }); setView('list'); }} swipe={swipeHandlers} terminadaInfo={terminadas.get(currentTienda.cod)} onToggleTerminada={marcarTerminada}
-          sinPesarCount={tiendaItems.filter(esSinPesar).length}
-          sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[currentTienda.cod] ?? [], tiendaItems))}
-          viendo={viendoPorTienda.get(currentTienda.cod)}
-          canalSano={canalSano}
-          botonRegistrar={
-            <RegistrarTiendaButton rol={profile?.role} terminada={!!terminadas.get(currentTienda.cod)}
-              unidades={tiendaItems.length} yaRegistrada={registroTiendas.registrada(currentTienda.cod)}
-              onRegistrar={() => registrarSoloTienda(currentTienda.cod)} />
-          } />
-
-        {/* El cruce va JUSTO DEBAJO del encabezado porque contesta la pregunta que se hace un
-            segundo antes de marcar la tienda terminada: ¿está todo lo que tenía que estar? */}
-        {verCruce && (
-          <div className="px-2 pt-2">
-            <CruceDePesosCard cruce={cruceDelDia.porTienda.get(currentTienda.cod)}
-              items={tiendaItems} listo={cruceDelDia.listo} />
-          </div>
-        )}
-
-        <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
-          {(() => {
-            const cod = currentTienda.cod;
-            const cns = consumedSlotsSant[cod] || { p: 0, b: 0, c: 0 };
-            const tiendaItemsList = items[cod] || [];
-            const gP  = Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - tiendaItemsList.filter(i => i.tipo === 'Pallet').length     - cns.p);
-            const gB  = Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - tiendaItemsList.filter(i => i.tipo === 'Bulto').length      - cns.b);
-            const gC  = Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - tiendaItemsList.filter(i => i.tipo === 'Contenedor').length  - cns.c);
-            // Ghosts absorbed by unsaved form cards; remainder shown as standalone cards
-            const unsavedP = formRows.filter(r => !r.saved && r.tipo === 'Pallet').length;
-            const unsavedB = formRows.filter(r => !r.saved && r.tipo === 'Bulto').length;
-            const unsavedC = formRows.filter(r => !r.saved && r.tipo === 'Contenedor').length;
-            type GC = { type: 'p' | 'b' | 'c'; border: string; text: string; bg: string; label: string; key: string };
-            const ghostCards: GC[] = [
-              ...Array.from({ length: Math.max(0, gP - unsavedP) }, (_, i) => ({ type: 'p'  as const, border: 'rgba(37,99,235,0.35)',   text: '#2563EB', bg: 'rgba(37,99,235,0.03)',   label: 'Pallet', key: `gP${i}`  })),
-              ...Array.from({ length: Math.max(0, gB - unsavedB) }, (_, i) => ({ type: 'b'  as const, border: 'rgba(217,119,6,0.35)',  text: '#D97706', bg: 'rgba(217,119,6,0.03)',   label: 'Bulto',  key: `gB${i}`  })),
-              ...Array.from({ length: Math.max(0, gC - unsavedC) }, (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',  key: `gC${i}`  })),
-            ];
-            // [Req 3] Orden visual: Pallet → Contenedor → Bulto → Chocolate (estable). El estado
-            // formRows queda igual; solo se ordena la VISTA. Los handlers operan por row.id.
-            const orderedRows = ordenarCardsPorTipo(formRows, r => r.tipo);
-            return (
-          <div className="grid grid-cols-2 gap-2 mb-2">
-            {orderedRows.map((row) => {
+  /* Una unidad: la tarjeta de pesaje si está pendiente, o su línea si ya se pesó. */
+  const renderUnidad = (row: FormRow) => {
               const rowLabel = labelDeFila(row, orderedRows);
               if (row.saved && row.savedItem) {
+                const slotDeFila = row.pickingSlotId
+                  ? (pickingSlotsFull[currentTienda?.cod ?? ''] ?? []).find(s => s.id === row.pickingSlotId)
+                  : undefined;
+                const contenido = row.savedItem.contenido === 'Chocolate' ? 'CH' : row.savedItem.contenido;
                 return (
-                  // [Handheld] El ancla también en la tarjeta guardada: escanear una unidad ya pesada tiene
-                  // que llegar a ella y mostrarla, no abrir la tienda y quedarse arriba.
-                  <div key={row.id} id={row.pickingSlotId != null ? `pallet-card-${row.pickingSlotId}` : undefined}
-                    className={`bg-white rounded-xl border-2 p-2.5 ${row.pickingSlotId != null && row.pickingSlotId === resaltado ? 'relative tarjeta-escaneada' : ''} ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.40)]' : row.tipo === 'Contenedor' ? 'border-[rgba(107,33,168,0.40)]' : row.tipo === 'Chocolate' ? 'border-[rgba(146,64,14,0.40)]' : 'border-[rgba(217,119,6,0.40)]'}`}>
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-1.5">
-                        {(row.tipo === 'Bulto' || row.tipo === 'Chocolate') && (
-                          <input type="checkbox" checked={mergeSel.has(row.id)} onChange={() => toggleMergeSel(row.id)}
-                            aria-label={`Seleccionar ${rowLabel} para sumar en masa`}
-                            className="w-4 h-4 cursor-pointer" style={{ accentColor: '#2563EB' }} />
-                        )}
-                        <span className={`font-barlow-condensed text-[17px] font-extrabold ${row.tipo === 'Pallet' ? 'text-info' : row.tipo === 'Contenedor' ? 'text-[#6B21A8]' : row.tipo === 'Chocolate' ? 'text-[#92400E]' : 'text-warn'}`}>
-                          {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[15px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
-                        </span>
-                      </div>
-                      <div className="flex gap-1">
-                        {row.tipo === 'Bulto' && (
-                          <button onClick={() => { setDupN(2); setDupRow(dupRow === row.id ? null : row.id); }}
-                            title="Duplicar bulto (mismo peso y medidas)"
-                            className={`text-[15px] cursor-pointer border-none bg-transparent p-1 ${dupRow === row.id ? 'text-warn' : 'text-text-3 active:text-warn'}`}>⧉</button>
-                        )}
-                        <button onClick={() => editSavedRow(row.id)} className="text-[15px] text-text-3 active:text-info cursor-pointer border-none bg-transparent p-1">✎</button>
-                        <button onClick={() => deleteSavedRow(row.id)} className="text-[15px] text-text-3 active:text-red cursor-pointer border-none bg-transparent p-1">✕</button>
-                      </div>
-                    </div>
-                    <div className="text-[14px] text-text-2 space-y-0.5 mb-2">
-                      <div className="font-semibold flex items-center gap-1.5 flex-wrap">
-                        {/* Una adquisición no tiene peso ni medidas: escribir "0kg · 0cm" haría
-                            pasar la AUSENCIA de un dato por un dato. Dice qué es. */}
-                        {etiquetaDeUnidad(row.savedItem) ?? `${row.savedItem.peso}kg · ${row.savedItem.alto}cm`}
-                        {esSinPesar(row.savedItem) && (
-                          <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
-                            style={{ color: '#D97706', background: 'rgba(217,119,6,0.12)' }}>
-                            sin pesar
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-text-3">{row.savedItem.contenido === 'Chocolate' ? 'CH' : row.savedItem.contenido}</div>
-                      {(() => {
-                        const slot = row.pickingSlotId ? (pickingSlotsFull[currentTienda.cod] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
-                        if (!slot?.picker_label) return null;
-                        return (
-                          <div className="text-text-3 truncate flex items-center gap-1" title={`Armado por ${slot.picker_label}`}>
-                            <User size={10} className="shrink-0" aria-hidden="true" /> {slot.picker_label}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-success" />
-                      <span className="text-[11px] text-success font-bold">Agregado</span>
+                  // [Handheld] El ancla también en la línea pesada: escanear una unidad ya pesada
+                  // tiene que llegar a ella y mostrarla, no abrir la tienda y quedarse arriba.
+                  <FilaPesada key={row.id} clase={claseUnidad(row.tipo)} etiqueta={rowLabel}
+                    slotId={row.pickingSlotId}
+                    resaltada={row.pickingSlotId != null && row.pickingSlotId === resaltado}
+                    // Una adquisición no tiene peso ni medidas: escribir «0kg · 0cm» haría pasar la
+                    // AUSENCIA de un dato por un dato. Dice qué es.
+                    resumen={etiquetaDeUnidad(row.savedItem) ?? `${row.savedItem.peso} kg · ${row.savedItem.alto} cm`}
+                    aviso={esSinPesar(row.savedItem) ? (
+                      <span className="text-rotulo font-bold uppercase text-est-aviso bg-est-aviso-suave rounded-full px-2 py-0.5">sin pesar</span>
+                    ) : undefined}
+                    detalle={
+                      <>
+                        {contenido}
+                        {slotDeFila?.picker_label ? `${contenido ? ' · ' : ''}armó ${slotDeFila.picker_label}` : ''}
+                      </>
+                    }
+                    seleccion={(row.tipo === 'Bulto' || row.tipo === 'Chocolate') ? (
+                      <input type="checkbox" checked={mergeSel.has(row.id)} onChange={() => toggleMergeSel(row.id)}
+                        aria-label={`Seleccionar ${rowLabel} para sumar en masa`}
+                        className="w-5 h-5 cursor-pointer flex-shrink-0" style={{ accentColor: 'var(--uni-pallet)' }} />
+                    ) : undefined}>
+                    <div className="flex gap-2 flex-wrap">
+                      <BotonAccion onClick={() => editSavedRow(row.id)}>Editar</BotonAccion>
+                      {row.tipo === 'Bulto' && (
+                        <BotonAccion onClick={() => { setDupN(2); setDupRow(dupRow === row.id ? null : row.id); }}
+                          title="Duplicar bulto (mismo peso y medidas)">Duplicar</BotonAccion>
+                      )}
+                      <BotonAccion tono="peligro" onClick={() => deleteSavedRow(row.id)}>Eliminar</BotonAccion>
                     </div>
                     {dupRow === row.id && row.tipo === 'Bulto' && (
                       <div className="mt-2 pt-2 border-t border-black/[0.08] flex items-center gap-2 flex-wrap">
@@ -2911,14 +2867,15 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                         </div>
                       );
                     })()}
-                  </div>
+                  </FilaPesada>
                 );
               }
+              /* Active / unsaved card */
               const isChocRow  = row.tipo === 'Bulto' && row.contenido === 'Chocolate';
               const isChocTipo = row.tipo === 'Chocolate';
               // De qué caja es esta fila, para el aviso de la tara y la etiqueta.
               const cajaDeFila = isChocTipo && currentTienda
-                ? subtipoDeCaja((pickingSlotsFull[currentTienda.cod] ?? []).find(s => s.id === row.pickingSlotId)?.subtipo)
+                ? subtipoDeCaja((pickingSlotsFull[currentTienda?.cod ?? ''] ?? []).find(s => s.id === row.pickingSlotId)?.subtipo)
                 : null;
               const isContRow  = row.tipo === 'Contenedor';
               // [Presencia por pallet] Al enfocar cualquier input de esta tarjeta, avisar que
@@ -2931,16 +2888,16 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               return (
                 <div key={row.id} id={row.pickingSlotId != null ? `pallet-card-${row.pickingSlotId}` : undefined}
                   data-tarjeta-bodega="" data-slot={row.pickingSlotId ?? undefined}
-                  className={`relative bg-white rounded-xl border px-2 py-2.5 transition-shadow ${esResaltada ? 'tarjeta-escaneada' : ''} ${row.tipo === 'Pallet' ? 'border-[rgba(37,99,235,0.25)]' : isContRow ? 'border-[rgba(107,33,168,0.25)]' : isChocTipo ? 'border-[rgba(146,64,14,0.25)]' : 'border-[rgba(217,119,6,0.25)]'}`}>
+                  className={`relative bg-card rounded-kios border-2 px-3 py-3 shadow-kios ${ESTILO_ACTIVA[claseUnidad(row.tipo)]} ${esResaltada ? 'tarjeta-escaneada' : ''}`}>
                   {row.pickingSlotId != null && <PresenciaBadge viendo={viendoPorSlot.get(row.pickingSlotId)} contexto="tarjeta" />}
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`font-barlow-condensed text-[16px] font-bold ${row.tipo === 'Pallet' ? 'text-info' : isContRow ? 'text-[#6B21A8]' : isChocTipo ? 'text-[#92400E]' : 'text-warn'}`}>
-                      {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[14px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
-                    </span>
-                    <button onClick={() => removeUnsavedRow(row.id)} className="text-text-3 active:text-red cursor-pointer border-none bg-transparent text-[13px]">✕</button>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <EtiquetaUnidad clase={claseUnidad(row.tipo)} grande>{rowLabel}</EtiquetaUnidad>
+                    {row.pickingSlotId ? <span className="font-mono text-cuerpo text-text">#{row.pickingSlotId}</span> : null}
+                    <button onClick={() => removeUnsavedRow(row.id)} aria-label={`Quitar ${rowLabel}`}
+                      className="ml-auto w-10 h-10 -mr-1 flex items-center justify-center rounded-btn text-text-sub bg-bg-2 active:bg-bg-3 cursor-pointer border-none text-cuerpo">✕</button>
                   </div>
                   {(() => {
-                    const slot = row.pickingSlotId ? (pickingSlotsFull[currentTienda.cod] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
+                    const slot = row.pickingSlotId ? (pickingSlotsFull[currentTienda?.cod ?? ''] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
                     if (!slot?.picker_label) return null;
                     return (
                       <div className="text-[11px] text-text-3 mb-2 flex items-center gap-1" title={`Armado por ${slot.picker_label}`}>
@@ -2956,7 +2913,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   )}
                   {!isContRow && !isChocTipo && (
                   <div className="mb-2">
-                    <label className="text-[11px] text-text-3 uppercase block mb-0.5">Tipo de carga</label>
+                    <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">Tipo de carga</label>
                     <div className="flex gap-0.5">
                       {(row.tipo === 'Pallet' ? CONTENIDO_PALLET : CONTENIDO_BULTO).map(c => (
                         <button key={c} onClick={() => updateRow(row.id, 'contenido', c)}
@@ -2970,21 +2927,21 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   )}
                   <div className="grid grid-cols-2 gap-1 mb-1.5">
                     <div>
-                      <label className="text-[11px] text-text-3 uppercase block mb-0.5">
+                      <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">
                         peso{cajaDeFila === 'negra' && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(TARA_CAJA_NEGRA).replace('.', ',')} kg de caja</span>}
                       </label>
                       <input type="text" value={row.peso} onChange={e => updateRow(row.id, 'peso', limpiarTecleo(e.target.value))}
                         onFocus={marcarEnFoco} onBlur={quitarFoco}
                         placeholder="kg" inputMode="decimal" data-campo="peso"
-                        className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
+                        className={CAMPO_GRANDE} />
                     </div>
                     {!isChocRow && !isContRow && !isChocTipo && (
                       <div>
-                        <label className="text-[11px] text-text-3 uppercase block mb-0.5">alto</label>
+                        <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">alto</label>
                         <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)}
                           onFocus={marcarEnFoco} onBlur={quitarFoco}
                           placeholder="cm" inputMode="decimal" max={MAX_ALTO_CM} data-campo="alto"
-                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
+                          className={CAMPO_GRANDE} />
                         {excedeAltoMax(parseFloat(row.alto) || 0) && (
                           <div className="text-[10px] text-warn mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
                         )}
@@ -2995,11 +2952,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     <div className="grid grid-cols-2 gap-1 mb-1.5">
                       {(['largo', 'ancho'] as const).map(f => (
                         <div key={f}>
-                          <label className="text-[11px] text-text-3 uppercase block mb-0.5">{f}</label>
+                          <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">{f}</label>
                           <input type="number" value={row[f]} onChange={e => updateRow(row.id, f, e.target.value)}
                             onFocus={marcarEnFoco} onBlur={quitarFoco}
                             placeholder="cm" inputMode="decimal" data-campo={f}
-                            className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
+                            className={CAMPO} />
                         </div>
                       ))}
                     </div>
@@ -3011,13 +2968,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                           un chocolate sumado con el botón ya vino neto y declararlo acá restaría la
                           tara dos veces. Por eso dice "pesadas con el pallet". */}
                       <div className="mb-1.5">
-                        <label className="text-[11px] text-text-3 uppercase block mb-0.5">
+                        <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">
                           cajas negras pesadas con el pallet
                         </label>
                         <input type="number" value={row.cajasNegras ?? ''} onChange={e => updateRow(row.id, 'cajasNegras', e.target.value)}
                           onFocus={marcarEnFoco} onBlur={quitarFoco}
                           placeholder="0" inputMode="numeric" min={0}
-                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
+                          className={CAMPO} />
                         {(parseInt(row.cajasNegras ?? '', 10) || 0) > 0 && (
                           <div className="text-[10px] font-bold mt-0.5" style={{ color: '#C2410C' }}>
                             se descuentan {String(Math.round((parseInt(row.cajasNegras!, 10) * TARA_CAJA_NEGRA) * 10) / 10).replace('.', ',')} kg de cajas
@@ -3057,8 +3014,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       await saveRow(row);
                     }}
                     data-accion="guardar"
-                    className={`w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer ${row.tipo === 'Pallet' ? 'bg-info' : isContRow ? 'bg-[#6B21A8]' : isChocTipo ? 'bg-[#92400E]' : 'bg-warn'}`}>
-                    {row.mergeReopened ? botonReapertura(row.mergeMotivo ?? 'union') : '+ Agregar'}
+                    className="w-full min-h-[50px] bg-navy text-white border-none rounded-btn font-barlow-condensed text-titulo font-bold cursor-pointer transition-transform active:scale-[0.98]">
+                    {row.mergeReopened ? botonReapertura(row.mergeMotivo ?? 'union') : (pendientes.length > 1 ? 'Guardar y seguir' : 'Guardar')}
                   </button>
                   {!row.mergeReopened && (() => {
                     const esBultoOChoc = row.tipo === 'Bulto' || row.tipo === 'Chocolate';
@@ -3120,8 +3077,69 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   })()}
                 </div>
               );
-            })}
-            {ghostCards.map(gc => {
+  };
+
+  /* ════════════════════════════════════
+     RIGHT PANEL — MULTI-FORM
+  ════════════════════════════════════ */
+  const renderMultiForm = (isMobile = false) => {
+    if (!currentTienda) return null;
+    const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
+    return (
+      <>
+        <TiendaFormHeader tienda={currentTienda} avance={avance} itemCount={tiendaItems.length}
+          onBack={() => setView('list')} swipe={swipeHandlers}
+          terminadaInfo={terminadas.get(currentTienda.cod)} onToggleTerminada={marcarTerminada}
+          sinPesarCount={tiendaItems.filter(esSinPesar).length}
+          sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[currentTienda.cod] ?? [], tiendaItems))}
+          viendo={viendoPorTienda.get(currentTienda.cod)}
+          canalSano={canalSano}
+          botonRegistrar={
+            <RegistrarTiendaButton rol={profile?.role} terminada={!!terminadas.get(currentTienda.cod)} variante="claro"
+              unidades={tiendaItems.length} yaRegistrada={registroTiendas.registrada(currentTienda.cod)}
+              onRegistrar={() => registrarSoloTienda(currentTienda.cod)} />
+          } />
+
+        {/* El cruce va JUSTO DEBAJO del encabezado porque contesta la pregunta que se hace un
+            segundo antes de marcar la tienda terminada: ¿está todo lo que tenía que estar? */}
+        {verCruce && (
+          <div className="px-2 pt-2">
+            <CruceDePesosCard cruce={cruceDelDia.porTienda.get(currentTienda.cod)}
+              items={tiendaItems} listo={cruceDelDia.listo} />
+          </div>
+        )}
+
+        <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
+          {/* ── AHORA · FALTAN · PESADOS — la misma lectura que Nacional. Ver `TiendaAbierta`. */}
+          <>
+            {(() => {
+              const activa = pendientes.find(r => r.id === activaId);
+              const enCola = pendientes.filter(r => r.id !== activaId);
+              const kgPesados = pesadas.reduce((t, r) => t + (Number(r.savedItem?.peso) || 0), 0);
+              return (
+                <>
+                  {activa && (
+                    <>
+                      <RotuloSeccion>Ahora</RotuloSeccion>
+                      {renderUnidad(activa)}
+                    </>
+                  )}
+                  {(enCola.length > 0 || ghostCards.length > 0) && (
+                    <>
+                      <RotuloSeccion derecha={activa ? 'Escanea o toca' : undefined}>
+                        {`Faltan ${enCola.length + ghostCards.length}`}
+                      </RotuloSeccion>
+                      <ColaPendientes onElegir={elegirActiva}
+                        fichas={enCola.map(r => ({
+                          id: r.id,
+                          clase: claseUnidad(r.tipo),
+                          etiqueta: labelDeFila(r, orderedRows),
+                          slotId: r.pickingSlotId,
+                          aMedias: !!r.tocada,
+                        }))} />
+                      {ghostCards.length > 0 && (
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          {ghostCards.map(gc => {
               const tipoMap: Record<string, string> = { p: 'Pallet', b: 'Bulto', c: 'Contenedor' };
               const prefixMap: Record<string, string> = { p: 'P', b: 'B', c: 'C' };
               const regCount = tiendaItemsList.filter(i => i.tipo === tipoMap[gc.type]).length;
@@ -3157,9 +3175,24 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                 </div>
               );
             })}
-          </div>
-            );
-          })()}
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {pesadas.length > 0 && (
+                    <>
+                      <RotuloSeccion derecha={`${kgPesados.toLocaleString('es-CL', { maximumFractionDigits: 1 })} kg`}>
+                        {`Pesados ${pesadas.length}`}
+                      </RotuloSeccion>
+                      <div className="rounded-card border border-border overflow-hidden divide-y divide-border">
+                        {pesadas.map(row => renderUnidad(row))}
+                      </div>
+                    </>
+                  )}
+                </>
+              );
+            })()}
+          </>
           {(() => {
             // [Sumar en masa · botones] La barra aparece apenas hay ≥1 Bulto/CH guardado (aunque NO
             // haya pallet todavía). El destino se elige con UN clic en el botón del pallet (P1/P2…);

@@ -6,7 +6,7 @@ import { Navigation, ChevronLeft, ClipboardList, User, Store, FileUp, AlertTrian
 import { useApp } from '../../../../context/AppContext';
 import { IndicadorCanalSano } from '../../shared/IndicadorCanalSano';
 import { processPdf } from '../utils/pdfUtils';
-import { TIENDAS, getTodayCods, validarDimensiones, registrarTiendasBD, type TiendaBDRow, type TiendaIncompleta } from '../data/tiendas';
+import { TIENDAS, getTodayCods, validarDimensiones, registrarTiendasBD, isRegionesCod, type TiendaBDRow, type TiendaIncompleta } from '../data/tiendas';
 import { avisoSendu } from '../data/senduCompletitud';
 import { ZONAS_DEFAULT, type ConfigZonas } from '../../rutas/utils/zonasTransporte';
 import { formatCod, matchCodArchivo } from '../../rutas/utils/helpers';
@@ -30,6 +30,9 @@ import { useUndoDelete } from '../../shared/useUndoDelete';
 import { UndoBar } from '../../shared/UndoBar';
 import { pkgCodeNacional } from '../../shared/tipoCode';
 import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
+import { avanceTienda, claseUnidad } from '@/features/despacho/shared/unidadVisual';
+import { useTarjetaActiva } from '@/features/despacho/shared/useTarjetaActiva';
+import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad } from '@/features/despacho/shared/TiendaAbierta';
 import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
 import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';
 import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
@@ -47,6 +50,7 @@ import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconciliarFormRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
 import { buscarPallet } from '../../shared/buscarPallet';
+import { esDeOtroEspejo, espejoDeTienda, avisoDeOtroEspejo } from '../../shared/duenoDeTienda';
 import { fechaISOLocal } from '../../shared/fechaLocal';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
@@ -155,6 +159,15 @@ interface FormRow {
   mergeReopened?: boolean;
   mergeMotivo?: MotivoReapertura;
 }
+
+// La tarjeta que se está pesando lleva el color de su tipo en el borde; los campos de peso y alto
+// van en cifras grandes, que es como se leen en la balanza con el pallet delante.
+const ESTILO_ACTIVA: Record<string, string> = {
+  pallet: 'border-uni-pallet', bulto: 'border-uni-bulto', contenedor: 'border-uni-contenedor',
+  chocolate: 'border-uni-chocolate', agregado: 'border-border-2',
+};
+const CAMPO = 'w-full bg-card border-[1.5px] border-border rounded-btn px-3 py-2.5 text-text font-barlow text-cuerpo outline-none focus:border-navy [-webkit-appearance:none]';
+const CAMPO_GRANDE = 'w-full bg-card border-[1.5px] border-border rounded-btn px-3 py-2 text-text font-barlow-condensed text-cifra font-extrabold tabular-nums outline-none focus:border-navy [-webkit-appearance:none]';
 
 /* ── Compact 3-column grid card ── */
 // Flag de rollback (paridad con RM/Costa): `false` = vista compacta siempre (estado vacío = botones
@@ -732,6 +745,49 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     .filter(c => !removedCods.includes(c));
 
   const items   = selectedTienda ? (dispatchData[selectedTienda] || []) : [];
+
+  const cns  = selectedTienda ? (consumedPickingSlots[selectedTienda] || { p: 0, b: 0, c: 0, ch: 0 }) : { p: 0, b: 0, c: 0, ch: 0 };
+  const pkS  = selectedTienda ? (pickingSlotsFull[selectedTienda] ?? []) : [];
+  const gP   = Math.max(0, pkS.filter(s => s.tipo === 'P').length  - items.filter(i => i.pkg === 'pallet').length     - cns.p);
+  const gB   = Math.max(0, pkS.filter(s => s.tipo === 'B').length  - items.filter(i => i.pkg === 'box').length        - cns.b);
+  const gC   = Math.max(0, pkS.filter(s => s.tipo === 'C').length  - items.filter(i => i.pkg === 'contenedor').length  - cns.c);
+  // NO hay ghost de CH (paridad con RM/Costa, que solo calcula gP/gB/gC).
+  //
+  // El ghost de chocolate era una RESTA entre dos fuentes que viajan a distinta velocidad:
+  // los slots de `picking_pallets` (Realtime, ~600 ms) menos los items del estado
+  // sincronizado (debounce 2500 ms + bloqueos del merge). Esa diferencia es positiva por
+  // construcción en CADA alta o baja de un CH, así que aparecía una tarjeta fantasma que
+  // se iba sola cuando llegaba el estado: el "se van y vuelven" que se reportó.
+  // Encima nunca podía absorberse: `unsavedChoc` era estructuralmente 0 porque ningún
+  // camino crea una fila CH con `saved:false` (el rebuild y addFormRow la marcan como
+  // guardada, y el backfill excluía CH). Los CH ahora se muestran solo cuando existen
+  // como item real — una sola fuente de verdad — y el backfill de abajo los materializa.
+  // Ghosts absorbed by unsaved form cards; remainder shown as standalone cards
+  const unsavedPallet = formRows.filter(r => !r.saved && r.pkg === 'pallet').length;
+  const unsavedBox    = formRows.filter(r => !r.saved && r.pkg === 'box').length;
+  const unsavedCont   = formRows.filter(r => !r.saved && r.pkg === 'contenedor').length;
+  type GC = { type: 'p'|'b'|'c'|'ch'; border: string; text: string; bg: string; label: string; key: string };
+  const ghostCards: GC[] = [
+    ...Array.from({ length: Math.max(0, gP  - unsavedPallet) }, (_, i) => ({ type: 'p'  as const, border: 'rgba(37,99,235,0.35)',   text: '#2563EB', bg: 'rgba(37,99,235,0.03)',   label: 'Pallet',  key: `gP${i}`  })),
+    ...Array.from({ length: Math.max(0, gB  - unsavedBox)    }, (_, i) => ({ type: 'b'  as const, border: 'rgba(217,119,6,0.35)',  text: '#D97706', bg: 'rgba(217,119,6,0.03)',   label: 'Bulto',   key: `gB${i}`  })),
+    ...Array.from({ length: Math.max(0, gC  - unsavedCont)   }, (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',   key: `gC${i}`  })),
+  ];
+  // [Req 3] Orden visual: Pallet → Contenedor → Bulto → Chocolate (estable). Solo la
+  // VISTA; el estado formRows queda igual y los handlers operan por row.id.
+  const orderedRows = ordenarCardsPorTipo(formRows, r => r.pkg);
+  // Lo que falta pesar y lo ya pesado, que es como se lee la tienda ahora. Una unidad guardada
+  // "sin pesar" NO cuenta como pesada: el aviso de la tienda terminada ya existe por eso.
+  const pendientes = orderedRows.filter(r => !(r.saved && r.savedItem));
+  const pesadas    = orderedRows.filter(r => r.saved && r.savedItem);
+  const avance = avanceTienda(
+    orderedRows.map(r => ({ tipo: r.pkg, pesada: !!(r.saved && r.savedItem && !esSinPesar(r.savedItem)) })),
+    { pallet: ghostCards.filter(g => g.type === 'p').length,
+      bulto:  ghostCards.filter(g => g.type === 'b').length,
+      contenedor: ghostCards.filter(g => g.type === 'c').length },
+  );
+  // Cuál de las pendientes va abierta: la del último escaneo, la que se tocó, o la primera.
+  const { activaId, elegir: elegirActiva, esperarNueva } = useTarjetaActiva(pendientes, focoPallet);
+
   const pdfInfo = selectedTienda ? state.pdfData[selectedTienda] : undefined;
   const hasPdf  = !!pdfInfo;
 
@@ -933,6 +989,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     : undefined);
   const saltarAPallet = () => {
     if (!palletEncontrado || !tiendaDelPallet) return;
+    // Simétrico al de RM/Costa. Acá el salto YA no llegaba a una tienda del otro espejo, pero por
+    // accidente: `TIENDAS` solo tiene las de Regiones, así que `tiendaDelPallet` salía `undefined`
+    // y la línea de arriba cortaba. Queda dicho en voz alta — si algún día este mapa crece, la
+    // protección no se cae sola. Ver `duenoDeTienda`.
+    if (esDeOtroEspejo(tiendaDelPallet.cod, 'nacional', isRegionesCod)) {
+      showToast(avisoDeOtroEspejo(tiendaDelPallet.cod, espejoDeTienda(tiendaDelPallet.cod, isRegionesCod)), '#D97706');
+      return;
+    }
     setSearch('');
     setFocoPallet(palletEncontrado.slot.id);
     // No usar `select()`: es un toggle y si la tienda ya estaba abierta la cerraría en vez de
@@ -1231,6 +1295,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   // tienda+tipo mientras la creación está en vuelo. El "agregar de a N" no se ve afectado: hace
   // `await` de cada llamada, así que la guarda ya está liberada en la siguiente vuelta.
   const addFormRow = async (pkg: TipoPaquete, existingSlot?: PickingSlot, countOffset = 0) => {
+    // La unidad que alguien agrega a mano se abre sola en «Ahora»: es la que viene a pesar. Las
+    // que aparecen solas desde Picking NO, porque le cambiarían la tarjeta a quien está escribiendo.
+    esperarNueva();
     const key = `${selectedTienda}:${pkg}`;
     if (addingSlotRef.current.has(key)) {
       // Salir mudo hacía que el segundo toque pareciera no haber pasado nada, y la reacción
@@ -1914,216 +1981,50 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     if (!selectedTienda) return null;
     const tienda = TIENDAS[selectedTienda];
 
-    /* Shared header */
-    const header = (
-      <>
-      <div className={`bg-navy px-3 py-3 flex flex-col gap-2 flex-shrink-0 ${isMobile ? 'touch-none select-none' : ''}`}
-        onTouchStart={isMobile ? onSheetDragStart : undefined}
-        onTouchMove={isMobile ? onSheetDragMove : undefined}
-        onTouchEnd={isMobile ? onSheetDragEnd : undefined}>
-        <div className="flex items-center justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <div className="font-barlow-condensed text-[20px] font-bold text-white leading-tight truncate">{selectedTienda}</div>
-              <IndicadorCanalSano canalSano={canalSano} />
-            </div>
-            <div className="font-mono text-[11px] text-white/50 mt-0.5">{tienda?.cod ? formatCod(tienda.cod) : ''} · {tienda?.calle} {tienda?.numero}</div>
-          </div>
-          {/* UN SOLO contador, por CLASE — el mismo que usa la tarjeta de la lista. Antes acá se
-              comparaba `i.pkg === 'box'`, que nunca coincide con una adquisición ni con un
-              web/retiro: no se contaban en ningún lado, mientras la tarjeta los metía entre los
-              bultos. Dos cuentas distintas en la misma pantalla. Ver `contarPorClase`. */}
-          {(() => { const c = contarPorClase(items, i => claseNacional(i.pkg)); return (
-          <div className="flex gap-2.5 ml-2 flex-shrink-0">
-            <div className="text-center" title="Pallets">
-              <div className="font-barlow-condensed text-[26px] font-extrabold text-[#93C5FD] leading-none">{c.pallet}</div>
-              <div className="text-[10px] text-white/50 uppercase tracking-widest">P</div>
-            </div>
-            <div className="text-center" title="Bultos">
-              <div className="font-barlow-condensed text-[26px] font-extrabold text-[#FCD34D] leading-none">{c.bulto}</div>
-              <div className="text-[10px] text-white/50 uppercase tracking-widest">B</div>
-            </div>
-            {c.chocolate > 0 && (
-              <div className="text-center" title="Chocolates">
-                <div className="font-barlow-condensed text-[26px] font-extrabold text-[#FBB6A0] leading-none">{c.chocolate}</div>
-                <div className="text-[10px] text-white/50 uppercase tracking-widest">CH</div>
-              </div>
-            )}
-            {c.adquisicion > 0 && (
-              <div className="text-center" title="Adquisiciones — no se pesan">
-                <div className="font-barlow-condensed text-[26px] font-extrabold text-[#F59E0B] leading-none">{c.adquisicion}</div>
-                <div className="text-[10px] text-white/50 uppercase tracking-widest">A</div>
-              </div>
-            )}
-            {c.webretiro > 0 && (
-              <div className="text-center" title="Web / retiro en tienda — no se pesan">
-                <div className="font-barlow-condensed text-[26px] font-extrabold text-[#34D399] leading-none">{c.webretiro}</div>
-                <div className="text-[10px] text-white/50 uppercase tracking-widest">W</div>
-              </div>
-            )}
-          </div>
-          ); })()}
-        </div>
-        {tienda?.cod && (
-          <div className="flex justify-end items-center gap-2 touch-auto">
-            {/* A la IZQUIERDA de MARCAR TERMINADA, igual que en RM/Costa. */}
-            <RegistrarTiendaButton rol={profile?.role} terminada={!!terminadas.get(tienda.cod)}
-              unidades={items.length} yaRegistrada={registroTiendas.registrada(tienda.cod)}
-              onRegistrar={() => registrarSoloTienda(selectedTienda ?? '', tienda.cod)} />
-            <TiendaTerminadaButton cod={tienda.cod} info={terminadas.get(tienda.cod)} onToggle={marcarTerminada} itemCount={items.length}
-              sinPesarCount={items.filter(esSinPesar).length}
-              sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[selectedTienda ?? ''] ?? [], items))}
-              viendo={viendoPorTienda.get(tienda.cod)} />
-          </div>
-        )}
-      </div>
-
-      {/* FUERA del encabezado azul, igual que en RM/Costa.
-          El bloque trae su propia base navy (ver `CruceDePesosCard`). Dentro del encabezado esa
-          base se fundía con el azul de alrededor y el panel quedaba sin marco; acá, apoyado sobre
-          el fondo claro, el marco se ve — que es como se ve en RM/Costa y lo que se pidió.
-          Los dos espejos tienen que mostrar lo mismo en el mismo sitio: es el patrón que ya dejó
-          el chocolate arreglado en un camino y roto en el otro. */}
-      {verCruce && tienda?.cod && (
-        <div className="px-2 pt-2 flex-shrink-0">
-          <CruceDePesosCard cruce={cruceDelDia.porTienda.get(tienda.cod)}
-            items={items} listo={cruceDelDia.listo} />
-        </div>
-      )}
-      </>
-    );
-
-    /* ── Multi-form (compacta): estado vacío = botones +Pallet/+Bulto/+Cont/+Choc ── */
-    const pdfStrip = (
-      <div className="px-3 py-1.5 bg-bg border-b border-border flex-shrink-0 hidden lg:flex items-center gap-2">
-        <input ref={fileRef} type="file" accept=".pdf" className="hidden"
-          onChange={e => e.target.files?.[0] && handlePdfFile(e.target.files[0])} />
-        {hasPdf ? (
-          <>
-            <div className="flex-1 min-w-0">
-              <span className="text-[11px] text-success font-semibold truncate block">
-                ✓ {pdfInfo!.guias.length} guía{pdfInfo!.guias.length > 1 ? 's' : ''} · ${pdfInfo!.totalSum.toLocaleString('es-CL')}
-              </span>
-              <span className="text-[10px] text-text-3 font-mono truncate block">{pdfInfo!.guias.map(g => g.num).join(', ')}</span>
-            </div>
-            <button onClick={clearPdf} className="text-text-3 hover:text-red cursor-pointer border-none bg-transparent px-1 flex-shrink-0 text-[13px]">✕</button>
-          </>
-        ) : (
-          <>
-            <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 flex-1">Guía PDF</span>
-            {pdfLoading
-              ? <span className="text-[11px] text-info flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 border border-bg-3 border-t-info rounded-full animate-spin flex-shrink-0" />Leyendo…</span>
-              : <button onClick={() => fileRef.current?.click()}
-                  className="flex items-center gap-1 px-2.5 py-1 border border-dashed border-border-2 rounded-btn font-barlow-condensed text-[11px] font-bold text-text-3 hover:text-[#1E40AF] hover:border-[#1E40AF] cursor-pointer transition-all">
-                  Subir PDF
-                </button>
-            }
-          </>
-        )}
-      </div>
-    );
-
-    return (
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {header}
-        {pdfStrip}
-        <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
-          {(() => {
-            const cns  = selectedTienda ? (consumedPickingSlots[selectedTienda] || { p: 0, b: 0, c: 0, ch: 0 }) : { p: 0, b: 0, c: 0, ch: 0 };
-            const pkS  = selectedTienda ? (pickingSlotsFull[selectedTienda] ?? []) : [];
-            const gP   = Math.max(0, pkS.filter(s => s.tipo === 'P').length  - items.filter(i => i.pkg === 'pallet').length     - cns.p);
-            const gB   = Math.max(0, pkS.filter(s => s.tipo === 'B').length  - items.filter(i => i.pkg === 'box').length        - cns.b);
-            const gC   = Math.max(0, pkS.filter(s => s.tipo === 'C').length  - items.filter(i => i.pkg === 'contenedor').length  - cns.c);
-            // NO hay ghost de CH (paridad con RM/Costa, que solo calcula gP/gB/gC).
-            //
-            // El ghost de chocolate era una RESTA entre dos fuentes que viajan a distinta velocidad:
-            // los slots de `picking_pallets` (Realtime, ~600 ms) menos los items del estado
-            // sincronizado (debounce 2500 ms + bloqueos del merge). Esa diferencia es positiva por
-            // construcción en CADA alta o baja de un CH, así que aparecía una tarjeta fantasma que
-            // se iba sola cuando llegaba el estado: el "se van y vuelven" que se reportó.
-            // Encima nunca podía absorberse: `unsavedChoc` era estructuralmente 0 porque ningún
-            // camino crea una fila CH con `saved:false` (el rebuild y addFormRow la marcan como
-            // guardada, y el backfill excluía CH). Los CH ahora se muestran solo cuando existen
-            // como item real — una sola fuente de verdad — y el backfill de abajo los materializa.
-            // Ghosts absorbed by unsaved form cards; remainder shown as standalone cards
-            const unsavedPallet = formRows.filter(r => !r.saved && r.pkg === 'pallet').length;
-            const unsavedBox    = formRows.filter(r => !r.saved && r.pkg === 'box').length;
-            const unsavedCont   = formRows.filter(r => !r.saved && r.pkg === 'contenedor').length;
-            type GC = { type: 'p'|'b'|'c'|'ch'; border: string; text: string; bg: string; label: string; key: string };
-            const ghostCards: GC[] = [
-              ...Array.from({ length: Math.max(0, gP  - unsavedPallet) }, (_, i) => ({ type: 'p'  as const, border: 'rgba(37,99,235,0.35)',   text: '#2563EB', bg: 'rgba(37,99,235,0.03)',   label: 'Pallet',  key: `gP${i}`  })),
-              ...Array.from({ length: Math.max(0, gB  - unsavedBox)    }, (_, i) => ({ type: 'b'  as const, border: 'rgba(217,119,6,0.35)',  text: '#D97706', bg: 'rgba(217,119,6,0.03)',   label: 'Bulto',   key: `gB${i}`  })),
-              ...Array.from({ length: Math.max(0, gC  - unsavedCont)   }, (_, i) => ({ type: 'c'  as const, border: 'rgba(107,33,168,0.35)', text: '#6B21A8', bg: 'rgba(107,33,168,0.03)', label: 'Cont.',   key: `gC${i}`  })),
-            ];
-            // [Req 3] Orden visual: Pallet → Contenedor → Bulto → Chocolate (estable). Solo la
-            // VISTA; el estado formRows queda igual y los handlers operan por row.id.
-            const orderedRows = ordenarCardsPorTipo(formRows, r => r.pkg);
-            return (
-              <div className="grid grid-cols-2 gap-2 mb-2">
-                {orderedRows.map((row) => {
+    /* Una unidad: la tarjeta de pesaje si está pendiente, o su línea si ya se pesó. */
+    const renderUnidad = (row: FormRow) => {
               /* Locked / saved card */
-              const rowColor = row.pkg === 'pallet' ? { border: 'rgba(37,99,235,0.40)', text: '#2563EB' } : row.pkg === 'contenedor' ? { border: 'rgba(107,33,168,0.40)', text: '#6B21A8' } : row.pkg === 'chocolate' ? { border: 'rgba(120,53,15,0.40)', text: '#92400E' } : { border: 'rgba(217,119,6,0.40)', text: '#D97706' };
               const rowLabel = labelDeFila(row, orderedRows);
               if (row.saved && row.savedItem) {
+                const slotDeFila = row.pickingSlotId
+                  ? (pickingSlotsFull[selectedTienda ?? ''] ?? []).find(s => s.id === row.pickingSlotId)
+                  : undefined;
+                const medidas = row.savedItem.pkg === 'box' ? `${row.savedItem.ancho}×${row.savedItem.largo} cm`
+                  : row.savedItem.pkg === 'contenedor' ? '80×110 cm · alto 150 cm'
+                  : row.savedItem.pkg === 'chocolate' ? etiquetaSubtipo(subtipoDeCaja(slotDeFila?.subtipo))
+                  : row.savedItem.pkg === 'pallet' ? (row.savedItem.tipo === 'comida-hogar' ? 'Mixto' : row.savedItem.tipo === 'comida' ? 'Comida' : 'Hogar')
+                  : '';
                 return (
-                  // [Handheld] El ancla también en la tarjeta guardada: escanear una unidad ya pesada tiene
-                  // que llegar a ella y mostrarla, no abrir la tienda y quedarse arriba.
-                  <div key={row.id} id={row.pickingSlotId != null ? `pallet-card-${row.pickingSlotId}` : undefined}
-                    className={`bg-white rounded-lg border-2 p-2 ${row.pickingSlotId != null && row.pickingSlotId === resaltado ? 'relative tarjeta-escaneada' : ''}`}
-                    style={{ borderColor: rowColor.border }}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        {(row.pkg === 'box' || row.pkg === 'chocolate') && (
-                          <input type="checkbox" checked={mergeSel.has(row.id)} onChange={() => toggleMergeSel(row.id)}
-                            aria-label={`Seleccionar ${rowLabel} para sumar en masa`}
-                            className="w-4 h-4 cursor-pointer" style={{ accentColor: '#2563EB' }} />
-                        )}
-                        <span className="font-barlow-condensed text-[16px] font-extrabold" style={{ color: rowColor.text }}>
-                          {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[14px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
-                        </span>
-                      </div>
-                      <div className="flex gap-0.5">
-                        {row.pkg === 'box' && (
-                          <button onClick={() => { setDupN(2); setDupRow(dupRow === row.id ? null : row.id); }} title="Duplicar bulto (mismo peso y medidas)"
-                            className={`text-[11px] cursor-pointer border-none bg-transparent px-1 py-0.5 rounded ${dupRow === row.id ? 'text-warn' : 'text-text-3 hover:text-warn'}`}>⧉</button>
-                        )}
-                        <button onClick={() => editSavedRow(row.id)} title="Editar"
-                          className="text-[11px] text-text-3 hover:text-info cursor-pointer border-none bg-transparent px-1 py-0.5 rounded">✎</button>
-                        <button onClick={() => deleteSavedRow(row.id)} title="Eliminar"
-                          className="text-[11px] text-text-3 hover:text-red cursor-pointer border-none bg-transparent px-1 py-0.5 rounded">✕</button>
-                      </div>
-                    </div>
-                    <div className="text-[13px] text-text-2 space-y-0.5 mb-1.5">
-                      <div className="font-semibold flex items-center gap-1.5 flex-wrap">
-                        {/* Una adquisición no tiene peso ni medidas: escribir "0kg · 0cm" haría
-                            pasar la AUSENCIA de un dato por un dato. Dice qué es. */}
-                        {etiquetaDeUnidad(row.savedItem)
-                          ?? `${row.savedItem.peso}kg${row.savedItem.pkg !== 'contenedor' ? ` · ${row.savedItem.alto}cm` : ''}`}
-                        {esSinPesar(row.savedItem) && (
-                          <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
-                            style={{ color: '#D97706', background: 'rgba(217,119,6,0.12)' }}>
-                            sin pesar
-                          </span>
-                        )}
-                      </div>
-                      {row.savedItem.pkg === 'box' && <div className="text-text-3">{row.savedItem.ancho}×{row.savedItem.largo}cm</div>}
-                      {row.savedItem.pkg === 'contenedor' && <div className="text-text-3">80×110cm · alto 150cm — fijo</div>}
-                      {row.savedItem.pkg === 'chocolate' && <div className="text-text-3">{etiquetaSubtipo(subtipoDeCaja(
-                        (selectedTienda ? (pickingSlotsFull[selectedTienda] ?? []) : []).find(s => s.id === row.pickingSlotId)?.subtipo))}</div>}
-                      {row.savedItem.pkg === 'pallet' && <div className="text-text-3">{row.savedItem.tipo === 'comida-hogar' ? 'Mixto' : row.savedItem.tipo === 'comida' ? 'Comida' : 'Hogar'}</div>}
-                      {(() => {
-                        const slot = row.pickingSlotId ? (pickingSlotsFull[selectedTienda ?? ''] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
-                        if (!slot?.picker_label) return null;
-                        return (
-                          <div className="text-text-3 truncate flex items-center gap-1" title={`Armado por ${slot.picker_label}`}>
-                            <User size={10} className="shrink-0" aria-hidden="true" /> {slot.picker_label}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <div className="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0" />
-                      <span className="text-[10px] text-success font-bold">Agregado</span>
+                  // [Handheld] El ancla también en la línea pesada: escanear una unidad ya pesada
+                  // tiene que llegar a ella y mostrarla, no abrir la tienda y quedarse arriba.
+                  <FilaPesada key={row.id} clase={claseUnidad(row.pkg)} etiqueta={rowLabel}
+                    slotId={row.pickingSlotId}
+                    resaltada={row.pickingSlotId != null && row.pickingSlotId === resaltado}
+                    // Una adquisición no tiene peso ni medidas: escribir «0kg · 0cm» haría pasar la
+                    // AUSENCIA de un dato por un dato. Dice qué es.
+                    resumen={etiquetaDeUnidad(row.savedItem)
+                      ?? `${row.savedItem.peso} kg${row.savedItem.pkg !== 'contenedor' ? ` · ${row.savedItem.alto} cm` : ''}`}
+                    aviso={esSinPesar(row.savedItem) ? (
+                      <span className="text-rotulo font-bold uppercase text-est-aviso bg-est-aviso-suave rounded-full px-2 py-0.5">sin pesar</span>
+                    ) : undefined}
+                    detalle={
+                      <>
+                        {medidas}
+                        {slotDeFila?.picker_label ? `${medidas ? ' · ' : ''}armó ${slotDeFila.picker_label}` : ''}
+                      </>
+                    }
+                    seleccion={(row.pkg === 'box' || row.pkg === 'chocolate') ? (
+                      <input type="checkbox" checked={mergeSel.has(row.id)} onChange={() => toggleMergeSel(row.id)}
+                        aria-label={`Seleccionar ${rowLabel} para sumar en masa`}
+                        className="w-5 h-5 cursor-pointer flex-shrink-0" style={{ accentColor: 'var(--uni-pallet)' }} />
+                    ) : undefined}>
+                    <div className="flex gap-2 flex-wrap">
+                      <BotonAccion onClick={() => editSavedRow(row.id)}>Editar</BotonAccion>
+                      {row.pkg === 'box' && (
+                        <BotonAccion onClick={() => { setDupN(2); setDupRow(dupRow === row.id ? null : row.id); }}
+                          title="Duplicar bulto (mismo peso y medidas)">Duplicar</BotonAccion>
+                      )}
+                      <BotonAccion tono="peligro" onClick={() => deleteSavedRow(row.id)}>Eliminar</BotonAccion>
                     </div>
                     {dupRow === row.id && row.pkg === 'box' && (
                       <div className="mt-1.5 pt-1.5 border-t border-black/[0.08] flex items-center gap-1.5 flex-wrap">
@@ -2217,7 +2118,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                         </div>
                       );
                     })()}
-                  </div>
+                  </FilaPesada>
                 );
               }
               /* Active / unsaved card */
@@ -2237,15 +2138,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               return (
                 <div key={row.id} id={row.pickingSlotId != null ? `pallet-card-${row.pickingSlotId}` : undefined}
                   data-tarjeta-bodega="" data-slot={row.pickingSlotId ?? undefined}
-                  className={`relative bg-white rounded-lg border px-2 py-2 transition-shadow ${esResaltada ? 'tarjeta-escaneada' : ''}`}
-                  style={{ borderColor: row.pkg === 'pallet' ? 'rgba(37,99,235,0.25)' : isContRow ? 'rgba(107,33,168,0.25)' : isChocRow ? 'rgba(120,53,15,0.25)' : 'rgba(217,119,6,0.25)' }}>
+                  className={`relative bg-card rounded-kios border-2 px-3 py-3 shadow-kios ${ESTILO_ACTIVA[claseUnidad(row.pkg)]} ${esResaltada ? 'tarjeta-escaneada' : ''}`}>
                   {row.pickingSlotId != null && <PresenciaBadge viendo={viendoPorSlot.get(row.pickingSlotId)} contexto="tarjeta" />}
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-barlow-condensed text-[15px] font-bold" style={{ color: rowColor.text }}>
-                      {rowLabel}{row.pickingSlotId ? <span className="ml-1.5 text-[14px] font-mono text-navy font-bold">#{row.pickingSlotId}</span> : null}
-                    </span>
-                    <button onClick={() => removeUnsavedRow(row.id)}
-                      className="text-text-3 hover:text-red cursor-pointer border-none bg-transparent text-[12px] px-0.5">✕</button>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <EtiquetaUnidad clase={claseUnidad(row.pkg)} grande>{rowLabel}</EtiquetaUnidad>
+                    {row.pickingSlotId ? <span className="font-mono text-cuerpo text-text">#{row.pickingSlotId}</span> : null}
+                    <button onClick={() => removeUnsavedRow(row.id)} aria-label={`Quitar ${rowLabel}`}
+                      className="ml-auto w-10 h-10 -mr-1 flex items-center justify-center rounded-btn text-text-sub bg-bg-2 active:bg-bg-3 cursor-pointer border-none text-cuerpo">✕</button>
                   </div>
                   {(() => {
                     const slot = row.pickingSlotId ? (pickingSlotsFull[selectedTienda ?? ''] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
@@ -2267,45 +2166,45 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       {/* Se pregunta por lo que estuvo EN LA BALANZA, no por lo que hay en el pallet:
                           un chocolate sumado con el botón ya vino neto y declararlo acá restaría la
                           tara dos veces. */}
-                      <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Cajas negras pesadas con el pallet</label>
+                      <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">Cajas negras pesadas con el pallet</label>
                       <input type="number" value={row.cajasNegras ?? ''} onChange={e => updateRow(row.id, 'cajasNegras', e.target.value)}
                         onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="0" inputMode="numeric" min={0}
-                        className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none] mb-1.5" />
+                        className={`${CAMPO} mb-2`} />
                       {(parseInt(row.cajasNegras ?? '', 10) || 0) > 0 && (
                         <div className="text-[10px] font-bold mb-1.5" style={{ color: '#C2410C' }}>
                           se descuentan {String(Math.round((parseInt(row.cajasNegras!, 10) * TARA_CAJA_NEGRA) * 10) / 10).replace('.', ',')} kg de cajas
                         </div>
                       )}
-                      <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Tipo de carga</label>
-                      <div className="flex gap-0.5">
+                      <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">Tipo de carga</label>
+                      <div className="flex gap-1.5">
                         {/* Chocolate también es tipo de carga de un pallet: dice QUÉ va adentro, no
                             qué envase es. El pallet sigue siendo P1/P2 y con sus propias medidas. */}
                         {(['comida', 'hogar', 'comida-hogar', 'chocolate'] as TipoContenido[]).map(t => (
                           <button key={t} onClick={() => updateRow(row.id, 'tipo', t)}
                             title={nombreContenido(t)}
-                            className={`flex-1 py-1.5 rounded border text-[12px] font-bold cursor-pointer transition-all ${row.tipo === t ? TIPO_CLS[t] : 'border-border bg-bg-2 text-text-3'}`}>
+                            className={`flex-1 min-h-[44px] rounded-btn border text-apoyo font-bold cursor-pointer transition-all ${row.tipo === t ? TIPO_CLS[t] : 'border-border bg-bg-2 text-text-2'}`}>
                             {abreviaturaContenido(t)}
                           </button>
                         ))}
                       </div>
                     </div>
                   )}
-                  <div className="grid grid-cols-2 gap-1 mb-1.5">
+                  <div className="grid grid-cols-2 gap-2 mb-2">
                     <div>
-                      <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">
+                      <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">
                         Peso{cajaDeFila === 'negra' && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(TARA_CAJA_NEGRA).replace('.', ',')} kg de caja</span>}
                       </label>
                       <input type="text" value={row.peso} onChange={e => updateRow(row.id, 'peso', limpiarTecleo(e.target.value))}
                         onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="kg" inputMode="decimal" data-campo="peso"
-                        className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
+                        className={CAMPO_GRANDE} />
                     </div>
                     {!isChocRow && !isContRow && (
                       <div>
-                        <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Alto</label>
+                        <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">Alto</label>
                         <input type="number" value={row.alto} onChange={e => updateRow(row.id, 'alto', e.target.value)}
                           onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="cm" inputMode="decimal" data-campo="alto"
                           max={row.pkg === 'pallet' ? MAX_ALTO_CM : undefined}
-                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
+                          className={CAMPO_GRANDE} />
                         {row.pkg === 'pallet' && excedeAltoMax(parseFloat(row.alto) || 0) && (
                           <div className="text-[10px] text-warn mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
                         )}
@@ -2313,18 +2212,18 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     )}
                   </div>
                   {row.pkg === 'box' ? (
-                    <div className="grid grid-cols-2 gap-1 mb-1.5">
+                    <div className="grid grid-cols-2 gap-2 mb-2">
                       <div>
-                        <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Ancho</label>
+                        <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">Ancho</label>
                         <input type="number" value={row.ancho} onChange={e => updateRow(row.id, 'ancho', e.target.value)}
                           onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="cm" inputMode="decimal" data-campo="ancho"
-                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
+                          className={CAMPO_GRANDE} />
                       </div>
                       <div>
-                        <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Largo</label>
+                        <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">Largo</label>
                         <input type="number" value={row.largo} onChange={e => updateRow(row.id, 'largo', e.target.value)}
                           onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="cm" inputMode="decimal" data-campo="largo"
-                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
+                          className={CAMPO_GRANDE} />
                       </div>
                     </div>
                   ) : isContRow ? (
@@ -2341,16 +2240,16 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     </div>
                   )}
                   {!hasPdf && (
-                    <div className="grid grid-cols-2 gap-1 mb-1.5">
+                    <div className="grid grid-cols-2 gap-2 mb-2">
                       <div>
-                        <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">Guía</label>
+                        <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">Guía</label>
                         <input type="text" value={row.guia} onChange={e => updateRow(row.id, 'guia', e.target.value)}
-                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF]" />
+                          className={CAMPO} />
                       </div>
                       <div>
-                        <label className="text-[11px] text-text-3 uppercase tracking-wide block mb-0.5">$ Total</label>
+                        <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">$ Total</label>
                         <input type="number" value={row.valor} onChange={e => updateRow(row.id, 'valor', e.target.value)}
-                          className="w-full bg-white border border-border rounded px-2 py-2 text-text font-barlow text-[15px] outline-none focus:border-[#1E40AF] [-webkit-appearance:none]" />
+                          className={CAMPO_GRANDE} />
                       </div>
                     </div>
                   )}
@@ -2375,9 +2274,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       saveRow(row);
                     }}
                     data-accion="guardar"
-                    className="w-full py-2.5 text-white border-none rounded font-barlow-condensed text-[15px] font-bold cursor-pointer transition-all"
-                    style={{ background: row.pkg === 'pallet' ? '#2563EB' : isContRow ? '#6B21A8' : isChocRow ? '#92400E' : '#D97706' }}>
-                    {row.mergeReopened ? botonReapertura(row.mergeMotivo ?? 'union') : '+ Agregar'}
+                    className="w-full min-h-[50px] bg-navy text-white border-none rounded-btn font-barlow-condensed text-titulo font-bold cursor-pointer transition-transform active:scale-[0.98]">
+                    {row.mergeReopened ? botonReapertura(row.mergeMotivo ?? 'union') : (pendientes.length > 1 ? 'Guardar y seguir' : 'Guardar')}
                   </button>
                   {!row.mergeReopened && (() => {
                     const esBultoOChoc = row.pkg === 'box' || row.pkg === 'chocolate';
@@ -2440,8 +2338,120 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   })()}
                 </div>
               );
-                })}
-                {ghostCards.map(gc => {
+    };
+
+    /* ── Cabecera de la tienda abierta ──────────────────────────────────────────────────────
+       Clara, no navy: el navy quedó para la barra de la app. Lo que se lee primero es cuánto
+       falta —la barra, «5 de 8 pesados» y «P 4/5 · B 1/3»—, no el nombre en grande sobre azul.
+       Registrar y Marcar terminada se fueron al menú ⋯: son de fin de tienda y antes competían
+       con el pesaje, que es lo que se hace cien veces al día. Ver `TiendaAbierta.tsx`. */
+    const header = (
+      <>
+      <CabeceraTienda
+        nombre={selectedTienda}
+        subtitulo={`${tienda?.cod ? formatCod(tienda.cod) : ''}${tienda?.calle ? ` · ${tienda.calle} ${tienda.numero ?? ''}` : ''}`}
+        avance={avance}
+        indicador={<IndicadorCanalSano canalSano={canalSano} />}
+        estado={tienda?.cod && terminadas.get(tienda.cod)?.terminada
+          ? <span className="text-rotulo font-bold uppercase text-est-ok bg-est-ok-suave rounded-full px-2.5 py-1 flex-shrink-0">✓ Terminada</span>
+          : undefined}
+        arrastre={isMobile ? { onTouchStart: onSheetDragStart, onTouchMove: onSheetDragMove, onTouchEnd: onSheetDragEnd } : undefined}
+        acciones={tienda?.cod ? (
+          <>
+            <RegistrarTiendaButton rol={profile?.role} terminada={!!terminadas.get(tienda.cod)} variante="claro"
+              unidades={items.length} yaRegistrada={registroTiendas.registrada(tienda.cod)}
+              onRegistrar={() => registrarSoloTienda(selectedTienda ?? '', tienda!.cod)} />
+            <TiendaTerminadaButton cod={tienda.cod} info={terminadas.get(tienda.cod)} onToggle={marcarTerminada}
+              itemCount={items.length} variante="claro"
+              sinPesarCount={items.filter(esSinPesar).length}
+              sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[selectedTienda ?? ''] ?? [], items))}
+              viendo={viendoPorTienda.get(tienda.cod)} />
+          </>
+        ) : undefined} />
+
+      {/* FUERA del encabezado azul, igual que en RM/Costa.
+          El bloque trae su propia base navy (ver `CruceDePesosCard`). Dentro del encabezado esa
+          base se fundía con el azul de alrededor y el panel quedaba sin marco; acá, apoyado sobre
+          el fondo claro, el marco se ve — que es como se ve en RM/Costa y lo que se pidió.
+          Los dos espejos tienen que mostrar lo mismo en el mismo sitio: es el patrón que ya dejó
+          el chocolate arreglado en un camino y roto en el otro. */}
+      {verCruce && tienda?.cod && (
+        <div className="px-2 pt-2 flex-shrink-0">
+          <CruceDePesosCard cruce={cruceDelDia.porTienda.get(tienda.cod)}
+            items={items} listo={cruceDelDia.listo} />
+        </div>
+      )}
+      </>
+    );
+
+    /* ── Multi-form (compacta): estado vacío = botones +Pallet/+Bulto/+Cont/+Choc ── */
+    const pdfStrip = (
+      <div className="px-3 py-1.5 bg-bg border-b border-border flex-shrink-0 hidden lg:flex items-center gap-2">
+        <input ref={fileRef} type="file" accept=".pdf" className="hidden"
+          onChange={e => e.target.files?.[0] && handlePdfFile(e.target.files[0])} />
+        {hasPdf ? (
+          <>
+            <div className="flex-1 min-w-0">
+              <span className="text-[11px] text-success font-semibold truncate block">
+                ✓ {pdfInfo!.guias.length} guía{pdfInfo!.guias.length > 1 ? 's' : ''} · ${pdfInfo!.totalSum.toLocaleString('es-CL')}
+              </span>
+              <span className="text-[10px] text-text-3 font-mono truncate block">{pdfInfo!.guias.map(g => g.num).join(', ')}</span>
+            </div>
+            <button onClick={clearPdf} className="text-text-3 hover:text-red cursor-pointer border-none bg-transparent px-1 flex-shrink-0 text-[13px]">✕</button>
+          </>
+        ) : (
+          <>
+            <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 flex-1">Guía PDF</span>
+            {pdfLoading
+              ? <span className="text-[11px] text-info flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 border border-bg-3 border-t-info rounded-full animate-spin flex-shrink-0" />Leyendo…</span>
+              : <button onClick={() => fileRef.current?.click()}
+                  className="flex items-center gap-1 px-2.5 py-1 border border-dashed border-border-2 rounded-btn font-barlow-condensed text-[11px] font-bold text-text-3 hover:text-[#1E40AF] hover:border-[#1E40AF] cursor-pointer transition-all">
+                  Subir PDF
+                </button>
+            }
+          </>
+        )}
+      </div>
+    );
+
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {header}
+        {pdfStrip}
+        <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
+          {/* ── AHORA · FALTAN · PESADOS ──────────────────────────────────────────────────
+              Antes todas las unidades eran tarjetas de formulario del mismo tamaño, en dos
+              columnas: la que se estaba pesando y las diez ya hechas competían por la misma
+              atención. Ahora la tienda se lee de arriba abajo — lo que toca, lo que falta, lo
+              hecho — y el formulario completo existe solo para UNA unidad a la vez. */}
+          {(() => {
+            const activa = pendientes.find(r => r.id === activaId);
+            const enCola = pendientes.filter(r => r.id !== activaId);
+            const kgPesados = pesadas.reduce((t, r) => t + (Number(r.savedItem?.peso) || 0), 0);
+            return (
+              <>
+                {activa && (
+                  <>
+                    <RotuloSeccion>Ahora</RotuloSeccion>
+                    {renderUnidad(activa)}
+                  </>
+                )}
+                {(enCola.length > 0 || ghostCards.length > 0) && (
+                  <>
+                    <RotuloSeccion derecha={activa ? 'Escanea o toca' : undefined}>
+                      {`Faltan ${enCola.length + ghostCards.length}`}
+                    </RotuloSeccion>
+                    <ColaPendientes onElegir={elegirActiva}
+                      fichas={enCola.map(r => ({
+                        id: r.id,
+                        clase: claseUnidad(r.pkg),
+                        etiqueta: labelDeFila(r, orderedRows),
+                        slotId: r.pickingSlotId,
+                        aMedias: !!r.tocada,
+                      }))} />
+                    {ghostCards.length > 0 && (
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        {ghostCards.map(gc => {
                   const pkgMap: Record<string, string> = { p: 'pallet', b: 'box', c: 'contenedor', ch: 'chocolate' };
                   const prefixMap: Record<string, string> = { p: 'P', b: 'B', c: 'C', ch: 'CH' };
                   const regCount = items.filter(i => i.pkg === pkgMap[gc.type]).length;
@@ -2477,7 +2487,21 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     </div>
                   );
                 })}
-              </div>
+                      </div>
+                    )}
+                  </>
+                )}
+                {pesadas.length > 0 && (
+                  <>
+                    <RotuloSeccion derecha={`${kgPesados.toLocaleString('es-CL', { maximumFractionDigits: 1 })} kg`}>
+                      {`Pesados ${pesadas.length}`}
+                    </RotuloSeccion>
+                    <div className="rounded-card border border-border overflow-hidden divide-y divide-border">
+                      {pesadas.map(row => renderUnidad(row))}
+                    </div>
+                  </>
+                )}
+              </>
             );
           })()}
           {(() => {

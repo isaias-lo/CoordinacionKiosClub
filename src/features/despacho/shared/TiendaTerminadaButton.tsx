@@ -9,7 +9,7 @@ import type { ViendoInfo } from './usePresenciaTienda';
  * useTiendaTerminada.ts). Mismo lenguaje visual que el "✓ Completado" del pie de Resumen
  * (verde relleno = hecho, toca para deshacer).
  */
-export function TiendaTerminadaButton({ cod, info, onToggle, itemCount, sinPesarCount, sinGuardar, viendo }: {
+export function TiendaTerminadaButton({ cod, info, onToggle, itemCount, sinPesarCount, sinGuardar, viendo, variante = 'navy' }: {
   cod: string;
   info?: TerminadaInfo;
   onToggle: (cod: string, terminada: boolean, por?: string) => void;
@@ -31,6 +31,8 @@ export function TiendaTerminadaButton({ cod, info, onToggle, itemCount, sinPesar
   /** [Presencia] Quién más tiene esta tienda abierta ahora — si alguien la está viendo, puede
    *  estar a mitad de agregar algo que todavía no se guardó. */
   viendo?: ViendoInfo[];
+  /** `navy` sobre el encabezado oscuro; `claro` en el menú ⋯ o al pie de la tienda abierta. */
+  variante?: 'navy' | 'claro';
 }) {
   const { profile } = useAuth();
   const terminada = info?.terminada === true;
@@ -56,13 +58,16 @@ export function TiendaTerminadaButton({ cod, info, onToggle, itemCount, sinPesar
     <button
       onClick={handleClick}
       title={terminada && info?.por ? `Terminada por ${info.por}` : 'Marcar esta tienda como terminada'}
-      className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold uppercase tracking-wide cursor-pointer border transition-all active:scale-95 flex-shrink-0 ${
-        terminada
-          ? 'bg-[#16A34A] text-white border-transparent'
-          : 'bg-white/10 text-white/80 border-white/20'
-      }`}
+      className={variante === 'claro'
+        ? `w-full min-h-[44px] flex items-center justify-center gap-1.5 px-3 rounded-btn font-barlow-condensed text-cuerpo font-bold cursor-pointer border transition-all active:scale-[0.98] ${
+            terminada ? 'bg-card text-est-ok border-border' : 'bg-est-ok text-white border-transparent'}`
+        : `flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold uppercase tracking-wide cursor-pointer border transition-all active:scale-95 flex-shrink-0 ${
+            terminada
+              ? 'bg-[#16A34A] text-white border-transparent'
+              : 'bg-white/10 text-white/80 border-white/20'
+          }`}
     >
-      {terminada ? '✓ Terminada' : 'Marcar terminada'}
+      {terminada ? (variante === 'claro' ? 'Reabrir tienda' : '✓ Terminada') : 'Marcar terminada'}
     </button>
   );
 }

@@ -65,11 +65,63 @@ export const TIENDAS: Record<string, Tienda> = Object.fromEntries(
   ])
 );
 
-/** Códigos de todas las tiendas de Regiones — derivado automáticamente de SENDU_EXTRAS. */
-export const REGIONES_CODS = new Set(Object.keys(SENDU_EXTRAS));
+/**
+ * Códigos del catálogo CURADO A MANO (SENDU_EXTRAS). Fijo: no crece nunca.
+ *
+ * Es la pregunta "¿esta tienda tiene su data de envío escrita a mano?", y por eso es la que decide
+ * si `registrarTiendasBD` puede pisar una entrada. NO sirve para clasificar: una tienda de
+ * Regiones creada desde Config (60PBL) no está acá y es de Regiones igual.
+ */
+export const CODS_CURADOS: ReadonlySet<string> = new Set(Object.keys(SENDU_EXTRAS));
+
+/**
+ * Códigos de TODA tienda de Regiones conocida. CRECE en runtime — ver `registrarCodsRegiones`.
+ *
+ * Esta es la que clasifica. Arranca con las curadas y se completa cuando alguna pantalla trae el
+ * catálogo de la BD. Mientras no lo traiga, una tienda de Regiones de Config queda clasificada
+ * como de RM/Costa, que es el hueco por el que 60PBL aparecía en la lista de RM/Costa.
+ */
+export const REGIONES_CODS = new Set<string>(Object.keys(SENDU_EXTRAS));
 
 /** True si el código pertenece a una tienda de Regiones. */
 export const isRegionesCod = (cod: string): boolean => REGIONES_CODS.has(cod);
+
+/**
+ * Los códigos de la BD que pertenecen a Regiones. PURA: no toca ningún catálogo.
+ *
+ * Mismo criterio que usa `registrarTiendasBD` para decidir si una fila es de Regiones, menos el
+ * nombre: para CLASIFICAR no hace falta poder construir la entrada del catálogo.
+ */
+export function codsRegionesDeBD(
+  rows: readonly { codigo?: unknown; activo?: unknown; sector_comuna?: unknown }[] | null | undefined,
+): string[] {
+  const out: string[] = [];
+  for (const r of rows ?? []) {
+    const cod = String(r?.codigo ?? '').trim().toUpperCase();
+    if (!cod) continue;
+    if (r.activo === false) continue;
+    if (!esSectorRegiones(r.sector_comuna == null ? null : String(r.sector_comuna))) continue;
+    if (!out.includes(cod)) out.push(cod);
+  }
+  return out;
+}
+
+/**
+ * Marca esos códigos como de Regiones, para que `isRegionesCod` los reconozca. Idempotente.
+ *
+ * La pantalla de RM/Costa llama a ESTO y no a `registrarTiendasBD`: necesita clasificar, no
+ * construir el catálogo de la otra bodega. Devuelve los que no estaban.
+ */
+export function registrarCodsRegiones(cods: readonly string[]): string[] {
+  const nuevos: string[] = [];
+  for (const raw of cods ?? []) {
+    const cod = String(raw ?? '').trim().toUpperCase();
+    if (!cod || REGIONES_CODS.has(cod)) continue;
+    REGIONES_CODS.add(cod);
+    nuevos.push(cod);
+  }
+  return nuevos;
+}
 
 // ─── Hidratación desde la BD (tabla `tiendas` de Config. Tiendas) ────────────
 // RUT del emisor: es el mismo para todas las tiendas del catálogo.
@@ -143,7 +195,13 @@ export function registrarTiendasBD(
     if (!cod || !nombre) continue;
     if (r.activo === false) continue;
     if (!esSectorRegiones(r.sector_comuna)) continue;
-    if (REGIONES_CODS.has(cod)) continue;   // ya está en el catálogo curado → no se pisa
+    // Curada a mano → no se pisa. La pregunta es por CODS_CURADOS y no por REGIONES_CODS: desde
+    // que RM/Costa también clasifica (`registrarCodsRegiones`), preguntar por REGIONES_CODS
+    // dejaba a Nacional SIN la entrada de catálogo de toda tienda que la otra pestaña ya hubiera
+    // visto — abrir RM/Costa antes de Nacional borraba 60PBL de la lista de Nacional.
+    if (CODS_CURADOS.has(cod)) continue;
+    // Ya construida en esta sesión → no se vuelve a anunciar como agregada (sigue idempotente).
+    if (TIENDAS[nombre]?.cod === cod) { REGIONES_CODS.add(cod); continue; }
 
     TIENDAS[nombre] = {
       cod, name: nombre,

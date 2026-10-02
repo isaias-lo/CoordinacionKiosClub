@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { cerrarSesion } from '@/lib/cerrarSesion';
 
 export default function EsperaPage() {
   const router = useRouter();
@@ -28,9 +29,7 @@ export default function EsperaPage() {
   }, [router]);
 
   async function handleLogout() {
-    await supabase.auth.signOut();
-    sessionStorage.removeItem('pendingEmail');
-    router.push('/login');
+    await cerrarSesion();
   }
 
   if (checking) {

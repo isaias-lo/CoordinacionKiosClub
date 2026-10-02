@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { KiosLogo } from '@/components/KiosLogo';
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { SYSTEM_ROLE_HOME } from '@/config/routes';
 
@@ -21,7 +20,6 @@ function mapError(msg: string): string {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email,        setEmail]        = useState('');
   const [password,     setPassword]     = useState('');
   const [loading,      setLoading]      = useState(false);
@@ -50,8 +48,10 @@ export default function LoginPage() {
     const role     = (data.user.user_metadata?.role      as string) ?? 'auditor';
     const homeMeta = (data.user.user_metadata?.home_path as string) ?? '';
     const home     = homeMeta || SYSTEM_ROLE_HOME[role] || '/perfil';
-    router.push(home);
-    router.refresh();
+    // Carga completa y no `router.push`: si en este equipo antes hubo otra cuenta, cualquier dato
+    // suyo que siguiera en memoria (caché de consultas, contextos, caché del router) se descarta y
+    // la cuenta nueva arranca de cero. `replace` para que "atrás" no vuelva al formulario.
+    window.location.replace(home);
   }
 
   return (

@@ -39,6 +39,7 @@ export default {
           DEFAULT: 'var(--color-text)',
           2: 'var(--color-text-2)',
           3: 'var(--color-text-3)',
+          sub: 'var(--color-text-sub)',
         },
         border: {
           DEFAULT: 'var(--color-border)',
@@ -81,6 +82,27 @@ export default {
         info:    '#2563EB',
         danger:  '#D42B2B',
 
+        /* ── Bodega: estado y tipo de unidad (variables en index.css, con modo oscuro) ──
+           `est-*` solo para estados; `uni-*` solo para tipos de unidad. No se cruzan. */
+        est: {
+          ok:            'var(--est-ok)',
+          'ok-suave':    'var(--est-ok-suave)',
+          aviso:         'var(--est-aviso)',
+          'aviso-suave': 'var(--est-aviso-suave)',
+          error:         'var(--est-error)',
+          'error-suave': 'var(--est-error-suave)',
+        },
+        uni: {
+          pallet:             'var(--uni-pallet)',
+          'pallet-suave':     'var(--uni-pallet-suave)',
+          bulto:              'var(--uni-bulto)',
+          'bulto-suave':      'var(--uni-bulto-suave)',
+          contenedor:         'var(--uni-contenedor)',
+          'contenedor-suave': 'var(--uni-contenedor-suave)',
+          chocolate:          'var(--uni-chocolate)',
+          'chocolate-suave':  'var(--uni-chocolate-suave)',
+        },
+
         /* ── Logistics categories ── */
         comida: '#D97706',
         hogar:  '#7C3AED',
@@ -93,6 +115,15 @@ export default {
           active:  'rgba(255,255,255,0.10)',
           border:  'rgba(255,255,255,0.07)',
         },
+      },
+      /* Escala de Bodega: seis tamaños con nombre, ninguno bajo 12 px. Reemplazan a los
+         `text-[Npx]` sueltos (el test `escalaBodega` impide que vuelvan a crecer). */
+      fontSize: {
+        cifra:  ['28px', { lineHeight: '32px' }],
+        titulo: ['20px', { lineHeight: '26px' }],
+        cuerpo: ['16px', { lineHeight: '22px' }],
+        apoyo:  ['14px', { lineHeight: '20px' }],
+        rotulo: ['12px', { lineHeight: '16px', letterSpacing: '0.06em' }],
       },
       fontFamily: {
         barlow:            ['Barlow', 'sans-serif'],
