@@ -1,5 +1,6 @@
 import type { SantiagoItem } from '../types';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
+import { desempatarOrdenSantiago } from '../../shared/numeroCard';
 import { esSinPesar } from '../../shared/sinPesar';
 import { PREFIJO_ADQUISICION, PREFIJO_WEB_RETIRO, etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
 
@@ -36,8 +37,14 @@ export function buildRows(
   // Las que hubo que escribir sin datos de catalogo. Se avisa, no se descarta.
   const sinCatalogo: string[] = [];
 
-  for (const [cod, tiendaItems] of Object.entries(items)) {
-    if (!tiendaItems.length) continue;
+  for (const [cod, todosLosItems] of Object.entries(items)) {
+    if (!todosLosItems.length) continue;
+    // ÚLTIMA PUERTA ANTES DE QUE EL ID EXISTA: que no haya dos unidades con el mismo `orden`.
+    //
+    // El `orden` se fija al guardar, con las hermanas visibles EN ESE INSTANTE, así que dos altas
+    // que no se ven entre sí toman el mismo número y el mismo id. Acá se ve la tienda COMPLETA,
+    // que es el único punto donde el desempate puede ser correcto. Ver `numeroCard`.
+    const tiendaItems = desempatarOrdenSantiago(todosLosItems);
     // NUNCA SE DESCARTA UNA TIENDA POR NO CONOCERLA.
     //
     // Acá había un `if (!tienda) continue;`. Una tienda de RM creada en Config. Tiendas no estaba
