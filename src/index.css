@@ -37,6 +37,20 @@
   --status-partial:   #C2873A;  /* ámbar apagado (parcial) */
   --status-none:      #9AA4B2;  /* gris (sin actividad) */
 
+  /* ── Bodega: paleta con significado fijo ──────────────────────────
+     Tres familias que no se mezclan: estado, tipo de unidad y texto de apoyo.
+     Todo texto de color pasa 4,5:1 sobre blanco. Ver el plan "Plan UX de Bodegas: letra y color". */
+  --color-text-sub:   #636366;  /* texto secundario legible (6:1). El --color-text-3 queda 3,3:1 */
+
+  --est-ok:           #15803D;  --est-ok-suave:     rgba(21,128,61,0.10);
+  --est-aviso:        #B45309;  --est-aviso-suave:  rgba(180,83,9,0.12);
+  --est-error:        #B91C1C;  --est-error-suave:  rgba(185,28,28,0.10);
+
+  --uni-pallet:       #4338CA;  --uni-pallet-suave:     rgba(67,56,202,0.10);
+  --uni-bulto:        #0F766E;  --uni-bulto-suave:      rgba(15,118,110,0.10);
+  --uni-contenedor:   #6D28D9;  --uni-contenedor-suave: rgba(109,40,217,0.10);
+  --uni-chocolate:    #7C2D12;  --uni-chocolate-suave:  rgba(124,45,18,0.10);
+
   /* Sidebar (always dark — independent of theme) */
   --sidebar-bg:       #0D1829;
   --sidebar-border:   rgba(255,255,255,0.07);
@@ -92,6 +106,15 @@ html.dark {
   --color-text-2:     #CBD5E1;
   --color-text-3:     #94A3B8;
   --shadow-card:      0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+
+  --color-text-sub:   #A9B4C6;
+  --est-ok:           #4ADE80;  --est-ok-suave:     rgba(74,222,128,0.14);
+  --est-aviso:        #FBBF24;  --est-aviso-suave:  rgba(251,191,36,0.14);
+  --est-error:        #F87171;  --est-error-suave:  rgba(248,113,113,0.14);
+  --uni-pallet:       #A5B4FC;  --uni-pallet-suave:     rgba(165,180,252,0.14);
+  --uni-bulto:        #5EEAD4;  --uni-bulto-suave:      rgba(94,234,212,0.14);
+  --uni-contenedor:   #C4B5FD;  --uni-contenedor-suave: rgba(196,181,253,0.14);
+  --uni-chocolate:    #FDBA74;  --uni-chocolate-suave:  rgba(253,186,116,0.14);
 }
 
 html.dark ::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.15); }
