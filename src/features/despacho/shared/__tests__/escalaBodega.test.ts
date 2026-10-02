@@ -30,7 +30,10 @@ const contar = (re: RegExp) => (fuente.match(re) ?? []).length;
 const TOPE = {
   tamanosSueltos: 408,   // text-[Npx] + fontSize numérico
   menoresA12:     181,   // los de 9 a 11,5 px: no se leen en una handheld
-  hexSueltos:     453,
+  // Baja de 453: la etiqueta de Picking pasó a nombrar sus dos tintas (`TINTA` y `ACENTO` en
+  // `BarcodeCard`) en vez de repetir el hex en cada regla. Se fija el piso nuevo, como pide el
+  // encabezado de este archivo.
+  hexSueltos:     452,
 };
 
 describe('escala y paleta de Bodega', () => {

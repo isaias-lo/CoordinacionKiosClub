@@ -17,6 +17,7 @@ import { Printer, Bell, AlertTriangle, RefreshCw, Package, UserPlus } from 'luci
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
 import { fetchCalendarioCongelados, subscribeToCalendarioCongelados, type CalRecord } from '@/lib/calendarioCongeladosSync';
 import { LabelConfig, DEFAULT_LABEL_CONFIG, BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
+import { zonaDeTienda, etiquetaTipoTienda } from '@/features/despacho/shared/zonaTienda';
 import { subtipoDeCaja, claveUnidad, partirClave, medidasDeCaja } from '@/features/despacho/shared/subtipoCaja';
 import type { ClaveUnidad } from './tiposUnidad';
 
@@ -1339,6 +1340,36 @@ export function PickingScreen() {
     setDoPrint(true);
   }, [selectedCods, groupedByStore, recordPrints, assignCanonicalIds, palletSlots]);
 
+  // EL TIPO Y LA ZONA DE CADA TIENDA, PARA LA ETIQUETA.
+  //
+  // No salen de `TIENDAS_INICIAL`: ese catálogo es estático y NINGUNA de sus entradas trae `tipo`
+  // ni `sector` (verificado: cero de cada uno). Los carga Config. Tiendas, así que hay que pedirlos.
+  //
+  // Una sola vez al montar: es un dato de catálogo, no cambia durante un turno, y si la llamada
+  // falla la etiqueta sale sin los dos rótulos en vez de no salir.
+  const [catalogoTiendas, setCatalogoTiendas] = useState<Record<string, { sector?: string; corredor?: string; tipo?: string }>>({});
+  useEffect(() => {
+    let vivo = true;
+    fetch('/api/tiendas')
+      .then(r => r.json())
+      .then(({ tiendas }: { tiendas?: Array<Record<string, unknown>> }) => {
+        if (!vivo || !Array.isArray(tiendas)) return;
+        const mapa: Record<string, { sector?: string; corredor?: string; tipo?: string }> = {};
+        for (const t of tiendas) {
+          const cod = String(t.codigo ?? '').trim().toUpperCase();
+          if (!cod) continue;
+          mapa[cod] = {
+            sector:   String(t.sector_comuna ?? ''),
+            corredor: String(t.corredor ?? ''),
+            tipo:     String(t.tipo ?? ''),
+          };
+        }
+        setCatalogoTiendas(mapa);
+      })
+      .catch(() => { /* sin catálogo la etiqueta sale igual, sin los dos rótulos */ });
+    return () => { vivo = false; };
+  }, []);
+
   const todayLabel     = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
   // Datos de impresión — una etiqueta por slot, sección activa del supervisor
   const printableLabels = useMemo(() => {
@@ -1349,6 +1380,7 @@ export function PickingScreen() {
       canonicalId: string; footerExtra?: string;
       batch?: string; finishedAt?: string | null;
       secSlot: Seccion | null; // sección del pallet (para imprimir SOLO una sección de una card)
+      tipoTienda: string | null; zonaTienda: string | null;
     };
     const labels: LabelData[] = [];
     for (const cod of selectedCods) {
@@ -1423,12 +1455,14 @@ export function PickingScreen() {
             batch,
             finishedAt,
             secSlot: seccionDeSlot(slot),
+            tipoTienda: etiquetaTipoTienda(catalogoTiendas[group.storeCod]?.tipo),
+            zonaTienda: zonaDeTienda(catalogoTiendas[group.storeCod]),
           });
         }
       }
     }
     return labels;
-  }, [selectedCods, groupedByStore, allGroupedByStore, palletSlots, palletNumsBySlotId, pickerDisplayNames, getCanonicalName, pickerBatch]);
+  }, [selectedCods, groupedByStore, allGroupedByStore, palletSlots, palletNumsBySlotId, pickerDisplayNames, getCanonicalName, pickerBatch, catalogoTiendas]);
 
   const hasBarcodes = printableLabels.length > 0;
 

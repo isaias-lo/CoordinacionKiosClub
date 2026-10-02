@@ -29,6 +29,16 @@ export interface LabelConfig {
   showFinishTime: boolean;
 }
 
+// ── LAS DOS TINTAS DE LA ETIQUETA ─────────────────────────────────────────────────────────────
+//
+// Esto se imprime, casi siempre en blanco y negro. No es una paleta de pantalla: son dos tintas.
+// Van nombradas acá y no repetidas quince veces en línea, que es lo que pide el trinquete de
+// `escalaBodega.test.ts` — y además deja cambiar el acento en un solo lugar el día que haga falta.
+/** Negro de impresión: el texto, los bordes y la raya donde se escribe. */
+const TINTA = '#111827';
+/** El ámbar del número de unidad. En una impresora B/N sale gris oscuro y se lee igual. */
+const ACENTO = '#D97706';
+
 export const DEFAULT_LABEL_CONFIG: LabelConfig = {
   borderWidth: 2, pickerFontSize: 34, storeFontSize: 150, catFontSize: 22,
   barcodeBarWidth: 2, barcodeHeight: 113, barcodeContainerWidth: 85,
@@ -148,7 +158,7 @@ export function ToggleRow({ label, desc, field, labelConfig, onUpdate }: {
       <button
         onClick={() => onUpdate(field, !val)}
         className="relative flex items-center rounded-full cursor-pointer transition-colors duration-200 shrink-0"
-        style={{ width: 36, height: 20, background: val ? '#D97706' : '#CBD5E1' }}>
+        style={{ width: 36, height: 20, background: val ? ACENTO : '#CBD5E1' }}>
         <span
           className="absolute bg-white rounded-full shadow-sm transition-all duration-200"
           style={{ width: 14, height: 14, left: val ? '19px' : '3px' }}
@@ -167,6 +177,7 @@ export function BarcodeCard({
   totalPickers, tipo = 'P', compact = false, labelConfig, slotId, canonicalId,
   audited, subLabel, footerExtra, storeName: storeNameProp,
   adelanto, adelantoFecha, batch, finishedAt, copia,
+  tipoTienda, zonaTienda,
 }: {
   value: string; palletNum: number; total: number;
   storeCod: string; pickerLabel: string; responsibleKey: string; allCategories: string[];
@@ -183,9 +194,17 @@ export function BarcodeCard({
   /** Reimpresión de una etiqueta que ya existía: lleva el MISMO #. Se marca para que nadie la pegue
    *  en otro pallet creyendo que es nueva (51SER, 11/09/2026: dos pallets con el mismo #12718). */
   copia?: boolean;
+  /** MALL / STRIPCENTER / TIENDA, del catálogo. `null` = el catálogo no lo dice: no se dibuja. */
+  tipoTienda?: string | null;
+  /** RM / COSTA / REGIÓN NORTE / REGIÓN SUR. `null` = sin dato: no se dibuja. Ver `zonaTienda`. */
+  zonaTienda?: string | null;
 }) {
   const storeName = storeNameProp ?? getStoreName(storeCod);
   const cfg = { ...DEFAULT_LABEL_CONFIG, ...labelConfig };
+  // Los dos rótulos nuevos y la franja KG/CM se escalan con el nombre de la tienda: así siguen la
+  // configuración de la etiqueta en vez de quedar clavados, y no suman tamaños sueltos al trinquete.
+  const tamRotuloTienda = Math.round(cfg.storeNameFontSize * 0.77);
+  const tamUnidadManual = Math.round(cfg.storeNameFontSize * 0.73);
 
   const s = compact ? {
     // innerMinH: 0 → la tarjeta abraza su contenido (no se estira hacia abajo);
@@ -252,7 +271,7 @@ export function BarcodeCard({
       {adelanto && (
         <div style={{
           position: 'absolute', top: compact ? 5 : 8, left: compact ? 5 : 8,
-          background: '#D97706', color: '#fff',
+          background: ACENTO, color: '#fff',
           padding: compact ? '1px 6px' : '2px 10px', borderRadius: 6,
           fontFamily: 'Arial Black, sans-serif', fontSize: compact ? 9 : 11, fontWeight: 900,
           letterSpacing: '0.5px', textTransform: 'uppercase',
@@ -269,7 +288,7 @@ export function BarcodeCard({
         <div className="flex items-start justify-between" style={{ marginBottom: compact ? 3 : 8 }}>
           <div className="min-w-0 flex-1 pr-3">
             {(!compact && cfg.showResponsable || compact) && (
-              <div style={{ fontSize: s.respSize, color: '#D97706', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 1 }}>
+              <div style={{ fontSize: s.respSize, color: ACENTO, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 1 }}>
                 {responsibleKey}
               </div>
             )}
@@ -353,6 +372,28 @@ export function BarcodeCard({
           );
         })()}
 
+        {/* TIPO Y ZONA — lo que hoy se escribe a mano.
+            En su propia banda, debajo del lote y encima del código, que es donde el coordinador lo
+            venía poniendo con plumón. Solo en la etiqueta grande: la `compact` es la vista en
+            pantalla y ahí el dato ya está en la ficha de la tienda.
+            Negro pleno y negro con borde, no color: esto se imprime en blanco y negro. */}
+        {!compact && (tipoTienda || zonaTienda) && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, padding: '10px 0 2px' }}>
+            {tipoTienda && (
+              <span className="font-barlow-condensed" style={{
+                fontSize: tamRotuloTienda, fontWeight: 900, letterSpacing: '3px', color: '#fff',
+                background: TINTA, borderRadius: 8, padding: '3px 22px', lineHeight: 1.15, whiteSpace: 'nowrap',
+              }}>{tipoTienda}</span>
+            )}
+            {zonaTienda && (
+              <span className="font-barlow-condensed" style={{
+                fontSize: tamRotuloTienda, fontWeight: 900, letterSpacing: '3px', color: TINTA,
+                border: `3px solid ${TINTA}`, borderRadius: 8, padding: '0 22px', lineHeight: 1.15, whiteSpace: 'nowrap',
+              }}>{zonaTienda}</span>
+            )}
+          </div>
+        )}
+
         {/* Centro: código + nombre + dirección */}
         <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ padding: s.centerPad }}>
           <div className="font-barlow-condensed font-black text-gray-900 tracking-widest uppercase leading-none"
@@ -367,13 +408,30 @@ export function BarcodeCard({
           )}
         </div>
 
-        {/* Código de barras */}
+        {/* Código de barras — y, a los lados, el espacio para escribir el peso y la altura.
+            ARRIBA del código no: el lector tiene que seguir viendo el código limpio, y un plumón
+            encima lo arruina. Por eso van flanqueándolo y no debajo.
+            La raya es dónde se escribe; la palabra, abajo, es el rótulo. Solo etiqueta grande. */}
         <div style={{ marginTop: s.barMT }}>
-          <div style={{ width: s.barW, margin: '0 auto' }}>
-            <Barcode1D
-              value={canonicalId || (slotId != null ? String(slotId) : value)}
-              height={s.barH} barWidth={s.barBW}
-            />
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: compact ? 0 : 22 }}>
+            {!compact && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ height: 58, borderBottom: `3px solid ${TINTA}` }} />
+                <div className="font-barlow-condensed" style={{ fontSize: tamUnidadManual, fontWeight: 900, letterSpacing: '4px', lineHeight: 1.1, marginTop: 4, color: TINTA }}>KG</div>
+              </div>
+            )}
+            <div style={{ width: s.barW, flexShrink: 0 }}>
+              <Barcode1D
+                value={canonicalId || (slotId != null ? String(slotId) : value)}
+                height={s.barH} barWidth={s.barBW}
+              />
+            </div>
+            {!compact && (
+              <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+                <div style={{ height: 58, borderBottom: `3px solid ${TINTA}` }} />
+                <div className="font-barlow-condensed" style={{ fontSize: tamUnidadManual, fontWeight: 900, letterSpacing: '4px', lineHeight: 1.1, marginTop: 4, color: TINTA }}>CM</div>
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
             <div style={{ fontSize: s.footerFS, fontFamily: 'monospace', color: '#bbb', wordBreak: 'break-all', lineHeight: 1.2, flex: 1 }}>
