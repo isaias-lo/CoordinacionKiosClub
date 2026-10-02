@@ -25,10 +25,19 @@
 //
 // Las REFERENCIAS van en negro y en monoespaciada, no en gris: son el dato que se copia y se pega
 // en Odoo. Poner en gris lo único que alguien va a seleccionar con el mouse es al revés.
+//
+// ── SE PLIEGA ──────────────────────────────────────────────────────────────────────────────────
+//
+// Tocar la cabecera lo abre o lo cierra. Plegado queda en UNA línea con la diferencia, que es el
+// número que importa; el resto aparece al abrirlo. En el teléfono arranca plegado y en el
+// escritorio abierto, hasta que la persona elige: ver `plegadoCruce.ts`.
 
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FilaCruce, TipoCruce } from './cruceDePesos';
 import { armarBloqueCruce, fraseDeEstado, enKg, type BloqueCruce } from './cruceTienda';
+import {
+  alternar, estaPlegado, leerPreferencia, CLAVE_PLEGADO_CRUCE, type PreferenciaPlegado,
+} from './plegadoCruce';
 
 const COLOR: Record<TipoCruce, { fg: string; bg: string }> = {
   comida:    { fg: '#92400E', bg: '#FEF3C7' },
@@ -59,6 +68,11 @@ interface Props {
 export function CruceDePesosCard({ cruce, items, listo = true }: Props) {
   const b = useMemo(() => armarBloqueCruce(cruce, items), [cruce, items]);
   const tono = TONO[b.estado];
+  const { pref, ancho, tocar } = usePlegadoCruce();
+  const plegadoAhora = estaPlegado(pref, ancho);
+  const vis = clasesPlegado(pref);
+  // La flecha apunta abajo plegado ("hay más") y arriba abierto.
+  const giro = pref === null ? 'md:rotate-180' : pref === 'abierto' ? 'rotate-180' : '';
 
   if (!listo) {
     return (
@@ -75,21 +89,36 @@ export function CruceDePesosCard({ cruce, items, listo = true }: Props) {
     <div className="rounded-[10px] overflow-hidden bg-white"
       style={{ borderLeft: `4px solid ${tono.barra}`, boxShadow: '0 2px 10px rgba(0,0,0,0.18)' }}>
 
-      {/* Cabecera */}
-      <div className="flex items-center gap-2 px-3 pt-2 pb-1.5">
-        <span className="text-[10px] font-extrabold tracking-wider uppercase text-[#1C1C1E]">
+      {/* Cabecera: es el botón que pliega. Plegada, a la derecha va la diferencia en vez de los
+          movimientos, para que la línea sola diga si hay algo que mirar. */}
+      <button type="button" onClick={tocar} aria-expanded={!plegadoAhora}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left">
+        <span className="text-[10px] font-extrabold tracking-wider uppercase text-[#1C1C1E] whitespace-nowrap">
           Cruce de pesos
         </span>
-        <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-[2px] rounded text-[#6B7280] bg-[#F1F1F4]">
+        <span className={`${vis.abierto('inline')} text-[9px] font-bold uppercase tracking-wide px-1.5 py-[2px] rounded text-[#6B7280] bg-[#F1F1F4] whitespace-nowrap`}>
           solo administración
         </span>
-        <span className="ml-auto text-[11px] text-[#6B7280] tabular-nums whitespace-nowrap">
+        <span className={`${vis.abierto('inline')} ml-auto text-[11px] text-[#6B7280] tabular-nums whitespace-nowrap`}>
           {b.movimientos.length
             ? `${b.movimientos.length} ${b.movimientos.length === 1 ? 'movimiento' : 'movimientos'}`
             : 'sin movimientos'}
         </span>
-      </div>
+        <span className={`${vis.plegado('inline')} ml-auto text-[12px] tabular-nums whitespace-nowrap truncate min-w-0`}>
+          {b.kgDif === null
+            ? <span className="text-[#6B7280]">{b.kgOdoo > 0 ? `sin pesar · Odoo ${enKg(b.kgOdoo)} kg` : 'sin pesar'}</span>
+            : <span className="font-extrabold" style={{ color: tono.texto }}>
+                {`${b.kgDif > 0 ? '+' : ''}${enKg(b.kgDif)} kg`}
+                {b.pctDif === null ? '' : <span className="font-bold"> · {pct(b.pctDif)}</span>}
+              </span>}
+        </span>
+        <svg viewBox="0 0 20 20" aria-hidden="true"
+          className={`w-4 h-4 flex-shrink-0 text-[#6B7280] transition-transform ${giro}`}>
+          <path d="M5 8l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
 
+      <div className={vis.abierto('block')}>
       {/* Los tres números */}
       <div className="grid grid-cols-3 border-t border-[#E9E9ED]">
         <Celda rotulo="Pesado en Bodega"
@@ -134,9 +163,62 @@ export function CruceDePesosCard({ cruce, items, listo = true }: Props) {
         style={{ background: tono.franja, color: tono.texto }}>
         {fraseDeEstado(b)}
       </div>
+      </div>
     </div>
     </Base>
   );
+}
+
+/**
+ * Qué se ve plegado y qué abierto. Sin elección (`null`) lo decide el ancho por CSS, con el mismo
+ * corte `md` que `ANCHO_ESCRITORIO`; con elección, manda ella en cualquier pantalla.
+ */
+function clasesPlegado(pref: PreferenciaPlegado) {
+  // Escritas enteras a propósito: Tailwind solo genera las clases que encuentra literales en el
+  // código, y un `md:${d}` armado al vuelo no existiría en el CSS.
+  const ABIERTO = { block: 'hidden md:block', inline: 'hidden md:inline' } as const;
+  const PLEGADO = { block: 'block md:hidden', inline: 'inline md:hidden' } as const;
+  return {
+    abierto: (d: 'block' | 'inline') => pref === null ? ABIERTO[d] : pref === 'abierto' ? d : 'hidden',
+    plegado: (d: 'block' | 'inline') => pref === null ? PLEGADO[d] : pref === 'plegado' ? d : 'hidden',
+  };
+}
+
+const EVENTO_PLEGADO = 'bodega-cruce-plegado';
+
+/**
+ * La elección guardada en el equipo, más el ancho de pantalla para saber qué se ve al tocar.
+ *
+ * Arranca en `null` y se hidrata en un efecto: leer localStorage en el render desajusta el HTML del
+ * servidor y el del cliente (lo mismo que `useRegistroDeTiendas`). Si hay más de un bloque
+ * montado, el evento los mantiene de acuerdo.
+ */
+function usePlegadoCruce() {
+  const [pref, setPref] = useState<PreferenciaPlegado>(null);
+  const [ancho, setAncho] = useState(1024);
+
+  useEffect(() => {
+    const leer = () => {
+      try { setPref(leerPreferencia(localStorage.getItem(CLAVE_PLEGADO_CRUCE))); } catch { /* sin storage */ }
+    };
+    const medir = () => setAncho(window.innerWidth);
+    leer(); medir();
+    window.addEventListener(EVENTO_PLEGADO, leer);
+    window.addEventListener('resize', medir);
+    return () => {
+      window.removeEventListener(EVENTO_PLEGADO, leer);
+      window.removeEventListener('resize', medir);
+    };
+  }, []);
+
+  const tocar = useCallback(() => {
+    const next = alternar(pref, window.innerWidth);
+    setPref(next);
+    try { localStorage.setItem(CLAVE_PLEGADO_CRUCE, next); } catch { /* sin storage, igual se pliega */ }
+    window.dispatchEvent(new Event(EVENTO_PLEGADO));
+  }, [pref]);
+
+  return { pref, ancho, tocar };
 }
 
 /**
