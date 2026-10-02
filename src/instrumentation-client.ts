@@ -1,4 +1,8 @@
 import * as Sentry from '@sentry/nextjs';
+import { blindarDom } from '@/lib/blindajeDom';
+
+// Antes que nada: que un traductor o una extensión no pueda tirar abajo una pantalla. Ver blindajeDom.ts.
+if (typeof window !== 'undefined') blindarDom();
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
 
