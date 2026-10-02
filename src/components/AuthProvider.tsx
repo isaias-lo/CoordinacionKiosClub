@@ -57,6 +57,9 @@ function profileFromUser(user: User): Profile {
   };
 }
 
+/** Mínimo entre dos refrescos de sesión al volver a la app. Ver `alVolver`. */
+const REFRESCO_MIN_MS = 5 * 60 * 1000;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]             = useState<User | null>(null);
   const [profile, setProfile]       = useState<Profile | null>(null);
@@ -80,17 +83,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // acceso nuevo hasta cerrar y volver a entrar. `refreshSession` trae el metadata actualizado
     // y dispara `onAuthStateChange`, que recalcula el perfil. Se hace al recuperar el foco para no
     // pedir un token nuevo cada pocos minutos sin motivo.
+    //
+    // Solo con `visibilitychange` y como mucho una vez cada REFRESCO_MIN_MS. Antes también se
+    // escuchaba `focus`, que en la handheld se dispara a cada rato (el lector, el teclado, la
+    // cortina de notificaciones), y al volver se disparaban los dos juntos. Cada refresco gasta el
+    // refresh token y cuenta para el límite de Supabase, que es POR IP: todos los equipos de bodega
+    // salen por la misma. Pasado el límite Supabase responde 429, la librería lo trata como sesión
+    // inválida y la borra, y la persona queda fuera con errores en todas las pantallas.
+    let ultimoRefresco = Date.now();
     const alVolver = () => {
       if (document.visibilityState !== 'visible') return;
+      if (Date.now() - ultimoRefresco < REFRESCO_MIN_MS) return;
+      ultimoRefresco = Date.now();
       supabase.auth.refreshSession().catch(() => {});
     };
     document.addEventListener('visibilitychange', alVolver);
-    window.addEventListener('focus', alVolver);
 
     return () => {
       subscription.unsubscribe();
       document.removeEventListener('visibilitychange', alVolver);
-      window.removeEventListener('focus', alVolver);
     };
   }, []);
 

@@ -1,5 +1,5 @@
 import { jwtVerify } from 'jose';
-import { createServerClient } from '@supabase/ssr';
+import { combineChunks, stringFromBase64URL } from '@supabase/ssr';
 import type { NextRequest } from 'next/server';
 
 // Supabase JWT secret is base64-encoded in the dashboard — must Buffer.from(..., 'base64').
@@ -44,22 +44,53 @@ async function verifyJwt(token: string): Promise<JwtPayload | null> {
 
 // Fallback for the many client call sites that use a bare fetch('/api/...')
 // without an Authorization header: the browser sends the Supabase session
-// cookie automatically, so we read the session from it (same source the
-// middleware trusts). No-op cookie setter — route handlers only read here.
+// cookie automatically, so we read the session from it.
+//
+// Se lee la cookie A MANO y no con `createServerClient(...).auth.getSession()`, a propósito.
+// `getSession()` refresca la sesión si al token le quedan menos de 90 s, y ese refresco GASTA el
+// refresh token: Supabase entrega uno nuevo y el viejo queda usado. Acá no hay cómo devolverle al
+// navegador el token nuevo (un route handler no reescribe cookies), así que se tiraba. El
+// navegador seguía con el viejo, y cuando intentaba refrescar con él Supabase lo tomaba como
+// reutilización y revocaba la sesión entera: la persona quedaba fuera, con "errores de conexión",
+// justo en los equipos que pasan tiempo dormidos (las handheld de bodega) y vuelven con el token a
+// punto de vencer. El refresco es trabajo del navegador y del middleware, que sí guardan el nuevo.
+//
+// Lo que se acepta es lo mismo que aceptaba `getSession()`: la sesión de la cookie mientras su
+// token no haya vencido. Si venció, 401, y el navegador lo refresca solo.
+const SESSION_COOKIE = (() => {
+  try { return `sb-${new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).hostname.split('.')[0]}-auth-token`; }
+  catch { return null; }
+})();
+
+interface CookieSession {
+  expires_at?: number;
+  user?: { id?: string; email?: string; user_metadata?: JwtPayload['user_metadata'] };
+}
+
+/** La sesión guardada en la cookie, sin refrescarla ni validarla contra Supabase. Puro y testeable. */
+export async function sessionFromCookies(
+  key: string,
+  getCookie: (name: string) => string | undefined,
+  now: number = Date.now(),
+): Promise<JwtPayload | null> {
+  const raw = await combineChunks(key, getCookie);
+  if (!raw) return null;
+  let session: CookieSession;
+  try {
+    const json = raw.startsWith('base64-') ? stringFromBase64URL(raw.slice('base64-'.length)) : raw;
+    session = JSON.parse(json) as CookieSession;
+  } catch {
+    return null;
+  }
+  const user = session?.user;
+  if (!user?.id) return null;
+  if (!session.expires_at || session.expires_at * 1000 <= now) return null;
+  return { sub: user.id, email: user.email, user_metadata: user.user_metadata };
+}
+
 async function verifyFromCookie(request: NextRequest): Promise<JwtPayload | null> {
-  const sb = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return request.cookies.getAll(); },
-        setAll() { /* read-only in route handlers */ },
-      },
-    },
-  );
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session?.user) return null;
-  return { sub: session.user.id, email: session.user.email, user_metadata: session.user.user_metadata as JwtPayload['user_metadata'] };
+  if (!SESSION_COOKIE) return null;
+  return sessionFromCookies(SESSION_COOKIE, name => request.cookies.get(name)?.value);
 }
 
 /** Resolves the auth payload from the Bearer header, falling back to the session cookie. */
