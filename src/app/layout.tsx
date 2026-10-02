@@ -33,7 +33,10 @@ export const metadata: Metadata = {
   // ese (verificado en el HTML compilado). Safari lo entiende recién desde iOS 17.4; en un iPad de
   // bodega más viejo, sin la variante con prefijo `apple-`, el ícono instalado abre Safari con toda
   // la barra de direcciones en vez de abrir la app. Las dos conviven sin problema.
-  other: { 'apple-mobile-web-app-capable': 'yes' },
+  //
+  // `google: notranslate` le dice a Chrome que no ofrezca traducir la página. Ver el `translate="no"`
+  // de <html> más abajo: los dos van juntos.
+  other: { 'apple-mobile-web-app-capable': 'yes', google: 'notranslate' },
 };
 
 export const viewport: Viewport = {
@@ -55,7 +58,12 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es">
+    // `translate="no"`: el traductor de Chrome reescribe el texto de la página metiendo sus propios
+    // <font> donde React tenía sus nodos. Cuando React después quiere quitar uno, ya no está donde lo
+    // dejó y la pantalla entera se cae con "Failed to execute 'removeChild' on 'Node'". Pasó el 02/10
+    // en /picking: al apretar una tienda los supervisores veían "Algo salió mal en Abastecimiento"
+    // (con el error traducido, que es como se supo). La app ya está en español: no hay nada que traducir.
+    <html lang="es" translate="no">
       {/* Prevent flash of wrong theme before React hydrates */}
       <head>
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('kc-theme');if(t==='dark')document.documentElement.classList.add('dark');}catch(e){}})();` }} />
