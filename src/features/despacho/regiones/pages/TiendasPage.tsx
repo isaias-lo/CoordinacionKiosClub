@@ -6,7 +6,7 @@ import { Navigation, ChevronLeft, ClipboardList, User, Store, FileUp, AlertTrian
 import { useApp } from '../../../../context/AppContext';
 import { IndicadorCanalSano } from '../../shared/IndicadorCanalSano';
 import { processPdf } from '../utils/pdfUtils';
-import { TIENDAS, getTodayCods, validarDimensiones, registrarTiendasBD, type TiendaBDRow, type TiendaIncompleta } from '../data/tiendas';
+import { TIENDAS, getTodayCods, validarDimensiones, registrarTiendasBD, isRegionesCod, type TiendaBDRow, type TiendaIncompleta } from '../data/tiendas';
 import { avisoSendu } from '../data/senduCompletitud';
 import { ZONAS_DEFAULT, type ConfigZonas } from '../../rutas/utils/zonasTransporte';
 import { formatCod, matchCodArchivo } from '../../rutas/utils/helpers';
@@ -47,6 +47,7 @@ import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconciliarFormRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
 import { buscarPallet } from '../../shared/buscarPallet';
+import { esDeOtroEspejo, espejoDeTienda, avisoDeOtroEspejo } from '../../shared/duenoDeTienda';
 import { fechaISOLocal } from '../../shared/fechaLocal';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
@@ -933,6 +934,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     : undefined);
   const saltarAPallet = () => {
     if (!palletEncontrado || !tiendaDelPallet) return;
+    // Simétrico al de RM/Costa. Acá el salto YA no llegaba a una tienda del otro espejo, pero por
+    // accidente: `TIENDAS` solo tiene las de Regiones, así que `tiendaDelPallet` salía `undefined`
+    // y la línea de arriba cortaba. Queda dicho en voz alta — si algún día este mapa crece, la
+    // protección no se cae sola. Ver `duenoDeTienda`.
+    if (esDeOtroEspejo(tiendaDelPallet.cod, 'nacional', isRegionesCod)) {
+      showToast(avisoDeOtroEspejo(tiendaDelPallet.cod, espejoDeTienda(tiendaDelPallet.cod, isRegionesCod)), '#D97706');
+      return;
+    }
     setSearch('');
     setFocoPallet(palletEncontrado.slot.id);
     // No usar `select()`: es un toggle y si la tienda ya estaba abierta la cerraría en vez de
