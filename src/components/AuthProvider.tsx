@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { cerrarSesion } from '@/lib/cerrarSesion';
 
 export type UserRole = 'auditor' | 'admin-auditoria' | 'despachador' | 'admin' | 'supervisor-picking' | 'asistente-despacho' | 'coordinador-flota' | 'supervisor' | 'conductor' | (string & {});
 
@@ -93,8 +94,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Borra la sesión aunque no haya señal y sale a /login con una carga completa de la página.
+  // Ver lib/cerrarSesion.ts: quien la llama NO tiene que navegar después.
   const signOut = async () => {
-    await supabase.auth.signOut();
+    await cerrarSesion();
   };
 
   const can = (section: string, action: 'edit' | 'read'): boolean => {

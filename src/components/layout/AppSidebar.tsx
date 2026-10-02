@@ -430,7 +430,7 @@ export function AppSidebar() {
                 </button>
                 <div className="h-px mx-3" style={{ background: 'rgba(255,255,255,0.07)' }} />
                 <button
-                  onClick={async () => { setUserMenuOpen(false); await signOut(); router.push('/login'); }}
+                  onClick={async () => { setUserMenuOpen(false); await signOut(); }}
                   className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 transition-colors text-[13px] font-medium text-left"
                 >
                   <LogOut size={14} />
