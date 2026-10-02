@@ -190,10 +190,11 @@ export async function construirCruceDelDia(
   fechaISO: string,
 ): Promise<Record<string, string | number>[]> {
   const fechaDDMM = aDDMM(fechaISO);
-  const [movs, { codigos, nombres }, pesos] = await Promise.all([
+  const [movs, { codigos, nombres }, pesos, pesados] = await Promise.all([
     movimientosDelDia(fechaISO),
     catalogoTiendas(),
     pesosDeBodega(fechaDDMM),
+    pesadoEnBodega(fechaISO),
   ]);
 
   const ahora = new Date().toISOString();
@@ -204,6 +205,62 @@ export async function construirCruceDelDia(
     // `null` y no 0 cuando Bodega no registró nada de esa tienda: la celda queda vacía. Un cero
     // diría "no vino nada", que es una afirmación distinta y más grave.
     kgBodega: pesos.has(cruce.codigo) ? (pesos.get(cruce.codigo) as number) : null,
+    kgPesado: pesados.has(cruce.codigo) ? (pesados.get(cruce.codigo) as number) : null,
     actualizado: ahora,
   }));
+}
+
+/**
+ * Lo que marcó LA BALANZA ese día, por tienda. Sale de `picking_pallets`, no de lo registrado.
+ *
+ * ── POR QUÉ NO SIRVE `pesosDeBodega` PARA ESTO ─────────────────────────────────────────────────
+ *
+ * Esa función recorre las filas REGISTRADAS, así que una unidad pesada que todavía no se mandó no
+ * aparece — y es justamente la que esta columna existe para mostrar. Acá se va a la fuente.
+ *
+ * ── LAS TRES REGLAS, QUE SON LAS MISMAS DE SIEMPRE ─────────────────────────────────────────────
+ *
+ * · Por `date`, que es el día de ARMADO, igual que la columna `fecha` de `despacho_*` y que la
+ *   fila del cruce. Verificado: el 01/10 da 0 tiendas pesadas-sin-registrar (los dos espejos
+ *   habían registrado) y el 02/10 da 18, que son exactamente las de RM/Costa sin registrar.
+ *
+ * · Los AGREGADOS quedan fuera (`tipo not in ('A','W')`). Una adquisición y un web/retiro no
+ *   existen del lado de Odoo, así que sumarlos inflaría este lado igual que el otro.
+ *
+ * · El peso pasa por `pesoCreible`, el mismo techo del #656. Sin eso el slot 132 —los 9.357,5 kg
+ *   de 55ITA— se publicaría en la columna nueva, que es exactamente el agujero que ese arreglo
+ *   tapó en la otra.
+ *
+ * ── LO QUE ESTA COLUMNA NO PUEDE MOSTRAR ───────────────────────────────────────────────────────
+ *
+ * La lista de filas la arma Odoo (`armarCruce`), así que una tienda que Bodega pesó y Odoo NO
+ * despachó no tiene fila donde aparecer. El 02/10 las 26 tiendas pesadas son exactamente las 26
+ * filas de la hoja, así que hoy no es un hueco; queda dicho para el día que lo sea.
+ */
+export async function pesadoEnBodega(fechaISO: string): Promise<Map<string, number>> {
+  const sb = supabaseServer();
+  const out = new Map<string, number>();
+  for (let desde = 0; ; desde += 1000) {
+    const { data, error } = await sb
+      .from('picking_pallets')
+      .select('id,store_cod,tipo,peso_kg,is_active,combined_into')
+      .eq('date', fechaISO)
+      .range(desde, desde + 999);
+    if (error) throw new Error(`picking_pallets: ${error.message}`);
+    const lote = (data ?? []) as {
+      id: number; store_cod: string | null; tipo: string | null;
+      peso_kg: number | null; is_active: boolean | null; combined_into: number | null;
+    }[];
+    for (const r of lote) {
+      const cod = String(r.store_cod ?? '').trim().toUpperCase();
+      if (!cod) continue;
+      if (r.is_active === false) continue;          // borrada
+      if (r.combined_into != null) continue;        // su peso ya está dentro de otra unidad
+      if (r.tipo === 'A' || r.tipo === 'W') continue;  // los agregados no entran al cruce
+      const kg = pesoCreible(r.peso_kg, r.tipo, r.id);
+      if (kg > 0) out.set(cod, (out.get(cod) ?? 0) + kg);
+    }
+    if (lote.length < 1000) break;   // PostgREST corta en ~1000 SIN avisar
+  }
+  return out;
 }
