@@ -28,9 +28,9 @@ const contar = (re: RegExp) => (fuente.match(re) ?? []).length;
 
 /** Topes de hoy. Solo pueden bajar. */
 const TOPE = {
-  tamanosSueltos: 543,   // text-[Npx] + fontSize numérico
-  menoresA12:     251,   // los de 9 a 11,5 px: no se leen en una handheld
-  hexSueltos:     527,
+  tamanosSueltos: 466,   // text-[Npx] + fontSize numérico
+  menoresA12:     217,   // los de 9 a 11,5 px: no se leen en una handheld
+  hexSueltos:     486,
 };
 
 describe('escala y paleta de Bodega', () => {
