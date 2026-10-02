@@ -250,7 +250,7 @@ export function CommandPalette() {
                     <CmdItem
                       icon={LogOut}
                       label="Cerrar sesión"
-                      onSelect={async () => { setOpen(false); await signOut(); router.push('/login'); }}
+                      onSelect={async () => { setOpen(false); await signOut(); }}
                     />
                   </Command.Group>
                 </Command.List>

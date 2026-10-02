@@ -501,7 +501,7 @@ export default function PerfilPage() {
         {/* ── Sesión ── */}
         <SectionTitle>Sesión</SectionTitle>
         <button
-          onClick={async () => { await signOut(); router.push('/login'); }}
+          onClick={async () => { await signOut(); }}
           className="w-full py-3 rounded-card font-barlow-condensed text-[15px] font-bold border border-red/30 text-red cursor-pointer hover:bg-red/5 transition-colors"
         >
           Cerrar sesión
