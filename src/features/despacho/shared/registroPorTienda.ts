@@ -64,6 +64,19 @@ export function marcarTiendaRegistrada(
  * la que todavía no registró una tienda no puede desmarcársela a la que sí. Ante dos horas para la
  * misma tienda gana la PRIMERA, que es cuando de verdad se registró.
  */
+/**
+ * Lo que llegó de la base, si tiene la forma de un registro. Cualquier otra cosa es `{}`.
+ *
+ * Importa porque el resultado se UNE con lo que ya hay, nunca lo reemplaza: un blob raro —`null`,
+ * un arreglo, un string de una versión vieja— no puede borrar las marcas de este equipo. Con unir
+ * contra `{}` no pasa nada; con confiar a ciegas, el botón se pondría en rojo solo.
+ */
+export function registroDeBlob(valor: unknown): RegistroTiendas {
+  return valor !== null && typeof valor === 'object' && !Array.isArray(valor)
+    ? (valor as RegistroTiendas)
+    : {};
+}
+
 export function fusionarRegistroTiendas(
   a: RegistroTiendas | undefined | null, b: RegistroTiendas | undefined | null,
 ): RegistroTiendas {
