@@ -62,7 +62,8 @@ import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
 import { mergeEntriesByKey } from '../context/mergeItems';
 import { processPdf } from '../../regiones/utils/pdfUtils';
-import { isRegionesCod } from '../../regiones/data/tiendas';
+import { isRegionesCod, codsRegionesDeBD, registrarCodsRegiones } from '../../regiones/data/tiendas';
+import { esDeOtroEspejo, espejoDeTienda, avisoDeOtroEspejo } from '../../shared/duenoDeTienda';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
@@ -798,6 +799,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         // esto (`registrarTiendasBD`); acá faltaba la otra mitad. Ver `tiendasSantiago.ts`.
         const nuevas = registrarTiendasSantiagoBD(map);
         if (nuevas.length) console.info('[bodega] tiendas de la BD sumadas al catálogo RM/Costa:', nuevas.join(', '));
+        // Y las de Regiones que vienen de Config se CLASIFICAN como tales, aunque esta pantalla no
+        // las muestre. Sin esto, `isRegionesCod` acá solo conocía las 17 curadas a mano y una
+        // tienda de Regiones creada en Config —60PBL— aparecía en la lista de RM/Costa como si
+        // fuera de Santiago. Y el resultado dependía del ORDEN de las pestañas: el Set solo se
+        // llenaba si alguien había abierto Nacional antes, en la misma carga de la página.
+        registrarCodsRegiones(codsRegionesDeBD(data));
         setSupabaseTiendasMap(map);
         setTipoCatByCod(tcat);
       })
@@ -992,6 +999,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     : undefined);
   const saltarAPallet = () => {
     if (!palletEncontrado || !tiendaDelPallet) return;
+    // El salto llega a CUALQUIER tienda, y eso incluía las de Nacional. Escanear una etiqueta de
+    // Puerto Varas acá metía 47PTV en el estado de RM/Costa, y al registrar los dos espejos
+    // escribían la misma tienda con sellos distintos: el cruce sumó las dos. Ver `duenoDeTienda`.
+    if (esDeOtroEspejo(tiendaDelPallet.cod, 'rmcosta', isRegionesCod)) {
+      showToast(avisoDeOtroEspejo(tiendaDelPallet.cod, espejoDeTienda(tiendaDelPallet.cod, isRegionesCod)), '#D97706');
+      return;
+    }
     setSearch('');
     setFocoPallet(palletEncontrado.slot.id);
     selectTienda(tiendaDelPallet);
