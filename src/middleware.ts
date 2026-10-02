@@ -1,11 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { isPathAllowed, SYSTEM_ROLE_PATHS, paginaInicial } from '@/config/routes';
-
-function isAllowed(role: string, pathname: string, customPaths?: string[]): boolean {
-  const allowed = customPaths ?? SYSTEM_ROLE_PATHS[role] ?? [];
-  return isPathAllowed(allowed, pathname);
-}
+import { puedeAbrir, SYSTEM_ROLE_PATHS, paginaInicial } from '@/config/routes';
 
 // La lógica vive en `config/routes` (pura y con tests): garantiza que la página devuelta sea una
 // que el rol PUEDA abrir. Antes devolvía `SYSTEM_ROLE_HOME[role]` a ciegas y eso podía dejar a
@@ -60,6 +55,20 @@ export async function middleware(request: NextRequest) {
     }
   );
 
+  // Redirigir SIN perder lo que Supabase acaba de escribir en `response`.
+  //
+  // Si al token le quedaban menos de 90 s, `getSession()` lo refrescó y dejó las cookies nuevas en
+  // `response`. Un `NextResponse.redirect` es otra respuesta y no las lleva: el navegador se
+  // quedaba con el refresh token VIEJO, que Supabase ya dio por usado. Al usarlo de nuevo, pasada
+  // la ventana de gracia, Supabase lo toma como robado y revoca la sesión. Pasaba sobre todo al
+  // abrir la app instalada, que arranca en `/` y para casi todos los roles es una redirección.
+  // Lo mismo con el borrado: si el refresco falló, la cookie rota se quedaba puesta.
+  const redirigir = (path: string) => {
+    const r = NextResponse.redirect(new URL(path, request.url));
+    response.cookies.getAll().forEach(c => r.cookies.set(c));
+    return r;
+  };
+
   // getSession() validates the JWT locally from the cookie — no network call on every request.
   // When the JWT expires, @supabase/ssr refreshes it automatically (one call per ~1h).
   // getUser() was making a round-trip to Supabase auth on every navigation, causing 504s under load.
@@ -77,7 +86,7 @@ export async function middleware(request: NextRequest) {
 
   if (!user) {
     if (PUBLIC_ROUTES.some(p => pathname === p)) return response;
-    return NextResponse.redirect(new URL('/login', request.url));
+    return redirigir('/login');
   }
 
   const role       = (user.user_metadata?.role          as string   | undefined) ?? 'auditor';
@@ -85,18 +94,18 @@ export async function middleware(request: NextRequest) {
   const metaHome   = user.user_metadata?.home_path      as string   | undefined;
 
   if (PUBLIC_ROUTES.some(p => pathname === p)) {
-    return NextResponse.redirect(new URL(roleHome(role, metaHome, metaPaths), request.url));
+    return redirigir(roleHome(role, metaHome, metaPaths));
   }
 
   if (role === 'pending') {
     if (pathname !== PENDING_REDIRECT) {
-      return NextResponse.redirect(new URL(PENDING_REDIRECT, request.url));
+      return redirigir(PENDING_REDIRECT);
     }
     return response;
   }
 
   if (pathname === '/login') {
-    return NextResponse.redirect(new URL(roleHome(role, metaHome, metaPaths), request.url));
+    return redirigir(roleHome(role, metaHome, metaPaths));
   }
 
   // Custom role with no paths in JWT yet (user created before fix) → force re-login to refresh JWT
@@ -109,8 +118,8 @@ export async function middleware(request: NextRequest) {
     return cleanResp;
   }
 
-  if (!isAllowed(role, pathname, metaPaths)) {
-    return NextResponse.redirect(new URL(roleHome(role, metaHome, metaPaths), request.url));
+  if (!puedeAbrir(role, pathname, metaPaths)) {
+    return redirigir(roleHome(role, metaHome, metaPaths));
   }
 
   return response;

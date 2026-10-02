@@ -166,6 +166,20 @@ export function paginaInicial(role: string, metaPaths?: string[], metaHome?: str
   return allowed.find(p => p !== '/perfil' && p !== '*') ?? '/perfil';
 }
 
+/**
+ * Lo que el middleware deja abrir: las rutas del rol y, además, Perfil para cualquiera con sesión.
+ *
+ * Perfil va siempre por dos motivos. Es donde se cierra la sesión, así que quien tiene los
+ * permisos rotos necesita poder llegar. Y es el último recurso de `paginaInicial`: si un rol
+ * queda sin rutas (por ejemplo `allowed_paths: []` en el token tras un guardado del panel),
+ * `paginaInicial` devuelve `/perfil`, y si Perfil no se pudiera abrir el middleware mandaría de
+ * `/perfil` a `/perfil` sin fin: el "te redireccionó demasiadas veces" del navegador.
+ */
+export function puedeAbrir(role: string, pathname: string, metaPaths?: string[]): boolean {
+  if (pathname === '/perfil') return true;
+  return isPathAllowed(rutasDeRol(role, metaPaths), pathname);
+}
+
 export function isPathAllowed(allowed: string[], pathname: string): boolean {
   if (allowed.includes('*')) return true;
   return allowed.some(p => {
