@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { paraMirror, camposDescartados, COLUMNAS_DESPACHO } from '../mirror';
+import { paraMirror, camposDescartados, COLUMNAS_DESPACHO, idsRepetidos } from '../mirror';
 
 describe('paraMirror', () => {
   it('deja pasar `fuente`: la columna ya existe y es la que dice quién escribió la fila', () => {
@@ -51,5 +51,45 @@ describe('COLUMNAS_DESPACHO', () => {
 
   it('incluye `fuente`, agregada por migración después del #492', () => {
     expect(COLUMNAS_DESPACHO.has('fuente')).toBe(true);
+  });
+});
+
+// ── LA RED CONTRA LA PÉRDIDA SILENCIOSA ────────────────────────────────────────────────────────
+//
+// El 02/10/2026 las dos adquisiciones de 26ALC salieron las dos con `orden: "A1"`, o sea el mismo
+// id. La hoja agrega LAS DOS (se filtra contra los ids que ya tiene, no dentro del lote) y la base
+// se queda con UNA, porque el id es su clave. Una unidad desaparece sin que nadie se entere.
+describe('idsRepetidos', () => {
+  const fila = (id: string) => [id, '02/10/2026', '26ALC'];
+
+  it('EL CASO: las dos adquisiciones de 26ALC con el mismo id', () => {
+    expect(idsRepetidos([fila('A126ALC02102026A'), fila('A126ALC02102026A')]))
+      .toEqual([{ id: 'A126ALC02102026A', veces: 2 }]);
+  });
+
+  it('un lote sano no reporta nada', () => {
+    expect(idsRepetidos([fila('A126ALC02102026A'), fila('A226ALC02102026A')])).toEqual([]);
+  });
+
+  it('cuenta las veces, no solo que se repite', () => {
+    expect(idsRepetidos([fila('X'), fila('X'), fila('X')])).toEqual([{ id: 'X', veces: 3 }]);
+  });
+
+  it('ordena por el más repetido primero', () => {
+    const r = idsRepetidos([fila('B'), fila('B'), fila('A'), fila('A'), fila('A')]);
+    expect(r.map(x => x.id)).toEqual(['A', 'B']);
+  });
+
+  it('ignora las filas sin id: no son un repetido, son otra cosa', () => {
+    expect(idsRepetidos([fila(''), fila(''), [null as unknown as string]])).toEqual([]);
+  });
+
+  it('normaliza espacios — un id con espacio al final es el mismo id', () => {
+    expect(idsRepetidos([fila('P126ALC02102026P'), fila(' P126ALC02102026P ')]))
+      .toEqual([{ id: 'P126ALC02102026P', veces: 2 }]);
+  });
+
+  it('aguanta un lote vacío', () => {
+    expect(idsRepetidos([])).toEqual([]);
   });
 });

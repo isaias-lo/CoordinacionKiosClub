@@ -5,7 +5,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { pickFaltantesIdx, faltanteId } from '@/features/despacho/rutas/utils/registroFaltantes';
 import { esRespaldoEnrutador, reconciliarRespaldo, aplicarRuteoAFila, aplicarRuteoARecord, COL_RUTEO, type FilaRespaldo } from '@/features/despacho/rutas/utils/reconciliarRespaldo';
 import { clavesConPatente } from './asignacion';
-import { paraMirror, camposDescartados } from './mirror';
+import { paraMirror, camposDescartados, idsRepetidos } from './mirror';
 import { planRuteoCongelados } from '@/features/despacho/congelados/utils/ruteoControlCong';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '16UHW1UoeX1egZ5WK2CzbaVYy6_INyIqTY3cxdkySuHU';
@@ -207,6 +207,14 @@ export async function POST(request: NextRequest) {
     // Los errores del espejo se juntan acá y VUELVEN en la respuesta. Antes solo iban a console.error
     // y el cliente veía "✓ Registrado" aunque la base no hubiera recibido nada.
     const mirrorErrores: string[] = [];
+    // DOS FILAS CON EL MISMO ID NO PUEDEN PASAR CALLADAS. La hoja las agrega a las dos y la base se
+    // queda con una: una unidad desaparece sin que nadie se entere. Ver `idsRepetidos`.
+    const repetidos = idsRepetidos(rows);
+    if (repetidos.length) {
+      const detalle = repetidos.map(r => `${r.id} ×${r.veces}`).join(', ');
+      console.error(`[sheets-write] IDS REPETIDOS en el lote — la base se queda con uno: ${detalle}`);
+      mirrorErrores.push(`ids repetidos en el lote (la base se queda con uno): ${detalle}`);
+    }
     const avisarDescartes = (muestra?: Record<string, unknown>) => {
       const sobran = muestra ? camposDescartados(muestra) : [];
       if (sobran.length) console.warn(`[sheets-write] campos ignorados (no existen en la tabla): ${sobran.join(', ')}`);

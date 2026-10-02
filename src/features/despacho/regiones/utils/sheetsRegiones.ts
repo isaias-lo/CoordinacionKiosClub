@@ -1,5 +1,6 @@
 import { TIENDAS } from '../data/tiendas';
 import type { DispatchItem } from '../../../../types';
+import { desempatarOrdenNacional } from '../../shared/numeroCard';
 import { esSinPesar } from '../../shared/sinPesar';
 import {
   etiquetaAgregado, esAdquisicion, esWebRetiro, PREFIJO_ADQUISICION, PREFIJO_WEB_RETIRO,
@@ -76,10 +77,13 @@ export function buildRows(
 
   const rows: (string | number)[][] = [];
 
-  for (const [storeName, items] of Object.entries(dispatchData)) {
-    if (!items.length) continue;
+  for (const [storeName, todosLosItems] of Object.entries(dispatchData)) {
+    if (!todosLosItems.length) continue;
     const tienda = TIENDAS[storeName];
     if (!tienda) continue;
+    // Mismo candado que en RM/Costa: acá se ve la tienda COMPLETA, y es el único punto donde el
+    // desempate puede ser correcto. Ver `numeroCard`.
+    const items = desempatarOrdenNacional(todosLosItems);
 
     for (const item of items) {
       // [Agregar sin pesar] Ver mismo comentario en sheetsSantiago.buildRows: si el item no fue

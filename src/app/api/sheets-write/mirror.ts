@@ -42,3 +42,39 @@ export function paraMirror<T extends Record<string, unknown>>(rec: T): Record<st
 export function camposDescartados(rec: Record<string, unknown>): string[] {
   return Object.keys(rec).filter(k => !COLUMNAS_DESPACHO.has(k));
 }
+
+/**
+ * Los ids que vienen más de una vez en el lote, con cuántas veces.
+ *
+ * ── POR QUÉ ESTO NO PUEDE PASAR CALLADO ────────────────────────────────────────────────────────
+ *
+ * El id de una fila es `${orden}${cod}${stamp}${prefijo}`, y el `orden` lo fija el navegador al
+ * guardar, con las hermanas visibles EN ESE INSTANTE. Dos altas que no se ven entre sí toman el
+ * mismo número — pasó el 02/10/2026 con las dos adquisiciones de 26ALC, las dos con `orden: "A1"`.
+ *
+ * Y los dos destinos reaccionan distinto, que es lo que lo hace difícil de ver:
+ *
+ *   · la HOJA se filtra contra los ids que YA tiene (`!sheetIdSet.has(...)`), no dentro del lote,
+ *     así que agrega LAS DOS filas con el id repetido;
+ *   · el ESPEJO a la base tiene el id como clave primaria, así que se queda con UNA.
+ *
+ * O sea: la hoja confunde y la base pierde. `desempatarOrden*` lo resuelve en el cliente, que es
+ * donde se puede hacer bien porque ahí se ve la tienda completa. Esto es la red para cualquier
+ * otra vía que escriba acá —el Enrutador, un script, lo que venga— y para el día que el desempate
+ * del cliente no haya corrido.
+ *
+ * No se descarta ni se arregla nada: se AVISA. Elegir cuál de las dos vale no es decisión de una
+ * ruta de red; perder una en silencio sí es lo que no puede seguir pasando.
+ */
+export function idsRepetidos(rows: readonly (string | number)[][]): { id: string; veces: number }[] {
+  const veces = new Map<string, number>();
+  for (const r of rows ?? []) {
+    const id = String(r?.[0] ?? '').trim();
+    if (!id) continue;
+    veces.set(id, (veces.get(id) ?? 0) + 1);
+  }
+  return [...veces.entries()]
+    .filter(([, n]) => n > 1)
+    .map(([id, n]) => ({ id, veces: n }))
+    .sort((a, b) => b.veces - a.veces || a.id.localeCompare(b.id));
+}
