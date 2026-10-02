@@ -104,16 +104,16 @@ export function CruceDePesosCard({ cruce, items, listo = true }: Props) {
             ? `${b.movimientos.length} ${b.movimientos.length === 1 ? 'movimiento' : 'movimientos'}`
             : 'sin movimientos'}
         </span>
-        <span className={`${vis.plegado('inline')} ml-auto text-[12px] tabular-nums whitespace-nowrap truncate min-w-0`}>
+        <span className={`${vis.plegado('inline')} ml-auto text-xs tabular-nums whitespace-nowrap truncate min-w-0`}>
           {b.kgDif === null
-            ? <span className="text-[#6B7280]">{b.kgOdoo > 0 ? `sin pesar · Odoo ${enKg(b.kgOdoo)} kg` : 'sin pesar'}</span>
+            ? <span className="text-gray-500">{b.kgOdoo > 0 ? `sin pesar · Odoo ${enKg(b.kgOdoo)} kg` : 'sin pesar'}</span>
             : <span className="font-extrabold" style={{ color: tono.texto }}>
                 {`${b.kgDif > 0 ? '+' : ''}${enKg(b.kgDif)} kg`}
                 {b.pctDif === null ? '' : <span className="font-bold"> · {pct(b.pctDif)}</span>}
               </span>}
         </span>
         <svg viewBox="0 0 20 20" aria-hidden="true"
-          className={`w-4 h-4 flex-shrink-0 text-[#6B7280] transition-transform ${giro}`}>
+          className={`w-4 h-4 flex-shrink-0 text-gray-500 transition-transform ${giro}`}>
           <path d="M5 8l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
