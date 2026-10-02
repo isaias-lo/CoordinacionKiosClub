@@ -81,3 +81,38 @@ describe('fechaDespachoBodega para un borrador de OTRO día', () => {
     expect(fechaDespachoBodega(undefined, alMediodia('2026-12-31'))).toBe('2027-01-01');
   });
 });
+
+// ── LOS DOS ESPEJOS TIENEN QUE SELLAR IGUAL (01/10/2026) ───────────────────────────────────────
+//
+// De esta fecha sale el `stamp` del id de cada fila de la planilla. Nacional pasaba
+// `state.fechaDespacho` CRUDO —que está VACÍO mientras nadie toque el selector— y la función caía
+// a HOY, así que sellaba con el día de ARMADO mientras RM/Costa sellaba con el de DESPACHO:
+//
+//     RM/Costa  sello 01102026  fecha 30/09   ← día siguiente, correcto
+//     Nacional  sello 01102026  fecha 01/10   ← mismo día, y el despacho era el 02/10
+//
+// Dos espejos sellando distinto es lo que hace que una misma unidad termine con dos ids.
+
+describe('el sello del id — RM/Costa y Nacional no pueden diferir', () => {
+  const alMediodia = (iso: string) => new Date(`${iso}T12:00:00`);
+
+  it('sin tocar el selector, el sello NUNCA es el día de armado', () => {
+    for (const armado of ['2026-10-01', '2026-09-30', '2026-12-31']) {
+      expect(fechaDespachoBodega(undefined, alMediodia(armado)), armado).not.toBe(armado);
+    }
+  });
+
+  it('la fecha cruda vacía y la calculada dan cosas DISTINTAS — ésa era la divergencia', () => {
+    const cruda = '';                                            // lo que tenía Nacional
+    const calculada = fechaDespachoBodega(cruda || undefined, alMediodia('2026-10-01'));
+    expect(calculada).toBe('2026-10-02');
+    expect(calculada).not.toBe(cruda);
+  });
+
+  it('los dos espejos, con el mismo estado, sellan igual', () => {
+    const hoy = alMediodia('2026-10-01');
+    const rmCosta  = fechaDespachoBodega(undefined, hoy);
+    const nacional = fechaDespachoBodega(undefined, hoy);
+    expect(nacional).toBe(rmCosta);
+  });
+});
