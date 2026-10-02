@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   tiendaRegistrada, marcarTiendaRegistrada, fusionarRegistroTiendas,
-  puedeRegistrarTienda, rotuloBoton,
-} from '../registroPorTienda';
+  puedeRegistrarTienda, rotuloBoton, registroDeBlob } from '../registroPorTienda';
 
 const admin = { rol: 'admin', terminada: true, unidades: 3 };
 
@@ -122,5 +121,73 @@ describe('fusionarRegistroTiendas — una marca NUNCA se pierde', () => {
     expect(fusionarRegistroTiendas(a, null)).toEqual(a);
     expect(fusionarRegistroTiendas(null, a)).toEqual(a);
     expect(fusionarRegistroTiendas(null, null)).toEqual({});
+  });
+});
+
+// ── LO QUE PASÓ EL 02/10/2026, Y POR QUÉ ESTAS PROPIEDADES IMPORTAN ────────────────────────────
+//
+// El coordinador registró una tienda desde un equipo y en el otro el botón siguió en rojo. Con la
+// MISMA cuenta, desde otro dispositivo, también. E Isaías lo veía en rojo antes, durante y después
+// de que alguien lo apretara. La marca vivía solo en el `localStorage` de cada navegador.
+//
+// Ahora viaja por `shared_session_state`, y el hook se apoya en que esta unión sea MONÓTONA: por
+// eso no hace falta un merge de tres vías, ni base, ni corta-ecos, ni carrera de arranque. Estos
+// tres tests son esa garantía.
+describe('fusionarRegistroTiendas — las propiedades en las que se apoya el hook', () => {
+  const dia = '2026-10-02';
+
+  it('IDEMPOTENTE: unir dos veces da lo mismo que unir una', () => {
+    // Por esto un eco de realtime no puede desordenar nada.
+    const a = { [dia]: { '01TPS': '11:42' } };
+    const b = { [dia]: { '29CFL': '12:10' } };
+    const una = fusionarRegistroTiendas(a, b);
+    expect(fusionarRegistroTiendas(una, b)).toEqual(una);
+    expect(fusionarRegistroTiendas(una, una)).toEqual(una);
+  });
+
+  it('CONMUTATIVA: no importa en qué orden lleguen los eventos', () => {
+    const a = { [dia]: { '01TPS': '11:42', '46TRE': '13:05' } };
+    const b = { [dia]: { '29CFL': '12:10', '01TPS': '14:00' } };
+    expect(fusionarRegistroTiendas(a, b)).toEqual(fusionarRegistroTiendas(b, a));
+  });
+
+  it('NUNCA DECRECE: unir no puede quitar una marca que ya estaba', () => {
+    const mio = { [dia]: { '01TPS': '11:42', '46TRE': '13:05' } };
+    for (const otro of [{}, null, { [dia]: {} }, { '2026-10-01': { '08RNC': '09:00' } }]) {
+      const u = fusionarRegistroTiendas(mio, otro as never);
+      expect(Object.keys(u[dia])).toEqual(expect.arrayContaining(['01TPS', '46TRE']));
+    }
+  });
+
+  it('EL CASO: dos equipos marcan tiendas distintas y los dos terminan viéndolas', () => {
+    // Erick marca 01TPS en su teléfono; Isaías marca 46TRE en el suyo. Cada uno empuja la unión de
+    // lo que leyó con lo suyo, así que la fila termina con las dos y los dos las ven.
+    const erick  = { [dia]: { '01TPS': '17:38' } };
+    const isaias = { [dia]: { '46TRE': '17:41' } };
+    const enLaFila = fusionarRegistroTiendas(
+      fusionarRegistroTiendas({}, erick),   // Erick leyó vacío y empujó lo suyo
+      isaias,                                // Isaías leyó vacío y empujó lo suyo
+    );
+    expect(enLaFila[dia]).toEqual({ '01TPS': '17:38', '46TRE': '17:41' });
+  });
+});
+
+describe('registroDeBlob — un blob raro no borra las marcas', () => {
+  it('deja pasar un registro con forma', () => {
+    const r = { '2026-10-02': { '01TPS': '11:42' } };
+    expect(registroDeBlob(r)).toEqual(r);
+  });
+
+  it('todo lo demás es {} — y unir contra {} no quita nada', () => {
+    for (const basura of [null, undefined, 'texto', 42, true, ['a'], []]) {
+      expect(registroDeBlob(basura)).toEqual({});
+    }
+    const mio = { '2026-10-02': { '01TPS': '11:42' } };
+    expect(fusionarRegistroTiendas(mio, registroDeBlob(null))).toEqual(mio);
+    expect(fusionarRegistroTiendas(mio, registroDeBlob(['raro']))).toEqual(mio);
+  });
+
+  it('un objeto vacío también pasa, y no hace nada', () => {
+    expect(registroDeBlob({})).toEqual({});
   });
 });
