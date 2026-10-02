@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { Navigation, GripVertical, ClipboardList, User, Store, FileUp, ChevronLeft, AlertTriangle } from 'lucide-react';
+import { Navigation, GripVertical, ClipboardList, User, Store, FileUp, ChevronLeft, AlertTriangle, Pencil } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
 import { IndicadorCanalSano } from '../../shared/IndicadorCanalSano';
@@ -21,7 +21,6 @@ import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { TiendaSantiago, TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { type PickingSlot } from '../components/PickingSlotCards';
 import { useOdooProgress } from '../../shared/useOdooProgress';
-import { StoreProgressBar } from '../../shared/StoreProgressBar';
 import { SectionCount } from '../../shared/SectionCount';
 import { sectionProgress } from '../../shared/sectionProgress';
 import { pushCounts } from '../../../../lib/despachoSesion';
@@ -43,6 +42,8 @@ import { UndoBar } from '../../shared/UndoBar';
 import { tipoCodeSantiago } from '../../shared/tipoCode';
 import { registrarTiendasSantiagoBD } from '../data/tiendasSantiago';
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
+import { FilaTienda, BarraDelDia, FiltroTiendas, RotuloLista, PieLista } from '@/features/despacho/shared/ListaTiendas';
+import { avanceFila, estadoLista, resumenDia, filtroVigente, pasaFiltro, type FiltroLista } from '@/features/despacho/shared/listaTiendas';
 import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
 import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';
 import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
@@ -54,10 +55,8 @@ import { TraerOdooButton } from '../../shared/TraerOdooButton';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { useTiendaTerminada, type TerminadaInfo } from '../../shared/useTiendaTerminada';
-import { STORE_CARD_BADGE as SCB, claseTarjetaTienda, claseCodigoTienda, claseEtiquetaTerminada } from '../../shared/storeCardStyles';
 import { usePresenciaTienda, type ViendoInfo } from '../../shared/usePresenciaTienda';
 import { PresenciaBadge } from '../../shared/PresenciaBadge';
-import { MarcaSinPesar } from '../../shared/MarcaSinPesar';
 import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { supabase } from '../../../../lib/supabase';
@@ -193,7 +192,7 @@ interface ResumenEditState {
    STORE GRID CARD
 ═══════════════════════════════════════ */
 function TiendaGridCard({
-  t, isActive, isToday, palletCount, contenedorCount, chocolateCount,
+  t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
   bultoCount, adquisicionCount = 0, webRetiroCount = 0,
   despachoP, despachoB, despachoC, despachoCH, hasGuide, storeDoneOps = 0, storeTotalOps = 0,
   tipoCat, terminada, viendo, sinPesarCount,
@@ -211,7 +210,7 @@ function TiendaGridCard({
   /** [Presencia] Quién más tiene esta tienda abierta ahora. */
   viendo?: ViendoInfo[];
   /** Unidades guardadas sin pesar. Se veía solo DENTRO de la tienda; ahora también desde la
-   *  grilla, que es donde se decide a cuál entrar. Ver `MarcaSinPesar`. */
+   *  lista, que es donde se decide a cuál entrar. Ver `chipFila`. */
   sinPesarCount?: number;
   onSelect: () => void;
   onAddToday?: () => void;
@@ -220,86 +219,24 @@ function TiendaGridCard({
   adquisicionCount?: number;
   webRetiroCount?: number;
 }) {
-  // El bulto ya NO sale por resta. Así salía antes, y por eso las adquisiciones y los web/retiro
-  // caían adentro: 07CCR mostraba 5B acá y 1B en el encabezado, para las mismas unidades.
-  const boxCount = bultoCount;
-  const expP     = despachoP ?? 0;
-  const expB     = despachoB ?? 0;
-  const expC     = despachoC ?? 0;
-  const expCH    = despachoCH ?? 0;
-  // Desconta los ya ingresados: el badge punteado muestra SOLO lo que Picking imprimió y Bodega
-  // todavía no pesó. Es una señal distinta de la marca de esquina (`MarcaSinPesar`), que cuenta lo
-  // que SÍ se cargó pero quedó guardado sin peso. Las dos dicen "falta pesar" y son cosas
-  // distintas: esto es el flujo normal del día; aquello es la excepción que hay que perseguir.
-  const remP = Math.max(0, expP - palletCount);
-  const remB = Math.max(0, expB - boxCount);
-  const remC = Math.max(0, expC - contenedorCount);
-  const remCH = Math.max(0, expCH - chocolateCount);
-  // El color dice "¿tiene guía?" y la etiqueta "¿está terminada?": antes las dos cosas se
-  // pintaban del mismo verde y marcar una tienda como terminada tapaba el estado de su guía.
-  const estadoCard = { activa: isActive, conGuia: !!hasGuide, terminada: !!terminada, deHoy: !!isToday };
+  // El bulto ya NO sale por resta: así caían adentro las adquisiciones y los web/retiro. Lo que
+  // falta es lo que Picking imprimió (o el despacho espera) y Bodega todavía no cargó.
+  const cargadas = { pallet: palletCount, bulto: bultoCount, contenedor: contenedorCount, chocolate: chocolateCount };
+  const faltan = {
+    pallet: Math.max(0, (despachoP ?? 0) - palletCount), bulto: Math.max(0, (despachoB ?? 0) - bultoCount),
+    contenedor: Math.max(0, (despachoC ?? 0) - contenedorCount), chocolate: Math.max(0, (despachoCH ?? 0) - chocolateCount),
+  };
+  const accion = onRemoveFromToday ? { tipo: 'retirar' as const, onClick: onRemoveFromToday }
+    : onAddToday ? { tipo: 'agregar' as const, onClick: onAddToday } : undefined;
   return (
-    <div
-      onClick={onSelect}
-      className={`flex flex-col items-center justify-between px-2 py-3 cursor-pointer rounded-xl transition-all select-none min-h-[80px] relative active:scale-[0.97]
-        ${claseTarjetaTienda(estadoCard)}`}>
-      <PresenciaBadge viendo={viendo} />
-      <MarcaSinPesar sinPesar={sinPesarCount} />
-      {isToday && onRemoveFromToday && (
-        <button onClick={e => { e.stopPropagation(); onRemoveFromToday(); }}
-          className="absolute top-0.5 right-0.5 w-6 h-6 flex items-center justify-center text-[14px] text-warn bg-[rgba(217,119,6,0.15)] hover:bg-[rgba(217,119,6,0.28)] rounded-full cursor-pointer border-none leading-none transition-colors"
-          title="Retirar de hoy">×</button>
-      )}
-      {!isToday && onAddToday && (
-        <button onClick={e => { e.stopPropagation(); onAddToday(); }}
-          className="absolute top-0.5 right-0.5 w-6 h-6 flex items-center justify-center text-[14px] text-success bg-[rgba(22,163,74,0.15)] hover:bg-[rgba(22,163,74,0.28)] rounded-full cursor-pointer border-none leading-none transition-colors"
-          title="Agregar a hoy">+</button>
-      )}
-      {/* [Contraste AA] `text-success` (#34C759) da ~2:1 sobre blanco — se usa el mismo verde
-          oscurecido que ya usa Actividad para su badge "Ingresó" (#15803D, ~5:1). */}
-      <div className={`font-barlow-condensed text-[16px] font-extrabold leading-none tracking-wide ${claseCodigoTienda(estadoCard)}`}>
-        {formatCod(t.cod)}
-      </div>
-      {/* [M-04] Dos líneas en vez de recortar: "San Pedro …" y "San Pedro 1…" son tiendas
-          distintas que en pantalla se veían casi iguales — y son las que se arrastran a un camión.
-          El `title` deja el nombre completo a un hover de distancia. */}
-      <div className="text-[11px] font-semibold w-full text-center leading-tight px-0.5 mt-1 text-text-2 line-clamp-2"
-        title={t.tienda}>
-        {t.tienda}
-      </div>
-      {terminada && (
-        <span className={`text-[11px] font-extrabold tracking-wide uppercase mt-0.5 ${claseEtiquetaTerminada(estadoCard)}`}>✓ Terminada</span>
-      )}
-      {(() => {
-        const tb = tipoBadge(tipoCat);
-        // [M-02] 11px es el piso de legibilidad de la app; antes iba en 9.
-        return tb ? (
-          <span style={{ marginTop: 2, fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 99, background: tb.bg, color: tb.color, lineHeight: 1.4, textTransform: 'uppercase' }}>
-            {tb.label}
-          </span>
-        ) : null;
-      })()}
-      {/* [a11y] title en cada badge — P/B/C/CH no se explican solos en ningún lado de la UI.
-          [Contraste AA + alineación] Colores compartidos con Regiones vía `storeCardStyles.ts`
-          (ver ese archivo para el detalle de contraste). Los "ghost" (picking pendiente) dejan el
-          fondo/borde punteado tenue como señal de "pendiente", pero el texto va sólido y AA. */}
-      <div className="flex flex-wrap gap-0.5 justify-center mt-1 min-h-[16px]">
-        {/* Ghost badges: picking pendiente (desconta los ya ingresados) */}
-        {remP > 0 && <span title="Pallets que Picking ya imprimió y falta pesar en Bodega" className={`text-[11px] font-bold ${SCB.pallet.textCls} px-1.5 py-0.5 rounded leading-none border border-dashed ${SCB.pallet.ghostBorderCls}`} style={{ background: SCB.pallet.ghostBg }}>{remP}P</span>}
-        {remB > 0 && <span title="Bultos que Picking ya imprimió y falta pesar en Bodega" className={`text-[11px] font-bold ${SCB.bulto.textCls} px-1.5 py-0.5 rounded leading-none border border-dashed ${SCB.bulto.ghostBorderCls}`} style={{ background: SCB.bulto.ghostBg }}>{remB}B</span>}
-        {remC > 0 && <span title="Contenedores que Picking ya imprimió y falta pesar en Bodega" className={`text-[11px] font-bold ${SCB.contenedor.textCls} px-1.5 py-0.5 rounded leading-none border border-dashed ${SCB.contenedor.ghostBorderCls}`} style={{ background: SCB.contenedor.ghostBg }}>{remC}C</span>}
-        {remCH > 0 && <span title="Chocolates que Picking ya imprimió y falta pesar en Bodega" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none border border-dashed" style={{ color: SCB.chocolate.color, background: SCB.chocolate.ghostBg, borderColor: SCB.chocolate.ghostBorderColor }}>{remCH}CH</span>}
-        {/* Solid badges: items ingresados en despacho */}
-        {palletCount     > 0 && <span title="Pallets" className={`text-[11px] font-bold ${SCB.pallet.textCls} px-1.5 py-0.5 rounded leading-none`} style={{ background: SCB.pallet.bg }}>{palletCount}P</span>}
-        {boxCount        > 0 && <span title="Bultos" className={`text-[11px] font-bold ${SCB.bulto.textCls} px-1.5 py-0.5 rounded leading-none`} style={{ background: SCB.bulto.bg }}>{boxCount}B</span>}
-        {contenedorCount > 0 && <span title="Contenedores" className={`text-[11px] font-bold ${SCB.contenedor.textCls} px-1.5 py-0.5 rounded leading-none`} style={{ background: SCB.contenedor.bg }}>{contenedorCount}C</span>}
-        {chocolateCount  > 0 && <span title="Chocolates" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ color: SCB.chocolate.color, background: SCB.chocolate.bg }}>{chocolateCount}CH</span>}
-        {/* Adquisición y web/retiro con SU letra. No se pesan, pero existen y hay que verlas. */}
-        {(adquisicionCount ?? 0) > 0 && <span title="Adquisiciones — no se pesan" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ color: '#92400E', background: '#FEF3C7' }}>{adquisicionCount}A</span>}
-        {(webRetiroCount ?? 0)   > 0 && <span title="Web / retiro — no se pesan" className="text-[11px] font-bold px-1.5 py-0.5 rounded leading-none" style={{ color: '#065F46', background: '#D1FAE5' }}>{webRetiroCount}W</span>}
-      </div>
-      <StoreProgressBar total={storeTotalOps} done={storeDoneOps} variant="grid" showCount />
-    </div>
+    <FilaTienda cod={formatCod(t.cod)} nombre={t.tienda} tipo={tipoBadge(tipoCat)}
+      estado={estadoLista({ cargadas: itemCount, terminada: !!terminada })}
+      activa={isActive} conGuia={!!hasGuide}
+      avance={avanceFila(cargadas, faltan)}
+      agregados={{ adquisicion: adquisicionCount, webRetiro: webRetiroCount }}
+      sinPesar={sinPesarCount ?? 0}
+      odoo={isToday ? { done: storeDoneOps, total: storeTotalOps } : undefined}
+      viendo={viendo} onSelect={onSelect} accion={accion} />
   );
 }
 
@@ -569,6 +506,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   }, [focoPallet, formRows]);
 
   const [showTodas, setShowTodas] = useState(false);
+  // Filtro de la lista de hoy y modo «Editar tiendas de hoy» (la × para retirar). Ver `ListaTiendas.tsx`.
+  const [filtroLista, setFiltroLista] = useState<FiltroLista>('todas');
+  const [editarHoy, setEditarHoy] = useState(false);
 
   /* Resumen inline state */
   const [resumenExpanded, setResumenExpanded] = useState<Set<string>>(new Set());
@@ -1008,6 +948,15 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const isTiendaTerminada = (cod: string) => odooProgress.get(cod)?.status === 'complete';
   const rmProg    = sectionProgress(todayTiendas.filter(t => t.region !== 'VR'), t => isTiendaTerminada(t.cod));
   const costaProg = sectionProgress(todayTiendas.filter(t => t.region === 'VR'), t => isTiendaTerminada(t.cod));
+  // La barra del día cuenta las tiendas de hoy de los grupos elegidos (RM / Costa), sin mirar la búsqueda.
+  const estadoDe = (t: TiendaSantiago) => estadoLista({
+    cargadas: (items[t.cod] || []).length, terminada: terminadas.get(t.cod)?.terminada === true,
+  });
+  const resumenHoy = resumenDia(todayTiendas
+    .filter(t => !isRegionesCod(t.cod) && (t.region === 'VR' ? selectedGrps.has('costa') : selectedGrps.has('rm')))
+    .map(estadoDe));
+  const filtroHoy = filtroVigente(filtroLista, resumenHoy);
+  const todayVisibles = todayList.filter(t => pasaFiltro(estadoDe(t), filtroHoy));
   const activeTiendas      = [
     ...allTodayCods.filter(c => (items[c] || []).length > 0).map(c => [c, items[c]] as [string, typeof items[string]]),
     ...Object.entries(items).filter(([c, it]) => it.length > 0 && !allTodayCods.includes(c)),
@@ -2229,30 +2178,34 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
      LEFT PANEL CONTENT
   ════════════════════════════════════ */
   const renderStoreGrid = () => (
-    <div className="flex-1 overflow-y-auto">
+    <>
+    <BarraDelDia resumen={resumenHoy} unidades={[{ letra: 'P', n: statP }, { letra: 'B', n: statB }, { letra: 'CH', n: statCH }]} />
+    <FiltroTiendas filtro={filtroHoy} resumen={resumenHoy} onFiltro={setFiltroLista} />
+    {/* Lista de tiendas: una fila por tienda. Ver `ListaTiendas.tsx`. */}
+    <div className="flex-1 overflow-y-auto bg-bg">
       {todayList.length > 0 && (
         <div>
-          <div className="px-3 py-2 bg-bg border-b border-[rgba(30,64,175,0.20)] sticky top-0 z-20 flex items-center gap-2"
-            style={{ backgroundImage: 'linear-gradient(rgba(30,64,175,0.10), rgba(30,64,175,0.10))' }}>
-            <span className="font-barlow-condensed text-[15px] font-extrabold tracking-wide text-[#1E40AF]">Hoy</span>
-            <span className="font-barlow-condensed text-[10px] text-[#1E40AF]/50 uppercase tracking-wide hidden sm:inline">toca × para retirar</span>
-            <span className="ml-auto flex items-center gap-2.5">
-              {rmProg.total > 0 && (
-                <span className="flex items-center gap-1.5">
-                  <span className="font-barlow-condensed text-[10px] font-bold uppercase tracking-wider text-text-3">RM</span>
-                  <SectionCount done={rmProg.done} total={rmProg.total} />
-                </span>
-              )}
-              {costaProg.total > 0 && (
-                <span className="flex items-center gap-1.5">
-                  <span className="font-barlow-condensed text-[10px] font-bold uppercase tracking-wider text-text-3">Costa</span>
-                  <SectionCount done={costaProg.done} total={costaProg.total} />
-                </span>
-              )}
-            </span>
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
-            {todayList.map(t => {
+          <RotuloLista derecha={editarHoy
+            ? <button type="button" onClick={() => setEditarHoy(false)} className="text-apoyo font-bold text-navy normal-case cursor-pointer">Listo</button>
+            : <span className="flex items-center gap-2.5">
+                {/* Tiendas con todos sus movimientos de Odoo hechos, por sección, como antes. */}
+                {rmProg.total > 0 && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-rotulo font-bold text-text-sub">RM</span>
+                    <SectionCount done={rmProg.done} total={rmProg.total} />
+                  </span>
+                )}
+                {costaProg.total > 0 && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-rotulo font-bold text-text-sub">Costa</span>
+                    <SectionCount done={costaProg.done} total={costaProg.total} />
+                  </span>
+                )}
+              </span>}>
+            {editarHoy ? 'Toca × para retirar de hoy' : 'Hoy'}
+          </RotuloLista>
+          <div className="border-t border-border">
+            {todayVisibles.map(t => {
               const tI = items[t.cod] || [];
               const dc = despachoCounts[t.cod];
               const pkSlots = pickingSlotsFull[t.cod] ?? [];
@@ -2279,27 +2232,25 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   terminada={terminadas.get(t.cod)?.terminada === true}
                   viendo={viendoPorTienda.get(t.cod)}
                   onSelect={() => selectTienda(t)}
-                  onRemoveFromToday={() => setConfirmRemove(t.tienda)} />
+                  onRemoveFromToday={editarHoy ? () => setConfirmRemove(t.tienda) : undefined} />
               );
             })}
           </div>
+          {todayVisibles.length === 0 && (
+            <p className="px-3.5 py-6 text-center text-apoyo text-text-sub">Ninguna tienda de hoy calza con la búsqueda.</p>
+          )}
         </div>
       )}
       {othersList.length > 0 && (
         <div>
-          <div
-            onClick={() => todayList.length > 0 && setShowTodas(prev => !prev)}
-            className={`px-3 py-2 bg-bg border-b border-border sticky top-0 z-10 flex items-center gap-2 ${todayList.length > 0 ? 'cursor-pointer' : ''}`}>
-            <span className="font-barlow-condensed text-[13px] font-bold tracking-wide text-text-3 flex-1">Todas</span>
-            <span className="font-barlow-condensed text-[10px] text-text-3/50 uppercase tracking-wide hidden sm:inline">toca + para agregar a hoy</span>
-            {todayList.length > 0 && (
-              <span className="font-barlow-condensed text-[12px] text-text-3/50 select-none ml-1">
-                {showTodas ? '▲' : '▼'}
-              </span>
-            )}
-          </div>
+          {todayList.length > 0 && (
+            <RotuloLista onClick={() => setShowTodas(prev => !prev)}
+              derecha={<span className="text-apoyo text-text-sub select-none">{showTodas ? '▲' : '▼'}</span>}>
+              {`Todas (${othersList.length})`}
+            </RotuloLista>
+          )}
           {(showTodas || todayList.length === 0) && (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-2">
+          <div className="border-t border-border">
             {othersList.map(t => {
               const tI = items[t.cod] || [];
               const dc = despachoCounts[t.cod];
@@ -2330,62 +2281,25 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         </div>
       )}
       {filtered.length === 0 && (
-        <div className="py-16 text-center text-text-3">
-          <div className="text-3xl mb-2 opacity-20">🏪</div>
-          <p className="text-[13px] opacity-60">Sin resultados</p>
+        <div className="py-16 text-center text-text-sub">
+          <p className="text-apoyo">Sin resultados</p>
         </div>
       )}
     </div>
+    </>
   );
 
+  // Pie: Resumen y ⋯. Las cifras de pallets y bultos subieron a la barra del día.
   const renderStatsBar = () => (
-    <div className="flex-shrink-0 bg-navy border-t-4 border-[#1E40AF]">
-      {/* Conteo: en desktop el conteo vive en la columna derecha (resumen), así que
-          aquí solo se muestra en mobile para no restar espacio a la lista de tiendas. */}
-      <div className="flex lg:hidden">
-        {(() => {
-          const stats = [
-            { v: statP, l: 'Pallets', color: '#93C5FD' },
-            { v: statB, l: 'Bultos',  color: '#FCD34D' },
-            ...(statCH > 0 ? [{ v: statCH, l: 'Choc.', color: '#FBB6A0' }] : []),
-            { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' },
-          ];
-          return stats.map(({ v, l, color }, i) => (
-            <div key={l} className={`flex-1 py-2.5 text-center ${i < stats.length - 1 ? 'border-r border-white/10' : ''}`}>
-              <div className="font-barlow-condensed text-[26px] font-bold leading-none" style={{ color }}>{v}</div>
-              <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
-            </div>
-          ));
-        })()}
-      </div>
-      <div className="px-3 pb-3 pt-1 flex gap-2">
-        <button onClick={goToResumen}
-          className="flex-1 py-2.5 bg-[#1E40AF] text-white rounded-btn font-barlow-condensed text-[14px] font-bold cursor-pointer active:bg-[#1E3A8A] lg:hidden">
-          Resumen ({activeTiendasCount})
-        </button>
-        {/* [C-05] La zona grande de "Subir guías" es `hidden lg:flex`, así que bajo 1024 px —tablet,
-            pantalla partida— Bodega quedaba sin su acción principal, sin decirlo. Acá va el mismo
-            botón (mismo input de archivo) para los anchos donde aquella no aparece. */}
-        <button onClick={() => !guideUploading && guideFileRef.current?.click()}
-          disabled={guideUploading}
-          className="lg:hidden flex-shrink-0 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border disabled:opacity-60"
-          title="Subir guías PDF">
-          <FileUp size={16} />
-        </button>
-        <button onClick={() => setShowCalManual(true)}
-          className="flex-shrink-0 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
-          title="Manual para copiar / Calendario del día">
-          <ClipboardList size={16} />
-          <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide">Manual / Cal</span>
-        </button>
-        <button onClick={enrutar}
-          className="flex-shrink-0 lg:flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded cursor-pointer transition-all active:scale-95 bg-bg-2 text-text-2 border border-border"
-          title="Ir al Enrutador">
-          <Navigation size={16} />
-          <span className="hidden lg:inline font-barlow-condensed text-[14px] font-bold tracking-wide">Enrutador</span>
-        </button>
-      </div>
-    </div>
+    <PieLista
+      resumen={{ texto: `Resumen del día (${activeTiendasCount})`, onClick: goToResumen }}
+      acciones={[
+        // [C-05] La zona grande de "Subir guías" es `hidden lg:flex`: bajo 1024 px vive acá.
+        { id: 'guias', icono: <FileUp size={18} />, texto: guideUploading ? 'Procesando guías…' : 'Subir guías', disabled: guideUploading, onClick: () => guideFileRef.current?.click() },
+        { id: 'editar', icono: <Pencil size={18} />, texto: editarHoy ? 'Terminar de editar hoy' : 'Editar tiendas de hoy', enEscritorio: true, onClick: () => setEditarHoy(v => !v) },
+        { id: 'manual', icono: <ClipboardList size={18} />, texto: 'Manual / Cal', enEscritorio: true, onClick: () => setShowCalManual(true) },
+        { id: 'enrutador', icono: <Navigation size={18} />, texto: 'Enrutador', enEscritorio: true, ancho: true, onClick: enrutar },
+      ]} />
   );
 
   /* ════════════════════════════════════
