@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isPathAllowed, SYSTEM_ROLE_PATHS, SYSTEM_ROLE_HOME, ALL_MODULE_PATHS, cleanAllowedPaths, paginaInicial } from '../routes';
+import { isPathAllowed, SYSTEM_ROLE_PATHS, SYSTEM_ROLE_HOME, ALL_MODULE_PATHS, cleanAllowedPaths, paginaInicial, puedeAbrir } from '../routes';
 
 describe('isPathAllowed — la regla de acceso que usa el middleware', () => {
   it('el comodín abre todo', () => {
@@ -114,5 +114,30 @@ describe('rutas vivas que cleanAllowedPaths ya no borra', () => {
   it('una ruta que de verdad ya no existe sigue cayéndose', () => {
     // `/recepcion-tienda` se eliminó junto con su rol; que se limpie es lo correcto.
     expect(cleanAllowedPaths(['/perfil', '/recepcion-tienda'])).toEqual(['/perfil']);
+  });
+});
+
+describe('puedeAbrir — la página de inicio siempre se puede abrir', () => {
+  it('el bucle /perfil → /perfil con un token sin rutas', () => {
+    // `allowed_paths: []` no cae al respaldo del rol (`[] ?? x` es `[]`), así que paginaInicial
+    // devuelve `/perfil`. Si el middleware no dejara abrir Perfil, redirigiría ahí para siempre.
+    const destino = paginaInicial('asistente-despacho', [], undefined);
+    expect(puedeAbrir('asistente-despacho', destino, [])).toBe(true);
+  });
+
+  it('para cualquier combinación de rol y rutas, el destino es abrible', () => {
+    const casos: (string[] | undefined)[] = [undefined, [], ['/perfil'], ['/despacho/regiones'], ['/'], ['/no-existe']];
+    for (const rol of [...Object.keys(SYSTEM_ROLE_PATHS), 'rol-raro']) {
+      for (const metaPaths of casos) {
+        for (const metaHome of [undefined, '/', '/despacho', '/auditoria']) {
+          const destino = paginaInicial(rol, metaPaths, metaHome);
+          expect(puedeAbrir(rol, destino, metaPaths), `${rol} ${JSON.stringify(metaPaths)} → ${destino}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('Perfil no abre nada más', () => {
+    expect(puedeAbrir('asistente-despacho', '/admin/usuarios', [])).toBe(false);
   });
 });
