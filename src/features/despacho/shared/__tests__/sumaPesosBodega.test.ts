@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { sumarPesosPorTienda, conflictosDePeso, type FilaDePeso } from '../sumaPesosBodega';
+import { sumarPesosPorTienda, conflictosDePeso, pesoCreible, type FilaDePeso } from '../sumaPesosBodega';
+import { claseDeTipoCode } from '../tipoCode';
+import { TOPE_DURO_KG } from '../pesoIngresado';
 
 // ── LOS DOS CASOS QUE ESTA FUNCIÓN EXISTE PARA IMPEDIR ─────────────────────────────────────────
 //
@@ -183,5 +185,92 @@ describe('conflictosDePeso — los desacuerdos se DICEN, no se tapan', () => {
       f('57CAS', 272, 726),   f('57CAS', 272, 726),     // esta no: mismo peso
     ];
     expect(conflictosDePeso(filas).map(c => c.cod).sort()).toEqual(['28TEM', '47PTV', '57CAS', '75PUC']);
+  });
+});
+
+// ── LO QUE LA AUDITORÍA DEL 02/10 ENCONTRÓ EN ESTE MISMO ARREGLO ───────────────────────────────
+//
+// La primera versión dejaba que una fila SIN peso tomara el de la balanza. Eso duplicaba el día
+// —cada unidad tiene dos filas, la del armado en 0 y la del registro— y de paso rompía para qué
+// existe el cuadro: una unidad pesada y nunca registrada habría cuadrado sola.
+describe('sumarPesosPorTienda — una fila sin peso es un BORRADOR', () => {
+  it('el 0 no toma el peso de la balanza: si no, el día se cuenta dos veces', () => {
+    // 01TPS del 29/09: 4 unidades con fila de armado en 0 y fila de registro con peso. Con el 0
+    // tomando la balanza, la tienda pasaba de 1.073 a 2.176,8 kg.
+    const balanza = new Map([[346, 463], [360, 432]]);
+    const filas = [
+      f('01TPS', 0,   346), f('01TPS', 463, 346),
+      f('01TPS', 0,   360), f('01TPS', 432, 360),
+    ];
+    expect(sumarPesosPorTienda(filas, balanza).get('01TPS')).toBe(895);   // NO 1790
+  });
+
+  it('una unidad SOLO con filas en 0 no suma — es el hueco que el cruce debe mostrar', () => {
+    // Si una unidad pesada pero nunca registrada sumara igual, la tienda cuadraría sola y el
+    // registro que falta se volvería invisible. Es para lo que sirve esta planilla.
+    const balanza = new Map([[359, 462]]);
+    expect(sumarPesosPorTienda([f('13PIE', 0, 359)], balanza).has('13PIE')).toBe(false);
+  });
+
+  it('una fila en 0 sin slot tampoco inventa kilos', () => {
+    expect(sumarPesosPorTienda([f('05LP', 0, null)]).get('05LP')).toBe(0);
+  });
+});
+
+describe('pesoCreible — una fuente autoritativa necesita un techo', () => {
+  it('EL CASO: el slot 132, el 9.357 de 55ITA del 28/09', () => {
+    // Odoo dice que esa tienda recibió 606,28 kg en TODO el día. La fila registrada se corrigió a
+    // 335,7 por decisión del coordinador; el slot nunca. Sin techo, 55ITA volvía con 9.594,4 kg.
+    expect(pesoCreible(9357.5, 'P', 132)).toBe(0);
+  });
+
+  it('un peso normal pasa tal cual', () => {
+    expect(pesoCreible(347.8, 'P')).toBe(347.8);
+    expect(pesoCreible(17.5, 'B')).toBe(17.5);
+  });
+
+  it('el techo es POR CLASE: 500 para bulto y chocolate, 1.000 para pallet', () => {
+    expect(pesoCreible(900, 'B')).toBe(0);      // imposible para un bulto
+    expect(pesoCreible(900, 'P')).toBe(900);    // alto pero posible para un pallet
+  });
+
+  it('justo en el techo pasa; un gramo más, no', () => {
+    expect(pesoCreible(TOPE_DURO_KG.pallet, 'P')).toBe(1000);
+    expect(pesoCreible(TOPE_DURO_KG.pallet + 0.1, 'P')).toBe(0);
+  });
+
+  it('null, 0 y negativo dan 0 sin avisar: no son un peso imposible, es que no hay peso', () => {
+    expect(pesoCreible(null, 'P')).toBe(0);
+    expect(pesoCreible(0, 'P')).toBe(0);
+    expect(pesoCreible(-5, 'P')).toBe(0);
+  });
+
+  it('un peso descartado por el techo deja que mande la fila registrada', () => {
+    // Es el efecto que importa: 55ITA usa el 335,7 que una persona revisó.
+    const balanza = new Map([[132, pesoCreible(9357.5, 'P')]]);
+    expect(sumarPesosPorTienda([f('55ITA', 335.7, 132)], balanza).get('55ITA')).toBe(335.7);
+  });
+});
+
+describe('claseDeTipoCode — la vuelta del mapeo', () => {
+  it('traduce las seis letras que guarda picking_pallets', () => {
+    expect(claseDeTipoCode('P')).toBe('pallet');
+    expect(claseDeTipoCode('B')).toBe('bulto');
+    expect(claseDeTipoCode('C')).toBe('contenedor');
+    expect(claseDeTipoCode('CH')).toBe('chocolate');
+    expect(claseDeTipoCode('A')).toBe('adquisicion');
+    expect(claseDeTipoCode('W')).toBe('webretiro');
+  });
+
+  it('normaliza espacios y minúsculas', () => {
+    expect(claseDeTipoCode(' ch ')).toBe('chocolate');
+  });
+
+  it('un código desconocido cae al tope más ALTO, no al más restrictivo', () => {
+    // Acá el default que muerde sería el restrictivo: descartaría un peso bueno por un techo que
+    // no le corresponde. Al revés que en `tipoCodeSantiago`, donde el default a 'P' sí muerde.
+    expect(claseDeTipoCode('ZZ')).toBe('pallet');
+    expect(claseDeTipoCode(null)).toBe('pallet');
+    expect(claseDeTipoCode(undefined)).toBe('pallet');
   });
 });

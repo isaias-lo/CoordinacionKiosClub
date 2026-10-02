@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { codsRegionesDeBD, registrarCodsRegiones, isRegionesCod, CODS_CURADOS, type TiendaBDRow } from '../tiendas';
+import { codsRegionesDeBD, registrarCodsRegiones, isRegionesCod, CODS_CURADOS, registrarTiendasBD, TIENDAS, type TiendaBDRow } from '../tiendas';
 
 const fila = (p: Partial<TiendaBDRow>): TiendaBDRow => ({ codigo: 'XX', nombre: 'X', ...p } as TiendaBDRow);
 
@@ -71,5 +71,39 @@ describe('registrarCodsRegiones', () => {
 
   it('las curadas siguen siendo de Regiones', () => {
     expect(isRegionesCod('47PTV')).toBe(true);
+  });
+});
+
+// ── LA REGRESIÓN QUE EL ARREGLO PODÍA CAUSAR ───────────────────────────────────────────────────
+//
+// `registrarTiendasBD` se saltaba una fila con `if (REGIONES_CODS.has(cod)) continue`. Desde que
+// RM/Costa también clasifica, ese Set ya tiene el código ANTES de que Nacional construya su
+// entrada de catálogo — así que preguntar por él dejaba a Nacional sin la tienda. Abrir RM/Costa
+// antes de Nacional borraba 60PBL de la lista de Nacional.
+//
+// Por eso la pregunta es por `CODS_CURADOS`, que no crece. Esto lo fija.
+describe('el orden de las pestañas no puede dejar a Nacional sin su catálogo', () => {
+  const fila = (codigo: string, nombre: string) => ({
+    codigo, nombre, sector_comuna: 'Región Sur', region: 'Los Lagos', activo: true,
+  } as TiendaBDRow);
+
+  it('RM/Costa clasifica primero y Nacional DESPUÉS igual construye la entrada', () => {
+    // 1 · RM/Costa trae el catálogo y solo clasifica.
+    registrarCodsRegiones(codsRegionesDeBD([fila('81EEE', 'Tienda Nueva Sur')]));
+    expect(isRegionesCod('81EEE')).toBe(true);
+    expect(TIENDAS['Tienda Nueva Sur']).toBeUndefined();   // todavía no está en el catálogo
+
+    // 2 · Nacional abre después y tiene que poder armarla igual.
+    const { agregadas } = registrarTiendasBD([fila('81EEE', 'Tienda Nueva Sur')]);
+    expect(TIENDAS['Tienda Nueva Sur']?.cod).toBe('81EEE');
+    expect(agregadas).toContain('81EEE');
+  });
+
+  it('y una curada a mano sigue sin pisarse', () => {
+    const original = TIENDAS['Castro'];
+    registrarCodsRegiones(['57CAS']);
+    registrarTiendasBD([{ ...fila('57CAS', 'Castro'), region: 'OTRA' } as TiendaBDRow]);
+    expect(TIENDAS['Castro']).toBe(original);
+    expect(CODS_CURADOS.has('57CAS')).toBe(true);
   });
 });

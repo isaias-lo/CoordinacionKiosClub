@@ -13,7 +13,7 @@
 import fs from 'node:fs';
 import { armarCruce, type MovimientoOdoo } from '../src/features/despacho/shared/cruceDePesos';
 import { valoresDeFila } from '../src/features/despacho/shared/hojaCrucePesos';
-import { sumarPesosPorTienda, conflictosDePeso, type FilaDePeso } from '../src/features/despacho/shared/sumaPesosBodega';
+import { sumarPesosPorTienda, conflictosDePeso, pesoCreible, type FilaDePeso } from '../src/features/despacho/shared/sumaPesosBodega';
 
 const env = Object.fromEntries(
   fs.readFileSync(new URL('../.env.local', import.meta.url), 'utf8').split('\n').map(l => {
@@ -92,10 +92,12 @@ async function pesosDeLaBalanza(
   const out = new Map<number, number>();
   for (let i = 0; i < ids.length; i += 500) {   // la URL de PostgREST tiene largo máximo
     const lote = ids.slice(i, i + 500);
-    const rows = await rest<{ id: number; peso_kg: number | null }>(
-      `picking_pallets?select=id,peso_kg&id=in.(${lote.join(',')})`);
+    const rows = await rest<{ id: number; peso_kg: number | null; tipo: string | null }>(
+      `picking_pallets?select=id,peso_kg,tipo&id=in.(${lote.join(',')})`);
     for (const r of rows) {
-      const kg = Number(r.peso_kg) || 0;
+      // El MISMO `pesoCreible` que usa la app, no una copia: escribir el techo dos veces es
+      // justo la duplicación que este arreglo vino a sacar.
+      const kg = pesoCreible(r.peso_kg, r.tipo, r.id);
       if (kg > 0) out.set(r.id, kg);
     }
   }
