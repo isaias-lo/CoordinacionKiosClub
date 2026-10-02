@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { sheetsSantiagoWrite } from '../santiago/utils/sheetsSantiago';
+import { bultosSantiago, bultosNacional } from './numeroCard';
 import { fechaDespachoBodega } from './fechaLocal';
 import { sheetsRegionesWrite } from '../regiones/utils/sheetsRegiones';
 import { getTiendaSantiagoByCod } from '../santiago/data/tiendasSantiago';
@@ -44,7 +45,7 @@ function resumirSantiago(state: any): DraftStore[] {
     out.push({
       nombre:       getTiendaSantiagoByCod(cod)?.tienda ?? cod,
       pallets:      arr.filter(i => i.tipo === 'Pallet').length,
-      bultos:       arr.filter(i => i.tipo === 'Bulto').length,
+      bultos:       bultosSantiago(arr),
       contenedores: arr.filter(i => i.tipo === 'Contenedor').length,
       chocolates:   arr.filter(i => i.tipo === 'Chocolate').length,
     });
@@ -62,7 +63,7 @@ function resumirRegiones(state: any): DraftStore[] {
     out.push({
       nombre,
       pallets:      arr.filter(i => i.pkg === 'pallet').length,
-      bultos:       arr.filter(i => i.pkg === 'box').length,
+      bultos:       bultosNacional(arr),
       contenedores: arr.filter(i => i.pkg === 'contenedor').length,
       chocolates:   arr.filter(i => i.pkg === 'chocolate').length,
     });

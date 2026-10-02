@@ -7,6 +7,7 @@ import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import type { TipoCargamento, ContenidoSantiago, EstadoItem, SantiagoItem } from '../types';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { leerPeso, limpiarTecleo } from '../../shared/pesoIngresado';
+import { bultosSantiago } from '../../shared/numeroCard';
 import { eliminarSlotPicking } from '../../shared/eliminarSlotPicking';
 import { fechaChile } from '@/lib/fechaChile';
 
@@ -40,13 +41,13 @@ export function StepResumen() {
   let totalPallets = 0, totalBultos = 0;
   activeTiendas.forEach(([, it]) => {
     totalPallets += it.filter(i => i.tipo === 'Pallet').length;
-    totalBultos  += it.filter(i => i.tipo === 'Bulto').length;
+    totalBultos  += bultosSantiago(it);
   });
 
   const buildSummaryString = () =>
     activeTiendas.map(([cod, it]) => {
       const p = it.filter(i => i.tipo === 'Pallet').length;
-      const b = it.filter(i => i.tipo === 'Bulto').length;
+      const b = bultosSantiago(it);
       return `${cod}: ${[p > 0 ? `${p}P` : '', b > 0 ? `${b}B` : ''].filter(Boolean).join('+')}`;
     }).join(', ');
 
@@ -151,7 +152,7 @@ export function StepResumen() {
           {activeTiendas.map(([cod, it]) => {
             const t         = getTiendaSantiagoByCod(cod);
             const pallets   = it.filter(i => i.tipo === 'Pallet').length;
-            const bultos    = it.filter(i => i.tipo === 'Bulto').length;
+            const bultos    = bultosSantiago(it);
             const isOpen    = expanded === cod;
             const totalPeso = it.reduce((s, i) => s + i.peso, 0);
 

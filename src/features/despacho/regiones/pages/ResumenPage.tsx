@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { bultosNacional } from '../../shared/numeroCard';
 import { finalizarSlotUnion } from '@/features/despacho/shared/finalizarSlotUnion';
 import { logActividad } from '@/lib/actividad';
 import { useAuth } from '@/components/AuthProvider';
@@ -288,7 +289,7 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
         let pesoT = 0, valorT = 0;
         items.forEach(i => { pesoT += i.peso; valorT += i.valor || 0; });
         const pallets     = items.filter(i => i.pkg === 'pallet').length;
-        const bultos      = items.filter(i => i.pkg === 'box').length;
+        const bultos      = bultosNacional(items);
         const chocolates  = items.filter(i => i.pkg === 'chocolate').length;
 
         return (
