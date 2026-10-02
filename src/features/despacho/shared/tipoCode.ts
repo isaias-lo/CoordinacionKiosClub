@@ -18,8 +18,33 @@
    Al agregar un envase nuevo: agregarlo ACÁ. El default se lo traga en silencio. */
 
 import { esAdquisicion, esWebRetiro } from './adquisicion';
+import type { ClaseEnvase } from './numeroCard';
 
 export type TipoCodePicking = 'P' | 'B' | 'C' | 'CH' | 'A' | 'W';
+
+/**
+ * El camino de VUELTA: la letra guardada en `picking_pallets` → la clase de envase.
+ *
+ * Hace falta para poder preguntarle a una fila de la base cuánto puede pesar como máximo
+ * (`TOPE_DURO_KG`), que es lo que impide que un peso imposible leído de la balanza llegue a la
+ * planilla. Vive acá y no en el consumidor por la regla del encabezado: este archivo es la ÚNICA
+ * fuente del mapeo, y tener la mitad de la vuelta en otro lado es cómo volvió la duplicación.
+ *
+ * El default es 'pallet' porque es el tope más ALTO (1.000 kg): un código desconocido no debe
+ * hacer que algo se descarte por un techo que no le corresponde. Acá el default que muerde sería
+ * el restrictivo, al revés que en las dos funciones de arriba.
+ */
+export function claseDeTipoCode(code?: string | null): ClaseEnvase {
+  switch (String(code ?? '').trim().toUpperCase()) {
+    case 'B':  return 'bulto';
+    case 'C':  return 'contenedor';
+    case 'CH': return 'chocolate';
+    case 'A':  return 'adquisicion';
+    case 'W':  return 'webretiro';
+    case 'P':  return 'pallet';
+    default:   return 'pallet';
+  }
+}
 
 /** Santiago: 'Pallet' | 'Bulto' | 'Contenedor' | 'Chocolate' | 'Adquisicion' | 'WebRetiro'. */
 export function tipoCodeSantiago(tipo: string): TipoCodePicking {

@@ -10,6 +10,8 @@
 // los tests no arrastran el cliente de Supabase.
 
 import { esAgregado } from './adquisicion';
+import { TOPE_DURO_KG } from './pesoIngresado';
+import { claseDeTipoCode } from './tipoCode';
 
 export interface FilaDePeso {
   cod: string | null;
@@ -44,6 +46,9 @@ export interface FilaDePeso {
  *
  * 1. Una unidad con slot se cuenta UNA vez. La llave es el slot, nunca el slot MÁS el peso: una
  *    unidad física no se convierte en dos porque alguien la haya leído dos veces.
+ *
+ * 0. Y antes que nada: una fila SIN peso es un borrador —la del armado nace en 0— así que no
+ *    participa. La balanza resuelve el peso de una pesada; no convierte un borrador en una.
  *
  * 2. Su peso sale de `pesoDeSlot` —la balanza— cuando lo hay. Si no, del MAYOR de los que digan
  *    sus filas. El mayor y no el primero, porque el peso de un pallet solo CRECE: los chocolates
@@ -87,6 +92,17 @@ export function sumarPesosPorTienda(
       pesos.set(cod, (pesos.get(cod) ?? 0) + kg);   // sin slot: no hay cómo deduplicar
       continue;
     }
+    // UNA FILA SIN PESO ES UN BORRADOR, NO UNA PESADA.
+    //
+    // Cada unidad tiene normalmente DOS filas: la del armado, que nace en 0, y la del registro.
+    // Si el 0 pudiera tomar el peso de la balanza, las dos filas contarían y el día se duplicaría
+    // — medido: 01TPS del 29/09 pasaba de 1.073 a 2.176,8 kg.
+    //
+    // Y hay una razón más de fondo: este cuadro existe para ENCONTRAR LO QUE NO SE REGISTRÓ. Si
+    // una unidad pesada pero nunca registrada sumara igual, la tienda cuadraría sola y el hueco
+    // se volvería invisible. La balanza acá RESUELVE el peso de una pesada; no convierte un
+    // borrador en una.
+    if (kg <= 0) continue;
     const g = porSlot.get(f.picking_slot_id) ?? { cod, pesos: [] };
     g.pesos.push(kg);
     porSlot.set(f.picking_slot_id, g);
@@ -128,4 +144,36 @@ export function conflictosDePeso(filas: readonly FilaDePeso[]): ConflictoDePeso[
   return [...porSlot.entries()]
     .filter(([, g]) => g.pesos.size > 1)
     .map(([slot, g]) => ({ slot, cod: g.cod, pesos: [...g.pesos].sort((a, b) => b - a) }));
+}
+
+/**
+ * El peso de la balanza, o 0 si no es creíble.
+ *
+ * ── POR QUÉ UNA FUENTE AUTORITATIVA NECESITA UN TECHO ──────────────────────────────────────────
+ *
+ * Desde que el cruce resuelve el peso acá, `picking_pallets` manda sobre lo que lee Jefatura, sin
+ * que nadie lo revise en el medio. Un tipeo pasa derecho.
+ *
+ * No es hipotético: el slot 132 —el P1 de 55ITA del 28/09— tiene **9.357,5 kg**, el incidente de
+ * la coma del #608. Odoo dice que esa tienda recibió 606,28 kg en TODO el día. La fila registrada
+ * sí se corrigió a 335,7 por decisión del coordinador; el slot nunca. Leyendo la balanza a ciegas,
+ * 55ITA habría vuelto a la planilla con 9.594,4 kg.
+ *
+ * El tope es el MISMO `TOPE_DURO_KG` que el campo de peso usa desde el #608 —medido sobre 7.194
+ * pesos reales— así que no se inventa un número nuevo: lo que la pantalla no deja escribir, esto
+ * no lo deja publicar. Por encima del techo manda la fila registrada, que es lo que una persona
+ * revisó.
+ *
+ * Es UN solo slot en toda la base, verificado. El techo no está para los que hay: está para que
+ * el que venga no llegue a la hoja.
+ */
+export function pesoCreible(peso: number | null, tipoCode: string | null, slot?: number): number {
+  const kg = Number(peso) || 0;
+  if (kg <= 0) return 0;
+  const tope = TOPE_DURO_KG[claseDeTipoCode(tipoCode)];
+  if (kg > tope) {
+    console.warn(`[cruce] unidad ${slot ?? '?'}: la balanza dice ${kg} kg, sobre el techo de ${tope} para ${tipoCode} → se usa lo registrado`);
+    return 0;
+  }
+  return kg;
 }

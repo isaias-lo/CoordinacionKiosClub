@@ -26,10 +26,12 @@ import { valoresDeFila } from '@/features/despacho/shared/hojaCrucePesos';
 // La suma vive en un módulo PURO y se re-exporta: un solo lugar donde se decide cuánto pesó una
 // tienda, compartido con el cargador de días pasados.
 export {
-  sumarPesosPorTienda, conflictosDePeso,
+  sumarPesosPorTienda, conflictosDePeso, pesoCreible,
   type FilaDePeso, type ConflictoDePeso,
 } from '@/features/despacho/shared/sumaPesosBodega';
-import { sumarPesosPorTienda, conflictosDePeso, type FilaDePeso } from '@/features/despacho/shared/sumaPesosBodega';
+import {
+  sumarPesosPorTienda, conflictosDePeso, pesoCreible, type FilaDePeso,
+} from '@/features/despacho/shared/sumaPesosBodega';
 
 const ODOO_URL = process.env.NEXT_PUBLIC_ODOO_URL ?? '';
 const ODOO_DB  = process.env.NEXT_PUBLIC_ODOO_DB ?? '';
@@ -147,16 +149,18 @@ export async function pesosDeLaBalanza(
   for (let i = 0; i < ids.length; i += 500) {
     const { data, error } = await sb
       .from('picking_pallets')
-      .select('id,peso_kg')
+      .select('id,peso_kg,tipo')
       .in('id', ids.slice(i, i + 500));
     if (error) throw new Error(`picking_pallets: ${error.message}`);
     for (const r of data ?? []) {
-      const kg = Number((r as { peso_kg: number | null }).peso_kg) || 0;
-      if (kg > 0) out.set((r as { id: number }).id, kg);
+      const f = r as { id: number; peso_kg: number | null; tipo: string | null };
+      const kg = pesoCreible(f.peso_kg, f.tipo, f.id);
+      if (kg > 0) out.set(f.id, kg);
     }
   }
   return out;
 }
+
 
 
 
