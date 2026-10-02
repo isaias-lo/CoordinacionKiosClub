@@ -32,7 +32,7 @@ import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
 import { avanceTienda, claseUnidad } from '@/features/despacho/shared/unidadVisual';
 import { useTarjetaActiva } from '@/features/despacho/shared/useTarjetaActiva';
 import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad } from '@/features/despacho/shared/TiendaAbierta';
-import { FilaTienda, BarraDelDia, FiltroTiendas, RotuloLista, PieLista } from '@/features/despacho/shared/ListaTiendas';
+import { FilaTienda, BarraDelDia, FiltroTiendas, RotuloLista, PieLista } from '@/features/despacho/shared/ListaTiendasUI';
 import { avanceFila, estadoLista, resumenDia, filtroVigente, pasaFiltro, type FiltroLista } from '@/features/despacho/shared/listaTiendas';
 import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
 import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';

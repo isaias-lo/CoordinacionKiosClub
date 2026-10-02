@@ -42,7 +42,7 @@ import { UndoBar } from '../../shared/UndoBar';
 import { tipoCodeSantiago } from '../../shared/tipoCode';
 import { registrarTiendasSantiagoBD } from '../data/tiendasSantiago';
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
-import { FilaTienda, BarraDelDia, FiltroTiendas, RotuloLista, PieLista } from '@/features/despacho/shared/ListaTiendas';
+import { FilaTienda, BarraDelDia, FiltroTiendas, RotuloLista, PieLista } from '@/features/despacho/shared/ListaTiendasUI';
 import { avanceFila, estadoLista, resumenDia, filtroVigente, pasaFiltro, type FiltroLista } from '@/features/despacho/shared/listaTiendas';
 import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
 import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';
