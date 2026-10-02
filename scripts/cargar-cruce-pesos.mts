@@ -13,9 +13,7 @@
 import fs from 'node:fs';
 import { armarCruce, type MovimientoOdoo } from '../src/features/despacho/shared/cruceDePesos';
 import { valoresDeFila } from '../src/features/despacho/shared/hojaCrucePesos';
-import { esAgregado } from '../src/features/despacho/shared/adquisicion';
-
-type Fila = { cod: string; peso_kg: number | null; tipo: string | null };
+import { sumarPesosPorTienda, conflictosDePeso, type FilaDePeso } from '../src/features/despacho/shared/sumaPesosBodega';
 
 const env = Object.fromEntries(
   fs.readFileSync(new URL('../.env.local', import.meta.url), 'utf8').split('\n').map(l => {
@@ -80,21 +78,46 @@ async function rest<T>(ruta: string): Promise<T[]> {
   }
 }
 
+/**
+ * El peso que marcó la balanza para cada unidad, de `picking_pallets`, POR ID.
+ *
+ * Por id y no por fecha: la columna `fecha` de `despacho_*` mezcla el día de armado con el de
+ * despacho, así que filtrar por día dejaría afuera justo las unidades cuyo sello no coincide con
+ * su slot. Solo pesos usables (> 0): una unidad sin peso en la balanza no borra el de su fila.
+ */
+async function pesosDeLaBalanza(
+  slotIds: readonly (number | null | undefined)[],
+): Promise<Map<number, number>> {
+  const ids = [...new Set(slotIds.filter((x): x is number => typeof x === 'number'))];
+  const out = new Map<number, number>();
+  for (let i = 0; i < ids.length; i += 500) {   // la URL de PostgREST tiene largo máximo
+    const lote = ids.slice(i, i + 500);
+    const rows = await rest<{ id: number; peso_kg: number | null }>(
+      `picking_pallets?select=id,peso_kg&id=in.(${lote.join(',')})`);
+    for (const r of rows) {
+      const kg = Number(r.peso_kg) || 0;
+      if (kg > 0) out.set(r.id, kg);
+    }
+  }
+  return out;
+}
+
 async function deLaBase() {
   const tiendas = await rest<{ codigo: string; nombre: string }>('tiendas?select=codigo,nombre');
   const [rm, reg] = await Promise.all([
-    rest<Fila>(`despacho_rm?select=cod,peso_kg,tipo&fecha=eq.${encodeURIComponent(fechaDDMM)}`),
-    rest<Fila>(`despacho_regiones?select=cod,peso_kg,tipo&fecha=eq.${encodeURIComponent(fechaDDMM)}`),
+    rest<FilaDePeso>(`despacho_rm?select=cod,peso_kg,tipo,picking_slot_id&fecha=eq.${encodeURIComponent(fechaDDMM)}`),
+    rest<FilaDePeso>(`despacho_regiones?select=cod,peso_kg,tipo,picking_slot_id&fecha=eq.${encodeURIComponent(fechaDDMM)}`),
   ]);
-  const pesos = new Map<string, number>();
-  for (const f of [...rm, ...reg]) {
-    const cod = String(f.cod ?? '').toUpperCase();
-    if (!cod) continue;
-    // Los agregados quedan fuera, igual que en `lib/crucePesosDia.ts`: una adquisición y un
-    // web/retiro no existen del lado de Odoo, así que sumarlos inflaría el TOTAL BODEGA.
-    if (esAgregado(f.tipo)) continue;
-    pesos.set(cod, (pesos.get(cod) ?? 0) + (Number(f.peso_kg) || 0));
+  const filas = [...rm, ...reg];
+  // El peso de cada unidad sale de LA BALANZA, por id. Antes esto era una suma propia sin ningún
+  // dedupe: cargar un día con unidades registradas dos veces escribía el doble en la planilla.
+  const balanza = await pesosDeLaBalanza(filas.map(f => f.picking_slot_id));
+  for (const c of conflictosDePeso(filas)) {
+    const elegido = (balanza.get(c.slot) ?? 0) > 0
+      ? `${balanza.get(c.slot)} (balanza)` : `${Math.max(...c.pesos)} (el mayor)`;
+    console.warn(`  ⚠ ${c.cod} unidad ${c.slot}: pesos distintos ${c.pesos.join(' / ')} → se usa ${elegido}`);
   }
+  const pesos = sumarPesosPorTienda(filas, balanza);
   return {
     nombres: new Map(tiendas.map(r => [r.codigo.toUpperCase(), r.nombre])),
     codigos: new Set(tiendas.map(r => r.codigo.toUpperCase())),
@@ -118,7 +141,9 @@ const valores = cruces.map(cruce => valoresDeFila({
 const totalOdoo = cruces.reduce((s, c) => s + c.totalOdoo, 0);
 console.log(`${fechaDDMM}  ·  movimientos de Odoo: ${movs.length}  ·  tiendas en la tabla: ${cruces.length}`);
 console.log(`TOTAL ODOO: ${totalOdoo.toFixed(1)} kg  ·  con peso de Bodega: ${valores.filter(v => v['TOTAL BODEGA'] !== '').length}`);
-for (const v of valores.slice(0, 5)) {
+// En seco se muestran TODAS: el paso en seco existe para revisar lo que se va a escribir, y una
+// muestra de 5 de 29 no deja revisar nada. Al escribir, con 5 alcanza para ver que salió.
+for (const v of (escribir ? valores.slice(0, 5) : valores)) {
   console.log(`   ${v['CÓDIGO']}  odoo=${String(v['TOTAL ODOO']).padStart(8)}  bodega=${String(v['TOTAL BODEGA']).padStart(8)}  dif=${String(v['% DIF']).padStart(7)}%`);
 }
 
