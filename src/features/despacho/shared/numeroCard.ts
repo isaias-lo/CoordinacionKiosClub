@@ -358,3 +358,47 @@ export function desempatarOrdenNacional<T extends { pkg: string; orden?: string 
   return desempatarPorClase(items, i => claseNacional(i.pkg))
     .map(({ item, clase, numero }) => ({ ...item, orden: ordenNacional(clase, numero) }));
 }
+
+// ── LOS BULTOS QUE VIAJAN ─────────────────────────────────────────────────────────────────────
+//
+// Una adquisición y un web/retiro **suben al camión**. Son un paquete más que el chofer carga, le
+// ocupa lugar y tiene que figurar en lo que el Enrutador reparte. Decisión del coordinador,
+// 02/10/2026: van sumados a los BULTOS.
+//
+// Hasta ahora no figuraban en ningún lado. Diez contadores distintos preguntaban
+// `i.tipo === 'Bulto'` —o `i.pkg === 'box'`—, que NUNCA coincide con 'Adquisicion' ni con
+// 'WebRetiro', así que los agregados salían del conteo en la cabecera de Bodega, en el resumen por
+// tienda, en el banner del borrador y en `despacho_sesion`, que es de donde el Enrutador lee. En
+// 01TPS el 02/10 la cabecera decía «13 pesados» y el bloque de cruce «14 unidades»: la que faltaba
+// era la adquisición.
+//
+// Es el MISMO error que el #610 arregló en la numeración y que `adquisicion.ts` ya documenta. Que
+// haya vuelto en los contadores es la señal de que la regla tenía que vivir en UN solo lugar.
+//
+// ── DÓNDE *NO* VAN ────────────────────────────────────────────────────────────────────────────
+//
+// En el CRUCE DE PESOS no entran, y eso no cambia: ahí se compara el abastecimiento de Odoo contra
+// lo que Bodega pesó de ESE abastecimiento, y una compra o un pedido del cliente no existen del
+// lado de Odoo. Sumarlos inflaría ese lado. Son dos preguntas distintas: «¿cuántos paquetes sube
+// el camión?» los incluye; «¿cuánto de lo que mandó Odoo pesamos?» no.
+//
+// Tampoco en los condicionales de PANTALLA (`row.tipo === 'Bulto'` para pedir largo y ancho): una
+// adquisición no lleva medidas. Esos quedan como están, a propósito.
+
+/** Las clases que el chofer carga como un bulto. */
+const VIAJAN_COMO_BULTO: ReadonlySet<ClaseEnvase> = new Set(['bulto', 'adquisicion', 'webretiro']);
+
+/** Cuántos paquetes viajan como bulto: el bulto propiamente dicho más los agregados. */
+export function bultosQueViajan<T>(items: readonly T[], claseDe: (item: T) => ClaseEnvase): number {
+  return items.filter(i => VIAJAN_COMO_BULTO.has(claseDe(i))).length;
+}
+
+/** RM/Costa, por `tipo`. */
+export function bultosSantiago<T extends { tipo: string }>(items: readonly T[]): number {
+  return bultosQueViajan(items, i => claseSantiago(i.tipo));
+}
+
+/** Nacional, por `pkg`. */
+export function bultosNacional<T extends { pkg: string }>(items: readonly T[]): number {
+  return bultosQueViajan(items, i => claseNacional(i.pkg));
+}

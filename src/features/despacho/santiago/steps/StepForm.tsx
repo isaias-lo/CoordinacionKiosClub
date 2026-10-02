@@ -13,7 +13,7 @@ import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
 import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
 import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
-import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, ordenDeItem, renumerarOrden, etiquetaCard, claseSantiago } from '@/features/despacho/shared/numeroCard';
+import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, ordenDeItem, renumerarOrden, etiquetaCard, claseSantiago, bultosSantiago } from '@/features/despacho/shared/numeroCard';
 import { leerPeso, limpiarTecleo, avisoDePeso, excedeTopeDuro } from '@/features/despacho/shared/pesoIngresado';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
 import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
@@ -748,7 +748,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const conocidas = Object.keys(items);
     Object.entries(items).forEach(([cod, list]) => {
       const p  = list.filter(i => i.tipo === 'Pallet').length;
-      const b  = list.filter(i => i.tipo === 'Bulto').length;
+      const b  = bultosSantiago(list);   // los agregados viajan como bulto — ver numeroCard
       const c  = list.filter(i => i.tipo === 'Contenedor').length;
       const ch = list.filter(i => i.tipo === 'Chocolate').length;
       if (p > 0 || b > 0 || c > 0 || ch > 0) counts[cod] = { p, b, c, ch };
@@ -938,7 +938,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
 
   const allItems           = Object.values(items).flat();
   const statP              = allItems.filter(i => i.tipo === 'Pallet').length;
-  const statB              = allItems.filter(i => i.tipo === 'Bulto').length;
+  const statB              = bultosSantiago(allItems);
   const statCH             = allItems.filter(i => i.tipo === 'Chocolate').length;
   const activeTiendasCount = Object.keys(items).filter(k => items[k].length > 0).length;
   // Contador "terminadas/total del día" por sección (desde todayTiendas = todas las del día,
@@ -1004,7 +1004,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     nombre: getTiendaSantiagoByCod(cod)?.tienda,
     g: (getTiendaSantiagoByCod(cod)?.region === 'VR' ? 'costa' : 'rm') as 'costa' | 'rm',
     p:  it.filter(i => i.tipo === 'Pallet').length,
-    b:  it.filter(i => i.tipo === 'Bulto').length,
+    b:  bultosSantiago(it),
     c:  it.filter(i => i.tipo === 'Contenedor').length,
     ch: it.filter(i => i.tipo === 'Chocolate').length,
   }));
@@ -1014,7 +1014,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const rutasInput = activeTiendas.map(([cod, it]) => ({
       c: cod,
       p: it.filter(i => i.tipo === 'Pallet').length,
-      b: it.filter(i => i.tipo === 'Bulto').length,
+      b: bultosSantiago(it),
       ch: it.filter(i => i.tipo === 'Chocolate').length,  // chocolates → detalle; suman al total de bultos
     })).filter(t => t.p > 0 || t.b > 0 || t.ch > 0);
     localStorage.setItem('rutasInput', JSON.stringify(rutasInput));
@@ -2387,7 +2387,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             activeTiendas.map(([cod, it]) => {
               const t           = getTiendaSantiagoByCod(cod);
               const pallets     = it.filter(i => i.tipo === 'Pallet').length;
-              const bultos      = it.filter(i => i.tipo === 'Bulto').length;
+              const bultos      = bultosSantiago(it);
               const contenedores = it.filter(i => i.tipo === 'Contenedor').length;
               const isOpen      = resumenExpanded.has(cod);
               const totalPeso = it.reduce((s, i) => s + i.peso, 0);

@@ -61,7 +61,7 @@ import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/sha
 import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo, pesoPalletConCajas,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
 import { abreviaturaContenido, nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
-import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional } from '@/features/despacho/shared/numeroCard';
+import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional, bultosNacional } from '@/features/despacho/shared/numeroCard';
 import { leerPeso, limpiarTecleo, avisoDePeso, excedeTopeDuro } from '@/features/despacho/shared/pesoIngresado';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
 import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
@@ -516,7 +516,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       conocidas.push(tienda.cod);
       if (!items.length) return;
       const p  = items.filter(i => i.pkg === 'pallet').length;
-      const b  = items.filter(i => i.pkg === 'box').length;
+      const b  = bultosNacional(items);   // los agregados viajan como bulto — ver numeroCard
       const c  = items.filter(i => i.pkg === 'contenedor').length;
       const ch = items.filter(i => i.pkg === 'chocolate').length;
       if (p > 0 || b > 0 || c > 0 || ch > 0) counts[tienda.cod] = { p, b, c, ch };
@@ -945,7 +945,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
   const allDispatchItems = Object.values(dispatchData).flat();
   const statP = allDispatchItems.filter(i => i.pkg === 'pallet').length;
-  const statB = allDispatchItems.filter(i => i.pkg === 'box').length;
+  const statB = bultosNacional(allDispatchItems);
   const statCH = allDispatchItems.filter(i => i.pkg === 'chocolate').length;
   const activeTiendasCount = Object.entries(dispatchData).filter(([, its]) => its.length > 0).length;
   // Contador "terminadas/total del día" (Nacional): terminada = tienda con carga registrada.
@@ -969,7 +969,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       nombre: TIENDAS[name]?.name ?? name,
       g:      'fal' as const,
       p:  its.filter(i => i.pkg === 'pallet').length,
-      b:  its.filter(i => i.pkg === 'box').length,
+      b:  bultosNacional(its),
       c:  its.filter(i => i.pkg === 'contenedor').length,
       ch: its.filter(i => i.pkg === 'chocolate').length,
     }));
