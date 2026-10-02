@@ -120,7 +120,22 @@ async function deLaBase() {
     console.warn(`  ⚠ ${c.cod} unidad ${c.slot}: pesos distintos ${c.pesos.join(' / ')} → se usa ${elegido}`);
   }
   const pesos = sumarPesosPorTienda(filas, balanza);
+  // Lo que marcó la balanza ese día, por tienda — la columna TOTAL PESADO. Va a la FUENTE y no a
+  // las filas registradas, porque la unidad que todavía no se mandó es justo la que hay que
+  // mostrar. Mismas tres reglas que `pesadoEnBodega` en la app: por día de armado, sin agregados,
+  // y el peso por `pesoCreible`.
+  const pesados = new Map<string, number>();
+  for (const r of await rest<{ id: number; store_cod: string | null; tipo: string | null;
+                               peso_kg: number | null; is_active: boolean | null; combined_into: number | null }>(
+    `picking_pallets?select=id,store_cod,tipo,peso_kg,is_active,combined_into&date=eq.${fecha}`)) {
+    const cod = String(r.store_cod ?? '').trim().toUpperCase();
+    if (!cod || r.is_active === false || r.combined_into != null) continue;
+    if (r.tipo === 'A' || r.tipo === 'W') continue;
+    const kg = pesoCreible(r.peso_kg, r.tipo, r.id);
+    if (kg > 0) pesados.set(cod, (pesados.get(cod) ?? 0) + kg);
+  }
   return {
+    pesados,
     nombres: new Map(tiendas.map(r => [r.codigo.toUpperCase(), r.nombre])),
     codigos: new Set(tiendas.map(r => r.codigo.toUpperCase())),
     pesos,
@@ -137,6 +152,7 @@ const valores = cruces.map(cruce => valoresDeFila({
   nombre: base.nombres.get(cruce.codigo) ?? '',
   // `null` y no 0: si Bodega no pesó, la celda queda vacía. Un cero diría "no vino nada".
   kgBodega: base.pesos.has(cruce.codigo) ? (base.pesos.get(cruce.codigo) as number) : null,
+  kgPesado: base.pesados.has(cruce.codigo) ? (base.pesados.get(cruce.codigo) as number) : null,
   actualizado: ahora,
 }));
 
@@ -146,7 +162,8 @@ console.log(`TOTAL ODOO: ${totalOdoo.toFixed(1)} kg  ·  con peso de Bodega: ${v
 // En seco se muestran TODAS: el paso en seco existe para revisar lo que se va a escribir, y una
 // muestra de 5 de 29 no deja revisar nada. Al escribir, con 5 alcanza para ver que salió.
 for (const v of (escribir ? valores.slice(0, 5) : valores)) {
-  console.log(`   ${v['CÓDIGO']}  odoo=${String(v['TOTAL ODOO']).padStart(8)}  bodega=${String(v['TOTAL BODEGA']).padStart(8)}  dif=${String(v['% DIF']).padStart(7)}%`);
+  const falta = v['TOTAL PESADO'] !== '' && v['TOTAL BODEGA'] === '' ? '  ← pesado, SIN REGISTRAR' : '';
+  console.log(`   ${v['CÓDIGO']}  odoo=${String(v['TOTAL ODOO']).padStart(8)}  pesado=${String(v['TOTAL PESADO']).padStart(8)}  registrado=${String(v['TOTAL BODEGA']).padStart(8)}  dif=${String(v['% DIF']).padStart(7)}${falta}`);
 }
 
 if (!escribir) {

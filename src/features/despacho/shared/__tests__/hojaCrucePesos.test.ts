@@ -182,7 +182,11 @@ describe('ALIAS_COLUMNA — renombraron TOTAL BODEGA a «TOTAL Fisico»', () => 
     // de esa noche sin que nadie lo notara.
     const faltantes = ENCABEZADO_CRUCE.filter(
       c => indicesDeEncabezado(HOJA_REAL)[normalizarColumna(c)] === undefined);
-    expect(faltantes).toEqual([]);
+    // Lo que se prueba acá es que TOTAL BODEGA NO queda huérfana, que es lo que el alias resuelve.
+    expect(faltantes).not.toContain('TOTAL BODEGA');
+    // `TOTAL PESADO` sí falta, y está bien: es una columna NUEVA que la hoja todavía no tiene y
+    // que el escritor va a agregar al final. No es un renombre sin alias, es un estreno.
+    expect(faltantes).toEqual(['TOTAL PESADO']);
   });
 
   it('con acento también, y sin importar mayúsculas', () => {
@@ -294,5 +298,92 @@ describe('aFilaPosicional con fórmula', () => {
     const previa = ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '=A2&" ok"'];
     const fila = aFilaPosicional(valores, conNota, previa, 2);
     expect(fila[16]).toBe('=A2&" ok"');
+  });
+});
+
+// ── TOTAL PESADO: LA SEGUNDA PREGUNTA ──────────────────────────────────────────────────────────
+//
+// `TOTAL BODEGA` (en la hoja «TOTAL Fisico») contesta ¿ya se mandó? · `TOTAL PESADO` contesta
+// ¿cuánto marcó la balanza? Una sola columna no puede contestar las dos, y el 02/10/2026 eso costó
+// dos correcciones de la planilla en un día, en direcciones opuestas.
+describe('TOTAL PESADO', () => {
+  it('está en el encabezado del sistema', () => {
+    expect(ENCABEZADO_CRUCE).toContain('TOTAL PESADO');
+  });
+
+  it('EL CASO de 26ALC: pesado con número y registrado VACÍO', () => {
+    // 194,7 kg en la balanza (CH1 31,2 + P1 163,5) y nadie apretó REGISTRAR. Antes la hoja decía
+    // una celda vacía y se leía "esta tienda no se pesó", que era falso.
+    const v = valoresDeFila({ ...base, kgBodega: null, kgPesado: 194.7 });
+    expect(v['TOTAL PESADO']).toBe(194.7);
+    expect(v['TOTAL BODEGA']).toBe('');
+  });
+
+  it('los dos vacíos: carga que nadie tocó — esa es la alarma de verdad', () => {
+    const v = valoresDeFila({ ...base, kgBodega: null, kgPesado: null });
+    expect(v['TOTAL PESADO']).toBe('');
+    expect(v['TOTAL BODEGA']).toBe('');
+  });
+
+  it('los dos con número y distintos: se registró con una foto vieja del estado', () => {
+    // 31TLC el 02/10: la balanza decía 665,65 y el registro mandó 639,5.
+    const v = valoresDeFila({ ...base, kgBodega: 639.5, kgPesado: 665.65 });
+    expect(v['TOTAL PESADO']).toBe(665.65);
+    expect(v['TOTAL BODEGA']).toBe(639.5);
+  });
+
+  it('vacío y NO cero cuando no hay nada pesado: un 0 diría "se pesó y no pesó nada"', () => {
+    expect(valoresDeFila({ ...base, kgBodega: null, kgPesado: 0 })['TOTAL PESADO']).toBe('');
+    expect(valoresDeFila({ ...base, kgBodega: null, kgPesado: -5 })['TOTAL PESADO']).toBe('');
+  });
+
+  it('si no se le pasa, la celda queda vacía y no rompe nada', () => {
+    const v = valoresDeFila({ ...base, kgBodega: 500 });
+    expect(v['TOTAL PESADO']).toBe('');
+    expect(v['TOTAL BODEGA']).toBe(500);
+  });
+
+  it('NO cambia qué compara % DIF: sigue siendo lo registrado contra Odoo', () => {
+    // Cambiar el indicador que mira Jefatura es una decisión del coordinador, no un efecto
+    // secundario de agregar una columna.
+    const conPesado = valoresDeFila({ ...base, kgBodega: 500, kgPesado: 900 });
+    const sinPesado = valoresDeFila({ ...base, kgBodega: 500 });
+    expect(conPesado['KG DIF']).toBe(sinPesado['KG DIF']);
+  });
+
+  it('la hoja de hoy no la tiene: el escritor la agrega al final', () => {
+    const idx = indicesDeEncabezado(HOJA_REAL);
+    expect(idx[normalizarColumna('TOTAL PESADO')]).toBeUndefined();
+    const conLaNueva = [...HOJA_REAL, 'TOTAL PESADO'];
+    expect(indicesDeEncabezado(conLaNueva)[normalizarColumna('TOTAL PESADO')]).toBe(16);
+  });
+
+  it('en la hoja real, el valor cae en la columna nueva y no corre a ninguna', () => {
+    const enc = [...HOJA_REAL, 'TOTAL PESADO'];
+    const fila = aFilaPosicional(
+      valoresDeFila({ ...base, kgBodega: 639.5, kgPesado: 665.65 }), enc);
+    expect(fila[4]).toBe(639.5);     // TOTAL Fisico, la E, sigue donde estaba
+    expect(fila[16]).toBe(665.65);   // TOTAL PESADO, la Q
+    expect(fila[0]).toBe('28/09/2026');
+    expect(fila[1]).toBe('24SPP');
+  });
+});
+
+describe('ALIAS_COLUMNA — y el renombre que queda disponible', () => {
+  it('si renombrás «TOTAL Fisico» a «TOTAL REGISTRADO», sigue funcionando', () => {
+    // Es el nombre que de verdad describe lo que hay adentro. Queda a una celda de distancia, sin
+    // tocar código.
+    const hoja = HOJA_REAL.map(c => (c === 'TOTAL Fisico' ? 'TOTAL REGISTRADO' : c));
+    expect(indicesDeEncabezado(hoja)[normalizarColumna('TOTAL BODEGA')]).toBe(4);
+  });
+
+  it('y la fórmula de % DIF se reapunta sola, porque sale del encabezado', () => {
+    const hoja = [...HOJA_REAL.map(c => (c === 'TOTAL Fisico' ? 'TOTAL REGISTRADO' : c)), 'TOTAL PESADO'];
+    expect(formulaPctDif(hoja, 2)).toBe('=(E2-D2)/D2');
+  });
+
+  it('con la columna nueva en medio, la fórmula apunta a las letras nuevas', () => {
+    const hoja = ['FECHA', 'CÓDIGO', 'TIENDA', 'TOTAL ODOO', 'TOTAL PESADO', 'TOTAL Fisico', '% DIF'];
+    expect(formulaPctDif(hoja, 5)).toBe('=(F5-D5)/D5');
   });
 });

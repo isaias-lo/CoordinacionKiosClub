@@ -50,6 +50,33 @@ export const ENCABEZADO_CRUCE = [
   'REF CHOCOLATE',
   'KG CHOCOLATE',
   'TOTAL ODOO',
+  // ── DOS COLUMNAS, PORQUE SON DOS PREGUNTAS ──────────────────────────────────────────────────
+  //
+  // `TOTAL BODEGA` —que en la hoja se llama «TOTAL Fisico»— contesta **¿ya se mandó?**: sale de
+  // `despacho_rm` / `despacho_regiones`, que se llenan cuando alguien aprieta REGISTRAR.
+  //
+  // `TOTAL PESADO` contesta **¿cuánto marcó la balanza?**: sale de `picking_pallets`, y existe
+  // desde el momento en que se pesa.
+  //
+  // Una sola columna no puede contestar las dos, y el 02/10/2026 eso costó dos correcciones de la
+  // planilla en un día, en direcciones opuestas: primero se llenó «Fisico» con la balanza y
+  // aparecieron 18 tiendas con peso sin que nadie las hubiera registrado; después se devolvió a lo
+  // registrado y 26ALC quedó vacía aunque tenía 194,7 kg en la balanza. Las dos veces el número
+  // era real; lo que estaba mal era que la celda significara dos cosas.
+  //
+  // Con las dos columnas la hoja dice la verdad completa de un vistazo:
+  //
+  //     PESADO con número + REGISTRADO vacío  →  «se pesó, falta apretar REGISTRAR»
+  //     los dos vacíos                        →  carga que nadie tocó  (la alarma de verdad)
+  //     los dos con número y distintos        →  se registró con una foto vieja del estado
+  //
+  // Hoy, para saber lo primero, hay que entrar a Bodega a mirar. Medido el 02/10: 11.531 kg
+  // pesados en 18 tiendas que la planilla no tenía forma de mostrar.
+  //
+  // `% DIF` y `KG DIF` NO cambian: siguen comparando lo REGISTRADO contra Odoo. Cambiar qué
+  // compara el indicador que mira Jefatura es una decisión suya, no un efecto secundario de
+  // agregar una columna.
+  'TOTAL PESADO',
   'TOTAL BODEGA',
   // Los kilos de diferencia, al lado del porcentaje: responden cosas distintas y las dos hacen
   // falta. Un −53,8% no dice si faltan 400 kg o 4.
@@ -80,6 +107,10 @@ export function normalizarColumna(nombre: string): string {
  */
 export const ALIAS_COLUMNA: Record<string, string> = {
   'TOTAL FISICO': 'TOTAL BODEGA',
+  // Para que renombrar «TOTAL Fisico» a «TOTAL REGISTRADO» en la hoja sea una decisión de una
+  // sola celda y no un cambio de código. Es el nombre que de verdad describe lo que hay adentro:
+  // «físico» promete la balanza y lo que carga es lo que se mandó. Ver `ENCABEZADO_CRUCE`.
+  'TOTAL REGISTRADO': 'TOTAL BODEGA',
 };
 
 /**
@@ -155,8 +186,10 @@ export interface DatosFila {
   cruce: FilaCruce;
   /** Nombre de la tienda, para que la hoja se lea sin buscar el código. */
   nombre: string;
-  /** Kilos pesados en Bodega, o `null` si todavía no se pesó. */
+  /** Kilos REGISTRADOS (lo que se mandó al apretar REGISTRAR), o `null` si no hay ninguno. */
   kgBodega: number | null;
+  /** Kilos que marcó LA BALANZA, de `picking_pallets`. `null` si esa tienda no tiene nada pesado. */
+  kgPesado?: number | null;
   /** Momento de la escritura, ISO. */
   actualizado: string;
 }
@@ -193,6 +226,11 @@ export function valoresDeFila(d: DatosFila): Record<string, string | number> {
   // del sistema: `!peso || peso <= 0`.
   const sinPesar = d.kgBodega === null || d.kgBodega === undefined || d.kgBodega <= 0;
   v['TOTAL BODEGA'] = sinPesar ? '' : redondear(d.kgBodega as number);
+  // Misma regla para la balanza: vacío y no 0. Un 0 acá diría "se puso en la balanza y no pesó
+  // nada", que es otra afirmación. Vacío dice "no hay nada pesado de esta tienda", que es la
+  // verdad cuando el día recién empieza.
+  const nadaPesado = d.kgPesado === null || d.kgPesado === undefined || d.kgPesado <= 0;
+  v['TOTAL PESADO'] = nadaPesado ? '' : redondear(d.kgPesado as number);
   const pct = sinPesar ? null : pctDiferencia(d.kgBodega as number, d.cruce.totalOdoo);
   v['% DIF'] = pct === null ? '' : Math.round(pct * 10) / 10;
   // Sin pesar queda VACÍO, igual que el porcentaje: un "−606" acá se leería como que faltan 606
