@@ -49,6 +49,7 @@ import { PresenciaBadge } from '../../shared/PresenciaBadge';
 import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconciliarFormRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
+import { mismaCargaEscrita } from '../../shared/adoptarItemRemoto';
 import { buscarPallet } from '../../shared/buscarPallet';
 import { esDeOtroEspejo, espejoDeTienda, avisoDeOtroEspejo } from '../../shared/duenoDeTienda';
 import { fechaISOLocal } from '../../shared/fechaLocal';
@@ -157,6 +158,9 @@ interface FormRow {
   // "Agregar" (guardado normal).
   mergeReopened?: boolean;
   mergeMotivo?: MotivoReapertura;
+  /** Se reabrió con «Editar». El ítem sigue guardado hasta que se vuelva a guardar: si nadie
+   *  termina la edición, no se pierde nada. Ver `puedeAdoptar`. */
+  editando?: boolean;
 }
 
 // La tarjeta que se está pesando lleva el color de su tipo en el borde; los campos de peso y alto
@@ -573,6 +577,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               guia: '', valor: '', pickingSlotId: s.id,
             };
       },
+      // El chocolate se escribe en bruto y se guarda neto: no se compara.
+      (row, it) => row.pkg !== 'chocolate' && mismaCargaEscrita(row, it),
     ));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedItems, selectedTienda, selectedSlotsFull]);
@@ -1426,7 +1432,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // (el reintento de arriba), la fila se quedaba sin él. El backfill pregunta por los slots que
     // las filas declaran (`slotsRepresentados`), no encontraba este, y agregaba una SEGUNDA tarjeta
     // para la misma unidad. RM/Costa ya lo hacía (StepForm: mismo punto); acá faltaba.
-    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId, traSuma: false } : r));
+    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId, traSuma: false, editando: false } : r));
     // El toast "Agregado sin pesar" lo dispara el caller (botón "Sin pesar") justo después.
     if (!sinPesar) showToast(`✓ ${item.orden} ${previo ? 'actualizado' : 'agregado'}`, '#16A34A');
     logActividad({ accion: 'registrar_item', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
@@ -1459,12 +1465,17 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     if (!selectedTienda) return;
     const row = formRows.find(r => r.id === rowId);
     if (!row?.savedItem) return;
-    const currentItems = dispatchData[selectedTienda] || [];
-    // Match por clave ESTABLE (pickingSlotId), no por pkg+orden: dos chocolates comparten pkg y
-    // pueden tener el mismo orden → el match frágil borraba el ítem equivocado (perdía el otro).
-    const idx = currentItems.findIndex(i => sameStableItem(i, row.savedItem));
-    if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda, idx });
-    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, saved: false, savedItem: undefined } : r));
+    // El ítem NO se borra al abrir la edición. Antes sí, sin lápida: si la persona salía de la
+    // tienda sin volver a guardar, la unidad reaparecía «sin guardar» con sus datos (los tenía el
+    // slot de Picking), y otro equipo la devolvía con el peso viejo. Ahora queda guardado tal cual
+    // hasta el nuevo «Guardar», que lo reemplaza (`itemDeLaUnidad` + `fusionarConPrevio`).
+    // Sin slot de Picking no hay con qué reemplazarlo, así que ahí se mantiene el borrado de antes.
+    if (row.savedItem.pickingSlotId == null) {
+      const currentItems = dispatchData[selectedTienda] || [];
+      const idx = currentItems.findIndex(i => sameStableItem(i, row.savedItem));
+      if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda, idx });
+    }
+    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, saved: false, savedItem: undefined, editando: true } : r));
   };
 
   // Borra el slot de picking_pallets vinculado y lo quita de pickingSlotsFull.
@@ -1825,10 +1836,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const sourceItemUnion = sourceRow.savedItem;
     const puedeRevertirUnion = !!(sourceItemUnion && targetRow.savedItem);
 
-    // 1) Items: quitar el item del source y el del target (el target se re-agrega al "Agregar").
+    // 1) Items: quitar el del source y dejar el del target GUARDADO con el peso sumado y las guías
+    //    fusionadas, igual que al sumar un bulto. Antes el target también se quitaba («se re-agrega
+    //    al Agregar»): si nadie apretaba Agregar, la unidad volvía «sin guardar», y como el borrado
+    //    no dejaba lápida, otro equipo la devolvía con el peso de antes de unir.
     const cur = dispatchData[name] || [];
-    const remaining = cur.filter(i => !sameStableItem(i, sourceRow.savedItem) && !sameStableItem(i, targetRow.savedItem));
-    if (remaining.length !== cur.length) {
+    const remaining = cur
+      .filter(i => !sameStableItem(i, sourceRow.savedItem))
+      .map(i => sameStableItem(i, targetRow.savedItem) ? { ...i, peso: nuevoPeso, guia: mguia || i.guia } : i);
+    if (remaining.length !== cur.length || targetRow.savedItem) {
       dispatch({ type: 'UPDATE_ITEMS', tienda: name, items: renumberItems(remaining, name) });
     }
 

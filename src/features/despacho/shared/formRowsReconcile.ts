@@ -171,10 +171,12 @@ export function reconciliarFormRows<
   slots: readonly Slot[],
   aplicarItem: (row: Row, item: Item) => Row,
   construirFila: (slot: Slot, itemGuardado?: Item) => Row,
+  /** Deja adoptar también una fila tocada que dice lo mismo que el ítem. Ver `adopcionesPendientes`. */
+  mismaCarga?: (row: Row, item: Item) => boolean,
 ): Row[] {
   let next = reconcileSavedRows(rows, items);
 
-  const adopciones = adopcionesPendientes(next, items);
+  const adopciones = adopcionesPendientes(next, items, mismaCarga);
   if (adopciones.length > 0) {
     const porFila = new Map(adopciones.map(a => [a.fila, a.item]));
     next = next.map(row => {

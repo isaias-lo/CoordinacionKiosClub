@@ -35,6 +35,7 @@ import { avanceTienda, claseUnidad, type AvanceTienda } from '../../shared/unida
 import { useTarjetaActiva } from '../../shared/useTarjetaActiva';
 import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad } from '../../shared/TiendaAbierta';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
+import { mismaCargaEscrita } from '../../shared/adoptarItemRemoto';
 import { buscarPallet } from '../../shared/buscarPallet';
 import { fechaISOLocal } from '../../shared/fechaLocal';
 import { useUndoDelete } from '../../shared/useUndoDelete';
@@ -164,6 +165,9 @@ interface FormRow {
   // "Agregar" (guardado normal). Sólo flag visual (banner + ocultar chooser); ya está persistido.
   mergeReopened?: boolean;
   mergeMotivo?: MotivoReapertura;
+  /** Se reabrió con «Editar». El ítem sigue guardado hasta que se vuelva a guardar: si nadie
+   *  termina la edición, no se pierde nada. Ver `puedeAdoptar`. */
+  editando?: boolean;
 }
 
 // La tarjeta que se está pesando lleva el color de su tipo en el borde; peso y alto van en cifras
@@ -1283,6 +1287,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             largo: s.largo != null ? String(s.largo) : '', ancho: s.ancho != null ? String(s.ancho) : '',
             pickingSlotId: s.id,
           },
+      // El chocolate se escribe en bruto y se guarda neto: no se compara.
+      (row, it) => row.tipo !== 'Chocolate' && row.contenido !== 'Chocolate' && mismaCargaEscrita(row, it),
     ));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentItems, currentTienda?.cod, currentSlotsFull]);
@@ -1461,7 +1467,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const previo = itemDeLaUnidad(existing, slotId);
     const savedItem = previo ? fusionarConPrevio(previo, candidato) : candidato;
     dispatch({ type: 'ADD_ITEM', item: savedItem });
-    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId, traSuma: false } : r));
+    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId, traSuma: false, editando: false } : r));
     // El toast "Agregado sin pesar" lo dispara el caller (botón "Sin pesar") tras el await,
     // así queda determinista sin importar si esta función esperó por el fetch del slot.
     if (!sinPesar) showToast(`✓ ${savedItem.orden} ${previo ? 'actualizado' : 'agregado'}`, '#16A34A');
@@ -1498,9 +1504,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     if (!currentTienda) return;
     const row = formRows.find(r => r.id === rowId);
     if (!row?.savedItem) return;
-    const idx = (items[currentTienda.cod] || []).findIndex(i => i.id === row.savedItem!.id);
-    if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tiendaCod: currentTienda.cod, idx });
-    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, saved: false, savedItem: undefined } : r));
+    // El ítem NO se borra al abrir la edición: queda guardado hasta el nuevo «Guardar», que lo
+    // reemplaza. Espejo de Nacional, donde está el porqué (`editSavedRow`). Sin slot de Picking no
+    // hay con qué reemplazarlo, así que ahí se mantiene el borrado de antes.
+    if (row.savedItem.pickingSlotId == null) {
+      const idx = (items[currentTienda.cod] || []).findIndex(i => i.id === row.savedItem!.id);
+      if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tiendaCod: currentTienda.cod, idx });
+    }
+    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, saved: false, savedItem: undefined, editando: true } : r));
   };
 
   // Borra el slot de picking_pallets vinculado y lo quita de pickingSlotsFull.
@@ -1869,12 +1880,15 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const sourceItemUnion = sourceRow.savedItem;
     const puedeRevertirUnion = !!(sourceItemUnion && targetRow.savedItem);
 
-    // 1) Items: quitar el item del source y el del target (el target se re-agrega al "Agregar").
+    // 1) Items: quitar el del source y dejar el del target GUARDADO con el peso sumado, igual que
+    //    al sumar un bulto. Antes el target también se quitaba («se re-agrega al Agregar»): si
+    //    nadie apretaba Agregar, la unidad volvía «sin guardar», y como el borrado no dejaba
+    //    lápida, otro equipo la devolvía con el peso de antes de unir. Espejo de Nacional.
     const cur = items[cod] || [];
-    const filtered = cur.filter(i =>
-      !(sourceRow.savedItem && i.id === sourceRow.savedItem.id) &&
-      !(targetRow.savedItem && i.id === targetRow.savedItem.id));
-    if (filtered.length !== cur.length) {
+    const filtered = cur
+      .filter(i => !(sourceRow.savedItem && i.id === sourceRow.savedItem.id))
+      .map(i => targetRow.savedItem && i.id === targetRow.savedItem.id ? { ...i, peso: nuevoPeso } : i);
+    if (filtered.length !== cur.length || targetRow.savedItem) {
       const renumbered = renumerarOrden(filtered, i => seqDeSlot(cod, i.pickingSlotId));
       dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: renumbered });
     }

@@ -36,6 +36,8 @@ const initialState: AppState = {
 };
 
 type Action =
+  /** Solo para el `dispatch` del provider: el estado ya calculado contra `stateRef`. */
+  | { type: '__ESTADO'; estado: AppState }
   | { type: 'SET_TAB'; payload: number }
   | { type: 'SET_TIENDA'; payload: string | null }
   | { type: 'SET_TIPO'; payload: TipoContenido }
@@ -84,6 +86,8 @@ function renumber(items: DispatchItem[]): DispatchItem[] {
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
+    case '__ESTADO':
+      return action.estado;
     case 'SET_TAB':
       return { ...state, activeTab: action.payload };
     case 'SET_TIENDA':
@@ -250,7 +254,7 @@ function loadInitialState(): AppState {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, loadInitialState);
+  const [state, dispatchReact] = useReducer(reducer, undefined, loadInitialState);
   const { user } = useAuth();
   const userId = user?.id;
   // [Bodega · indicador visible] Espeja el `realtimeConnected` de closure de más abajo, sin
@@ -261,6 +265,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Always-current ref so async callbacks never see stale state
   const stateRef        = useRef(state);
   stateRef.current      = state;
+  // `stateRef` se adelanta en el MISMO instante del dispatch, no recién en el próximo render. Entre
+  // un dispatch y su render (después de un `await`, React no pinta en el acto) podía llegar un
+  // remoto, mezclarse contra el estado de ANTES y su LOAD_STATE borraba lo recién agregado: la
+  // unidad volvía «sin guardar» con sus datos. El reducer es puro, así que calcularlo dos veces
+  // (acá y en React) da lo mismo.
+  //
+  // React recibe el estado ya calculado (`__ESTADO`), no la acción: el reducer asigna ids con
+  // `Date.now()`, y calcularlo dos veces daría dos ids distintos para el mismo ítem.
+  const dispatch = useCallback((action: Action) => {
+    const siguiente = reducer(stateRef.current, action);
+    stateRef.current = siguiente;
+    dispatchReact({ type: '__ESTADO', estado: siguiente });
+  }, []);
   // [P5] Base del merge / corta-ecos. SIEMPRE con `serializarBase` (misma forma en todos los
   // puntos): antes cada sitio serializaba una forma distinta del mismo objeto, así que la
   // comparación no coincidía nunca y cada equipo re-empujaba todo remoto que adoptaba.
