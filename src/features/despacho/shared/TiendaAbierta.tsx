@@ -17,7 +17,7 @@
 // Nacional y RM/Costa usan estas mismas piezas: si cambian, cambian juntas.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { MoreHorizontal, Pencil, ChevronLeft } from 'lucide-react';
+import { MoreHorizontal, Pencil, ChevronLeft, Lock } from 'lucide-react';
 import { ESTILO_UNIDAD, LETRA_UNIDAD, type AvanceTienda, type ClaseUnidad } from './unidadVisual';
 
 /** «P1», «B3»: la etiqueta de la unidad, en el color de su tipo. */
@@ -136,6 +136,16 @@ export function CabeceraTienda({ nombre, subtitulo, avance, indicador, estado, a
   );
 }
 
+/** Encima de una tienda terminada, que no se puede editar. */
+export function AvisoTiendaTerminada() {
+  return (
+    <div role="status" className="mx-1 mt-1 mb-2 rounded-card border border-est-ok bg-est-ok-suave px-3 py-2.5 flex flex-col gap-0.5">
+      <span className="font-barlow-condensed text-cuerpo font-extrabold uppercase text-est-ok">✓ Tienda terminada</span>
+      <span className="text-apoyo text-text">No se puede editar. Para cambiar algo, reábrela desde el menú ⋯.</span>
+    </div>
+  );
+}
+
 /** «AHORA», «FALTAN 3», «PESADOS 5 · 4.210 kg». */
 export function RotuloSeccion({ children, derecha }: { children: ReactNode; derecha?: ReactNode }) {
   return (
@@ -190,8 +200,11 @@ export function ColaPendientes({ fichas, onElegir }: { fichas: FichaPendiente[];
 
 /**
  * Una unidad ya pesada, en una línea. El ✎ despliega sus acciones (`children`).
+ *
+ * Recién escaneada (`resaltada`) y con `campos`, se muestra como la tarjeta grande pero celeste y
+ * bloqueada: se ve lo guardado, no se puede escribir, y Editar (que pide confirmar) es la salida.
  */
-export function FilaPesada({ clase, etiqueta, slotId, resumen, detalle, aviso, resaltada, seleccion, children }: {
+export function FilaPesada({ clase, etiqueta, slotId, resumen, detalle, aviso, resaltada, seleccion, campos, children }: {
   clase: ClaseUnidad;
   etiqueta: string;
   slotId?: number;
@@ -204,9 +217,37 @@ export function FilaPesada({ clase, etiqueta, slotId, resumen, detalle, aviso, r
   resaltada?: boolean;
   /** La casilla de «sumar en masa», cuando aplica. */
   seleccion?: ReactNode;
+  /** Lo guardado, campo por campo, para la vista grande. */
+  campos?: { rotulo: string; valor: string }[];
   children?: ReactNode;
 }) {
   const [abierta, setAbierta] = useState(false);
+  if (resaltada && campos && campos.length > 0) {
+    return (
+      <div id={slotId != null ? `pallet-card-${slotId}` : undefined}
+        className="relative tarjeta-escaneada bg-sky-500/10 border-2 border-sky-500 rounded-kios px-3 py-3 m-1 flex flex-col gap-2.5">
+        <div className="flex items-center gap-2.5">
+          {seleccion}
+          <EtiquetaUnidad clase={clase} grande>{etiqueta}</EtiquetaUnidad>
+          {slotId != null && <span className="font-mono text-apoyo text-text-sub">#{slotId}</span>}
+          {aviso}
+          <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-600 text-white px-2.5 py-1 text-rotulo font-bold uppercase">
+            <Lock size={12} aria-hidden="true" /> Guardado
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {campos.map(c => (
+            <div key={c.rotulo} className="rounded-btn border border-sky-500/40 bg-card/70 px-3 py-2">
+              <div className="text-rotulo font-bold uppercase text-text-sub">{c.rotulo}</div>
+              <div className="font-barlow-condensed text-cifra font-extrabold text-text tabular-nums leading-tight">{c.valor}</div>
+            </div>
+          ))}
+        </div>
+        {detalle && <div className="text-apoyo text-text-sub">{detalle}</div>}
+        {children && <div className="flex flex-col gap-2">{children}</div>}
+      </div>
+    );
+  }
   return (
     <div id={slotId != null ? `pallet-card-${slotId}` : undefined}
       className={`bg-card ${resaltada ? 'relative tarjeta-escaneada' : ''}`}>

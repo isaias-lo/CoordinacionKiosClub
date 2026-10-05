@@ -33,7 +33,8 @@ import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { avanceTienda, claseUnidad, type AvanceTienda } from '../../shared/unidadVisual';
 import { useTarjetaActiva } from '../../shared/useTarjetaActiva';
-import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad } from '../../shared/TiendaAbierta';
+import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada } from '../../shared/TiendaAbierta';
+import { confirmarCambioGuardado, confirmarEliminarVarios } from '../../shared/confirmarGuardado';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { mismaCargaEscrita } from '../../shared/adoptarItemRemoto';
 import { buscarPallet } from '../../shared/buscarPallet';
@@ -82,7 +83,7 @@ import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo, pesoPalletConCajas,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
 import { itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
-import { avisoDeUnidad } from '../../shared/avisoUnidadEscaneada';
+import { avisoDeUnidad, avisoEnTerminada } from '../../shared/avisoUnidadEscaneada';
 import { useEscaneoBodega } from '../../shared/useEscaneoBodega';
 import { llevarATarjeta, huboSaltoReciente } from '../../shared/useLectorBodega';
 import { useWakeLock } from '@/hooks/useWakeLock';
@@ -409,7 +410,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const { currentTienda, items, regimen } = state;
   const odooProgress = useOdooProgress();  // tiendas con picking terminado hoy
-  const { terminadas, marcarTerminada } = useTiendaTerminada();  // marca manual "tienda terminada" (fase 1: solo marcador)
+  const { terminadas, marcarTerminada } = useTiendaTerminada();
+  // Una tienda terminada no se edita: para cambiar algo hay que reabrirla desde ⋯ (pedido de Isaias, 5 oct 2026).
+  const tiendaTerminada = (cod?: string | null) => !!cod && terminadas.get(cod)?.terminada === true;
   // [Presencia] Quién más tiene cada tienda abierta AHORA — pedido 2026-09-09: "no saben quién
   // está haciendo qué". Efímero (Realtime Presence, no tabla): se resetea cuando todos se van.
   // [Presencia por pallet] `slotEnFoco` es la tarjeta cuyo peso/alto/etc. se está escribiendo
@@ -1561,6 +1564,35 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     if (borrado) armarUndo(`${borrado.orden} eliminado`, () => reAgregarItem(borrado, slotAntes));
   };
 
+  // Varios de una vez (barra de seleccionados). Los índices se toman de la lista de AHORA y se
+  // borran de mayor a menor: así ninguno se corre. El dispatch ya deja el estado al día al instante.
+  const deleteSavedRows = (rowIds: string[]) => {
+    if (!currentTienda || rowIds.length === 0) return;
+    const cod = currentTienda.cod;
+    const filas = formRows.filter(r => rowIds.includes(r.id));
+    const actuales = items[cod] || [];
+    const indices = filas
+      .map(r => r.savedItem ? actuales.findIndex(i => i.id === r.savedItem!.id) : -1)
+      .filter(i => i !== -1)
+      .sort((a, b) => b - a);
+    for (const idx of indices) dispatch({ type: 'DELETE_ITEM', tiendaCod: cod, idx });
+    const deshacer: { item: NonNullable<FormRow['savedItem']>; slotAntes?: PickingSlot }[] = [];
+    for (const row of filas) {
+      const slotId = row.pickingSlotId ?? row.savedItem?.pickingSlotId;
+      const slotAntes = slotId != null ? (pickingSlotsFullRef.current[cod] ?? []).find(s => s.id === slotId) : undefined;
+      deletePickingSlot(slotId, { label: row.savedItem?.orden ?? labelDeFila(row, formRows) });
+      if (row.savedItem) deshacer.push({ item: row.savedItem, slotAntes });
+    }
+    const ids = new Set(rowIds);
+    setFormRows(prev => prev.filter(r => !ids.has(r.id)));
+    setMergeSel(new Set());
+    if (deshacer.length > 0) {
+      armarUndo(`${deshacer.length} eliminado${deshacer.length > 1 ? 's' : ''}`, async () => {
+        for (const d of deshacer) await reAgregarItem(d.item, d.slotAntes);
+      });
+    }
+  };
+
   // Quitar un form row sin guardar (✕) — también borra su slot.
   const removeUnsavedRow = (rowId: string) => {
     const row = formRows.find(r => r.id === rowId);
@@ -2131,13 +2163,19 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // [Handheld] Número o código con que abrir el diálogo directo en "preexistente" (etiqueta escaneada
   // de otro día). Se borra al cerrar el diálogo.
   const [dialogRef, setDialogRef] = useState<string | null>(null);
-  useEffect(() => { if (!dialogTipo) setDialogRef(null); }, [dialogTipo]);
+  // [Handheld] La etiqueta es de un pallet borrado: el diálogo la comprueba solo y ofrece restaurar.
+  const [dialogBorrado, setDialogBorrado] = useState(false);
+  useEffect(() => { if (!dialogTipo) { setDialogRef(null); setDialogBorrado(false); } }, [dialogTipo]);
 
   // [Handheld] La etiqueta leída con el lector, esté donde esté el cursor. Ver useEscaneoBodega.ts.
   useEscaneoBodega({
     activo: !dialogTipo,
     slotsPorTienda: pickingSlotsFull,
-    avisoDe: p => avisoDeUnidad(itemDeLaUnidad(items[p.claveTienda] ?? [], p.slot.id)),
+    avisoDe: p => {
+      const aviso = avisoDeUnidad(itemDeLaUnidad(items[p.claveTienda] ?? [], p.slot.id));
+      return tiendaTerminada(p.claveTienda) ? avisoEnTerminada(aviso) : aviso;
+    },
+    bloqueada: cod => tiendaTerminada(cod),
     irA: p => {
       const tienda = tiendaByCod[p.claveTienda];
       if (!tienda) return false;
@@ -2146,13 +2184,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       selectTienda(tienda);
       return true;
     },
-    ofrecerPreexistente: (pallet, codigo) => {
+    ofrecerPreexistente: (pallet, codigo, borrado) => {
       const tienda = tiendaByCod[pallet.store_cod];
       if (!tienda) return false;
       setSearch('');
       selectTienda(tienda);
       setDialogTipo(SLOT_TIPO_TO_CARGAMENTO[pallet.tipo ?? 'P'] ?? 'Pallet');
       setDialogRef(codigo);
+      setDialogBorrado(!!borrado);
       return true;
     },
     showToast,
@@ -2682,6 +2721,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     // Una adquisición no tiene peso ni medidas: escribir «0kg · 0cm» haría pasar la
                     // AUSENCIA de un dato por un dato. Dice qué es.
                     resumen={etiquetaDeUnidad(row.savedItem) ?? `${row.savedItem.peso} kg · ${row.savedItem.alto} cm`}
+                    campos={etiquetaDeUnidad(row.savedItem) ? undefined : [
+                      { rotulo: 'Peso', valor: `${row.savedItem.peso} kg` },
+                      { rotulo: 'Alto', valor: `${row.savedItem.alto} cm` },
+                      ...(contenido ? [{ rotulo: 'Contenido', valor: contenido }] : []),
+                    ]}
                     aviso={esSinPesar(row.savedItem) ? (
                       <span className="text-rotulo font-bold uppercase text-est-aviso bg-est-aviso-suave rounded-full px-2 py-0.5">sin pesar</span>
                     ) : undefined}
@@ -2697,12 +2741,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                         className="w-5 h-5 cursor-pointer flex-shrink-0" style={{ accentColor: 'var(--uni-pallet)' }} />
                     ) : undefined}>
                     <div className="flex gap-2 flex-wrap">
-                      <BotonAccion onClick={() => editSavedRow(row.id)}>Editar</BotonAccion>
+                      <BotonAccion onClick={() => { if (confirmarCambioGuardado('editar', rowLabel)) editSavedRow(row.id); }}>Editar</BotonAccion>
                       {row.tipo === 'Bulto' && (
                         <BotonAccion onClick={() => { setDupN(2); setDupRow(dupRow === row.id ? null : row.id); }}
                           title="Duplicar bulto (mismo peso y medidas)">Duplicar</BotonAccion>
                       )}
-                      <BotonAccion tono="peligro" onClick={() => deleteSavedRow(row.id)}>Eliminar</BotonAccion>
+                      <BotonAccion tono="peligro" onClick={() => { if (confirmarCambioGuardado('eliminar', rowLabel)) deleteSavedRow(row.id); }}>Eliminar</BotonAccion>
                     </div>
                     {dupRow === row.id && row.tipo === 'Bulto' && (
                       <div className="mt-2 pt-2 border-t border-black/[0.08] flex items-center gap-2 flex-wrap">
@@ -2773,7 +2817,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                               <div className="flex flex-wrap gap-1">
                                 {combineTargets.map(other => (
                                   <button key={`uni-${other.id}`}
-                                    onClick={() => iniciarUnionInline(row, other, getRowLabel(row), getRowLabel(other))}
+                                    onClick={() => { if (window.confirm(`${getRowLabel(row)} ya está guardado.\n\n¿Seguro que quieres unificarlo con ${getRowLabel(other)}?`)) iniciarUnionInline(row, other, getRowLabel(row), getRowLabel(other)); }}
                                     className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
                                     style={{ borderColor: col.solid, color: col.color, background: col.bg }}>
                                     {getRowLabel(other)}
@@ -3012,6 +3056,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   ════════════════════════════════════ */
   const renderMultiForm = (isMobile = false) => {
     if (!currentTienda) return null;
+    const bloqueada = tiendaTerminada(currentTienda.cod);
     const swipeHandlers = isMobile ? { start: onSheetDragStart, move: onSheetDragMove, end: onSheetDragEnd } : undefined;
     return (
       <>
@@ -3023,7 +3068,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           viendo={viendoPorTienda.get(currentTienda.cod)}
           canalSano={canalSano}
           botonRegistrar={
-            <RegistrarTiendaButton rol={profile?.role} terminada={!!terminadas.get(currentTienda.cod)} variante="claro"
+            <RegistrarTiendaButton rol={profile?.role} terminada={tiendaTerminada(currentTienda.cod)} variante="claro"
               unidades={tiendaItems.length} yaRegistrada={registroTiendas.registrada(currentTienda.cod)}
               onRegistrar={() => registrarSoloTienda(currentTienda.cod)} />
           } />
@@ -3038,6 +3083,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         )}
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
+          {bloqueada && <AvisoTiendaTerminada />}
+          {/* Terminada: todo lo de adentro queda deshabilitado de una vez (inputs y botones). */}
+          <fieldset disabled={bloqueada} className="contents">
           {/* ── AHORA · FALTAN · PESADOS — la misma lectura que Nacional. Ver `TiendaAbierta`. */}
           <>
             {(() => {
@@ -3167,6 +3215,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   className="font-barlow-condensed px-3 py-1.5 rounded text-[13px] font-bold cursor-pointer transition-all border-[1.5px] border-dashed border-white/45 text-[#CDE0FF] hover:bg-white/10">
                   + Nuevo
                 </button>
+                <button disabled={selectedCount === 0}
+                  onClick={() => { const ids = sumableRows.filter(r => mergeSel.has(r.id)).map(r => r.id); if (confirmarEliminarVarios(ids.length)) deleteSavedRows(ids); }}
+                  title="Eliminar todos los seleccionados"
+                  className="font-barlow-condensed px-3 py-1.5 rounded text-apoyo font-bold cursor-pointer transition-all border-[1.5px] border-red-300/70 text-red-200 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed">
+                  Eliminar
+                </button>
               </div>
             );
           })()}
@@ -3183,12 +3237,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             <button onClick={() => void addFormRow('Adquisicion')} className="flex-1 py-2.5 border-2 border-dashed rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer" style={{ borderColor: 'rgba(15,118,110,0.50)', color: '#0F766E' }}>+ Adquisición</button>
             <button onClick={() => void addFormRow('WebRetiro')}   className="flex-1 py-2.5 border-2 border-dashed rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer" style={{ borderColor: 'rgba(109,40,217,0.50)', color: '#6D28D9' }}>+ Web / retiro</button>
           </div>
-          {dialogTipo && currentTienda && (
+          </fieldset>
+          {dialogTipo && currentTienda && !bloqueada && (
             <AgregarPalletDialog
               tipoLabel={dialogTipo}
               storeCod={currentTienda.cod}
               date={fechaISOLocal()}
               refInicial={dialogRef ?? undefined}
+              comprobarAlAbrir={dialogBorrado}
               onClose={() => setDialogTipo(null)}
               onNuevo={(cantidad) => { const t = dialogTipo; setDialogTipo(null); void (async () => { for (let i = 0; i < cantidad; i++) await addFormRow(t, undefined, i); })(); }}
               onExistente={(slot, yaEnCarga) => {
