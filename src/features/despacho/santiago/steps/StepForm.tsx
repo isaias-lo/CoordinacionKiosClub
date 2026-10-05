@@ -44,7 +44,7 @@ import { UndoBar } from '../../shared/UndoBar';
 import { tipoCodeSantiago } from '../../shared/tipoCode';
 import { registrarTiendasSantiagoBD } from '../data/tiendasSantiago';
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
-import { FilaTienda, BarraDelDia, FiltroTiendas, RotuloLista, PieLista } from '@/features/despacho/shared/ListaTiendasUI';
+import { FilaTienda, BarraDelDia, FiltroTiendas, RotuloLista, PieLista, BaldosaAgregar, GRILLA_MOSAICO } from '@/features/despacho/shared/ListaTiendasUI';
 import { avanceFila, estadoLista, resumenDia, filtroVigente, pasaFiltro, type FiltroLista } from '@/features/despacho/shared/listaTiendas';
 import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
 import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';
@@ -201,7 +201,7 @@ function TiendaGridCard({
   bultoCount, adquisicionCount = 0, webRetiroCount = 0,
   despachoP, despachoB, despachoC, despachoCH, hasGuide, storeDoneOps = 0, storeTotalOps = 0,
   tipoCat, terminada, viendo, sinPesarCount,
-  onSelect, onAddToday, onRemoveFromToday,
+  onSelect, onAddToday, onRemoveFromToday, forma,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
   tipoCat?: string;
@@ -220,6 +220,8 @@ function TiendaGridCard({
   onSelect: () => void;
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
+  /** «Hoy» en baldosas (Mosaico), «Todas» en filas. Ver `ListaTiendasUI`. */
+  forma?: 'fila' | 'baldosa';
   bultoCount: number;
   adquisicionCount?: number;
   webRetiroCount?: number;
@@ -241,7 +243,7 @@ function TiendaGridCard({
       agregados={{ adquisicion: adquisicionCount, webRetiro: webRetiroCount }}
       sinPesar={sinPesarCount ?? 0}
       odoo={isToday ? { done: storeDoneOps, total: storeTotalOps } : undefined}
-      viendo={viendo} onSelect={onSelect} accion={accion} />
+      viendo={viendo} onSelect={onSelect} accion={accion} forma={forma} />
   );
 }
 
@@ -513,6 +515,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   }, [focoPallet, formRows]);
 
   const [showTodas, setShowTodas] = useState(false);
+  // [Mosaico] «+ Agregar» de Hoy abre «Todas», que es donde se agregan tiendas, y la trae a la vista.
+  const todasRef = useRef<HTMLDivElement>(null);
+  const abrirTodas = () => {
+    setShowTodas(true);
+    requestAnimationFrame(() => todasRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+  };
   // Filtro de la lista de hoy y modo «Editar tiendas de hoy» (la × para retirar). Ver `ListaTiendas.tsx`.
   const [filtroLista, setFiltroLista] = useState<FiltroLista>('todas');
   const [editarHoy, setEditarHoy] = useState(false);
@@ -2257,7 +2265,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               </span>}>
             {editarHoy ? 'Toca × para retirar de hoy' : 'Hoy'}
           </RotuloLista>
-          <div className="border-t border-border">
+          <div className={GRILLA_MOSAICO}>
             {todayVisibles.map(t => {
               const tI = items[t.cod] || [];
               const dc = despachoCounts[t.cod];
@@ -2285,9 +2293,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   terminada={terminadas.get(t.cod)?.terminada === true}
                   viendo={viendoPorTienda.get(t.cod)}
                   onSelect={() => selectTienda(t)}
-                  onRemoveFromToday={editarHoy ? () => setConfirmRemove(t.tienda) : undefined} />
+                  onRemoveFromToday={editarHoy ? () => setConfirmRemove(t.tienda) : undefined}
+                  forma="baldosa" />
               );
             })}
+            {!editarHoy && othersList.length > 0 && <BaldosaAgregar onClick={abrirTodas} />}
           </div>
           {todayVisibles.length === 0 && (
             <p className="px-3.5 py-6 text-center text-apoyo text-text-sub">Ninguna tienda de hoy calza con la búsqueda.</p>
@@ -2295,7 +2305,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         </div>
       )}
       {othersList.length > 0 && (
-        <div>
+        <div ref={todasRef}>
           {todayList.length > 0 && (
             <RotuloLista onClick={() => setShowTodas(prev => !prev)}
               derecha={<span className="text-apoyo text-text-sub select-none">{showTodas ? '▲' : '▼'}</span>}>

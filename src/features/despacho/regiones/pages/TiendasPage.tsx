@@ -33,7 +33,7 @@ import { avanceTienda, claseUnidad } from '@/features/despacho/shared/unidadVisu
 import { useTarjetaActiva } from '@/features/despacho/shared/useTarjetaActiva';
 import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada } from '@/features/despacho/shared/TiendaAbierta';
 import { confirmarCambioGuardado, confirmarEliminarVarios } from '@/features/despacho/shared/confirmarGuardado';
-import { FilaTienda, BarraDelDia, FiltroTiendas, RotuloLista, PieLista } from '@/features/despacho/shared/ListaTiendasUI';
+import { FilaTienda, BarraDelDia, FiltroTiendas, RotuloLista, PieLista, BaldosaAgregar, GRILLA_MOSAICO } from '@/features/despacho/shared/ListaTiendasUI';
 import { avanceFila, estadoLista, resumenDia, filtroVigente, pasaFiltro, type FiltroLista } from '@/features/despacho/shared/listaTiendas';
 import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
 import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';
@@ -216,8 +216,10 @@ interface GridCardProps {
    *  botones (tap, no drag) son el mismo fallback +/× que ya tenía Santiago (StepForm.tsx). */
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
+  /** «Hoy» en baldosas (Mosaico), «Todas» en filas. Ver `ListaTiendasUI`. */
+  forma?: 'fila' | 'baldosa';
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, bultoCount, adquisicionCount = 0, webRetiroCount = 0, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, sinPesarCount, onSelect, onDragStart, onAddToday, onRemoveFromToday }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, bultoCount, adquisicionCount = 0, webRetiroCount = 0, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, sinPesarCount, onSelect, onDragStart, onAddToday, onRemoveFromToday, forma }: GridCardProps) {
   const t = TIENDAS[name];
   // El bulto ya NO sale por resta: así caían adentro las adquisiciones y los web/retiro. Ver
   // `contarPorClase`. Lo que falta es lo que Picking imprimió y Bodega todavía no cargó; sin
@@ -239,7 +241,7 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       agregados={{ adquisicion: adquisicionCount, webRetiro: webRetiroCount }}
       sinPesar={sinPesarCount ?? 0}
       odoo={isToday ? { done: storeDoneOps, total: storeTotalOps } : undefined}
-      viendo={viendo} onSelect={onSelect} onDragStart={onDragStart} accion={accion} />
+      viendo={viendo} onSelect={onSelect} onDragStart={onDragStart} accion={accion} forma={forma} />
   );
 }
 
@@ -393,6 +395,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const [showMobileResumen, setShowMobileResumen]  = useState(false);
   const [showCalManual,     setShowCalManual]      = useState(false);
   const [showTodas,         setShowTodas]          = useState(false);
+  // [Mosaico] «+ Agregar» de Hoy abre «Todas», que es donde se agregan tiendas, y la trae a la vista.
+  const todasRef = useRef<HTMLDivElement>(null);
+  const abrirTodas = () => {
+    setShowTodas(true);
+    requestAnimationFrame(() => todasRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+  };
   // Filtro de la lista de hoy y modo «Editar tiendas de hoy» (la × para retirar). Ver `ListaTiendas.tsx`.
   const [filtroLista,       setFiltroLista]        = useState<FiltroLista>('todas');
   const [editarHoy,         setEditarHoy]          = useState(false);
@@ -2771,7 +2779,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   </span>}>
                 {addDropActive ? '↓ Suelta aquí' : editarHoy ? 'Toca × para retirar de hoy' : 'Hoy'}
               </RotuloLista>
-              <div className="border-t border-border">
+              <div className={GRILLA_MOSAICO}>
                 {todayVisibles.map(t => {
                   const cardItems = dispatchData[t.name] || [];
                   const pkSlots   = pickingSlotsFull[t.name] ?? [];
@@ -2804,9 +2812,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       viendo={viendoPorTienda.get(t.cod)}
                       onSelect={() => select(t.name)}
                       onDragStart={e => handleRemoveDragStart(e, t.name)}
-                      onRemoveFromToday={editarHoy ? () => setConfirmRemoveName(t.name) : undefined} />
+                      onRemoveFromToday={editarHoy ? () => setConfirmRemoveName(t.name) : undefined}
+                      forma="baldosa" />
                   );
                 })}
+                {!editarHoy && others.length > 0 && <BaldosaAgregar onClick={abrirTodas} />}
               </div>
               {todayVisibles.length === 0 && (
                 <p className="px-3.5 py-6 text-center text-apoyo text-text-sub">Ninguna tienda de hoy calza con la búsqueda.</p>
@@ -2816,7 +2826,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
           {/* Todas section — drop zone for removing from HOY */}
           {others.length > 0 && (
-            <div
+            <div ref={todasRef}
               onDragOver={handleRemoveDragOver}
               onDragLeave={handleRemoveDragLeave}
               onDrop={handleRemoveDrop}
