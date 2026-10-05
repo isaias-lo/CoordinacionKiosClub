@@ -69,3 +69,8 @@ export function avisoDeUnidad(item?: ItemPesado | null): AvisoUnidad {
   const peso = item.peso as number;
   return { estado: 'pesada', peso, texto: `Ya pesado · ${kg(peso)}`, advertir: true };
 }
+
+/** Escanear una unidad de una tienda terminada: se muestra, pero no se edita. */
+export function avisoEnTerminada(aviso: AvisoUnidad): AvisoUnidad {
+  return { ...aviso, texto: 'Tienda terminada: reábrela desde ⋯ para editar', advertir: true };
+}

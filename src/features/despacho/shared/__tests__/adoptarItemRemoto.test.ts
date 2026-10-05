@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { puedeAdoptar, adopcionesPendientes } from '../adoptarItemRemoto';
+import { puedeAdoptar, adopcionesPendientes, mismaCargaEscrita } from '../adoptarItemRemoto';
 
 const fila = (p: Partial<Parameters<typeof puedeAdoptar>[0]> = {}) =>
   ({ pickingSlotId: 100, tocada: false, saved: false, ...p });
@@ -65,5 +65,69 @@ describe('emparejamiento', () => {
     const r = adopcionesPendientes([f], [i]);
     expect(r[0].fila).toBe(f);
     expect(r[0].item).toBe(i);
+  });
+});
+
+describe('una tarjeta reabierta a propósito no se cierra sola', () => {
+  // Editar y unificar/sumar dejan el ítem guardado mientras la persona corrige. Si la tarjeta
+  // adoptara ese mismo ítem, se cerraría en la cara de quien la abrió.
+  it('reabierta con Editar no adopta', () => {
+    expect(puedeAdoptar(fila({ editando: true }))).toBe(false);
+    expect(adopcionesPendientes([fila({ editando: true })], [{ pickingSlotId: 100 }])).toEqual([]);
+  });
+
+  it('reabierta tras unificar o sumar no adopta', () => {
+    expect(puedeAdoptar(fila({ mergeReopened: true }))).toBe(false);
+  });
+
+  it('ni siquiera con valores iguales', () => {
+    const f = { ...fila({ editando: true, tocada: true }), peso: '83', alto: '' };
+    expect(adopcionesPendientes([f], [{ pickingSlotId: 100, peso: 83, alto: 0 }], mismaCargaEscrita)).toEqual([]);
+  });
+});
+
+describe('tarjeta tocada que dice lo mismo que lo guardado por otro equipo', () => {
+  const tocada = (peso: string, alto = '', cajasNegras = '') =>
+    ({ ...fila({ tocada: true }), peso, alto, cajasNegras });
+
+  it('adopta: la unidad está guardada y la tarjeta dice exactamente eso', () => {
+    const f = tocada('83', '120');
+    const item = { pickingSlotId: 100, peso: 83, alto: 120 };
+    expect(adopcionesPendientes([f], [item], mismaCargaEscrita)).toEqual([{ fila: f, item }]);
+  });
+
+  it('no adopta si el peso escrito es otro: eso es de la persona', () => {
+    expect(adopcionesPendientes([tocada('84', '120')], [{ pickingSlotId: 100, peso: 83, alto: 120 }], mismaCargaEscrita)).toEqual([]);
+  });
+
+  it('sin comparador, una tocada sigue sin adoptar (comportamiento de antes)', () => {
+    expect(adopcionesPendientes([tocada('83')], [{ pickingSlotId: 100, peso: 83 }])).toEqual([]);
+  });
+});
+
+describe('mismaCargaEscrita', () => {
+  it('acepta coma decimal y espacios', () => {
+    expect(mismaCargaEscrita({ peso: ' 83,5 ', alto: '' }, { peso: 83.5, alto: null })).toBe(true);
+  });
+
+  it('alto vacío equivale a 0 guardado', () => {
+    expect(mismaCargaEscrita({ peso: '83', alto: '' }, { peso: 83, alto: 0 })).toBe(true);
+  });
+
+  it('alto distinto no es la misma carga', () => {
+    expect(mismaCargaEscrita({ peso: '83', alto: '110' }, { peso: 83, alto: 120 })).toBe(false);
+  });
+
+  it('peso vacío o cero nunca coincide', () => {
+    expect(mismaCargaEscrita({ peso: '', alto: '' }, { peso: 0, alto: 0 })).toBe(false);
+    expect(mismaCargaEscrita({ peso: '0', alto: '' }, { peso: 0, alto: 0 })).toBe(false);
+  });
+
+  it('item sin peso nunca coincide', () => {
+    expect(mismaCargaEscrita({ peso: '83', alto: '' }, { peso: null })).toBe(false);
+  });
+
+  it('con cajas negras no se compara: lo escrito es bruto y lo guardado neto', () => {
+    expect(mismaCargaEscrita({ peso: '83', alto: '', cajasNegras: '2' }, { peso: 83 })).toBe(false);
   });
 });

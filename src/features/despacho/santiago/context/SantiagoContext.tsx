@@ -69,6 +69,8 @@ function loadState(): SantiagoState {
 }
 
 type SantiagoAction =
+  /** Solo para el `dispatch` del provider: el estado ya calculado contra `stateRef`. */
+  | { type: '__ESTADO'; estado: SantiagoState }
   | { type: 'SET_REGIMEN'; payload: RegimenCarga }
   | { type: 'BACK_TO_REGIMEN' }
   | { type: 'SELECT_TIENDA'; payload: TiendaSantiago }
@@ -84,6 +86,8 @@ type SantiagoAction =
 
 function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
   switch (action.type) {
+    case '__ESTADO':
+      return action.estado;
     case 'SET_REGIMEN':
       return { ...state, regimen: action.payload, step: 'form' };
 
@@ -197,7 +201,7 @@ interface SantiagoContextValue {
 const SantiagoContext = createContext<SantiagoContextValue | null>(null);
 
 export function SantiagoProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, loadState);
+  const [state, dispatchReact] = useReducer(reducer, undefined, loadState);
   const { user } = useAuth();
   const userId = user?.id;
   const [canalSano, setCanalSano] = useState(true);
@@ -205,6 +209,19 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   // Always-current ref so async callbacks never see stale state
   const stateRef        = useRef(state);
   stateRef.current      = state;
+  // `stateRef` se adelanta en el MISMO instante del dispatch, no recién en el próximo render. Entre
+  // un dispatch y su render (después de un `await`, React no pinta en el acto) podía llegar un
+  // remoto, mezclarse contra el estado de ANTES y su LOAD_STATE borraba lo recién agregado: la
+  // unidad volvía «sin guardar» con sus datos. El reducer es puro, así que calcularlo dos veces
+  // (acá y en React) da lo mismo.
+  //
+  // React recibe el estado ya calculado (`__ESTADO`), no la acción: así el ref y React nunca
+  // pueden divergir aunque algún día el reducer deje de ser puro.
+  const dispatch = useCallback((action: SantiagoAction) => {
+    const siguiente = reducer(stateRef.current, action);
+    stateRef.current = siguiente;
+    dispatchReact({ type: '__ESTADO', estado: siguiente });
+  }, []);
   const lastPushedRef   = useRef<string>('');       // [P5] BASE canónica (serializarBaseSantiago)
   const lastPushedFullRef = useRef<string>('');     // [P5] payload completo: solo para "¿hay que empujar?"
   const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null);

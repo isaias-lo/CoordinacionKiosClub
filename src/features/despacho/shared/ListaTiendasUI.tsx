@@ -22,7 +22,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { MoreHorizontal, Plus, X } from 'lucide-react';
-import type { AvanceTienda } from './unidadVisual';
+import { ESTILO_UNIDAD, type AvanceTienda } from './unidadVisual';
 import { BarraAvance, ConteoPorTipo } from './TiendaAbierta';
 import { PresenciaBadge } from './PresenciaBadge';
 import { StoreProgressBar } from './StoreProgressBar';
@@ -56,6 +56,21 @@ export interface FilaTiendaProps {
   accion?: { tipo: 'agregar' | 'retirar'; onClick: () => void };
 }
 
+/**
+ * Fondo y franja izquierda de la fila: se reconoce de lejos qué tiendas están listas (verde) y
+ * cuáles ya tienen guía (celeste). La abierta manda sobre las dos.
+ */
+function claseFila(activa: boolean, estado: EstadoLista, conGuia: boolean): string {
+  if (activa) return 'bg-navy/[0.07] shadow-[inset_4px_0_0_theme(colors.navy.DEFAULT)]';
+  if (estado === 'lista') return 'bg-est-ok-suave shadow-[inset_4px_0_0_var(--est-ok)] active:bg-bg-2';
+  if (conGuia) return 'bg-sky-500/10 shadow-[inset_4px_0_0_theme(colors.sky.500)] active:bg-bg-2';
+  return 'bg-card active:bg-bg-2';
+}
+
+const CLASE_LETRA: Record<string, 'pallet' | 'bulto' | 'contenedor' | 'chocolate'> = {
+  P: 'pallet', B: 'bulto', C: 'contenedor', CH: 'chocolate',
+};
+
 export function FilaTienda({ cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, odoo, viendo, onSelect, onDragStart, accion }: FilaTiendaProps) {
   const chip = chipFila({ estado, sinPesar, conGuia });
   const otros = agregados ? [
@@ -66,7 +81,7 @@ export function FilaTienda({ cod, nombre, tipo, estado, activa, conGuia, avance,
     <div
       draggable={!!onDragStart}
       onDragStart={onDragStart}
-      className={`relative flex items-stretch border-b border-border transition-colors ${activa ? 'bg-navy/[0.07] shadow-[inset_4px_0_0_theme(colors.navy.DEFAULT)]' : 'bg-card active:bg-bg-2'}`}>
+      className={`relative flex items-stretch border-b border-border transition-colors ${claseFila(activa, estado, conGuia)}`}>
       <button type="button" onClick={onSelect} aria-current={activa ? 'true' : undefined}
         className="flex-1 min-w-0 grid grid-cols-[52px_1fr_auto] gap-x-2.5 gap-y-1 items-center px-3.5 py-2.5 text-left cursor-pointer select-none">
         <span className="row-span-2 relative font-barlow-condensed text-titulo font-extrabold text-navy text-center tabular-nums">
@@ -94,7 +109,7 @@ export function FilaTienda({ cod, nombre, tipo, estado, activa, conGuia, avance,
             </span>
           ))}
           {conGuia && estado !== 'lista' && (
-            <span className="text-rotulo font-bold uppercase text-est-ok whitespace-nowrap" title="Ya tiene su guía">Guía</span>
+            <span className="text-rotulo font-bold uppercase px-1.5 rounded-full bg-sky-600 text-white whitespace-nowrap" title="Ya tiene su guía">Guía</span>
           )}
         </span>
         {odoo && odoo.total > 0 && (
@@ -126,13 +141,22 @@ export function BarraDelDia({ resumen, unidades }: {
   const visibles = unidades.filter(u => u.n > 0);
   return (
     <div className="bg-card border-b border-border px-3.5 py-2.5 flex flex-col gap-2 flex-shrink-0">
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <span className="font-barlow-condensed text-cifra font-extrabold text-text tabular-nums">
           {resumen.lista} <span className="text-cuerpo font-bold text-text-sub">de {resumen.total} {resumen.total === 1 ? 'tienda lista' : 'tiendas listas'}</span>
         </span>
         {visibles.length > 0 && (
-          <span className="text-apoyo text-text-sub tabular-nums whitespace-nowrap">
-            {visibles.map(u => `${u.n} ${u.letra}`).join(' · ')}
+          <span className="flex items-center gap-2 flex-wrap justify-end" aria-label={visibles.map(u => `${u.n} ${u.letra}`).join(', ')}>
+            {visibles.map(u => {
+              const clase = CLASE_LETRA[u.letra];
+              const estilo = clase ? ESTILO_UNIDAD[clase] : null;
+              return (
+                <span key={u.letra} className={`inline-flex items-baseline gap-1 rounded-btn px-2 py-0.5 ${estilo?.suave ?? 'bg-bg-2'}`}>
+                  <span className="font-barlow-condensed text-titulo font-extrabold text-text tabular-nums">{u.n}</span>
+                  <span className={`font-barlow-condensed text-cuerpo font-extrabold ${estilo?.texto ?? 'text-text-sub'}`}>{u.letra}</span>
+                </span>
+              );
+            })}
           </span>
         )}
       </div>

@@ -222,6 +222,24 @@ describe('reconciliarFormRows', () => {
     expect(out[0].peso).toBe('12'); // lo que la persona escribió sigue intacto
   });
 
+  it('fila tocada con el mismo peso que el ítem guardado sí adopta si el espejo lo permite', () => {
+    const item: RegItem = { pkg: 'pallet', orden: 'pallet1', peso: 33, pickingSlotId: 5 };
+    const touched: AdoptableRow<RegItem> = { id: 'row-touched', peso: '33', pickingSlotId: 5, tocada: true };
+    const mismaCarga = (r: AdoptableRow<RegItem>, i: RegItem) => r.peso === String(i.peso);
+    const out = reconciliarFormRows([touched], [item], [slot(5)], aplicarItem, construirFila, mismaCarga);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe('row-touched');
+    expect(out[0].saved).toBe(true);
+  });
+
+  it('fila tocada con otro peso no adopta aunque haya comparador', () => {
+    const item: RegItem = { pkg: 'pallet', orden: 'pallet1', peso: 33, pickingSlotId: 5 };
+    const touched: AdoptableRow<RegItem> = { id: 'row-touched', peso: '12', pickingSlotId: 5, tocada: true };
+    const mismaCarga = (r: AdoptableRow<RegItem>, i: RegItem) => r.peso === String(i.peso);
+    const out = reconciliarFormRows([touched], [item], [slot(5)], aplicarItem, construirFila, mismaCarga);
+    expect(out[0]).toBe(touched);
+  });
+
   it('solo backfill: slot sin ninguna fila representada → crea una nueva', () => {
     const out = reconciliarFormRows<RegItem, AdoptableRow<RegItem>>([], [], [slot(7)], aplicarItem, construirFila);
     expect(out).toHaveLength(1);

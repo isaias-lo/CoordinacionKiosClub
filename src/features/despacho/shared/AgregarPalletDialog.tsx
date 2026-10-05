@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CameraBarcodeScanner } from '@/features/auditoria/components/scanner/CameraBarcodeScanner';
 import type { PickingSlot } from '@/features/despacho/santiago/components/PickingSlotCards';
 import { mensajeClaim, type MotivoClaim } from './mensajeClaim';
@@ -23,6 +23,9 @@ interface Props {
   /** Abrir directo en "preexistente" con este número o código ya puesto: lo usa la handheld al
    *  escanear una etiqueta de otro día. Reclamar re-data el pallet, así que no se reclama solo. */
   refInicial?: string;
+  /** Comprobar `refInicial` apenas abre. Solo para un pallet borrado: el reclamo no re-data nada
+   *  (no existe) y la respuesta trae el botón de restaurar, que igual confirma la persona. */
+  comprobarAlAbrir?: boolean;
 }
 
 /**
@@ -30,7 +33,7 @@ interface Props {
  * (como siempre) o registrar uno PREEXISTENTE (adelantado de otro día, ya etiquetado)
  * digitando su #número o escaneando su código de barras.
  */
-export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExistente, onClose, refInicial }: Props) {
+export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExistente, onClose, refInicial, comprobarAlAbrir }: Props) {
   const [modo, setModo]         = useState<'elegir' | 'preexistente'>(refInicial ? 'preexistente' : 'elegir');
   const [ref, setRef]           = useState(refInicial ?? '');
   const [scanning, setScanning] = useState(false);
@@ -80,6 +83,15 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
       setLoading(false);
     }
   }
+
+  const comprobado = useRef(false);
+  useEffect(() => {
+    if (comprobarAlAbrir && refInicial && !comprobado.current) {
+      comprobado.current = true;
+      void claim(refInicial);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Devuelve el pallet borrado tal como estaba. La respuesta tiene la misma forma que un reclamo
   // exitoso, así que sigue por el mismo camino (`onExistente`): el formulario no nota la diferencia.

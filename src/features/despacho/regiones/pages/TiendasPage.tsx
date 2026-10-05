@@ -31,7 +31,8 @@ import { pkgCodeNacional } from '../../shared/tipoCode';
 import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
 import { avanceTienda, claseUnidad } from '@/features/despacho/shared/unidadVisual';
 import { useTarjetaActiva } from '@/features/despacho/shared/useTarjetaActiva';
-import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad } from '@/features/despacho/shared/TiendaAbierta';
+import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada } from '@/features/despacho/shared/TiendaAbierta';
+import { confirmarCambioGuardado, confirmarEliminarVarios } from '@/features/despacho/shared/confirmarGuardado';
 import { FilaTienda, BarraDelDia, FiltroTiendas, RotuloLista, PieLista } from '@/features/despacho/shared/ListaTiendasUI';
 import { avanceFila, estadoLista, resumenDia, filtroVigente, pasaFiltro, type FiltroLista } from '@/features/despacho/shared/listaTiendas';
 import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
@@ -49,6 +50,7 @@ import { PresenciaBadge } from '../../shared/PresenciaBadge';
 import { TiendaTerminadaButton } from '../../shared/TiendaTerminadaButton';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { reconciliarFormRows, findItemForRow, sameStableItem } from '../../shared/formRowsReconcile';
+import { mismaCargaEscrita } from '../../shared/adoptarItemRemoto';
 import { buscarPallet } from '../../shared/buscarPallet';
 import { esDeOtroEspejo, espejoDeTienda, avisoDeOtroEspejo } from '../../shared/duenoDeTienda';
 import { fechaISOLocal } from '../../shared/fechaLocal';
@@ -72,7 +74,7 @@ import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { combinarEnLista } from '../../shared/combinarEnLista';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
-import { avisoDeUnidad } from '../../shared/avisoUnidadEscaneada';
+import { avisoDeUnidad, avisoEnTerminada } from '../../shared/avisoUnidadEscaneada';
 import { useEscaneoBodega } from '../../shared/useEscaneoBodega';
 import { llevarATarjeta, huboSaltoReciente } from '../../shared/useLectorBodega';
 import { useWakeLock } from '@/hooks/useWakeLock';
@@ -157,6 +159,9 @@ interface FormRow {
   // "Agregar" (guardado normal).
   mergeReopened?: boolean;
   mergeMotivo?: MotivoReapertura;
+  /** Se reabrió con «Editar». El ítem sigue guardado hasta que se vuelva a guardar: si nadie
+   *  termina la edición, no se pierde nada. Ver `puedeAdoptar`. */
+  editando?: boolean;
 }
 
 // La tarjeta que se está pesando lleva el color de su tipo en el borde; los campos de peso y alto
@@ -327,7 +332,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const router = useRouter();
   const odooProgress = useOdooProgress();  // progreso de Odoo (punto gris/naranja/verde) — igual que Santiago
-  const { terminadas, marcarTerminada } = useTiendaTerminada();  // marca manual "tienda terminada" (fase 1: solo marcador)
+  const { terminadas, marcarTerminada } = useTiendaTerminada();
+  // Una tienda terminada no se edita: para cambiar algo hay que reabrirla desde ⋯ (pedido de Isaias, 5 oct 2026).
+  const tiendaTerminada = (cod?: string | null) => !!cod && terminadas.get(cod)?.terminada === true;
   useDayRollover();  // recarga al cruzar medianoche → evita guías/estado fantasma del día anterior
   // [Aviso de conflicto 2026-09-09] AppContext dispara este evento cuando el merge cross-device
   // detecta que DOS equipos cambiaron el MISMO ítem de forma distinta desde el último sync de
@@ -573,6 +580,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               guia: '', valor: '', pickingSlotId: s.id,
             };
       },
+      // El chocolate se escribe en bruto y se guarda neto: no se compara.
+      (row, it) => row.pkg !== 'chocolate' && mismaCargaEscrita(row, it),
     ));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedItems, selectedTienda, selectedSlotsFull]);
@@ -1297,13 +1306,19 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   // [Handheld] Número o código con que abrir el diálogo directo en "preexistente" (etiqueta escaneada
   // de otro día). Se borra al cerrar el diálogo.
   const [dialogRef, setDialogRef] = useState<string | null>(null);
-  useEffect(() => { if (!dialogPkg) setDialogRef(null); }, [dialogPkg]);
+  // [Handheld] La etiqueta es de un pallet borrado: el diálogo la comprueba solo y ofrece restaurar.
+  const [dialogBorrado, setDialogBorrado] = useState(false);
+  useEffect(() => { if (!dialogPkg) { setDialogRef(null); setDialogBorrado(false); } }, [dialogPkg]);
 
   // [Handheld] La etiqueta leída con el lector, esté donde esté el cursor. Ver useEscaneoBodega.ts.
   useEscaneoBodega({
     activo: !dialogPkg,
     slotsPorTienda: pickingSlotsFull,
-    avisoDe: p => avisoDeUnidad(itemDeLaUnidad(dispatchData[p.claveTienda] ?? [], p.slot.id)),
+    avisoDe: p => {
+      const aviso = avisoDeUnidad(itemDeLaUnidad(dispatchData[p.claveTienda] ?? [], p.slot.id));
+      return tiendaTerminada(TIENDAS[p.claveTienda]?.cod) ? avisoEnTerminada(aviso) : aviso;
+    },
+    bloqueada: cod => tiendaTerminada(cod),
     irA: p => {
       const tienda = TIENDAS[p.claveTienda];
       if (!tienda) return false;
@@ -1313,7 +1328,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       catchUp();
       return true;
     },
-    ofrecerPreexistente: (pallet, codigo) => {
+    ofrecerPreexistente: (pallet, codigo, borrado) => {
       const tienda = Object.values(TIENDAS).find(t => t.cod === pallet.store_cod);
       if (!tienda) return false;
       setSearch('');
@@ -1321,6 +1336,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       catchUp();
       setDialogPkg(SLOT_TIPO_TO_PKG[pallet.tipo ?? 'P'] ?? 'pallet');
       setDialogRef(codigo);
+      setDialogBorrado(!!borrado);
       return true;
     },
     showToast,
@@ -1426,7 +1442,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // (el reintento de arriba), la fila se quedaba sin él. El backfill pregunta por los slots que
     // las filas declaran (`slotsRepresentados`), no encontraba este, y agregaba una SEGUNDA tarjeta
     // para la misma unidad. RM/Costa ya lo hacía (StepForm: mismo punto); acá faltaba.
-    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId, traSuma: false } : r));
+    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId, traSuma: false, editando: false } : r));
     // El toast "Agregado sin pesar" lo dispara el caller (botón "Sin pesar") justo después.
     if (!sinPesar) showToast(`✓ ${item.orden} ${previo ? 'actualizado' : 'agregado'}`, '#16A34A');
     logActividad({ accion: 'registrar_item', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
@@ -1459,12 +1475,17 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     if (!selectedTienda) return;
     const row = formRows.find(r => r.id === rowId);
     if (!row?.savedItem) return;
-    const currentItems = dispatchData[selectedTienda] || [];
-    // Match por clave ESTABLE (pickingSlotId), no por pkg+orden: dos chocolates comparten pkg y
-    // pueden tener el mismo orden → el match frágil borraba el ítem equivocado (perdía el otro).
-    const idx = currentItems.findIndex(i => sameStableItem(i, row.savedItem));
-    if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda, idx });
-    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, saved: false, savedItem: undefined } : r));
+    // El ítem NO se borra al abrir la edición. Antes sí, sin lápida: si la persona salía de la
+    // tienda sin volver a guardar, la unidad reaparecía «sin guardar» con sus datos (los tenía el
+    // slot de Picking), y otro equipo la devolvía con el peso viejo. Ahora queda guardado tal cual
+    // hasta el nuevo «Guardar», que lo reemplaza (`itemDeLaUnidad` + `fusionarConPrevio`).
+    // Sin slot de Picking no hay con qué reemplazarlo, así que ahí se mantiene el borrado de antes.
+    if (row.savedItem.pickingSlotId == null) {
+      const currentItems = dispatchData[selectedTienda] || [];
+      const idx = currentItems.findIndex(i => sameStableItem(i, row.savedItem));
+      if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda, idx });
+    }
+    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, saved: false, savedItem: undefined, editando: true } : r));
   };
 
   // Borra el slot de picking_pallets vinculado y lo quita de pickingSlotsFull.
@@ -1510,6 +1531,35 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     deletePickingSlot(slotIdBorrado, { label: borrado?.orden ?? (row ? labelDeFila(row, formRows) : undefined) });
     setFormRows(prev => prev.filter(r => r.id !== rowId));
     if (borrado) armarUndo(`${ordenToLabel(borrado.orden)} eliminado`, () => reAgregarItem(borrado, tienda, slotAntes));
+  };
+
+  // Varios de una vez (barra de seleccionados). Los índices se toman de la lista de AHORA y se
+  // borran de mayor a menor: así ninguno se corre. El dispatch ya deja el estado al día al instante.
+  const deleteSavedRows = (rowIds: string[]) => {
+    if (!selectedTienda || rowIds.length === 0) return;
+    const tienda = selectedTienda;
+    const filas = formRows.filter(r => rowIds.includes(r.id));
+    const actuales = dispatchData[tienda] || [];
+    const indices = filas
+      .map(r => r.savedItem ? actuales.findIndex(i => sameStableItem(i, r.savedItem!)) : -1)
+      .filter(i => i !== -1)
+      .sort((a, b) => b - a);
+    for (const idx of indices) dispatch({ type: 'DELETE_ITEM', tienda, idx });
+    const deshacer: { item: DispatchItem; slotAntes?: PickingSlot }[] = [];
+    for (const row of filas) {
+      const slotId = row.pickingSlotId ?? row.savedItem?.pickingSlotId;
+      const slotAntes = slotId != null ? (pickingSlotsFullRef.current[tienda] ?? []).find(s => s.id === slotId) : undefined;
+      deletePickingSlot(slotId, { label: row.savedItem?.orden ?? labelDeFila(row, formRows) });
+      if (row.savedItem) deshacer.push({ item: row.savedItem, slotAntes });
+    }
+    const ids = new Set(rowIds);
+    setFormRows(prev => prev.filter(r => !ids.has(r.id)));
+    setMergeSel(new Set());
+    if (deshacer.length > 0) {
+      armarUndo(`${deshacer.length} eliminado${deshacer.length > 1 ? 's' : ''}`, async () => {
+        for (const d of deshacer) await reAgregarItem(d.item, tienda, d.slotAntes);
+      });
+    }
   };
 
   const removeUnsavedRow = (rowId: string) => {
@@ -1825,10 +1875,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const sourceItemUnion = sourceRow.savedItem;
     const puedeRevertirUnion = !!(sourceItemUnion && targetRow.savedItem);
 
-    // 1) Items: quitar el item del source y el del target (el target se re-agrega al "Agregar").
+    // 1) Items: quitar el del source y dejar el del target GUARDADO con el peso sumado y las guías
+    //    fusionadas, igual que al sumar un bulto. Antes el target también se quitaba («se re-agrega
+    //    al Agregar»): si nadie apretaba Agregar, la unidad volvía «sin guardar», y como el borrado
+    //    no dejaba lápida, otro equipo la devolvía con el peso de antes de unir.
     const cur = dispatchData[name] || [];
-    const remaining = cur.filter(i => !sameStableItem(i, sourceRow.savedItem) && !sameStableItem(i, targetRow.savedItem));
-    if (remaining.length !== cur.length) {
+    const remaining = cur
+      .filter(i => !sameStableItem(i, sourceRow.savedItem))
+      .map(i => sameStableItem(i, targetRow.savedItem) ? { ...i, peso: nuevoPeso, guia: mguia || i.guia } : i);
+    if (remaining.length !== cur.length || targetRow.savedItem) {
       dispatch({ type: 'UPDATE_ITEMS', tienda: name, items: renumberItems(remaining, name) });
     }
 
@@ -1925,6 +1980,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const renderForm = (isMobile = false) => {
     if (!selectedTienda) return null;
     const tienda = TIENDAS[selectedTienda];
+    const bloqueada = tiendaTerminada(tienda?.cod);
 
     /* Una unidad: la tarjeta de pesaje si está pendiente, o su línea si ya se pesó. */
     const renderUnidad = (row: FormRow) => {
@@ -1949,6 +2005,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     // AUSENCIA de un dato por un dato. Dice qué es.
                     resumen={etiquetaDeUnidad(row.savedItem)
                       ?? `${row.savedItem.peso} kg${row.savedItem.pkg !== 'contenedor' ? ` · ${row.savedItem.alto} cm` : ''}`}
+                    campos={etiquetaDeUnidad(row.savedItem) ? undefined : [
+                      { rotulo: 'Peso', valor: `${row.savedItem.peso} kg` },
+                      ...(row.savedItem.pkg !== 'contenedor' ? [{ rotulo: 'Alto', valor: `${row.savedItem.alto} cm` }] : []),
+                      ...(medidas ? [{ rotulo: row.savedItem.pkg === 'box' ? 'Medidas' : 'Tipo', valor: medidas }] : []),
+                    ]}
                     aviso={esSinPesar(row.savedItem) ? (
                       <span className="text-rotulo font-bold uppercase text-est-aviso bg-est-aviso-suave rounded-full px-2 py-0.5">sin pesar</span>
                     ) : undefined}
@@ -1964,12 +2025,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                         className="w-5 h-5 cursor-pointer flex-shrink-0" style={{ accentColor: 'var(--uni-pallet)' }} />
                     ) : undefined}>
                     <div className="flex gap-2 flex-wrap">
-                      <BotonAccion onClick={() => editSavedRow(row.id)}>Editar</BotonAccion>
+                      <BotonAccion onClick={() => { if (confirmarCambioGuardado('editar', rowLabel)) editSavedRow(row.id); }}>Editar</BotonAccion>
                       {row.pkg === 'box' && (
                         <BotonAccion onClick={() => { setDupN(2); setDupRow(dupRow === row.id ? null : row.id); }}
                           title="Duplicar bulto (mismo peso y medidas)">Duplicar</BotonAccion>
                       )}
-                      <BotonAccion tono="peligro" onClick={() => deleteSavedRow(row.id)}>Eliminar</BotonAccion>
+                      <BotonAccion tono="peligro" onClick={() => { if (confirmarCambioGuardado('eliminar', rowLabel)) deleteSavedRow(row.id); }}>Eliminar</BotonAccion>
                     </div>
                     {dupRow === row.id && row.pkg === 'box' && (
                       <div className="mt-1.5 pt-1.5 border-t border-black/[0.08] flex items-center gap-1.5 flex-wrap">
@@ -2040,7 +2101,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                               <div className="flex flex-wrap gap-1">
                                 {combineTargets.map(other => (
                                   <button key={`uni-${other.id}`}
-                                    onClick={() => iniciarUnionInline(row, other, getRowLabel(row), getRowLabel(other))}
+                                    onClick={() => { if (window.confirm(`${getRowLabel(row)} ya está guardado.\n\n¿Seguro que quieres unificarlo con ${getRowLabel(other)}?`)) iniciarUnionInline(row, other, getRowLabel(row), getRowLabel(other)); }}
                                     className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
                                     style={{ borderColor: col.solid, color: col.color, background: col.bg }}>
                                     {getRowLabel(other)}
@@ -2303,7 +2364,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         arrastre={isMobile ? { onTouchStart: onSheetDragStart, onTouchMove: onSheetDragMove, onTouchEnd: onSheetDragEnd } : undefined}
         acciones={tienda?.cod ? (
           <>
-            <RegistrarTiendaButton rol={profile?.role} terminada={!!terminadas.get(tienda.cod)} variante="claro"
+            <RegistrarTiendaButton rol={profile?.role} terminada={tiendaTerminada(tienda.cod)} variante="claro"
               unidades={items.length} yaRegistrada={registroTiendas.registrada(tienda.cod)}
               onRegistrar={() => registrarSoloTienda(selectedTienda ?? '', tienda!.cod)} />
             <TiendaTerminadaButton cod={tienda.cod} info={terminadas.get(tienda.cod)} onToggle={marcarTerminada}
@@ -2362,8 +2423,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
         {header}
-        {pdfStrip}
+        <fieldset disabled={bloqueada} className="contents">{pdfStrip}</fieldset>
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
+          {bloqueada && <AvisoTiendaTerminada />}
+          {/* Terminada: todo lo de adentro queda deshabilitado de una vez (inputs y botones). */}
+          <fieldset disabled={bloqueada} className="contents">
           {/* ── AHORA · FALTAN · PESADOS ──────────────────────────────────────────────────
               Antes todas las unidades eran tarjetas de formulario del mismo tamaño, en dos
               columnas: la que se estaba pesando y las diez ya hechas competían por la misma
@@ -2494,6 +2558,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   className="font-barlow-condensed px-3 py-1.5 rounded text-[13px] font-bold cursor-pointer transition-all border-[1.5px] border-dashed border-white/45 text-[#CDE0FF] hover:bg-white/10">
                   + Nuevo
                 </button>
+                <button disabled={selectedCount === 0}
+                  onClick={() => { const ids = sumableRows.filter(r => mergeSel.has(r.id)).map(r => r.id); if (confirmarEliminarVarios(ids.length)) deleteSavedRows(ids); }}
+                  title="Eliminar todos los seleccionados"
+                  className="font-barlow-condensed px-3 py-1.5 rounded text-apoyo font-bold cursor-pointer transition-all border-[1.5px] border-red-300/70 text-red-200 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed">
+                  Eliminar
+                </button>
               </div>
             );
           })()}
@@ -2535,12 +2605,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               + Web / retiro
             </button>
           </div>
-          {dialogPkg && selectedTienda && (
+          </fieldset>
+          {dialogPkg && selectedTienda && !bloqueada && (
             <AgregarPalletDialog
               tipoLabel={PKG_LABEL[dialogPkg]}
               storeCod={TIENDAS[selectedTienda]?.cod ?? ''}
               date={fechaISOLocal()}
               refInicial={dialogRef ?? undefined}
+              comprobarAlAbrir={dialogBorrado}
               onClose={() => setDialogPkg(null)}
               onNuevo={(cantidad) => { const p = dialogPkg; setDialogPkg(null); void (async () => { for (let i = 0; i < cantidad; i++) await addFormRow(p, undefined, i); })(); }}
               onExistente={(slot, yaEnCarga) => {
