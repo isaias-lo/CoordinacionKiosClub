@@ -3244,8 +3244,31 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               style={{ border: '1.5px solid #dde3f0', borderRadius: 7, padding: '2px 8px', fontSize: 12, fontWeight: 700, color: '#1a2550', background: '#fff' }}
             />
           </div>
+          {/* RM / Costa junto a las fechas: antes ocupaban una fila entera bajo el buscador. Al
+              menos uno queda siempre elegido. */}
+          <div role="group" aria-label="Grupos de tiendas" className="ml-auto flex rounded-btn border border-border overflow-hidden">
+            {([
+              { id: 'rm'    as const, label: 'RM' },
+              { id: 'costa' as const, label: 'Costa' },
+            ]).map(({ id, label }) => {
+              const active = selectedGrps.has(id);
+              return (
+                <button key={id} type="button" aria-pressed={active}
+                  onClick={() => setSelectedGrps(prev => {
+                    const next = new Set(prev);
+                    if (next.has(id)) { if (next.size > 1) next.delete(id); }
+                    else next.add(id);
+                    return next;
+                  })}
+                  className={`font-barlow-condensed text-apoyo font-extrabold min-w-[52px] px-3 py-1.5 cursor-pointer select-none transition-colors
+                    ${active ? 'bg-navy text-white' : 'bg-card text-text-sub'}`}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
           {state.registrado && (
-            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#16A34A', fontWeight: 700, background: '#dcfce7', border: '1px solid #86efac', borderRadius: 20, padding: '2px 8px' }}>
+            <span style={{ fontSize: 10, color: '#16A34A', fontWeight: 700, background: '#dcfce7', border: '1px solid #86efac', borderRadius: 20, padding: '2px 8px' }}>
               ✓ Registrado
             </span>
           )}
@@ -3288,27 +3311,6 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               <span className="text-[12px] font-bold text-[#1E40AF] shrink-0">Ir →</span>
             </button>
           )}
-          <div className="flex gap-2 mt-2">
-            {([
-              { id: 'rm'    as const, label: 'RM',    active_bg: 'bg-[#1E40AF] border-[#1E40AF]' },
-              { id: 'costa' as const, label: 'Costa', active_bg: 'bg-[#0369a1] border-[#0369a1]' },
-            ]).map(({ id, label, active_bg }) => {
-              const active = selectedGrps.has(id);
-              return (
-                <button key={id}
-                  onClick={() => setSelectedGrps(prev => {
-                    const next = new Set(prev);
-                    if (next.has(id)) { if (next.size > 1) next.delete(id); }
-                    else next.add(id);
-                    return next;
-                  })}
-                  className={`font-barlow-condensed text-[16px] font-extrabold px-5 py-2 rounded border-2 tracking-wide transition-all cursor-pointer select-none
-                    ${active ? `${active_bg} text-white shadow-md` : 'bg-white text-text-3 border-border'}`}>
-                  {label}
-                </button>
-              );
-            })}
-          </div>
         </div>
 
         {/* ── Subir guías PDF de Santiago ── */}
