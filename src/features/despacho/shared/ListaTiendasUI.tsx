@@ -10,9 +10,10 @@
 // insignias de cabeza.
 //
 // Ahora:
-//   1. La barra del día: cuántas tiendas están listas, en curso y sin empezar.
+//   1. La barra del día, en una línea: «4/11 listas», los tres estados con su conteo y las unidades.
 //   2. Filtros con esos mismos tres estados.
-//   3. Una fila por tienda: código, nombre completo, estado, y «P 4/5 · B 1/3».
+//   3. «Hoy» en Mosaico (`BaldosaTienda`): anillo de avance con el código, nombre completo y el
+//      detalle en palabras. «Todas» sigue en filas (`FilaTienda`). Las dos reciben las mismas props.
 //   4. El pie: «Resumen» y un menú ⋯ con lo demás.
 //
 // Retirar una tienda de hoy pasó al menú ⋯ («Editar tiendas de hoy»): la × en cada baldosa se
@@ -28,6 +29,7 @@ import { PresenciaBadge } from './PresenciaBadge';
 import { StoreProgressBar } from './StoreProgressBar';
 import type { ViendoInfo } from './usePresenciaTienda';
 import { chipFila, type EstadoLista, type FiltroLista, type ResumenDia, type TonoChip } from './listaTiendas';
+import { agregadosBaldosa, ariaBaldosa, detalleBaldosa, pctAnillo } from './baldosaTienda';
 
 const TONO_CHIP: Record<TonoChip, string> = {
   ok:      'text-est-ok bg-est-ok-suave',
@@ -54,6 +56,8 @@ export interface FilaTiendaProps {
   onSelect: () => void;
   onDragStart?: (e: React.DragEvent) => void;
   accion?: { tipo: 'agregar' | 'retirar'; onClick: () => void };
+  /** «Hoy» va en baldosas (Mosaico); «Todas» sigue en filas. Mismas props, misma conducta. */
+  forma?: 'fila' | 'baldosa';
 }
 
 /**
@@ -71,7 +75,9 @@ const CLASE_LETRA: Record<string, 'pallet' | 'bulto' | 'contenedor' | 'chocolate
   P: 'pallet', B: 'bulto', C: 'contenedor', CH: 'chocolate',
 };
 
-export function FilaTienda({ cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, odoo, viendo, onSelect, onDragStart, accion }: FilaTiendaProps) {
+export function FilaTienda(props: FilaTiendaProps) {
+  if (props.forma === 'baldosa') return <BaldosaTienda {...props} />;
+  const { cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, odoo, viendo, onSelect, onDragStart, accion } = props;
   const chip = chipFila({ estado, sinPesar, conGuia });
   const otros = agregados ? [
     agregados.adquisicion > 0 && { letra: 'A', n: agregados.adquisicion, titulo: 'Adquisiciones: no se pesan' },
@@ -130,46 +136,140 @@ export function FilaTienda({ cod, nombre, tipo, estado, activa, conGuia, avance,
   );
 }
 
-/** «12 de 31 listas», la barra partida en listas / en curso, y las unidades del día. */
+// ── MOSAICO ────────────────────────────────────────────────────────────────────────────────
+//
+// «Hoy» en baldosas de tres columnas en el teléfono, para ver un día de ~11 tiendas casi sin
+// desplazar. Cada baldosa: un anillo con lo pesado sobre el total y el código adentro, el nombre
+// COMPLETO (hasta dos líneas: «Buenaventura» y «Buenaventura II» se confundían cuando se cortaba)
+// y el detalle en palabras. Estado y avance salen de `listaTiendas.ts`, igual que en la fila.
+
+const CAJA_BALDOSA: Record<EstadoLista, string> = {
+  lista:     'border border-est-ok bg-est-ok-suave',
+  curso:     'border border-border bg-card',
+  pendiente: 'border-[1.5px] border-dashed border-border-2 bg-card',
+};
+
+/** El color del anillo, como variable: el porcentaje va en `style` y no hay hex sueltos. */
+const ANILLO: Record<EstadoLista, string> = {
+  lista:     '[--anillo:var(--est-ok)]',
+  curso:     '[--anillo:theme(colors.navy.DEFAULT)]',
+  pendiente: 'bg-bg-3',
+};
+
+const DETALLE_BALDOSA: Record<EstadoLista, string> = {
+  lista:     'text-est-ok',
+  curso:     'text-navy',
+  pendiente: 'text-text-sub',
+};
+
+/** La grilla de «Hoy»: tres columnas en el teléfono; desde `md`, las que quepan. */
+export const GRILLA_MOSAICO = 'grid grid-cols-3 md:grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2 px-2.5 py-2';
+
+export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, odoo, viendo, onSelect, onDragStart, accion }: FilaTiendaProps) {
+  const chip = chipFila({ estado, sinPesar, conGuia });
+  const pct = pctAnillo(estado, avance);
+  // `formatCod` deja «53 VAL»: las letras distinguen la tienda, el número va chico debajo.
+  const [primero, ...resto] = cod.split(' ');
+  const sigla = resto.length ? resto.join(' ') : cod;
+  const numero = resto.length ? primero : '';
+  const otros = agregadosBaldosa(agregados);
+  const aviso = chip.tono === 'aviso' ? chip.texto : null;
+  const conOdoo = !!odoo && odoo.total > 0;
+  return (
+    <div draggable={!!onDragStart} onDragStart={onDragStart} className="relative min-w-0">
+      <button type="button" onClick={onSelect} aria-current={activa ? 'true' : undefined}
+        aria-label={ariaBaldosa({ nombre, cod, estado, avance, chip: chip.texto, conGuia, agregados, odoo })}
+        title={tipo ? `${nombre} · ${tipo.label}` : nombre}
+        className={`w-full h-full min-h-[132px] rounded-card px-1.5 pt-2.5 pb-2 flex flex-col items-center gap-1 text-center cursor-pointer select-none transition-colors active:opacity-80 ${CAJA_BALDOSA[estado]} ${activa ? 'ring-2 ring-navy ring-offset-2 ring-offset-bg' : ''}`}>
+        <span aria-hidden="true"
+          className={`relative w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 ${ANILLO[estado]}`}
+          style={estado === 'pendiente' ? undefined : { background: `conic-gradient(var(--anillo) 0 ${pct}%, var(--color-bg-3) ${pct}% 100%)` }}>
+          <PresenciaBadge viendo={viendo} />
+          <span className="w-[52px] h-[52px] rounded-full bg-card flex flex-col items-center justify-center leading-none gap-0.5">
+            <span className="font-barlow-condensed text-cuerpo font-extrabold text-navy">{sigla}</span>
+            {numero && <span className="text-rotulo text-text-sub tabular-nums">{numero}</span>}
+          </span>
+        </span>
+        <span aria-hidden="true" className="w-full text-apoyo font-bold text-text leading-tight line-clamp-2 break-words">{nombre}</span>
+        {/* Cada parte entera en su línea si no cabe: «1/2 b.» nunca se parte en «1/2» y «b.». */}
+        <span aria-hidden="true" className={`flex flex-wrap justify-center gap-x-1 text-rotulo tracking-normal font-semibold leading-tight ${DETALLE_BALDOSA[estado]}`}>
+          {detalleBaldosa(estado, avance).split(' · ').map((parte, i) => (
+            <span key={i} className="whitespace-nowrap">{i > 0 ? '· ' : ''}{parte}</span>
+          ))}
+        </span>
+        {(aviso || (conGuia && estado !== 'lista') || otros.length > 0 || conOdoo) && (
+          <span aria-hidden="true" className="flex flex-wrap justify-center gap-x-1.5 gap-y-0.5 text-rotulo tracking-normal leading-tight">
+            {aviso && <span className="font-bold text-est-aviso">{aviso}</span>}
+            {conGuia && estado !== 'lista' && <span className="font-bold uppercase text-sky-600">Guía</span>}
+            {otros.map(o => <span key={o} className="text-text-sub">{o}</span>)}
+            {conOdoo && <span className="text-text-sub tabular-nums">Odoo {odoo!.done}/{odoo!.total}</span>}
+          </span>
+        )}
+      </button>
+      {tipo && (
+        <span aria-hidden="true" className="absolute top-1.5 left-1.5 text-rotulo font-extrabold uppercase px-1.5 rounded-full pointer-events-none" style={{ background: tipo.bg, color: tipo.color }}>
+          {tipo.label.charAt(0)}
+        </span>
+      )}
+      {accion && (
+        <button type="button" onClick={accion.onClick}
+          aria-label={accion.tipo === 'agregar' ? `Agregar ${nombre} a hoy` : `Retirar ${nombre} de hoy`}
+          className="absolute -top-1.5 -right-1.5 w-[44px] h-[44px] flex items-center justify-center cursor-pointer">
+          <span className={`w-8 h-8 rounded-full border-2 border-card flex items-center justify-center shadow-card ${accion.tipo === 'agregar' ? 'bg-est-ok text-white' : 'bg-est-aviso text-white'}`}>
+            {accion.tipo === 'agregar' ? <Plus size={16} aria-hidden="true" /> : <X size={16} aria-hidden="true" />}
+          </span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** La última baldosa de «Hoy»: abre lo mismo que hoy agrega tiendas (la sección «Todas»). */
+export function BaldosaAgregar({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick}
+      className="min-h-[132px] rounded-card border-[1.5px] border-dashed border-border-2 bg-transparent text-navy flex flex-col items-center justify-center gap-1.5 cursor-pointer active:bg-bg-2">
+      <Plus size={22} aria-hidden="true" />
+      <span className="text-apoyo font-bold">Agregar</span>
+    </button>
+  );
+}
+
+/** «4/11 listas», los tres estados con su conteo y las unidades del día, en una línea. */
 export function BarraDelDia({ resumen, unidades }: {
   resumen: ResumenDia;
-  /** Lo que antes iba en la franja navy del pie: «84 P · 40 B». */
+  /** Las unidades del día, «84 P · 40 B», en grande y con el color de su tipo. */
   unidades: { letra: string; n: number }[];
 }) {
   if (resumen.total === 0) return null;
-  const pct = (n: number) => `${(n / resumen.total) * 100}%`;
   const visibles = unidades.filter(u => u.n > 0);
+  // Mosaico: el resumen en una línea. La barra partida y la leyenda de abajo repetían lo mismo
+  // que los puntos; quedan los puntos con su conteo.
   return (
-    <div className="bg-card border-b border-border px-3.5 py-2.5 flex flex-col gap-2 flex-shrink-0">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <span className="font-barlow-condensed text-cifra font-extrabold text-text tabular-nums">
-          {resumen.lista} <span className="text-cuerpo font-bold text-text-sub">de {resumen.total} {resumen.total === 1 ? 'tienda lista' : 'tiendas listas'}</span>
+    <div className="bg-card border-b border-border px-3.5 py-2 flex items-center justify-between gap-x-3 gap-y-1.5 flex-wrap flex-shrink-0">
+      <span className="flex items-baseline gap-1.5 tabular-nums" aria-label={`${resumen.lista} de ${resumen.total} tiendas listas`}>
+        <span className="font-barlow-condensed text-cifra font-extrabold text-text leading-none">{resumen.lista}/{resumen.total}</span>
+        <span className="text-cuerpo font-semibold text-text">{resumen.lista === 1 && resumen.total === 1 ? 'lista' : 'listas'}</span>
+      </span>
+      <span className="flex items-center gap-3 text-apoyo text-text-2 tabular-nums">
+        <span className="inline-flex items-center gap-1.5" title="Listas"><i className="w-2.5 h-2.5 rounded-full bg-est-ok" aria-hidden="true" />{resumen.lista}<span className="sr-only"> listas</span></span>
+        <span className="inline-flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-navy" aria-hidden="true" />{resumen.curso} cargando</span>
+        <span className="inline-flex items-center gap-1.5" title="Sin empezar"><i className="w-2.5 h-2.5 rounded-full bg-card border-[1.5px] border-text-sub" aria-hidden="true" />{resumen.pendiente}<span className="sr-only"> sin empezar</span></span>
+      </span>
+      {visibles.length > 0 && (
+        <span className="flex items-center gap-1.5 flex-wrap" aria-label={visibles.map(u => `${u.n} ${u.letra}`).join(', ')}>
+          {visibles.map(u => {
+            const clase = CLASE_LETRA[u.letra];
+            const estilo = clase ? ESTILO_UNIDAD[clase] : null;
+            return (
+              <span key={u.letra} className={`inline-flex items-baseline gap-1 rounded-btn px-2 py-0.5 ${estilo?.suave ?? 'bg-bg-2'}`}>
+                <span className="font-barlow-condensed text-titulo font-extrabold text-text tabular-nums leading-none">{u.n}</span>
+                <span className={`font-barlow-condensed text-apoyo font-extrabold ${estilo?.texto ?? 'text-text-sub'}`}>{u.letra}</span>
+              </span>
+            );
+          })}
         </span>
-        {visibles.length > 0 && (
-          <span className="flex items-center gap-2 flex-wrap justify-end" aria-label={visibles.map(u => `${u.n} ${u.letra}`).join(', ')}>
-            {visibles.map(u => {
-              const clase = CLASE_LETRA[u.letra];
-              const estilo = clase ? ESTILO_UNIDAD[clase] : null;
-              return (
-                <span key={u.letra} className={`inline-flex items-baseline gap-1 rounded-btn px-2 py-0.5 ${estilo?.suave ?? 'bg-bg-2'}`}>
-                  <span className="font-barlow-condensed text-titulo font-extrabold text-text tabular-nums">{u.n}</span>
-                  <span className={`font-barlow-condensed text-cuerpo font-extrabold ${estilo?.texto ?? 'text-text-sub'}`}>{u.letra}</span>
-                </span>
-              );
-            })}
-          </span>
-        )}
-      </div>
-      <div className="h-2 rounded-full bg-bg-3 overflow-hidden flex" role="img"
-        aria-label={`${resumen.lista} listas, ${resumen.curso} en curso, ${resumen.pendiente} sin empezar`}>
-        <span className="h-full bg-est-ok transition-[width] duration-300" style={{ width: pct(resumen.lista) }} />
-        <span className="h-full bg-navy transition-[width] duration-300" style={{ width: pct(resumen.curso) }} />
-      </div>
-      <div className="flex gap-3 flex-wrap text-rotulo font-semibold text-text-sub normal-case tracking-normal">
-        <span className="inline-flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-est-ok" />{resumen.lista} listas</span>
-        <span className="inline-flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-navy" />{resumen.curso} en curso</span>
-        <span className="inline-flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-border-2" />{resumen.pendiente} sin empezar</span>
-      </div>
+      )}
     </div>
   );
 }
