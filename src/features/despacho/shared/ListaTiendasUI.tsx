@@ -29,7 +29,7 @@ import { PresenciaBadge } from './PresenciaBadge';
 import { StoreProgressBar } from './StoreProgressBar';
 import type { ViendoInfo } from './usePresenciaTienda';
 import { chipFila, type EstadoLista, type FiltroLista, type ResumenDia, type TonoChip } from './listaTiendas';
-import { agregadosBaldosa, ariaBaldosa, detalleBaldosa, pctAnillo } from './baldosaTienda';
+import { agregadosBaldosa, ariaBaldosa, detalleBaldosa, pctAnillo, pctOdoo } from './baldosaTienda';
 
 const TONO_CHIP: Record<TonoChip, string> = {
   ok:      'text-est-ok bg-est-ok-suave',
@@ -165,6 +165,16 @@ const DETALLE_BALDOSA: Record<EstadoLista, string> = {
 /** La grilla de «Hoy»: tres columnas en el teléfono; desde `md`, las que quepan. */
 export const GRILLA_MOSAICO = 'grid grid-cols-3 md:grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2 px-2.5 py-2';
 
+/** El centro del anillo: la sigla grande y el número chico debajo. */
+function Centro({ sigla, numero, chico = false }: { sigla: string; numero: string; chico?: boolean }) {
+  return (
+    <span className={`${chico ? 'w-[40px] h-[40px]' : 'w-[48px] h-[48px]'} rounded-full bg-card flex flex-col items-center justify-center leading-none gap-0.5`}>
+      <span className="font-barlow-condensed text-cuerpo font-extrabold text-navy">{sigla}</span>
+      {numero && <span className="text-rotulo text-text-sub tabular-nums">{numero}</span>}
+    </span>
+  );
+}
+
 export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, odoo, viendo, onSelect, onDragStart, accion }: FilaTiendaProps) {
   const chip = chipFila({ estado, sinPesar, conGuia });
   const pct = pctAnillo(estado, avance);
@@ -175,19 +185,27 @@ export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avan
   const otros = agregadosBaldosa(agregados);
   const aviso = chip.tono === 'aviso' ? chip.texto : null;
   const conOdoo = !!odoo && odoo.total > 0;
+  const odooPct = pctOdoo(odoo);
+  const odooListo = odooPct === 100;
   return (
     <div draggable={!!onDragStart} onDragStart={onDragStart} className="relative min-w-0">
       <button type="button" onClick={onSelect} aria-current={activa ? 'true' : undefined}
         aria-label={ariaBaldosa({ nombre, cod, estado, avance, chip: chip.texto, conGuia, agregados, odoo })}
         title={tipo ? `${nombre} · ${tipo.label}` : nombre}
         className={`w-full h-full min-h-[116px] rounded-card px-1.5 pt-2 pb-1.5 flex flex-col items-center gap-0.5 text-center cursor-pointer select-none transition-colors active:opacity-80 ${CAJA_BALDOSA[estado]} ${activa ? 'ring-2 ring-navy ring-offset-2 ring-offset-bg' : ''}`}>
+        {/* Dos anillos: afuera lo pesado, adentro los movimientos de Odoo (ámbar mientras
+            faltan, verde al terminar). Sin movimientos de Odoo, solo el de afuera. */}
         <span aria-hidden="true"
-          className={`relative w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0 ${ANILLO[estado]}`}
+          className={`relative w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 ${ANILLO[estado]}`}
           style={estado === 'pendiente' ? undefined : { background: `conic-gradient(var(--anillo) 0 ${pct}%, var(--color-bg-3) ${pct}% 100%)` }}>
           <PresenciaBadge viendo={viendo} />
-          <span className="w-[44px] h-[44px] rounded-full bg-card flex flex-col items-center justify-center leading-none gap-0.5">
-            <span className="font-barlow-condensed text-cuerpo font-extrabold text-navy">{sigla}</span>
-            {numero && <span className="text-rotulo text-text-sub tabular-nums">{numero}</span>}
+          <span className="w-[52px] h-[52px] rounded-full bg-card flex items-center justify-center">
+            {odooPct !== null ? (
+              <span className={`w-[48px] h-[48px] rounded-full flex items-center justify-center ${odooListo ? '[--anillo-odoo:var(--est-ok)]' : '[--anillo-odoo:var(--est-aviso)]'}`}
+                style={{ background: `conic-gradient(var(--anillo-odoo) 0 ${odooPct}%, var(--color-bg-3) ${odooPct}% 100%)` }}>
+                <Centro sigla={sigla} numero={numero} chico />
+              </span>
+            ) : <Centro sigla={sigla} numero={numero} />}
           </span>
         </span>
         <span aria-hidden="true" className="w-full text-apoyo font-bold text-text leading-tight line-clamp-2 break-words">{nombre}</span>
@@ -202,7 +220,7 @@ export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avan
             {aviso && <span className="font-bold text-est-aviso">{aviso}</span>}
             {conGuia && estado !== 'lista' && <span className="font-bold uppercase text-sky-600">Guía</span>}
             {otros.map(o => <span key={o} className="text-text-sub">{o}</span>)}
-            {conOdoo && <span className="text-text-sub tabular-nums">Odoo {odoo!.done}/{odoo!.total}</span>}
+            {conOdoo && <span className={`tabular-nums ${odooListo ? 'font-bold text-est-ok' : 'text-text-sub'}`}>{odooListo ? '✓ ' : ''}Odoo {odoo!.done}/{odoo!.total}</span>}
           </span>
         )}
       </button>

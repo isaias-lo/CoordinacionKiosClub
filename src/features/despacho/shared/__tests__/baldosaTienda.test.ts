@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detalleBaldosa, pctAnillo, ariaBaldosa, agregadosBaldosa } from '../baldosaTienda';
+import { detalleBaldosa, pctAnillo, pctOdoo, ariaBaldosa, agregadosBaldosa } from '../baldosaTienda';
 import { avanceFila } from '../listaTiendas';
 
 const av = (c: Partial<Record<'pallet' | 'bulto' | 'contenedor' | 'chocolate', number>>, f: Partial<Record<'pallet' | 'bulto' | 'contenedor' | 'chocolate', number>> = {}) =>
@@ -56,5 +56,17 @@ describe('agregados', () => {
     expect(agregadosBaldosa({ adquisicion: 2, webRetiro: 0 })).toEqual(['2 adq.']);
     expect(agregadosBaldosa({ adquisicion: 0, webRetiro: 1 })).toEqual(['1 web']);
     expect(agregadosBaldosa(undefined)).toEqual([]);
+  });
+});
+
+describe('pctOdoo', () => {
+  it('sin movimientos no hay anillo', () => {
+    expect(pctOdoo(undefined)).toBeNull();
+    expect(pctOdoo({ done: 0, total: 0 })).toBeNull();
+  });
+  it('lleva lo hecho sobre el total, sin pasarse', () => {
+    expect(pctOdoo({ done: 3, total: 5 })).toBe(60);
+    expect(pctOdoo({ done: 5, total: 5 })).toBe(100);
+    expect(pctOdoo({ done: 7, total: 5 })).toBe(100);
   });
 });

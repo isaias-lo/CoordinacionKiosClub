@@ -50,6 +50,16 @@ export function pctAnillo(estado: EstadoLista, avance: AvanceTienda): number {
   return Math.max(0, Math.min(100, Math.round((avance.pesadas / avance.total) * 100)));
 }
 
+/**
+ * El anillo de adentro: los movimientos de Odoo hechos, de 0 a 100. `null` si la tienda no tiene
+ * movimientos (no se dibuja). Con «Odoo 3/5» escrito no se veía de un vistazo qué tiendas
+ * terminaron en Odoo; el anillo lleno sí.
+ */
+export function pctOdoo(odoo?: { done: number; total: number }): number | null {
+  if (!odoo || odoo.total <= 0) return null;
+  return Math.max(0, Math.min(100, Math.round((odoo.done / odoo.total) * 100)));
+}
+
 /** Lo que lee un lector de pantalla: nombre, estado y avance, más lo que hay que ir a mirar. */
 export function ariaBaldosa(t: {
   nombre: string;
