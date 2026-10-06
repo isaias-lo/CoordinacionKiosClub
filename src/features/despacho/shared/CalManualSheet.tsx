@@ -13,6 +13,7 @@ import {
 } from './manualPesaje';
 import { MAX_ALTO_CM } from './palletLimits';
 import { supabase } from '@/lib/supabase';
+import { combinarFilas } from '@/features/despacho/rutas/utils/conteosPorFuente';
 
 export { partsOf, buildManualText };
 export type { ManualLine };
@@ -50,7 +51,7 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
   const [tab, setTab]       = useState<'cal' | 'man'>('man'); // abre en Manual (se usa más que el calendario)
   const [copied, setCopied] = useState(false);
   const [activeGroups, setActiveGroups] = useState<Set<ManualGrupo>>(new Set(['rm', 'costa', 'fal']));
-  const [globalLines, setGlobalLines] = useState<ManualLine[]>([]);
+  const [globalRows, setGlobalRows] = useState<SesionRow[]>([]);
   // Peso y alto por bulto — no están en despacho_sesion (que solo lleva conteos), así que el
   // pesaje y los avisos de alto se leen de picking_pallets.
   const [slots, setSlots] = useState<SlotPesaje[]>([]);
@@ -63,7 +64,7 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
     // seca y fila de congelados terminaba con una pisando a la otra. Y las cajas viajan en
     // `bultos`, así que sin filtrar se leen como bultos secos (ver manualText/filasParaManual).
     fetchCounts(todayStr()).then(rows => {
-      if (!cancelled) setGlobalLines(filasParaManual(rows).map(rowToLine));
+      if (!cancelled) setGlobalRows(filasParaManual(rows));
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [open]);
@@ -80,13 +81,31 @@ export function CalManualSheet({ open, onClose, title, lines }: Props) {
     return () => { cancelled = true; };
   }, [open]);
 
-  // Data global + overlay de la pantalla actual (esta pantalla manda para sus cods).
+  // Data global + overlay de la pantalla actual. Una tienda puede tener una fila por espejo
+  // ('santiago' y 'regiones'): indexar solo por código hacía que una pisara a la otra y faltaran
+  // pallets/bultos. Igual que el Enrutador, se combinan por tienda (máximo por campo). La pantalla
+  // actual reemplaza SOLO la fila de su propio espejo, y el grupo sale de la fila combinada.
   const manualSource = useMemo(() => {
-    const map = new Map<string, ManualLine>();
-    for (const gl of globalLines) map.set(gl.cod, gl);
-    for (const ll of lines)       map.set(ll.cod, ll);
-    return [...map.values()];
-  }, [globalLines, lines]);
+    const porTienda = new Map<string, Map<string, SesionRow>>();
+    const poner = (r: SesionRow) => {
+      const m = porTienda.get(r.tienda_cod) ?? new Map<string, SesionRow>();
+      m.set(String(r.fuente ?? ''), r);
+      porTienda.set(r.tienda_cod, m);
+    };
+    for (const r of globalRows) poner(r);
+    for (const ll of lines) {
+      poner({
+        fecha: '', fuente: ll.g === 'fal' ? 'regiones' : 'santiago', tienda_cod: ll.cod,
+        pallets: ll.p, bultos: ll.b, contenedores: ll.c, chocolates: ll.ch,
+      });
+    }
+    const out: ManualLine[] = [];
+    for (const m of porTienda.values()) {
+      const fila = combinarFilas(m.values());
+      if (fila) out.push(rowToLine(fila));
+    }
+    return out;
+  }, [globalRows, lines]);
 
   const filteredLines = useMemo(
     () => manualSource.filter(l => !l.g || activeGroups.has(l.g)),
