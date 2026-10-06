@@ -14,6 +14,7 @@ export type AccionBanda =
   | 'actualizar'       // volver a descargar los datos (el botón «Actualizar» de la cabecera)
   | 'asignar'          // completar lo que falta, igual que la asignación automática
   | 'ver-camiones'     // bajar hasta las tarjetas de camión
+  | 'ir-sin-conductor' // bajar hasta la primera ruta sin conductor en «Quién maneja»
   | 'cerrar-camiones'  // marcar los abiertos en «Cerrar seleccionados»: el cierre lo confirma la barra de siempre
   | 'terminar-dia'     // abrir el cierre de jornada
   | 'ver-manifiestos'; // los manifiestos guardados del día
@@ -215,10 +216,80 @@ export function diaSemana(iso: string): string {
   return d.toLocaleDateString('es-CL', { weekday: 'long' });
 }
 
-/** Flota, Plan y Calendario: por ahora solo dicen qué es cada pestaña. Sus fases las completan. */
-export function bandaFija(s: 'flota' | 'plan' | 'cal'): Banda {
+/** Las secciones de Flota, como las nombra la vista nueva. */
+export type SubFlota = 'gestionar' | 'vehiculos' | 'personal' | 'salidas';
+export const SUBS_FLOTA: { id: SubFlota; texto: string }[] = [
+  { id: 'gestionar', texto: 'Quién maneja' },
+  { id: 'vehiculos', texto: 'Vehículos' },
+  { id: 'personal',  texto: 'Personal' },
+  { id: 'salidas',   texto: 'Salidas propias' },
+];
+
+export interface BandaFlotaInput {
+  sub: SubFlota;
+  /** Rutas registradas del día que muestra «Quién maneja». `null` mientras cargan. */
+  rutas: number | null;
+  /** Patentes de esas rutas que todavía no tienen conductor. */
+  sinConductor: string[];
+  encendidos: number;
+  vehiculos: number;
+}
+
+/** «SPJP88 y PTFZ21», «A, B y C», «A, B, C y 2 más». */
+export function listaPatentes(ps: string[], max = 3): string {
+  if (ps.length <= 1) return ps.join('');
+  if (ps.length <= max) return `${ps.slice(0, -1).join(', ')} y ${ps[ps.length - 1]}`;
+  return `${ps.slice(0, max).join(', ')} y ${ps.length - max} más`;
+}
+
+/** Flota: qué falta en la sección abierta. Lo que más importa es que nadie salga sin conductor. */
+export function bandaFlota(i: BandaFlotaInput): Banda {
+  if (i.sub === 'vehiculos') {
+    return {
+      paso: null, accion: null,
+      titular: `${i.encendidos} de ${n(i.vehiculos, 'vehículo encendido', 'vehículos encendidos')}`,
+      subtitulo: 'Tipo, capacidad y empresa de cada uno. Los cambios se guardan con «Guardar»',
+    };
+  }
+  if (i.sub === 'personal') {
+    return {
+      paso: null, accion: null, titular: 'Conductores y pionetas',
+      subtitulo: 'Un nombre que falta se agrega acá una vez y queda para siempre',
+    };
+  }
+  if (i.sub === 'salidas') {
+    return {
+      paso: null, accion: null, titular: 'Salidas propias',
+      subtitulo: 'El registro de cada salida de vehículo, con sus paradas',
+    };
+  }
+  if (i.rutas === null) {
+    return { paso: null, accion: null, titular: 'Cargando las rutas del día', subtitulo: 'Quién maneja cada camión que sale' };
+  }
+  if (i.rutas === 0) {
+    return {
+      paso: null, accion: null, titular: 'Todavía no hay rutas registradas',
+      subtitulo: 'Cada camión aparece acá al cerrarlo, para elegir su conductor y pionetas',
+    };
+  }
+  const k = i.sinConductor.length;
+  if (k > 0) {
+    return {
+      paso: null,
+      titular: k === 1 ? '1 camión todavía no tiene conductor' : `${k} camiones todavía no tienen conductor`,
+      subtitulo: `${listaPatentes(i.sinConductor)} · ${k === 1 ? 'asígnalo' : 'asígnalos'} antes de que salgan`,
+      accion: { id: 'ir-sin-conductor', texto: k === 1 ? 'Ir al camión sin conductor' : 'Ir al primero sin conductor' },
+    };
+  }
+  return {
+    paso: null, accion: null, titular: 'Todos los camiones tienen conductor',
+    subtitulo: `${n(i.rutas, 'ruta lista', 'rutas listas')} para salir`,
+  };
+}
+
+/** Plan y Calendario: por ahora solo dicen qué es cada pestaña. Sus fases las completan. */
+export function bandaFija(s: 'plan' | 'cal'): Banda {
   const textos = {
-    flota: ['Flota', 'Vehículos, personal y salidas del día'],
     plan:  ['Plan de rutas', 'Ordena las paradas y mira el recorrido en el mapa'],
     cal:   ['Calendario de reparto', 'Qué tiendas se despachan cada día de la semana'],
   } as const;

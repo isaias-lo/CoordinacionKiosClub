@@ -8,7 +8,7 @@ import InputSection   from './components/InputSection';
 import DespachoHeader, { HeaderFields, AutoAsignarToggle, RefreshButton } from './components/DespachoHeader';
 import MarcoEnrutador, { AccionMenu } from './components/MarcoEnrutador';
 import { useVistaEnrutador } from './utils/vistaEnrutador';
-import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, fechaCabecera, diaSemana, type Banda, type AccionBanda } from './utils/bandaEnrutador';
+import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, bandaFlota, SUBS_FLOTA, type SubFlota, fechaCabecera, diaSemana, type Banda, type AccionBanda } from './utils/bandaEnrutador';
 import { useIsMobile } from './utils/useIsMobile';
 import MapSection     from './components/MapSection';
 import ResultsSection from './components/ResultsSection';
@@ -241,6 +241,10 @@ export default function RutasScreen() {
   const [modo,       setModo]       = usePestanaRecordada<ModoEnrutador>('enrutador_modo', MODOS_RECORDABLES, 'drag');
   // Vista clásica o nueva («Un paso a la vez»). Solo cambia lo que se dibuja arriba del tablero.
   const [vista, setVista] = useVistaEnrutador();
+  // [Vista nueva · Flota] La sección de Flota se elige en la banda, y «Quién maneja» le cuenta
+  // a la banda qué rutas siguen sin conductor.
+  const [flotaSub, setFlotaSub] = useState<SubFlota>('gestionar');
+  const [resumenFlota, setResumenFlota] = useState<{ rutas: number | null; sinConductor: string[] }>({ rutas: null, sinConductor: [] });
   const [calT,       setCalT]       = useState<Record<string, CalData>>({});
   // "Tienda Terminada" (marcador manual de Bodega, ver useTiendaTerminada) — filtro ORTOGONAL a
   // enElPool, solo para el tablero y la generación de rutas: sin esto, un despachador podía
@@ -2543,8 +2547,11 @@ export default function RutasScreen() {
         camiones: Object.values(delDia).filter(a => a.length > 0).length,
       });
     }
-    return bandaFija(modo === 'cal' ? 'cal' : modo === 'plan' ? 'plan' : 'flota');
-  }, [modo, calT, manualAsignaciones, cerradasV1, cerrado, terminadas, calTCong, asignacionesCong, cerradasCong, pendientesV2Origen, asignacionesV2, v2Fecha, calTV2]);
+    if (modo === 'flota') {
+      return bandaFlota({ sub: flotaSub, ...resumenFlota, encendidos: flota.filter(v => v.on).length, vehiculos: flota.length });
+    }
+    return bandaFija(modo === 'cal' ? 'cal' : 'plan');
+  }, [flotaSub, resumenFlota, flota, modo, calT, manualAsignaciones, cerradasV1, cerrado, terminadas, calTCong, asignacionesCong, cerradasCong, pendientesV2Origen, asignacionesV2, v2Fecha, calTV2]);
 
   const faseInfoV2 = useMemo(() => {
     const delDia = asignacionesV2[v2Fecha] ?? {};
@@ -3041,6 +3048,9 @@ export default function RutasScreen() {
       requestAnimationFrame(() => document.querySelector('[data-cerrar-varios]')
         ?.scrollIntoView({ behavior: 'smooth', block: 'end' }));
     }
+    else if (id === 'ir-sin-conductor') {
+      document.querySelector('[data-sin-conductor]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
     else if (id === 'ver-camiones') {
       document.querySelector('[data-dropzone]:not([data-dropzone="pool"])')
         ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -3303,7 +3313,19 @@ export default function RutasScreen() {
           onAccion={accionBanda}
           esMovil={isMobile}
           cabecera={modo === 'v2' ? { etiqueta: 'Hoy', fecha: fechaCabecera(todayStr()), nota: 'la 2ª vuelta sale hoy mismo' } : undefined}
-          bandaInicio={modo === 'v2' && fechasV2.length > 0 ? (
+          bandaInicio={modo === 'flota' ? (
+            <div className="grid grid-cols-2 md:flex bg-kbg rounded-[10px] p-[3px] gap-[3px] flex-shrink-0" role="group" aria-label="Sección de Flota">
+              {SUBS_FLOTA.map(sb => {
+                const on = flotaSub === sb.id;
+                return (
+                  <button key={sb.id} type="button" aria-pressed={on} onClick={() => setFlotaSub(sb.id)}
+                    className={`rounded-[8px] min-h-[40px] px-3.5 text-apoyo whitespace-nowrap transition-colors ${on ? 'bg-white font-bold text-ktext shadow-[0_1px_2px_rgba(20,30,60,0.12)]' : 'font-semibold text-kmuted hover:text-ktext'}`}>
+                    {sb.texto}
+                  </button>
+                );
+              })}
+            </div>
+          ) : modo === 'v2' && fechasV2.length > 0 ? (
             // Las fechas de origen, que en la vista clásica son sub-pestañas sobre el tablero.
             <div className="flex flex-col gap-1.5 flex-shrink-0 min-w-0">
               <span className="text-rotulo font-bold uppercase text-kmuted">Quedaron pendientes de</span>
@@ -3447,6 +3469,8 @@ export default function RutasScreen() {
             zonasCfg={zonasCfg}
             pendientesBacklogCount={pendientesV2Origen.length}
             sinBarra={vista === 'nueva'}
+            flotaSub={vista === 'nueva' ? flotaSub : undefined}
+            onResumenFlota={setResumenFlota}
             rightPanelContent={
               results ? (
                 <div className="h-full overflow-y-auto">

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, diaSemana, PASOS_DIA, PASOS_CONGELADOS, type BandaTableroInput } from '../bandaEnrutador';
+import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, diaSemana, bandaFlota, listaPatentes, PASOS_DIA, PASOS_CONGELADOS, type BandaTableroInput } from '../bandaEnrutador';
 import { FASES } from '../faseEnrutador';
 
 const base: BandaTableroInput = {
@@ -118,7 +118,7 @@ describe('diaSemana', () => {
 
 describe('bandaFija y pasos', () => {
   it('flota, plan y calendario no tienen pasos ni botón', () => {
-    for (const s of ['flota', 'plan', 'cal'] as const) expect(bandaFija(s)).toMatchObject({ paso: null, accion: null });
+    for (const s of ['plan', 'cal'] as const) expect(bandaFija(s)).toMatchObject({ paso: null, accion: null });
   });
   it('los pasos del diseño son uno por fase', () => {
     expect(PASOS_DIA.length).toBe(FASES.length);
@@ -161,5 +161,37 @@ describe('bandaCongelados', () => {
   });
   it('ignora un diaCerrado que le llegue: terminar el día no ocurre en este tablero', () => {
     expect(bandaCongelados({ ...c, poolCount: 3, listasSinAsignar: 3, diaCerrado: true }).paso).toBe(1);
+  });
+});
+
+describe('bandaFlota', () => {
+  const f = { sub: 'gestionar' as const, rutas: 4, sinConductor: [] as string[], encendidos: 5, vehiculos: 6 };
+  it('rutas sin conductor: las nombra y lleva a la primera', () => {
+    const b = bandaFlota({ ...f, sinConductor: ['SPJP88', 'PTFZ21'] });
+    expect(b.titular).toBe('2 camiones todavía no tienen conductor');
+    expect(b.subtitulo).toBe('SPJP88 y PTFZ21 · asígnalos antes de que salgan');
+    expect(b.accion).toEqual({ id: 'ir-sin-conductor', texto: 'Ir al primero sin conductor' });
+    expect(bandaFlota({ ...f, sinConductor: ['SPJP88'] })).toMatchObject({
+      titular: '1 camión todavía no tiene conductor', subtitulo: 'SPJP88 · asígnalo antes de que salgan',
+    });
+  });
+  it('todos con conductor, sin rutas o cargando: sin botón', () => {
+    expect(bandaFlota(f)).toMatchObject({ titular: 'Todos los camiones tienen conductor', subtitulo: '4 rutas listas para salir', accion: null });
+    expect(bandaFlota({ ...f, rutas: 0 }).titular).toBe('Todavía no hay rutas registradas');
+    expect(bandaFlota({ ...f, rutas: null }).titular).toBe('Cargando las rutas del día');
+  });
+  it('las otras secciones dicen qué son', () => {
+    expect(bandaFlota({ ...f, sub: 'vehiculos' }).titular).toBe('5 de 6 vehículos encendidos');
+    expect(bandaFlota({ ...f, sub: 'personal' }).titular).toBe('Conductores y pionetas');
+    expect(bandaFlota({ ...f, sub: 'salidas' }).accion).toBeNull();
+  });
+});
+
+describe('listaPatentes', () => {
+  it('une con «y» y resume las que sobran', () => {
+    expect(listaPatentes([])).toBe('');
+    expect(listaPatentes(['A'])).toBe('A');
+    expect(listaPatentes(['A', 'B', 'C'])).toBe('A, B y C');
+    expect(listaPatentes(['A', 'B', 'C', 'D', 'E'])).toBe('A, B, C y 2 más');
   });
 });

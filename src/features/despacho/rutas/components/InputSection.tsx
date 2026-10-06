@@ -9,8 +9,10 @@ import type { ConfigZonas } from '../utils/zonasTransporte';
 import type { FaseInfo } from '../utils/faseEnrutador';
 import FlotaGrid      from './FlotaGrid';
 import FlotaInternaPanel from './FlotaInternaPanel';
+import VehiculosDeHoy from './VehiculosDeHoy';
+import type { SubFlota } from '../utils/bandaEnrutador';
 import PlanificadorTab from './PlanificadorTab';
-import { ControlFlotaPanel, PersonalCatalogPanel } from '@/features/despacho/control-flota/ControlFlotaPanel';
+import { ControlFlotaPanel, PersonalCatalogPanel, type ResumenControlFlota } from '@/features/despacho/control-flota/ControlFlotaPanel';
 import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
 import { useIsMobile } from '../utils/useIsMobile';
 import {
@@ -123,6 +125,11 @@ interface Props {
   /** [Vista nueva] Sin la fila de pestañas y botones: la dibuja `MarcoEnrutador` arriba, y la fase
    *  la muestra su banda (por eso tampoco va el indicador dentro del tablero). */
   sinBarra?: boolean;
+  /** [Vista nueva] La sección de Flota la elige la banda de arriba. Sin esto, InputSection la
+   *  maneja sola, como en la vista clásica. */
+  flotaSub?: SubFlota;
+  /** [Vista nueva] Lo que «Quién maneja» tiene cargado, para la banda. */
+  onResumenFlota?: (r: ResumenControlFlota) => void;
 }
 
 /* ── Icon badge for mode tabs ────────────────────────────────────── */
@@ -171,11 +178,14 @@ export default function InputSection({
   mapPanel,
   terminadas,
   sinBarra = false,
+  flotaSub,
+  onResumenFlota,
 }: Props) {
   // En la vista nueva el indicador de fase vive en la banda: no se repite dentro del tablero.
   const faseVista = sinBarra ? undefined : fase;
   const faseCongVista = sinBarra ? undefined : faseCong;
-  const [flotaSubTab, setFlotaSubTab] = useState<'personal' | 'gestionar' | 'vehiculos' | 'salidas'>('gestionar');
+  const [flotaSubTabPropio, setFlotaSubTab] = useState<SubFlota>('gestionar');
+  const flotaSubTab = flotaSub ?? flotaSubTabPropio;
   // Fuente del calendario del tab CALENDARIO: Central (Seco) por defecto, o Congelados.
   const [calSource, setCalSource] = useState<'despacho' | 'congelados'>('despacho');
   const isMobile = useIsMobile();
@@ -344,7 +354,7 @@ export default function InputSection({
   const flotaTabContent = (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Sub-tab bar */}
-      <div className="flex-shrink-0 flex gap-1 px-3 pt-3 pb-2 bg-white border-b border-black/[0.07]">
+      {!sinBarra && <div className="flex-shrink-0 flex gap-1 px-3 pt-3 pb-2 bg-white border-b border-black/[0.07]">
         <button onClick={() => setFlotaSubTab('vehiculos')}
           className={`h-[34px] px-4 rounded-[9px] text-[12px] font-bold transition-all flex items-center gap-1.5
             ${flotaSubTab === 'vehiculos' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
@@ -365,14 +375,22 @@ export default function InputSection({
             ${flotaSubTab === 'salidas' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
           <Send size={13} strokeWidth={2} /><span>Salidas</span>
         </button>
-      </div>
+      </div>}
       <div className="flex-1 overflow-y-auto">
         {flotaSubTab === 'salidas' ? (
           <FlotaInternaPanel tiendas={tiendas} />
         ) : flotaSubTab === 'personal' ? (
           <PersonalCatalogPanel />
+        ) : flotaSubTab === 'gestionar' && sinBarra ? (
+          // Vista nueva: quién maneja cada ruta y, al lado, qué vehículos están encendidos hoy.
+          <div className={`p-3 md:p-4 bg-kbg min-h-full grid gap-4 items-start ${isMobile ? 'grid-cols-1' : 'grid-cols-[300px_minmax(0,1fr)]'}`}>
+            {!isMobile && <VehiculosDeHoy flota={flota} onToggle={onToggleFlota} />}
+            <div className="rounded-[16px] overflow-hidden border border-black/[0.09] bg-white min-w-0 flex flex-col">
+              <ControlFlotaPanel onResumen={onResumenFlota} />
+            </div>
+          </div>
         ) : flotaSubTab === 'gestionar' ? (
-          <ControlFlotaPanel />
+          <ControlFlotaPanel onResumen={onResumenFlota} />
         ) : (
           <div className="px-3 py-3">
             <FlotaGrid

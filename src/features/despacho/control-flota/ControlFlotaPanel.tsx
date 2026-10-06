@@ -577,13 +577,17 @@ function DensityToggle({ value, onChange }: { value: Density; onChange: (d: Dens
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export function ControlFlotaPanel() {
+/** Lo que la vista nueva del Enrutador dice en su banda. `rutas: null` mientras cargan. */
+export interface ResumenControlFlota { rutas: number | null; sinConductor: string[] }
+
+export function ControlFlotaPanel({ onResumen }: { onResumen?: (r: ResumenControlFlota) => void } = {}) {
   const [fecha,        setFecha]       = useState(() => fechaChile());
   const [rutas,        setRutas]       = useState<Ruta[]>([]);
   const [pionetas,     setPionetas]    = useState<Pioneta[]>([]);
   const [conductores,  setConductores] = useState<Conductor[]>([]);
   const [edits,        setEdits]       = useState<Record<number, EditState>>({});
   const [loading,      setLoading]     = useState(false);
+  const [cargado,      setCargado]     = useState(false);
   const [density,      setDensity]     = useState<Density>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(DENSITY_KEY);
@@ -618,10 +622,15 @@ export function ControlFlotaPanel() {
       const data = json.data ?? [];
       setRutas(data);
       setEdits(Object.fromEntries(data.map(r => [r.id, emptyEdit(r)])));
-    } finally { setLoading(false); }
+    } finally { setLoading(false); setCargado(true); }
   }, []);
 
   useEffect(() => { loadRutas(fecha); }, [fecha, loadRutas]);
+  // Solo informa lo que ya está guardado; un conductor elegido sin guardar todavía no cuenta.
+  useEffect(() => {
+    const listo = cargado && !loading;
+    onResumen?.({ rutas: listo ? rutas.length : null, sinConductor: listo ? rutas.filter(r => !r.chofer).map(r => r.patente) : [] });
+  }, [rutas, loading, cargado, onResumen]);
   useEffect(() => { loadPionetas(); }, [loadPionetas]);
   useEffect(() => { loadConductores(); }, [loadConductores]);
 
@@ -717,8 +726,8 @@ export function ControlFlotaPanel() {
       {!loading && rutas.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 14 }}>
           {rutas.map(ruta => (
+            <div key={ruta.id} className="min-w-0" data-sin-conductor={ruta.chofer ? undefined : ''}>
             <RutaCard
-              key={ruta.id}
               ruta={ruta}
               edit={edits[ruta.id] ?? emptyEdit(ruta)}
               pionetas={pionetas}
@@ -727,6 +736,7 @@ export function ControlFlotaPanel() {
               onSave={() => handleSave(ruta)}
               onReset={() => handleReset(ruta)}
             />
+            </div>
           ))}
         </div>
       )}
