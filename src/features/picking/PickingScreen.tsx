@@ -1752,7 +1752,8 @@ export function PickingScreen() {
                   <div className="flex gap-1.5">
                     {([
                       { key: 'all',         label: 'Todas' },
-                      { key: 'aseo-comida', label: 'Aseo y Comida' },
+                      { key: 'comida',      label: 'Comida' },
+                      { key: 'aseo',        label: 'Aseo' },
                       { key: 'hogar',       label: 'Hogar' },
                       { key: 'chocolates',  label: 'Chocolates' },
             ] as { key: SectionFilter; label: string }[])
@@ -2108,9 +2109,10 @@ export function PickingScreen() {
                           return <div className="space-y-4">{storeGroups.map(g => renderCard(g))}</div>;
                         }
 
-                        // "Todas" de Seco: grid de 3 columnas fijas, siempre visibles (Congelados tiene su pestaña)
+                        // "Todas" de Seco: grid de 4 columnas fijas, siempre visibles (Congelados tiene su pestaña)
                         const SECTION_META = {
-                          'aseo-comida': { label: 'Aseo y Comida', color: '#D97706', bg: 'rgba(217,119,6,0.06)',  border: 'rgba(217,119,6,0.28)' },
+                          comida:        { label: 'Comida',        color: '#D97706', bg: 'rgba(217,119,6,0.06)', border: 'rgba(217,119,6,0.28)' },
+                          aseo:          { label: 'Aseo',          color: '#0D9488', bg: 'rgba(13,148,136,0.06)', border: 'rgba(13,148,136,0.26)' },
                           hogar:         { label: 'Hogar',         color: '#1D4ED8', bg: 'rgba(29,78,216,0.06)',  border: 'rgba(29,78,216,0.22)' },
                           chocolates:    { label: 'Chocolates',    color: '#92400E', bg: 'rgba(146,64,14,0.06)', border: 'rgba(146,64,14,0.22)' },
                           congelados:    { label: 'Congelados',    color: '#0891B2', bg: 'rgba(8,145,178,0.06)', border: 'rgba(8,145,178,0.22)' },
@@ -2130,7 +2132,8 @@ export function PickingScreen() {
                         const countSlots = (gs: PickerGroup[]) =>
                           gs.reduce((sum, g) => sum + Object.values(palletsByTipoAndStateKey[g.stateKey] ?? {}).reduce((a, b) => a + b, 0), 0);
 
-                        const aseoComidaGroups = storeGroups.filter(g => getSection(g) === 'aseo-comida');
+                        const comidaGroups     = storeGroups.filter(g => getSection(g) === 'comida');
+                        const aseoGroups       = storeGroups.filter(g => getSection(g) === 'aseo');
                         const hogarGroups      = storeGroups.filter(g => getSection(g) === 'hogar');
                         const chocoGroups      = storeGroups.filter(g => getSection(g) === 'chocolates');
                         const mixtoGroups      = storeGroups.filter(g => getSection(g) === 'mixto');
@@ -2157,15 +2160,17 @@ export function PickingScreen() {
                         };
 
                         const columns: Array<{ key: keyof typeof SECTION_META; groups: PickerGroup[] }> = [
-                          { key: 'aseo-comida', groups: aseoComidaGroups },
-                          { key: 'hogar',       groups: hogarGroups },
-                          { key: 'chocolates',  groups: chocoGroups },
+                          { key: 'comida',     groups: comidaGroups },
+                          { key: 'aseo',       groups: aseoGroups },
+                          { key: 'hogar',      groups: hogarGroups },
+                          { key: 'chocolates', groups: chocoGroups },
                         ];
 
                         return (
                           <div className="space-y-4">
-                            {/* Grid de 3 columnas fijas — todas siempre visibles */}
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+                            {/* Grid de 4 columnas fijas — todas siempre visibles. En pantallas
+                                medianas van de a dos para que la tarjeta no quede ilegible. */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start">
                               {columns.map((col) => {
                                 const total = countSlots(col.groups);
                                 const meta  = SECTION_META[col.key];
