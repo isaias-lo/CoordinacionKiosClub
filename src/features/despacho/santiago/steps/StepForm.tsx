@@ -44,7 +44,8 @@ import { UndoBar } from '../../shared/UndoBar';
 import { tipoCodeSantiago } from '../../shared/tipoCode';
 import { registrarTiendasSantiagoBD } from '../data/tiendasSantiago';
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
-import { FilaTienda, BarraDelDia, FiltroTiendas, RotuloLista, PieLista, BaldosaAgregar, GRILLA_MOSAICO } from '@/features/despacho/shared/ListaTiendasUI';
+import { FilaTienda, BarraDelDia, UnidadesDelDia, FechasBodega, RotuloLista, PieLista, BaldosaAgregar, GRILLA_MOSAICO } from '@/features/despacho/shared/ListaTiendasUI';
+import { usePlegarCabecera } from '@/features/despacho/shared/usePlegarCabecera';
 import { avanceFila, estadoLista, resumenDia, filtroVigente, pasaFiltro, type FiltroLista } from '@/features/despacho/shared/listaTiendas';
 import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
 import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';
@@ -88,7 +89,6 @@ import { useEscaneoBodega } from '../../shared/useEscaneoBodega';
 import { llevarATarjeta, huboSaltoReciente } from '../../shared/useLectorBodega';
 import { useWakeLock } from '@/hooks/useWakeLock';
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
-import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { fechaChile } from '@/lib/fechaChile';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
@@ -454,6 +454,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
 
   /* Search */
   const [search, setSearch] = useState('');
+  const [buscadorConFoco, setBuscadorConFoco] = useState(false);
+  const { plegada: cabeceraPlegada, refLista, refCabecera } = usePlegarCabecera(!!search || buscadorConFoco);
   // [Buscar por número de pallet] `focoPallet` = pickingSlotId al que hay que saltar en cuanto su
   // tarjeta exista en el DOM (recién se abrió la tienda, formRows tarda un tick en reconstruirse).
   // `resaltado` es la tarjeta del último salto, marcada hasta el próximo (`.tarjeta-escaneada`).
@@ -2246,15 +2248,15 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   ════════════════════════════════════ */
   const renderStoreGrid = () => (
     <>
-    <BarraDelDia resumen={resumenHoy} unidades={[{ letra: 'P', n: barraP }, { letra: 'B', n: barraB }, { letra: 'CH', n: barraCH }]} />
-    <FiltroTiendas filtro={filtroHoy} resumen={resumenHoy} onFiltro={setFiltroLista} />
+    <BarraDelDia resumen={resumenHoy} filtro={filtroHoy} onFiltro={setFiltroLista} />
     {/* Lista de tiendas: una fila por tienda. Ver `ListaTiendas.tsx`. */}
-    <div className="flex-1 overflow-y-auto bg-bg">
+    <div ref={refLista} className="flex-1 overflow-y-auto bg-bg">
       {todayList.length > 0 && (
         <div>
           <RotuloLista derecha={editarHoy
             ? <button type="button" onClick={() => setEditarHoy(false)} className="text-apoyo font-bold text-navy normal-case cursor-pointer">Listo</button>
-            : <span className="flex items-center gap-2.5">
+            : <span className="flex items-center gap-2">
+                <UnidadesDelDia unidades={[{ letra: 'P', n: barraP }, { letra: 'B', n: barraB }, { letra: 'CH', n: barraCH }]} />
                 {/* Tiendas con todos sus movimientos de Odoo hechos, por sección, como antes. */}
                 {rmProg.total > 0 && (
                   <span className="flex items-center gap-1.5">
@@ -3295,8 +3297,6 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
      ROOT RENDER
   ════════════════════════════════════ */
   // Fecha de armado/despacho (se muestra dentro de la columna izquierda, como Regiones)
-  // [m-01] `capitalize` de CSS pone mayúscula en CADA palabra: "Sábado, 12 De Septiembre".
-  const santiagoTodayLabel = conMayusculaInicial(fechaCortaCL(todayKey + 'T12:00:00'));
   const santiagoFechaDespacho = state.fechaDespacho ?? (() => {
     const t = new Date(); t.setDate(t.getDate() + 1);
     return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
@@ -3311,28 +3311,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         style={isDesktop ? { width: leftWidth } : undefined}
       >
 
-        {/* Fecha de armado / despacho — dentro de la columna izquierda (igual que Regiones) */}
-        <div style={{
-          padding: '8px 14px', borderBottom: '1px solid var(--border, #E2E5EC)',
-          background: '#fff', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', flexShrink: 0,
-        }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <span style={{ fontSize: 9, color: '#999', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>Armado</span>
-            <span style={{ fontSize: 12, color: '#555' }}>{santiagoTodayLabel}</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <span style={{ fontSize: 9, color: '#999', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>Fecha de despacho</span>
-            <input
-              type="date"
-              value={santiagoFechaDespacho}
-              min={todayKey}
-              onChange={e => dispatch({ type: 'SET_FECHA_DESPACHO', payload: e.target.value })}
-              style={{ border: '1.5px solid #dde3f0', borderRadius: 7, padding: '2px 8px', fontSize: 12, fontWeight: 700, color: '#1a2550', background: '#fff' }}
-            />
-          </div>
+        {/* Fechas y buscador: en el teléfono se pliegan al bajar por la lista (ver
+            `usePlegarCabecera`). En escritorio quedan siempre. Igual que Regiones. */}
+        <div ref={refCabecera} className={`flex-shrink-0 ${cabeceraPlegada ? 'max-lg:hidden' : ''}`}>
+        <FechasBodega armado={todayKey} despacho={santiagoFechaDespacho} min={todayKey} registrado={!!state.registrado}
+          onDespacho={fecha => dispatch({ type: 'SET_FECHA_DESPACHO', payload: fecha })}>
           {/* RM / Costa junto a las fechas: antes ocupaban una fila entera bajo el buscador. Al
               menos uno queda siempre elegido. */}
-          <div role="group" aria-label="Grupos de tiendas" className="ml-auto flex rounded-btn border border-border overflow-hidden">
+          <div role="group" aria-label="Grupos de tiendas" className="flex rounded-btn border border-border overflow-hidden">
             {([
               { id: 'rm'    as const, label: 'RM' },
               { id: 'costa' as const, label: 'Costa' },
@@ -3346,19 +3332,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     else next.add(id);
                     return next;
                   })}
-                  className={`font-barlow-condensed text-apoyo font-extrabold min-w-[52px] px-3 py-1.5 cursor-pointer select-none transition-colors
+                  className={`font-barlow-condensed text-apoyo font-extrabold min-w-[52px] px-3 py-2 cursor-pointer select-none transition-colors
                     ${active ? 'bg-navy text-white' : 'bg-card text-text-sub'}`}>
                   {label}
                 </button>
               );
             })}
           </div>
-          {state.registrado && (
-            <span style={{ fontSize: 10, color: '#16A34A', fontWeight: 700, background: '#dcfce7', border: '1px solid #86efac', borderRadius: 20, padding: '2px 8px' }}>
-              ✓ Registrado
-            </span>
-          )}
-        </div>
+        </FechasBodega>
 
         <div className="px-3 pt-2 pb-2.5 bg-bg border-b border-border flex-shrink-0">
           <div className="relative">
@@ -3366,6 +3347,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               // La pistola de radiofrecuencia escribe el código y manda Enter, igual que un teclado.
               // Con esto, escanear termina el salto sin que nadie tenga que tocar el resultado.
               onKeyDown={e => { if (e.key === 'Enter' && palletEncontrado) { e.preventDefault(); saltarAPallet(); } }}
+              onFocus={() => setBuscadorConFoco(true)} onBlur={() => setBuscadorConFoco(false)}
               placeholder="Buscar tienda, Nº de pallet o escanear…"
               className="w-full bg-white border border-border rounded-btn px-3 py-2.5 pr-9 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] placeholder:text-text-3 transition-all" />
             {search && (
@@ -3397,6 +3379,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               <span className="text-[12px] font-bold text-[#1E40AF] shrink-0">Ir →</span>
             </button>
           )}
+        </div>
         </div>
 
         {/* ── Subir guías PDF de Santiago ── */}
