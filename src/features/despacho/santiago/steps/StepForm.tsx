@@ -967,9 +967,15 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const estadoDe = (t: TiendaSantiago) => estadoLista({
     cargadas: (items[t.cod] || []).length, terminada: terminadas.get(t.cod)?.terminada === true,
   });
-  const resumenHoy = resumenDia(todayTiendas
-    .filter(t => !isRegionesCod(t.cod) && (t.region === 'VR' ? selectedGrps.has('costa') : selectedGrps.has('rm')))
-    .map(estadoDe));
+  const tiendasBarra = todayTiendas
+    .filter(t => !isRegionesCod(t.cod) && (t.region === 'VR' ? selectedGrps.has('costa') : selectedGrps.has('rm')));
+  const resumenHoy = resumenDia(tiendasBarra.map(estadoDe));
+  // Las unidades de la barra salen de las MISMAS tiendas que su «X/Y listas». Antes sumaban todo
+  // `items` —Costa con el filtro en RM, tiendas fuera del día— y no cuadraban con el contador.
+  const itemsBarra = tiendasBarra.flatMap(t => items[t.cod] || []);
+  const barraP  = itemsBarra.filter(i => i.tipo === 'Pallet').length;
+  const barraB  = bultosSantiago(itemsBarra);
+  const barraCH = itemsBarra.filter(i => i.tipo === 'Chocolate').length;
   const filtroHoy = filtroVigente(filtroLista, resumenHoy);
   const todayVisibles = todayList.filter(t => pasaFiltro(estadoDe(t), filtroHoy));
   const activeTiendas      = [
@@ -2240,7 +2246,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   ════════════════════════════════════ */
   const renderStoreGrid = () => (
     <>
-    <BarraDelDia resumen={resumenHoy} unidades={[{ letra: 'P', n: statP }, { letra: 'B', n: statB }, { letra: 'CH', n: statCH }]} />
+    <BarraDelDia resumen={resumenHoy} unidades={[{ letra: 'P', n: barraP }, { letra: 'B', n: barraB }, { letra: 'CH', n: barraCH }]} />
     <FiltroTiendas filtro={filtroHoy} resumen={resumenHoy} onFiltro={setFiltroLista} />
     {/* Lista de tiendas: una fila por tienda. Ver `ListaTiendas.tsx`. */}
     <div className="flex-1 overflow-y-auto bg-bg">
