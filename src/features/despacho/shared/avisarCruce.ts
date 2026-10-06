@@ -151,3 +151,48 @@ export function resumenDeCruce(r: ResultadoCruce): string {
   const viejas = r.actualizadas ? `${r.actualizadas} actualizada${r.actualizadas === 1 ? '' : 's'}` : '';
   return `✓ CRUCE PESOS al día — ${[nuevas, viejas].filter(Boolean).join(' y ')}`;
 }
+
+/**
+ * Lo que va DESPUÉS de escribir la planilla, en un solo lugar.
+ *
+ * ── POR QUÉ EXISTE ESTA FUNCIÓN ───────────────────────────────────────────────────────────────
+ *
+ * Registrar son TRES pasos: escribir la planilla, volcar la hoja a la base (`sync-despacho`) y
+ * rehacer el cruce del día. Los dos últimos estaban copiados CUATRO veces —el registro por tienda
+ * de los dos espejos y los dos modales de fin de día—, con el mismo comentario repetido en los
+ * cuatro.
+ *
+ * Y había un quinto llamador que se olvidó del tercer paso: `PendingDraftBanner`, el botón de la
+ * advertencia «no registraste el día X». Escribía la planilla y nada más.
+ *
+ * Medido el 06/10/2026: el 05/10 quedó con las 8 tiendas de Nacional en la hoja CRUCE PESOS y
+ * TODAS las de RM/Costa en blanco. El registro había funcionado —157 filas, 142 con peso, 32
+ * tiendas, escritas a las 06:53— pero la hoja seguía diciendo lo que había dicho a las 16:04 del
+ * día anterior, cuando registró Nacional y RM todavía no. El dato estaba en la base; nadie volvió
+ * a mirarlo.
+ *
+ * Una cadena copiada cinco veces no es una cadena: son cinco oportunidades de olvidar un eslabón.
+ *
+ * ── EL DÍA ES UN PARÁMETRO, Y ESO IMPORTA ─────────────────────────────────────────────────────
+ *
+ * Las cuatro copias pasaban HOY porque registran hoy. El banner registra un día PASADO, así que si
+ * se copiara la línea tal cual rehría el cruce del día equivocado: dejaría el 05/10 igual de vacío
+ * y de paso tocaría el 06/10 sin motivo.
+ *
+ * Devuelve el aviso del cruce, o `null` si salió bien. El registro YA ocurrió cuando esto corre:
+ * lo que puede fallar es el informe, y por eso el aviso se muestra sin deshacer nada.
+ */
+export async function sincronizarYCruzar(fechaISO: string): Promise<string | null> {
+  // Las DOS salen juntas y ninguna espera a la otra. El cruce no necesita al sync: lee
+  // `despacho_rm` / `despacho_regiones`, donde el espejo de `sheets-write` ya dejó los pesos.
+  const [, aviso] = await Promise.all([
+    fetch('/api/sync-despacho', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dia: fechaISO }),
+      keepalive: true,
+    }).catch(e => { console.error('[sync-despacho]', e); }),
+    escribirCruceDelDia(fechaISO),
+  ]);
+  return aviso;
+}

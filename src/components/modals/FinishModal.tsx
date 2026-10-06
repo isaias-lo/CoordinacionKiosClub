@@ -10,7 +10,7 @@ import { todayStr } from '@/features/despacho/rutas/utils/helpers';
 import { logActividad } from '@/lib/actividad';
 import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
 import { marcarRegistro } from '@/features/despacho/shared/registroPorFecha';
-import { escribirCruceDelDia, AVISO_CRUCE } from '@/features/despacho/shared/avisarCruce';
+import { sincronizarYCruzar, AVISO_CRUCE } from '@/features/despacho/shared/avisarCruce';
 import { fechaChile } from '@/lib/fechaChile';
 
 // Hoy en horario LOCAL (Chile). NO toISOString() (da UTC → de tarde rueda al día siguiente).
@@ -105,19 +105,9 @@ export function FinishModal({ open, onClose }: Props) {
     // avisaba de esto para el cruce; faltaba aplicarlo a la escritura de la planilla, que es
     // donde cambia el id de la fila.
     sheetsRegionesWrite(dispatchData, 'Luis Fica', fechaDespacho, fechaChile())
-      .then(() => Promise.all([
-        // Las DOS salen juntas y ninguna espera a la otra. El cruce no necesita al sync: lee
-        // `despacho_rm` / `despacho_regiones`, donde el espejo de `sheets-write` ya dejó los pesos.
-        // Ver `escribirCruceDelDia` — ahí está por qué dejó de viajar adentro del sync.
-        fetch('/api/sync-despacho', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dia: fechaChile() }),
-          keepalive: true,
-        }).catch(e => { console.error('[sync-despacho]', e); }),
-        escribirCruceDelDia(fechaChile()),
-      ]))
-      .then(([, aviso]) => { if (aviso) showToast(aviso, '#D97706'); })
+      // Volcar la hoja a la base y rehacer el cruce del día. Ver `sincronizarYCruzar`.
+      .then(() => sincronizarYCruzar(fechaChile()))
+      .then(aviso => { if (aviso) showToast(aviso, '#D97706'); })
       .catch(() => showToast(AVISO_CRUCE, '#D97706'));
     showToast('✓ Guardado · enviando a Sheets…', '#16A34A');
 
