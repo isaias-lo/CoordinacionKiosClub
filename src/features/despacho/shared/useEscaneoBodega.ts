@@ -9,6 +9,8 @@
 //     el número ya puesto. Reclamarlo re-data el pallet, así que lo confirma la persona.
 //   · Etiqueta de un pallet BORRADO → abre su tienda y el diálogo ya comprobado, que ofrece
 //     restaurarlo si hay copia. Antes decía "no encontrada" y la persona no tenía salida.
+//   · Etiqueta de una tienda del OTRO espejo de Bodega → no se abre: pitido de error y el aviso
+//     que dice en qué pestaña se pesa. Ver `vetoEscaneo.ts`.
 //   · Nada → pitido de error y el motivo en pantalla.
 
 import { useRef } from 'react';
@@ -18,6 +20,7 @@ import { buscarPallet, type PalletEncontrado, type SlotDePallet } from './buscar
 import type { AvisoUnidad } from './avisoUnidadEscaneada';
 import { ConfirmacionDoble } from './lectorBodega';
 import { useLectorBodega, tarjetaAMedias } from './useLectorBodega';
+import { avisoSiEsDeOtraBodega } from './vetoEscaneo';
 
 const VERDE = '#16A34A', AMBAR = '#D97706', ROJO = '#D32F2F';
 
@@ -61,6 +64,12 @@ export interface OpcionesEscaneo<Slot extends SlotDePallet> {
   showToast: (msg: string, color?: string) => void;
   /** La tienda está terminada: no se le agrega nada, ni siquiera un preexistente escaneado. */
   bloqueada?: (storeCod: string) => boolean;
+  /** Traduce la clave con que ESTA pantalla indexa sus tiendas al código. Ver `buscarPallet`:
+   *  RM/Costa indexa por código (identidad) y Nacional por nombre. */
+  codDeClave: (clave: string) => string | undefined;
+  /** `null` si la tienda es de esta bodega; si no, el aviso que dice en qué pestaña se pesa.
+   *  Sin esto la pistola abría tiendas del otro espejo — ver `vetoEscaneo.ts`. */
+  deOtraBodega?: (storeCod: string) => string | null;
 }
 
 export function useEscaneoBodega<Slot extends SlotDePallet>(opts: OpcionesEscaneo<Slot>): void {
@@ -81,6 +90,14 @@ export function useEscaneoBodega<Slot extends SlotDePallet>(opts: OpcionesEscane
         return;
       }
       confirmacion.current.olvidar();
+      // Antes que nada: ¿es de esta bodega? La pistola llega a CUALQUIER tienda del día, y abrir
+      // una del otro espejo deja la misma carga trabajada en los dos. Ver `vetoEscaneo.ts`.
+      const deOtra = avisoSiEsDeOtraBodega(p.claveTienda, opts.codDeClave, opts.deOtraBodega);
+      if (deOtra) {
+        avisoFisico('error');
+        opts.showToast(`#${p.slot.id} · ${deOtra}`, ROJO);
+        return;
+      }
       const aviso = opts.avisoDe(p);
       if (!opts.irA(p)) {
         avisoFisico('error');
@@ -95,6 +112,12 @@ export function useEscaneoBodega<Slot extends SlotDePallet>(opts: OpcionesEscane
   async function noEsDeHoy(codigo: string) {
     let pallet: PalletDeOtroDia | null = null;
     try { pallet = await buscarFueraDeHoy(codigo); } catch { /* sin conexión: cae al "no encontrada" */ }
+    const deOtra = pallet ? opts.deOtraBodega?.(pallet.store_cod) : null;
+    if (deOtra) {
+      avisoFisico('error');
+      opts.showToast(`#${pallet!.id} · ${deOtra}`, ROJO);
+      return;
+    }
     if (pallet && opts.bloqueada?.(pallet.store_cod)) {
       avisoFisico('error');
       opts.showToast(`Pallet #${pallet.id}: la tienda ${pallet.store_cod} está terminada. Reábrela para agregarlo.`, ROJO);
@@ -108,6 +131,12 @@ export function useEscaneoBodega<Slot extends SlotDePallet>(opts: OpcionesEscane
     if (!pallet) {
       let borrado: PalletDeOtroDia | null = null;
       try { borrado = await buscarBorrado(codigo); } catch { /* sin conexión */ }
+      const deOtraB = borrado ? opts.deOtraBodega?.(borrado.store_cod) : null;
+      if (deOtraB) {
+        avisoFisico('error');
+        opts.showToast(`#${borrado!.id} · ${deOtraB}`, ROJO);
+        return;
+      }
       if (borrado && opts.bloqueada?.(borrado.store_cod)) {
         avisoFisico('error');
         opts.showToast(`Pallet #${borrado.id} fue eliminado y la tienda ${borrado.store_cod} está terminada. Reábrela para recuperarlo.`, ROJO);

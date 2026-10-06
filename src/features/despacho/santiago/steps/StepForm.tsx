@@ -2182,6 +2182,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       return tiendaTerminada(p.claveTienda) ? avisoEnTerminada(aviso) : aviso;
     },
     bloqueada: cod => tiendaTerminada(cod),
+    // Acá los mapas se indexan por código, así que la clave ya ES el código.
+    codDeClave: c => c,
+    // `tiendaByCod` trae TODO el catálogo de /api/tiendas, Nacional incluido, así que sin esto la
+    // pistola abría una tienda de Regiones acá dentro. Ver `vetoEscaneo.ts`.
+    deOtraBodega: cod => (esDeOtroEspejo(cod, 'rmcosta', isRegionesCod)
+      ? avisoDeOtroEspejo(cod, espejoDeTienda(cod, isRegionesCod))
+      : null),
     irA: p => {
       const tienda = tiendaByCod[p.claveTienda];
       if (!tienda) return false;
