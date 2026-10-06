@@ -1321,6 +1321,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       return tiendaTerminada(TIENDAS[p.claveTienda]?.cod) ? avisoEnTerminada(aviso) : aviso;
     },
     bloqueada: cod => tiendaTerminada(cod),
+    // Acá los mapas se indexan por NOMBRE de tienda; la pertenencia se decide por código.
+    codDeClave: c => TIENDAS[c]?.cod,
+    // Hoy `TIENDAS` solo tiene tiendas de Regiones, así que esto no bloquea nada que antes
+    // funcionara. Va igual porque el control tiene que ser simétrico: el día que este catálogo
+    // crezca, el agujero se abre solo y en silencio. Ver CLAUDE.md, «Bodega tiene DOS espejos».
+    deOtraBodega: cod => (esDeOtroEspejo(cod, 'nacional', isRegionesCod)
+      ? avisoDeOtroEspejo(cod, espejoDeTienda(cod, isRegionesCod))
+      : null),
     irA: p => {
       const tienda = TIENDAS[p.claveTienda];
       if (!tienda) return false;
