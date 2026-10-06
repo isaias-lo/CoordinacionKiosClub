@@ -23,6 +23,7 @@ import { resumenEmpresa, empiezaPlegada, alternarEmpresa, textoResumen } from '.
 import { FaseEnrutador } from './FaseEnrutador';
 import type { FaseInfo } from '../utils/faseEnrutador';
 import { estadoDeCarga, acomodarSegunRuta, moverEnLista, textoEstadoCarga } from '../utils/ordenCarga';
+import { estadoCamion } from '../utils/estadoCamion';
 
 interface StoreTag { c: string; p: number; b: number; }
 
@@ -105,6 +106,10 @@ interface Props {
    *  el caso de Congelados y de 2ª VUELTA, que a propósito siguen mostrando todo lo que tiene
    *  carga, terminada o no. */
   terminadas?: ReadonlySet<string>;
+  /** [Vista nueva] Diseño A («Un paso a la vez»): las mismas tiendas, camiones y acciones, con otra
+   *  presentación — pool en filas, tarjetas con estado y cabina→puerta numerada. Solo cambia cómo se
+   *  dibuja: cada botón y cada arrastre llama a lo mismo que en la vista clásica. */
+  vistaA?: boolean;
 }
 
 function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number[]): number {
@@ -172,7 +177,11 @@ export default function ManualDispatch({
   esCerrada,
   zonasCfg,
   terminadas,
+  vistaA = false,
 }: Props) {
+  const A = vistaA;
+  // [Vista A] La tira de «Camiones activos» se abre con «+ Sumar camión». Solo es mostrar u ocultar.
+  const [verActivos, setVerActivos] = useState(false);
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
   const [dragOver,          setDragOver]          = useState<string | null>(null);
   const [selected,          setSelected]          = useState<Set<string>>(new Set()); // P10b: multi-selección del pool
@@ -567,7 +576,7 @@ export default function ManualDispatch({
 
   return (
     <div className="space-y-3" ref={containerRef}>
-      {tiendasCount > 0 && (
+      {!A && tiendasCount > 0 && (
         <div className="flex gap-2 text-[11px] text-kmuted bg-kbg rounded-kios2 px-3 py-2">
           <span><span className="font-semibold text-ktext">{tiendasCount}</span> tiendas ·</span>
           <span><span className="font-semibold text-ktext">{tiendasCount - pool.length}</span> asignadas</span>
@@ -586,19 +595,19 @@ export default function ManualDispatch({
           la flota. En teléfono se apila igual que siempre, en una sola columna.
           Las tres pestañas —Despacho, Congelados y 2ª Vuelta— usan ESTE componente, así que las
           tres cambian juntas. */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)] gap-3 items-start">
+      <div className={`grid grid-cols-1 gap-3 items-start ${A ? 'lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-4' : 'lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]'}`}>
         <div className="min-w-0 lg:sticky lg:top-0">
           {/* [Rediseño] El rótulo y el aviso viven en ESTA columna, no a lo ancho.
               Con el aviso centrado arriba, la columna izquierda quedaba vacía y no se entendía para
               qué era: parecía espacio desaprovechado en vez de el lugar de las tiendas. */}
-          <div className="flex items-center gap-2 mb-2 px-0.5">
+          {!A && <div className="flex items-center gap-2 mb-2 px-0.5">
             <span className="text-[12px] font-extrabold uppercase tracking-wide text-ktext">Tiendas</span>
             {tiendasCount > 0 && (
               <span className="text-[11px] text-kmuted font-semibold">
                 · {pool.length} sin asignar de {tiendasCount}
               </span>
             )}
-          </div>
+          </div>}
           {tiendasCount === 0 && (
             <div className="bg-kbg border border-dashed border-black/[0.14] rounded-kios2 px-3 py-6 text-[13px] text-kmuted text-center">
               Acá van a aparecer las tiendas.
@@ -613,12 +622,70 @@ export default function ManualDispatch({
               ? '0 0 0 2px rgba(27,42,107,0.25), 0 2px 12px rgba(27,42,107,0.10)'
               : '0 1px 3px rgba(0,0,0,0.06)',
           }}
-          className={`rounded-[14px] border-[1.5px] transition-all mb-4 ${dragOver === 'pool' ? 'border-knavy bg-knavy/[0.03]' : 'border-black/[0.09] bg-white'}`}
+          className={`${A ? 'rounded-[16px]' : 'rounded-[14px]'} border-[1.5px] transition-all mb-4 ${dragOver === 'pool' ? 'border-knavy bg-knavy/[0.03]' : 'border-black/[0.09] bg-white'}`}
           onDragOver={e => { e.preventDefault(); setDragOver('pool'); }}
           onDrop={e => { e.preventDefault(); if (dragging) ejecutarDrop('pool', dragging); }}
           onDragLeave={handleDragLeave}
           onClick={() => { if (dragging) ejecutarDrop('pool', dragging); }}
         >
+          {A ? (
+            <div className="px-4 pt-3.5 pb-3 border-b border-black/[0.07] flex flex-col gap-2.5">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="text-cuerpo font-bold text-ktext">Sin asignar</span>
+                {dragging
+                  ? <span className="text-apoyo text-knavy font-semibold animate-pulse">← Suelta aquí</span>
+                  : <span className={`text-apoyo font-semibold ${poolAsignable.length > 0 ? 'text-kmuted' : 'text-green-700'}`}>
+                      {poolAsignable.length > 0 ? `${poolAsignable.length} por asignar` : '✓ Todas asignadas'}
+                    </span>}
+              </div>
+              {onPool && (
+                <div className="grid grid-cols-2 bg-kbg rounded-[10px] p-[3px] gap-[3px]" role="group" aria-label="Grupo de tiendas">
+                  {POOLS.map(({ id, label }) => {
+                    const n = pool.filter(t => enPool(calT[t.c]?.g, id)).length;
+                    const on = poolScope === id;
+                    return (
+                      <button key={id} type="button" aria-pressed={on}
+                        onClick={e => { e.stopPropagation(); onPool(id); }}
+                        className={`rounded-[8px] min-h-[34px] text-apoyo transition-colors ${on ? 'bg-white font-bold text-ktext shadow-[0_1px_2px_rgba(20,30,60,0.12)]' : 'font-semibold text-kmuted hover:text-ktext'}`}>
+                        {label} · {n}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {((onAsignar && poolAsignable.length > 0) || (onReasignarTodo && hayTrabajo) || (onTodaLaFlota && (ocultos > 0 || todaLaFlota))) && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {onAsignar && poolAsignable.length > 0 && (
+                    <button type="button"
+                      onClick={e => { e.stopPropagation(); if (!iaLoading) onAsignar(); }}
+                      disabled={iaLoading}
+                      className={`inline-flex items-center gap-1.5 min-h-[34px] px-3 rounded-[9px] text-apoyo font-bold text-knavy border border-knavy/30 bg-white hover:border-knavy transition-colors disabled:opacity-70 ${iaLoading ? 'ai-glow' : ''}`}
+                      title="Asigna las tiendas que faltan de este grupo usando la capacidad que queda. No mueve lo que ya armaste.">
+                      {iaLoading
+                        ? <><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Asignando…</>
+                        : <><Sparkles size={14} aria-hidden="true" /> Asignar {poolAsignable.length}</>}
+                    </button>
+                  )}
+                  {onReasignarTodo && hayTrabajo && (
+                    <button type="button"
+                      onClick={e => { e.stopPropagation(); onReasignarTodo(); }}
+                      className="inline-flex items-center gap-1.5 min-h-[34px] px-3 rounded-[9px] text-apoyo font-semibold text-kmuted border border-black/[0.12] bg-white hover:border-black/[0.25] hover:text-ktext transition-colors"
+                      title="Rehace el tablero desde cero con el motor. Descarta los cambios hechos a mano.">
+                      <RefreshCw size={13} aria-hidden="true" /> Reasignar todo
+                    </button>
+                  )}
+                  {onTodaLaFlota && (ocultos > 0 || todaLaFlota) && (
+                    <button type="button"
+                      onClick={e => { e.stopPropagation(); onTodaLaFlota(!todaLaFlota); }}
+                      className="min-h-[34px] px-2.5 rounded-[9px] text-rotulo tracking-normal font-semibold border border-black/[0.12] bg-white text-kmuted hover:border-black/[0.25] hover:text-ktext transition-colors"
+                      title="Config → Transportistas define qué empresas cubren cada zona. Esto muestra el resto, para tomar un camión de otra transportista como excepción.">
+                      {todaLaFlota ? 'Ver solo los habilitados' : `+ Camión de otra empresa (${ocultos})`}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="px-4 py-3 border-b border-black/[0.07] flex items-center gap-3 flex-wrap">
             <div className="min-w-[110px]">
               <span className="text-[14px] font-bold text-ktext">📦 Sin asignar</span>
@@ -690,6 +757,7 @@ export default function ManualDispatch({
               </span>
             )}
           </div>
+          )}
           {hasSelection && (
             <div className="px-4 py-2 bg-knavy/[0.05] border-b border-knavy/15 flex items-center gap-2 text-[12px]">
               <span className="font-bold text-knavy">{selected.size} seleccionada{selected.size > 1 ? 's' : ''}</span>
@@ -697,7 +765,7 @@ export default function ManualDispatch({
               <button onClick={e => { e.stopPropagation(); clearSel(); }} className="ml-auto text-kmuted underline font-semibold">Limpiar</button>
             </div>
           )}
-          <div className="p-3 flex flex-wrap gap-[6px] min-h-[64px] items-start">
+          <div className={A ? 'p-2.5 flex flex-col gap-1.5 min-h-[64px]' : 'p-3 flex flex-wrap gap-[6px] min-h-[64px] items-start'}>
             {pool.length === 0 && paradasPool.length === 0 ? (
               <div className="flex items-center gap-2 text-green-600">
                 <span className="text-[18px]">✓</span>
@@ -705,7 +773,8 @@ export default function ManualDispatch({
               </div>
             ) : (
               <>
-                {poolMostrado.map(t => {
+                {(() => {
+                  const chipPool = (t: StoreTag) => {
                   // [Tienda Terminada] Se dibuja SIEMPRE (para que se sepa que la tienda va a salir
                   // hoy), pero solo se puede arrastrar si Bodega ya la marcó terminada — antes de
                   // eso el peso/cantidad de pallets puede seguir creciendo.
@@ -721,9 +790,25 @@ export default function ManualDispatch({
                       onDragEnd={handleDragEnd}
                       onTouchStart={lista ? e => handleTouchStart(e, t, 'pool') : undefined}
                       onRemove={null}
+                      fila={A}
                     />
                   );
-                })}
+                };
+                  if (!A) return poolMostrado.map(chipPool);
+                  // [Vista A] Primero las que ya se pueden asignar; abajo, aparte, las que Bodega
+                  // todavía no termina. Son las mismas tiendas y se arrastran igual que antes.
+                  const listas = poolMostrado.filter(t => !terminadas || terminadas.has(t.c));
+                  const enBodega = poolMostrado.filter(t => !!terminadas && !terminadas.has(t.c));
+                  return (
+                    <>
+                      {listas.map(chipPool)}
+                      {enBodega.length > 0 && (
+                        <div className="mt-2 px-1 text-rotulo font-bold uppercase text-kmuted">Esperando a Bodega</div>
+                      )}
+                      {enBodega.map(chipPool)}
+                    </>
+                  );
+                })()}
                 {(() => {
                   // Una tienda sin grupo se muestra en RM/Costa porque es donde el registro la va
                   // a escribir. Se avisa para que nadie la dé por sentada en Regiones.
@@ -754,6 +839,11 @@ export default function ManualDispatch({
               </>
             )}
           </div>
+          {A && (
+            <div className="px-4 py-3 border-t border-black/[0.07] text-rotulo tracking-normal text-kmuted">
+              Arrastra una tienda a un camión, o márcalas y toca el camión.
+            </div>
+          )}
         </div>
       )}
         </div>
@@ -762,7 +852,24 @@ export default function ManualDispatch({
           del día está el despacho es lo primero que hay que ver al llegar acá. */}
       {fase && <FaseEnrutador fase={fase} />}
       {/* [Fase 2] Camiones activos — PRIMERO (activar/desactivar sin salir de DESPACHO) */}
-      {onToggleFlota && flota.length > 0 && (
+      {A && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-cuerpo font-bold text-ktext">Camiones</span>
+          <span className="text-apoyo text-kmuted">
+            {flotaDisp.filter(v => (asignaciones[v.p] || []).length > 0).length} en uso
+            {totalEstKm > 0 ? ` · ~${totalEstKm} km en ruta` : ''}
+            {tiendasConsol > 0 ? ` · ${tiendasConsol} a Regiones sin ruta` : ''}
+          </span>
+          <div className="flex-1" />
+          {onToggleFlota && flota.length > 0 && (
+            <button type="button" onClick={() => setVerActivos(v => !v)} aria-expanded={verActivos}
+              className="min-h-[36px] px-3 rounded-[10px] border border-black/[0.14] bg-white text-apoyo font-semibold text-knavy hover:border-knavy/40 transition-colors">
+              {verActivos ? 'Listo' : '+ Sumar camión'}
+            </button>
+          )}
+        </div>
+      )}
+      {onToggleFlota && flota.length > 0 && (!A || verActivos) && (
         <div className="rounded-[14px] border border-black/[0.09] bg-white px-3 py-2.5">
           <div className="flex items-center gap-2 mb-2">
             <Truck size={13} className="text-kmuted" aria-hidden="true" />
@@ -854,7 +961,7 @@ export default function ManualDispatch({
                 auto-fill+minmax, al angostar el board bajan las columnas y la tarjeta nunca cae por
                 debajo de ~186px legibles. */}
             {!plegada && (
-            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(186px,1fr))]">
+            <div className={`grid gap-3 ${A ? '[grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]' : '[grid-template-columns:repeat(auto-fill,minmax(186px,1fr))]'}`}>
             {g.items.map((v) => {
           const m       = getMetrics(v.p, v);
           const stores  = asignaciones[v.p] || [];
@@ -904,14 +1011,16 @@ export default function ManualDispatch({
                         ? '0 0 0 2px rgba(27,42,107,0.35)'
                         : m.overCap
                           ? '0 2px 10px rgba(245,158,11,0.18)'
-                          : '0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04)',
-                borderLeftWidth: '4px',
+                          : A ? '0 1px 2px rgba(20,30,60,0.06)' : '0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04)',
+                // [Vista A] Sin franja de color de empresa (la empresa va escrita bajo la patente);
+                // la franja queda solo para lo que avisa: fuera del tablero o vehículo de prueba.
+                borderLeftWidth: A && !fueraDeEsteTablero && !esPrueba ? undefined : '4px',
                 borderLeftColor: cerrado ? '#16A34A' : fueraDeEsteTablero ? '#DC2626' : esPrueba ? '#D97706' : g.color,
                 // Punteado: se lee "esto no es un camión de verdad" antes de leer el badge, y no
                 // le quita el color a ningún estado real (cerrado, apagado, sobre capacidad).
                 ...(esPrueba && !cerrado ? { borderStyle: 'dashed' as const } : {}),
               }}
-              className={`rounded-[14px] border-[1.5px] transition-all flex flex-col min-w-0 ${
+              className={`${A ? 'rounded-[16px]' : 'rounded-[14px]'} border-[1.5px] transition-all flex flex-col min-w-0 ${
                 cerrado ? 'bg-green-50/70 border-green-500/50'
                 : fueraDeEsteTablero ? 'bg-red-50/60 border-red-400/60'
                 : isOver || isPreview || selForClose ? 'bg-white border-knavy'
@@ -927,7 +1036,7 @@ export default function ManualDispatch({
               }}
             >
               {/* ── Cabecera: patente + badges (el conductor se asigna en FLOTA → Gestionar) ── */}
-              <div className="px-2.5 pt-2 pb-1.5 border-b border-black/[0.06]">
+              <div className={A ? 'px-3.5 pt-3 pb-2' : 'px-2.5 pt-2 pb-1.5 border-b border-black/[0.06]'}>
                 <div className="flex items-center gap-2">
                   {selMode && puedeCerrar && (
                     <button
@@ -937,7 +1046,7 @@ export default function ManualDispatch({
                       className={`w-[20px] h-[20px] rounded-full border-2 flex items-center justify-center flex-shrink-0 text-[11px] font-bold leading-none ${selForClose ? 'bg-knavy border-knavy text-white' : 'bg-white border-knavy/40 text-transparent'}`}
                     >✓</button>
                   )}
-                  <span className={`font-mono font-bold text-[17px] leading-none tracking-tight ${cerrado ? 'text-green-700' : 'text-ktext'}`}>{v.p}</span>
+                  <span className={`font-mono font-bold ${A ? 'text-[20px]' : 'text-[17px]'} leading-none tracking-tight ${cerrado ? 'text-green-700' : 'text-ktext'}`}>{v.p}</span>
                   <div className="flex gap-1 flex-wrap justify-end ml-auto">
                     {/* Lo que se le asigne a este vehículo se registra IGUAL que en uno real:
                         planilla, despacho_rm y seguimiento. No se esconde ni se bloquea —se usa a
@@ -954,7 +1063,12 @@ export default function ManualDispatch({
                         ⚠ {seleccion ? 'Fuera de este tablero' : 'Apagado'}
                       </span>
                     )}
-                    {cerrado     && <span className="text-[9px] bg-green-100 text-green-700 px-1.5 py-[2px] rounded font-bold">✓ Cerrado</span>}
+                    {cerrado && !A && <span className="text-[9px] bg-green-100 text-green-700 px-1.5 py-[2px] rounded font-bold">✓ Cerrado</span>}
+                    {A && (() => {
+                      const e = estadoCamion({ cerrado, exceso, tiendas: stores.length });
+                      const tono = { cerrado: 'bg-green-100 text-green-800', exceso: 'bg-orange-100 text-orange-800', armando: 'bg-knavy/[0.08] text-knavy', vacio: 'bg-kbg text-kmuted' }[e.tono];
+                      return <span className={`text-rotulo tracking-normal font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap ${tono}`}>{e.texto}</span>;
+                    })()}
                     {isPreview && !cerrado && <span className="text-[9px] bg-knavy text-white px-1.5 py-[2px] rounded font-bold">En el mapa</span>}
                     {v.tlbd      && <span className="text-[9px] bg-purple-50 text-purple-600 px-1.5 py-[2px] rounded font-bold">2ª v.</span>}
                   </div>
@@ -968,8 +1082,9 @@ export default function ManualDispatch({
                 {(() => {
                   const tipo = etiquetaTipoVehiculo(v.t);
                   return (
-                    <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                      <span className={`text-[10px] truncate ${tipo.definido ? 'text-kmuted/60' : 'text-kmuted/40 italic'}`}>
+                    <div className={`flex items-center gap-1 flex-wrap ${A ? 'mt-1' : 'mt-0.5'}`}>
+                      {A && <span className="text-rotulo tracking-normal text-kmuted whitespace-nowrap">{v.empresa || 'Sin empresa'} ·</span>}
+                      <span className={`${A ? 'text-rotulo tracking-normal' : 'text-[10px]'} truncate ${tipo.definido ? 'text-kmuted/60' : 'text-kmuted/40 italic'}`}>
                         {tipo.texto}
                       </span>
                       {v.porton      && <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-[2px] rounded font-semibold">Portón</span>}
@@ -986,8 +1101,22 @@ export default function ManualDispatch({
               </div>
 
               {/* ── Métricas: carga + km (compacto) ── */}
-              <div className="px-2.5 py-1.5 border-b border-black/[0.06] space-y-1">
+              <div className={A ? 'px-3.5 pb-2.5 space-y-1.5' : 'px-2.5 py-1.5 border-b border-black/[0.06] space-y-1'}>
                 {/* Capacidad */}
+                {A ? (
+                  <div>
+                    <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                      <span className={`text-apoyo ${m.overCap ? 'text-orange-700' : 'text-ktext'}`}>
+                        <strong className="text-cuerpo">{m.tp}</strong> de {v.c} pallets{m.tb > 0 ? ` · ${m.tb} b` : ''}
+                      </span>
+                      {!esConsolidado && m.kmEst > 0 && <span className="text-apoyo text-kmuted whitespace-nowrap">~{m.kmEst} km</span>}
+                    </div>
+                    <div className="h-2 rounded bg-kbg overflow-hidden">
+                      <div className="h-full rounded transition-all duration-300"
+                        style={{ width: `${Math.min(m.pct * 100, 100)}%`, background: cerrado ? '#15803D' : m.overCap ? '#C2410C' : '#1B2A6B' }} />
+                    </div>
+                  </div>
+                ) : (
                 <div>
                   <div className="flex items-baseline justify-between mb-1">
                     <div className="flex items-baseline gap-1.5">
@@ -1003,10 +1132,11 @@ export default function ManualDispatch({
                     <div className={`h-full rounded-full transition-all duration-300 ${pctColor}`} style={{ width: `${Math.min(m.pct * 100, 100)}%` }} />
                   </div>
                 </div>
+                )}
                 {/* KM estimado (línea recta) + km real de Google si este camión está en preview.
                     Un camión de consolidación NO recorre: se muestra el nº de tiendas, sin km ni horas
                     (sus "km" serían destinos en puntas opuestas del país y no significan nada). */}
-                <div className="flex items-center gap-2 flex-wrap">
+                {(!A || esConsolidado || isPreview || stores.length === 0) && <div className="flex items-center gap-2 flex-wrap">
                   {esConsolidado ? (
                     // Sin "· sin recorrido": en una tarjeta angosta envolvía a dos renglones, y ya
                     // lo dice la palabra "Consolidación" —que además tiene su propio color—. El
@@ -1025,7 +1155,7 @@ export default function ManualDispatch({
                       {camionSeleccionadoKm != null ? `· ${camionSeleccionadoKm} km reales` : '· calculando km real…'}
                     </span>
                   )}
-                </div>
+                </div>}
                 {/* [E8] Avisos de transportista, específicos de ESTE camión (uno por zona que lleva y
                     que su empresa no cubre) — no van a la lista general de avisos. */}
                 {avisosZona.map(aviso => (
@@ -1040,12 +1170,12 @@ export default function ManualDispatch({
                   dirección. Envuelto, la segunda fila empieza otra vez por la izquierda y el eje
                   deja de significar nada. */}
               {stores.length > 0 && (
-                <div className="px-2.5 pt-1 flex items-center gap-1.5" aria-hidden="true">
-                  <span className="text-[9px] font-extrabold tracking-wider text-kmuted">FONDO · cabina</span>
+                <div className={`${A ? 'px-3.5' : 'px-2.5'} pt-1 flex items-center gap-1.5`} aria-hidden="true">
+                  <span className={`${A ? 'text-rotulo' : 'text-[9px] tracking-wider'} font-extrabold text-kmuted`}>{A ? 'CABINA' : 'FONDO · cabina'}</span>
                   <span className="flex-1 h-px" style={{ background: 'linear-gradient(to right, rgba(27,42,107,.35), rgba(27,42,107,.06))' }} />
                 </div>
               )}
-              <div className="px-2.5 pb-2 pt-1.5 flex flex-col gap-[5px] min-h-[42px] flex-1 min-w-0">
+              <div className={`${A ? 'px-3.5 gap-1' : 'px-2.5 gap-[5px]'} pb-2 pt-1.5 flex flex-col min-h-[42px] flex-1 min-w-0`}>
                 {stores.length === 0 ? (
                   <div className={`w-full flex items-center justify-center rounded-[10px] border-[1.5px] border-dashed transition-colors min-h-[34px] ${isOver ? 'border-knavy/50 bg-knavy/[0.04]' : 'border-black/[0.12]'}`}>
                     <span className={`text-[12px] font-semibold transition-colors ${isOver ? 'text-knavy' : 'text-kmuted/50'}`}>
@@ -1079,6 +1209,7 @@ export default function ManualDispatch({
                         onTouchStart={e => handleTouchStart(e, t, v.p)}
                         onRemove={() => removeStore(v.p, t.c)}
                         requireConfirm
+                        fila={A}
                       />
                     );
                     return (
@@ -1103,9 +1234,12 @@ export default function ManualDispatch({
                           onDragEnd={() => setReordenando(null)}
                           title="Arrastra para cambiar el orden de carga"
                           aria-label={`Mover ${t.c} en el orden de carga`}
-                          className="flex-shrink-0 grid grid-cols-2 gap-[2px] px-[3px] py-1 rounded cursor-grab active:cursor-grabbing opacity-35 hover:opacity-90 transition-opacity"
+                          className={A
+                            ? 'flex-shrink-0 w-6 h-6 rounded-full bg-white border border-black/[0.16] flex items-center justify-center text-rotulo tracking-normal font-bold text-ktext2 cursor-grab active:cursor-grabbing hover:border-knavy/50'
+                            : 'flex-shrink-0 grid grid-cols-2 gap-[2px] px-[3px] py-1 rounded cursor-grab active:cursor-grabbing opacity-35 hover:opacity-90 transition-opacity'}
                         >
-                          {[0, 1, 2, 3, 4, 5].map(i => (
+                          {/* [Vista A] El número de orden ES el asa: dice en qué lugar va y se arrastra. */}
+                          {A ? idx + 1 : [0, 1, 2, 3, 4, 5].map(i => (
                             <span key={i} className="w-[2.5px] h-[2.5px] rounded-full bg-knavy" />
                           ))}
                         </span>
@@ -1122,10 +1256,10 @@ export default function ManualDispatch({
                 const manual = ordenManual?.has(v.p) ?? false;
                 const color = diag.estado === 'en-orden' ? '#15803D' : diag.estado === 'contradice' ? '#B45309' : '#8E8E93';
                 return (
-                  <div className="px-2.5 pb-1.5 -mt-1">
+                  <div className={`${A ? 'px-3.5' : 'px-2.5'} pb-1.5 -mt-1`}>
                     <div className="flex items-center gap-1.5 mb-1" aria-hidden="true">
                       <span className="flex-1 h-px" style={{ background: 'linear-gradient(to right, rgba(27,42,107,.06), rgba(27,42,107,.35))' }} />
-                      <span className="text-[9px] font-extrabold tracking-wider text-kmuted">COLA · puerta (sale 1ª)</span>
+                      <span className={`${A ? 'text-rotulo' : 'text-[9px] tracking-wider'} font-extrabold text-kmuted`}>{A ? 'PUERTA · se baja primero' : 'COLA · puerta (sale 1ª)'}</span>
                     </div>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="w-[6px] h-[6px] rounded-full flex-shrink-0" style={{ background: color }} />
@@ -1151,7 +1285,7 @@ export default function ManualDispatch({
 
               {/* Cerrar camión y generar su manifiesto (registro por camión). Cerrado → verde. */}
               {onCerrarCamion && stores.length > 0 && (
-                <div className="px-2.5 pb-2.5 pt-0.5">
+                <div className={`${A ? 'px-3.5 pb-3' : 'px-2.5 pb-2.5'} pt-0.5`}>
                   <button
                     onClick={e => {
                       e.stopPropagation();
@@ -1163,7 +1297,7 @@ export default function ManualDispatch({
                     }}
                     disabled={cerrado}
                     title={exceso ? `Lleva ${exceso.pallets} y caben ${exceso.capacidad}. Se registra tal cual.` : undefined}
-                    className={`w-full h-[38px] rounded-[10px] text-[12px] font-bold flex items-center justify-center gap-1.5 transition-all ${
+                    className={`w-full ${A ? 'min-h-[44px] text-apoyo' : 'h-[38px] text-[12px]'} rounded-[10px] font-bold flex items-center justify-center gap-1.5 transition-all ${
                       cerrado ? 'bg-green-50 text-green-700 border-[1.5px] border-green-500/40 cursor-default'
                       : exceso ? 'bg-amber-500 text-white active:scale-[0.98]'
                       : 'bg-knavy text-white active:scale-[0.98]'}`}
@@ -1340,7 +1474,7 @@ function ParadaTagComp({ parada, isDragging, selected, onToggleSelect, onDragSta
   );
 }
 
-function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, onDragStart, onDragEnd, onTouchStart, onRemove, requireConfirm, pendienteTerminar }: {
+function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, onDragStart, onDragEnd, onTouchStart, onRemove, requireConfirm, pendienteTerminar, fila }: {
   store: StoreTag; tiendas: Record<string, TiendaInfo>; isDragging: boolean;
   selected?: boolean; onToggleSelect?: () => void;
   onDragStart: (e: React.DragEvent) => void;
@@ -1353,6 +1487,8 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
    *  no se puede arrastrar ni seleccionar en grupo. Sirve para anticipar cuánto va a salir, sin
    *  dejar que se rutee con un conteo que todavía puede seguir creciendo. */
   pendienteTerminar?: boolean;
+  /** [Vista A] Renglón completo (código, nombre, carga) en vez de chip. Mismos manejadores. */
+  fila?: boolean;
 }) {
   const info = tiendas[store.c];
   // Tipo de tienda (Mall / Strip / Street / …) para el badge del chip — mismo helper que el Planificador.
@@ -1374,6 +1510,49 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
           className="text-[11px] font-bold text-white bg-kred rounded px-2 py-0.5">Sí</button>
         <button onClick={e => { e.stopPropagation(); setConfirmOpen(false); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
           className="text-[11px] font-bold text-kmuted border border-black/[0.15] rounded px-2 py-0.5">No</button>
+      </div>
+    );
+  }
+
+  if (fila) {
+    const b = (store.b + ((store as { ch?: number }).ch ?? 0));
+    // En el pool el renglón va blanco sobre gris; dentro del camión, gris sobre blanco.
+    const fondo = onRemove ? 'bg-kbg' : 'bg-white';
+    return (
+      <div
+        draggable={!pendienteTerminar} onDragStart={onDragStart} onDragEnd={onDragEnd} onTouchStart={onTouchStart}
+        title={pendienteTerminar ? 'Bodega todavía no la termina: el conteo puede seguir creciendo' : undefined}
+        className={`flex-1 flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2 min-h-[44px] min-w-0 select-none touch-manipulation transition-all ${isDragging
+          ? 'opacity-30 scale-95 cursor-grab bg-knavy/[0.05] border-knavy/20'
+          : pendienteTerminar
+            ? 'cursor-not-allowed bg-white/60 border-dashed border-black/[0.16] text-kmuted'
+            : selected
+              ? `cursor-grab ${fondo} border-knavy ring-2 ring-knavy/30 text-ktext`
+              : `cursor-grab ${fondo} border-black/[0.09] text-ktext hover:border-knavy/30`}`}
+      >
+        {onToggleSelect && (
+          <button
+            onClick={e => { e.stopPropagation(); onToggleSelect(); }}
+            onMouseDown={e => e.stopPropagation()}
+            onTouchStart={e => e.stopPropagation()}
+            draggable={false}
+            aria-pressed={!!selected}
+            aria-label={`Seleccionar ${formatCod(store.c)}`}
+            className={`w-5 h-5 rounded-[6px] border-[1.5px] flex items-center justify-center text-[11px] font-bold leading-none flex-shrink-0 ${selected ? 'bg-knavy border-knavy text-white' : 'bg-white border-black/[0.22] text-transparent'}`}
+          >✓</button>
+        )}
+        <span className={`font-mono font-bold text-apoyo flex-shrink-0 whitespace-nowrap ${pendienteTerminar ? '' : 'text-knavy'}`}>{formatCod(store.c)}</span>
+        <span className="flex-1 min-w-0 truncate text-apoyo font-semibold">{info?.n ?? ''}</span>
+        {pendienteTerminar
+          ? <span className="text-rotulo font-semibold flex-shrink-0 whitespace-nowrap">En Bodega</span>
+          : <span className="text-apoyo font-bold text-knavy flex-shrink-0 whitespace-nowrap">{store.p} P{b > 0 ? ` · ${b} B` : ''}</span>}
+        {onRemove && (
+          <button
+            onClick={e => { e.stopPropagation(); if (requireConfirm) setConfirmOpen(true); else onRemove(); }}
+            onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+            aria-label={`Quitar ${formatCod(store.c)} del camión`}
+            className="w-7 h-7 -mr-1 rounded-full flex items-center justify-center text-[16px] font-bold text-kmuted hover:text-kred hover:bg-kred/[0.06] flex-shrink-0">×</button>
+        )}
       </div>
     );
   }
