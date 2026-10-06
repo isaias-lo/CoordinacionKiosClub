@@ -120,6 +120,9 @@ interface Props {
   /** [Tienda Terminada] Solo para el tablero DESPACHO (el `<ManualDispatch calT={calT}>` de más
    *  abajo) — Congelados y 2ª VUELTA siguen mostrando todo lo que tiene carga, a propósito. */
   terminadas?: ReadonlySet<string>;
+  /** [Vista nueva] Sin la fila de pestañas y botones: la dibuja `MarcoEnrutador` arriba, y la fase
+   *  la muestra su banda (por eso tampoco va el indicador dentro del tablero). */
+  sinBarra?: boolean;
 }
 
 /* ── Icon badge for mode tabs ────────────────────────────────────── */
@@ -167,7 +170,11 @@ export default function InputSection({
   onPlanRutas, planLegsByRoute, planKmByRoute,
   mapPanel,
   terminadas,
+  sinBarra = false,
 }: Props) {
+  // En la vista nueva el indicador de fase vive en la banda: no se repite dentro del tablero.
+  const faseVista = sinBarra ? undefined : fase;
+  const faseCongVista = sinBarra ? undefined : faseCong;
   const [flotaSubTab, setFlotaSubTab] = useState<'personal' | 'gestionar' | 'vehiculos' | 'salidas'>('gestionar');
   // Fuente del calendario del tab CALENDARIO: Central (Seco) por defecto, o Congelados.
   const [calSource, setCalSource] = useState<'despacho' | 'congelados'>('despacho');
@@ -384,7 +391,7 @@ export default function InputSection({
   if (isMobile) {
     return (
       <div className="flex flex-col h-full overflow-hidden">
-        <div className="flex-shrink-0 bg-white border-b border-black/[0.09]" style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
+        {!sinBarra && <div className="flex-shrink-0 bg-white border-b border-black/[0.09]" style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
           <div className="flex items-center gap-2 px-3 py-2 flex-wrap">
             {modo === 'drag' && !rightPanelContent && onAbrirTablero && (
               <button onClick={onAbrirTablero} className="h-[36px] px-3 rounded-[10px] bg-white border-2 border-emerald-500/40 text-emerald-700 text-[12px] font-bold flex-shrink-0 flex items-center gap-1 ml-auto">
@@ -418,7 +425,7 @@ export default function InputSection({
               ))}
             </div>
           </div>
-        </div>
+        </div>}
         {errorsBanner}
         {modo === 'flota' ? flotaTabContent
         : modo === 'v2' ? (
@@ -430,7 +437,7 @@ export default function InputSection({
         ) : modo === 'cong' ? (
           <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
             <div className="p-3">
-              <ManualDispatch fase={faseCong} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+              <ManualDispatch fase={faseCongVista} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                 asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
                 seleccion={seleccionCong} onToggleSeleccion={onToggleSeleccionCong}
                 onCalcular={() => {}} hideCalcular
@@ -452,7 +459,7 @@ export default function InputSection({
           <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
             {modo === 'drag' && (
               <div className="p-3">
-                <ManualDispatch fase={fase} ordenRuta={ordenRuta} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+                <ManualDispatch fase={faseVista} ordenRuta={ordenRuta} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                   paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
                 seleccion={seleccionSeco} onToggleSeleccion={onToggleSeleccionSeco}
                   onCalcular={onCalcularManual} onEliminarParada={onEliminarParada}
@@ -480,8 +487,8 @@ export default function InputSection({
   return (
     <div className="flex flex-col h-full overflow-hidden bg-kbg">
 
-      {/* Mode tab bar — SIEMPRE visible */}
-      <div className="flex-shrink-0 bg-white border-b border-black/[0.09]" style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
+      {/* Mode tab bar — SIEMPRE visible (en la vista nueva la reemplaza `MarcoEnrutador`) */}
+      {!sinBarra && <div className="flex-shrink-0 bg-white border-b border-black/[0.09]" style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
         {/* [C-03] Esta fila mide ~1155 px con todo puesto. Bajo ese ancho —un notebook de 1366 al
             110%, el panel lateral abierto, pantalla partida— el `overflow-hidden` del contenedor la
             recortaba sin scroll ni aviso: "Tablero vivo" quedaba partido contra el borde derecho y
@@ -544,7 +551,7 @@ export default function InputSection({
             </button>
           )}
         </div>
-      </div>
+      </div>}
 
       {errorsBanner}
 
@@ -567,7 +574,7 @@ export default function InputSection({
       ) : modo === 'cong' ? (
         <div ref={dragScrollRef} className="flex-1 overflow-y-auto">
           <div className="p-4">
-            <ManualDispatch fase={faseCong} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+            <ManualDispatch fase={faseCongVista} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
               asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
                 seleccion={seleccionCong} onToggleSeleccion={onToggleSeleccionCong}
               onCalcular={() => {}} hideCalcular
@@ -596,7 +603,7 @@ export default function InputSection({
           {modo === 'drag' && (
             <div className="p-4">
               <ManualDispatch
-                fase={fase}
+                fase={faseVista}
                 ordenRuta={ordenRuta}
                 ordenManual={ordenManual}
                 onOrdenManual={onOrdenManual}

@@ -41,12 +41,14 @@ interface Props {
    *  regla de "día hábil siguiente" lo daría por bueno. */
   fechaSalidaOverride?: string | null;
   onFechaSalida?: (f: string | null) => void;
+  /** Pasa a la vista nueva («Un paso a la vez»). Sin esto no se muestra el botón. */
+  onVistaNueva?: () => void;
 }
 
 /** Botón "Actualizar datos" — antes vivía en la barra azul de app/despacho/page.tsx.
  *  Se comunica con RutasScreen por eventos: dispara `enrutador-refresh` y escucha
  *  `enrutador-status` para reflejar loading/success/error + total de tiendas. */
-function RefreshButton({ compact }: { compact?: boolean }) {
+export function RefreshButton({ compact }: { compact?: boolean }) {
   const [status, setStatus] = useState<{ status: string; total: number }>({ status: 'idle', total: 0 });
   useEffect(() => {
     const h = (e: Event) => setStatus((e as CustomEvent).detail);
@@ -85,7 +87,7 @@ function RefreshButton({ compact }: { compact?: boolean }) {
  * cuando el sistema asigna, ámbar de advertencia cuando no. El estado deshabilitado —que ahora
  * existe, para quien no es admin— es el único apagado, que es lo que corresponde.
  */
-function AutoAsignarToggle(
+export function AutoAsignarToggle(
   { on, onToggle, compact, puedeCambiar = true, motivoBloqueo }:
   { on: boolean; onToggle: () => void; compact?: boolean; puedeCambiar?: boolean; motivoBloqueo?: string | null },
 ) {
@@ -118,7 +120,7 @@ function AutoAsignarToggle(
 }
 
 /* ── Contenido compartido desktop/drawer: supervisor, día de armado y el día en que sale ── */
-function HeaderFields({
+export function HeaderFields({
   supervisor, onSupervisor, fecha, onFecha, hoy, manana, tipoCarga, stacked,
   salidaOverride, onSalida,
 }: {
@@ -236,7 +238,7 @@ export default function DespachoHeader({
   supervisor, onSupervisor, fecha, onFecha, onOpenParadas, paradasCount,
   dnom, calT, mapContent, terminadas,
   asignacionAutomatica, onToggleAsignacionAutomatica, puedeCambiarAuto = true, motivoBloqueoAuto,
-  tipoCarga = 'seco', fechaSalidaOverride = null, onFechaSalida,
+  tipoCarga = 'seco', fechaSalidaOverride = null, onFechaSalida, onVistaNueva,
 }: Props) {
   const dia         = getDia(fecha);
   const hoy         = todayStr();
@@ -303,6 +305,12 @@ export default function DespachoHeader({
                     </span>
                   )}
                 </button>
+                {onVistaNueva && (
+                  <button onClick={() => { setDrawerOpen(false); onVistaNueva(); }}
+                    className="w-full h-[42px] rounded-[10px] bg-white border border-black/[0.10] text-knavy text-[13px] font-bold">
+                    Probar la vista nueva
+                  </button>
+                )}
               </div>
 
               {mapContent && (
@@ -335,6 +343,13 @@ export default function DespachoHeader({
 
         <div className="flex-1 min-w-[8px]" />
 
+        {onVistaNueva && (
+          <button onClick={onVistaNueva}
+            title="La vista «Un paso a la vez». Puedes volver a esta cuando quieras desde su menú ···"
+            className="h-[38px] px-3 rounded-[10px] border border-black/[0.10] bg-white text-knavy text-[11px] font-bold hover:border-knavy/40 transition-colors">
+            Vista nueva
+          </button>
+        )}
         <AutoAsignarToggle on={asignacionAutomatica} onToggle={onToggleAsignacionAutomatica} puedeCambiar={puedeCambiarAuto} motivoBloqueo={motivoBloqueoAuto} />
         <RefreshButton />
 
