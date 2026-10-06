@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, diaSemana, bandaFlota, listaPatentes, PASOS_DIA, PASOS_CONGELADOS, type BandaTableroInput } from '../bandaEnrutador';
+import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, diaSemana, bandaFlota, listaPatentes, bandaPlan, PASOS_PLAN, PASOS_DIA, PASOS_CONGELADOS, type BandaTableroInput } from '../bandaEnrutador';
 import { FASES } from '../faseEnrutador';
 
 const base: BandaTableroInput = {
@@ -117,8 +117,8 @@ describe('diaSemana', () => {
 });
 
 describe('bandaFija y pasos', () => {
-  it('flota, plan y calendario no tienen pasos ni botón', () => {
-    for (const s of ['plan', 'cal'] as const) expect(bandaFija(s)).toMatchObject({ paso: null, accion: null });
+  it('calendario no tiene pasos ni botón', () => {
+    for (const s of ['cal'] as const) expect(bandaFija(s)).toMatchObject({ paso: null, accion: null });
   });
   it('los pasos del diseño son uno por fase', () => {
     expect(PASOS_DIA.length).toBe(FASES.length);
@@ -193,5 +193,31 @@ describe('listaPatentes', () => {
     expect(listaPatentes(['A'])).toBe('A');
     expect(listaPatentes(['A', 'B', 'C'])).toBe('A, B y C');
     expect(listaPatentes(['A', 'B', 'C', 'D', 'E'])).toBe('A, B, C y 2 más');
+  });
+});
+
+describe('bandaPlan', () => {
+  const p = { rutas: 4, paradas: 19, activa: 'Ruta 1', orden: 'cercania' as const, conEtas: true, tarde: [] as { nombre: string; ventana: string; llega: string }[] };
+  const toros = { nombre: 'Los Toros', ventana: '08:30-09:30', llega: '09:45' };
+  it('sin rutas: paso 1', () => {
+    expect(bandaPlan({ ...p, rutas: 0, paradas: 0 })).toMatchObject({ paso: 1, pasos: PASOS_PLAN, accion: null });
+  });
+  it('sin horas de llegada todavía: lo dice, sin botón', () => {
+    expect(bandaPlan({ ...p, conEtas: false })).toMatchObject({ paso: 2, titular: '4 rutas · 19 paradas', accion: null });
+  });
+  it('llega tarde y no va por horarios: ofrece ordenar por horarios', () => {
+    const b = bandaPlan({ ...p, tarde: [toros] });
+    expect(b.titular).toBe('La Ruta 1 llega tarde a Los Toros');
+    expect(b.subtitulo).toBe('Recibe hasta las 09:30 y llega 09:45. Está ordenada por cercanía: por horarios puede entrar a tiempo');
+    expect(b.accion).toEqual({ id: 'ordenar-horarios', texto: 'Ordenar por horarios' });
+  });
+  it('llega tarde ya ordenada por horarios: no promete arreglarlo', () => {
+    const b = bandaPlan({ ...p, orden: 'ventanas', tarde: [toros, { ...toros, nombre: 'Maipú' }] });
+    expect(b.titular).toBe('La Ruta 1 llega tarde a 2 tiendas');
+    expect(b.accion).toBeNull();
+  });
+  it('todo a tiempo: compartir', () => {
+    expect(bandaPlan(p)).toMatchObject({ paso: 4, titular: 'La Ruta 1 llega a tiempo a todas', accion: { id: 'compartir', texto: 'Compartir las 4' } });
+    expect(bandaPlan({ ...p, rutas: 1 }).accion?.texto).toBe('Compartir la ruta');
   });
 });

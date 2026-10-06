@@ -8,7 +8,7 @@ import InputSection   from './components/InputSection';
 import DespachoHeader, { HeaderFields, AutoAsignarToggle, RefreshButton } from './components/DespachoHeader';
 import MarcoEnrutador, { AccionMenu } from './components/MarcoEnrutador';
 import { useVistaEnrutador } from './utils/vistaEnrutador';
-import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, bandaFlota, SUBS_FLOTA, type SubFlota, fechaCabecera, diaSemana, type Banda, type AccionBanda } from './utils/bandaEnrutador';
+import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, bandaFlota, bandaPlan, SUBS_FLOTA, type SubFlota, type ResumenPlan, fechaCabecera, diaSemana, type Banda, type AccionBanda } from './utils/bandaEnrutador';
 import { useIsMobile } from './utils/useIsMobile';
 import MapSection     from './components/MapSection';
 import ResultsSection from './components/ResultsSection';
@@ -244,6 +244,8 @@ export default function RutasScreen() {
   // [Vista nueva · Flota] La sección de Flota se elige en la banda, y «Quién maneja» le cuenta
   // a la banda qué rutas siguen sin conductor.
   const [flotaSub, setFlotaSub] = useState<SubFlota>('gestionar');
+  // [Vista nueva · Plan] Lo que el Planificador tiene armado; hasta que monta, «sin rutas».
+  const [resumenPlan, setResumenPlan] = useState<ResumenPlan>({ rutas: 0, paradas: 0, activa: 'Ruta 1', orden: 'ventanas', conEtas: false, tarde: [] });
   const [resumenFlota, setResumenFlota] = useState<{ rutas: number | null; sinConductor: string[] }>({ rutas: null, sinConductor: [] });
   const [calT,       setCalT]       = useState<Record<string, CalData>>({});
   // "Tienda Terminada" (marcador manual de Bodega, ver useTiendaTerminada) — filtro ORTOGONAL a
@@ -2550,8 +2552,9 @@ export default function RutasScreen() {
     if (modo === 'flota') {
       return bandaFlota({ sub: flotaSub, ...resumenFlota, encendidos: flota.filter(v => v.on).length, vehiculos: flota.length });
     }
-    return bandaFija(modo === 'cal' ? 'cal' : 'plan');
-  }, [flotaSub, resumenFlota, flota, modo, calT, manualAsignaciones, cerradasV1, cerrado, terminadas, calTCong, asignacionesCong, cerradasCong, pendientesV2Origen, asignacionesV2, v2Fecha, calTV2]);
+    if (modo === 'plan') return bandaPlan(resumenPlan);
+    return bandaFija('cal');
+  }, [resumenPlan, flotaSub, resumenFlota, flota, modo, calT, manualAsignaciones, cerradasV1, cerrado, terminadas, calTCong, asignacionesCong, cerradasCong, pendientesV2Origen, asignacionesV2, v2Fecha, calTV2]);
 
   const faseInfoV2 = useMemo(() => {
     const delDia = asignacionesV2[v2Fecha] ?? {};
@@ -3048,6 +3051,7 @@ export default function RutasScreen() {
       requestAnimationFrame(() => document.querySelector('[data-cerrar-varios]')
         ?.scrollIntoView({ behavior: 'smooth', block: 'end' }));
     }
+    else if (id === 'ordenar-horarios' || id === 'compartir') window.dispatchEvent(new CustomEvent('plan-accion', { detail: id }));
     else if (id === 'ir-sin-conductor') {
       document.querySelector('[data-sin-conductor]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
@@ -3470,7 +3474,8 @@ export default function RutasScreen() {
             pendientesBacklogCount={pendientesV2Origen.length}
             sinBarra={vista === 'nueva'}
             flotaSub={vista === 'nueva' ? flotaSub : undefined}
-            onResumenFlota={setResumenFlota}
+            onResumenFlota={vista === 'nueva' ? setResumenFlota : undefined}
+            onResumenPlan={vista === 'nueva' ? setResumenPlan : undefined}
             rightPanelContent={
               results ? (
                 <div className="h-full overflow-y-auto">

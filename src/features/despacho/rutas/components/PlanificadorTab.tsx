@@ -14,6 +14,7 @@ import {
   type ParadaDireccion, type LineaParada,
 } from '../utils/planificador';
 import { ordenarConVentanas } from '../utils/ordenConVentanas';
+import type { ResumenPlan } from '../utils/bandaEnrutador';
 import { catalogoParaCarga, origenDeVentana, type OrigenVentana } from '../utils/ventanaHoraria';
 import { diagnosticarDia, resumenCuello } from '../utils/factibilidadDia';
 import { useReordenarTactil } from '../utils/useReordenarTactil';
@@ -63,6 +64,8 @@ interface Props {
   legDataByRoute?: Record<number, { dist: string; dur: string; durSec?: number }[]>;
   /** Km real (Google) por índice de ruta. */
   kmByRoute?: Record<number, number>;
+  /** [Vista nueva] Lo que la banda de arriba dice: rutas, paradas y dónde llega tarde la ruta abierta. */
+  onResumen?: (r: ResumenPlan) => void;
 }
 
 type StartMode = 'cd' | 'tienda' | 'custom';
@@ -187,7 +190,7 @@ function etiquetaZonas(zonas: ZonaRuteo[]): string {
   return orden.length === 1 ? orden[0] : `${orden.slice(0, -1).join(', ')} y ${orden[orden.length - 1]}`;
 }
 
-export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRoute, kmByRoute, fecha, userId }: Props) {
+export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRoute, kmByRoute, fecha, userId, onResumen }: Props) {
   // Punto de partida — COMPARTIDO por todas las rutas (el mapa dibuja todas desde un mismo origen).
   const [startMode,   setStartMode]   = useState<StartMode>(() => loadPlan().startMode);
   const [startTienda, setStartTienda] = useState(() => loadPlan().startTienda);
@@ -738,6 +741,37 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   // en vez de cortarse, y cada botón conserva su texto completo.
   const seg = 'flex-1 min-w-0 whitespace-nowrap py-1.5 px-1 rounded-[8px] text-[12px] font-semibold cursor-pointer transition-colors text-center';
   const visibles = routes.filter(r => visibleIds.includes(r.id));
+
+  // [Vista nueva] Lo que la banda necesita, con el mismo semáforo de la lista de paradas.
+  const tardeActiva = useMemo(() => {
+    if (!etasActive) return [];
+    return orderedCods.flatMap((cod, i) => {
+      const eta = etasActive[i];
+      if (eta == null || esParadaDireccion(cod)) return [];
+      const ventana = tiendasVista[cod]?.v;
+      if (estadoVentana(eta, ventana) !== 'tarde') return [];
+      return [{ nombre: tiendasVista[cod]?.n || cod, ventana: String(ventana ?? ''), llega: minAHHMM(eta) }];
+    });
+  }, [etasActive, orderedCods, tiendasVista]);
+  useEffect(() => {
+    onResumen?.({
+      rutas: totales.nRutas, paradas: totales.paradas, activa: activeRoute.nombre, orden: orderMode,
+      conEtas: !!etasActive, tarde: tardeActiva,
+    });
+  }, [onResumen, totales.nRutas, totales.paradas, activeRoute.nombre, orderMode, etasActive, tardeActiva]);
+  // Los botones de la banda llegan por evento, como «Actualizar» en la cabecera clásica: hacen lo
+  // mismo que el segmento «Ventanas» y el botón «Compartir» de este panel.
+  const accionesRef = useRef({ ordenar: () => setOrderMode('ventanas'), compartir });
+  accionesRef.current = { ordenar: () => setOrderMode('ventanas'), compartir };
+  useEffect(() => {
+    const h = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      if (id === 'ordenar-horarios') accionesRef.current.ordenar();
+      else if (id === 'compartir') accionesRef.current.compartir();
+    };
+    window.addEventListener('plan-accion', h);
+    return () => window.removeEventListener('plan-accion', h);
+  }, []);
 
   return (
     <div className="h-full overflow-y-auto p-4 flex flex-col gap-4">

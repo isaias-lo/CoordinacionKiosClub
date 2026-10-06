@@ -15,6 +15,8 @@ export type AccionBanda =
   | 'asignar'          // completar lo que falta, igual que la asignación automática
   | 'ver-camiones'     // bajar hasta las tarjetas de camión
   | 'ir-sin-conductor' // bajar hasta la primera ruta sin conductor en «Quién maneja»
+  | 'ordenar-horarios' // Plan: pasar la ruta abierta a «ordenar por horarios»
+  | 'compartir'        // Plan: el panel de compartir de siempre (copiar / WhatsApp)
   | 'cerrar-camiones'  // marcar los abiertos en «Cerrar seleccionados»: el cierre lo confirma la barra de siempre
   | 'terminar-dia'     // abrir el cierre de jornada
   | 'ver-manifiestos'; // los manifiestos guardados del día
@@ -287,10 +289,77 @@ export function bandaFlota(i: BandaFlotaInput): Banda {
   };
 }
 
-/** Plan y Calendario: por ahora solo dicen qué es cada pestaña. Sus fases las completan. */
-export function bandaFija(s: 'plan' | 'cal'): Banda {
+/** Los pasos de Plan, con las palabras del diseño. */
+export const PASOS_PLAN = ['Día y zona', 'Armar rutas', 'Revisar horarios', 'Compartir'] as const;
+
+/** Lo que el Planificador sabe de sus rutas, tal como ya lo muestra. */
+export interface ResumenPlan {
+  /** Rutas visibles con paradas, y cuántas paradas suman. */
+  rutas: number;
+  paradas: number;
+  /** La ruta abierta: su nombre, cómo está ordenada y, si el mapa ya calculó los tiempos, dónde llega tarde. */
+  activa: string;
+  orden: 'ventanas' | 'cercania' | 'manual';
+  conEtas: boolean;
+  tarde: { nombre: string; ventana: string; llega: string }[];
+}
+
+/** «08:30-09:30» → «09:30». Si no se entiende, la ventana tal cual. */
+function cierreDe(ventana: string): string {
+  const m = ventana.match(/(\d{1,2}:\d{2})\s*$/);
+  return m ? m[1] : ventana;
+}
+
+/**
+ * Plan: lo que importa antes de compartir es que la ruta abierta llegue a tiempo. Solo mira la
+ * ruta abierta porque es la única con horas de llegada calculadas.
+ */
+export function bandaPlan(i: ResumenPlan): Banda {
+  const pasos = PASOS_PLAN;
+  if (i.rutas === 0) {
+    return {
+      paso: 1, pasos, titular: 'Elige el día y la zona para armar las rutas',
+      subtitulo: 'Desde el calendario, o sumando tiendas y direcciones a mano', accion: null,
+    };
+  }
+  const resumen = `${n(i.rutas, 'ruta', 'rutas')} · ${n(i.paradas, 'parada', 'paradas')}`;
+  if (!i.conEtas) {
+    return {
+      paso: 2, pasos, titular: resumen,
+      subtitulo: `Las horas de llegada de la ${i.activa} aparecen cuando el mapa calcula los tiempos`, accion: null,
+    };
+  }
+  if (i.tarde.length > 0) {
+    const t = i.tarde[0];
+    const titular = i.tarde.length === 1
+      ? `La ${i.activa} llega tarde a ${t.nombre}`
+      : `La ${i.activa} llega tarde a ${i.tarde.length} tiendas`;
+    const detalle = i.tarde.length === 1
+      ? `Recibe hasta las ${cierreDe(t.ventana)} y llega ${t.llega}`
+      : `${t.nombre} recibe hasta las ${cierreDe(t.ventana)} y llega ${t.llega}`;
+    if (i.orden !== 'ventanas') {
+      return {
+        paso: 3, pasos, titular,
+        subtitulo: `${detalle}. Está ordenada por ${i.orden === 'cercania' ? 'cercanía' : 'mano'}: por horarios puede entrar a tiempo`,
+        accion: { id: 'ordenar-horarios', texto: 'Ordenar por horarios' },
+      };
+    }
+    return {
+      paso: 3, pasos, titular,
+      subtitulo: `${detalle}. Ya va por horarios: prueba salir antes o pasar la tienda a otra ruta`,
+      accion: null,
+    };
+  }
+  return {
+    paso: 4, pasos, titular: `La ${i.activa} llega a tiempo a todas`,
+    subtitulo: `${resumen} · listas para mandar a los conductores`,
+    accion: { id: 'compartir', texto: i.rutas === 1 ? 'Compartir la ruta' : `Compartir las ${i.rutas}` },
+  };
+}
+
+/** Calendario: por ahora solo dicen qué es cada pestaña. Sus fases las completan. */
+export function bandaFija(s: 'cal'): Banda {
   const textos = {
-    plan:  ['Plan de rutas', 'Ordena las paradas y mira el recorrido en el mapa'],
     cal:   ['Calendario de reparto', 'Qué tiendas se despachan cada día de la semana'],
   } as const;
   return { paso: null, titular: textos[s][0], subtitulo: textos[s][1], accion: null };

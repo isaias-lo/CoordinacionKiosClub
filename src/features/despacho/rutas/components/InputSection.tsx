@@ -10,7 +10,7 @@ import type { FaseInfo } from '../utils/faseEnrutador';
 import FlotaGrid      from './FlotaGrid';
 import FlotaInternaPanel from './FlotaInternaPanel';
 import VehiculosDeHoy from './VehiculosDeHoy';
-import type { SubFlota } from '../utils/bandaEnrutador';
+import type { SubFlota, ResumenPlan } from '../utils/bandaEnrutador';
 import PlanificadorTab from './PlanificadorTab';
 import { ControlFlotaPanel, PersonalCatalogPanel, type ResumenControlFlota } from '@/features/despacho/control-flota/ControlFlotaPanel';
 import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
@@ -130,6 +130,8 @@ interface Props {
   flotaSub?: SubFlota;
   /** [Vista nueva] Lo que «Quién maneja» tiene cargado, para la banda. */
   onResumenFlota?: (r: ResumenControlFlota) => void;
+  /** [Vista nueva] Lo que el Planificador tiene armado, para la banda. */
+  onResumenPlan?: (r: ResumenPlan) => void;
 }
 
 /* ── Icon badge for mode tabs ────────────────────────────────────── */
@@ -180,6 +182,7 @@ export default function InputSection({
   sinBarra = false,
   flotaSub,
   onResumenFlota,
+  onResumenPlan,
 }: Props) {
   // En la vista nueva el indicador de fase vive en la banda: no se repite dentro del tablero.
   const faseVista = sinBarra ? undefined : fase;
@@ -451,7 +454,7 @@ export default function InputSection({
         ) : modo === 'cal' ? (
           calTabContent
         ) : modo === 'plan' ? (
-          <div className="flex-1 overflow-hidden bg-white"><PlanificadorTab gps={gps} tiendas={tiendas} fecha={fecha} userId={userId} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} /></div>
+          <div className="flex-1 overflow-hidden bg-white"><PlanificadorTab gps={gps} tiendas={tiendas} fecha={fecha} userId={userId} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} onResumen={onResumenPlan} /></div>
         ) : modo === 'cong' ? (
           <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
             <div className="p-3">
@@ -587,7 +590,7 @@ export default function InputSection({
         calTabContent
       ) : modo === 'plan' ? (
         <div className="flex-1 overflow-hidden bg-white">
-          <PlanificadorTab gps={gps} tiendas={tiendas} fecha={fecha} userId={userId} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} />
+          <PlanificadorTab gps={gps} tiendas={tiendas} fecha={fecha} userId={userId} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} onResumen={onResumenPlan} />
         </div>
       ) : modo === 'cong' ? (
         <div ref={dragScrollRef} className="flex-1 overflow-y-auto">
