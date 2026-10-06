@@ -459,7 +459,7 @@ export default function InputSection({
           <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
             {modo === 'drag' && (
               <div className="p-3">
-                <ManualDispatch fase={faseVista} ordenRuta={ordenRuta} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+                <ManualDispatch vistaA={sinBarra} fase={faseVista} ordenRuta={ordenRuta} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calT} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                   paradas={paradasAdicionales} asignaciones={manualAsignaciones} onAsignaciones={onAsignaciones}
                 seleccion={seleccionSeco} onToggleSeleccion={onToggleSeleccionSeco}
                   onCalcular={onCalcularManual} onEliminarParada={onEliminarParada}
@@ -603,6 +603,7 @@ export default function InputSection({
           {modo === 'drag' && (
             <div className="p-4">
               <ManualDispatch
+                vistaA={sinBarra}
                 fase={faseVista}
                 ordenRuta={ordenRuta}
                 ordenManual={ordenManual}
