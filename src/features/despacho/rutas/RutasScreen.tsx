@@ -5,7 +5,10 @@ import { useAuth } from '../../../components/AuthProvider';
 import { useAsignacionAutomatica } from '@/hooks/useAsignacionAutomatica';
 import { puedeCambiarAuto, motivoBloqueoAuto, puedeAsignarSolo } from './utils/autoAsignar';
 import InputSection   from './components/InputSection';
-import DespachoHeader from './components/DespachoHeader';
+import DespachoHeader, { HeaderFields, AutoAsignarToggle, RefreshButton } from './components/DespachoHeader';
+import MarcoEnrutador, { AccionMenu } from './components/MarcoEnrutador';
+import { useVistaEnrutador } from './utils/vistaEnrutador';
+import { bandaTablero, bandaSegundaVuelta, bandaFija, fechaCabecera, type Banda, type AccionBanda } from './utils/bandaEnrutador';
 import { useIsMobile } from './utils/useIsMobile';
 import MapSection     from './components/MapSection';
 import ResultsSection from './components/ResultsSection';
@@ -85,6 +88,12 @@ const AVISO_CIERRE_NO_SINCRONIZADO = 'El cierre del camión no se sincronizó. O
 const AVISO_NO_GUARDADO = 'No se pudo guardar el tablero. Lo que ves puede no estar en la base — revisa tu conexión y vuelve a mover algo para reintentar.';
 
 type CalData   = { on: boolean; p: number; b: number; c: number; ch: number; g?: string };
+
+/** Mañana, `AAAA-MM-DD`, igual que la cabecera clásica. */
+function mananaStr(): string {
+  const d = new Date(); d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 function mergeCalT(
   newCal: CalRecord,
@@ -230,6 +239,8 @@ export default function RutasScreen() {
   // Las pestañas del Enrutador. Se recuerda cuál mirabas: recargar estando en PLAN te devolvía
   // a DESPACHO, y recargar es lo primero que uno hace cuando algo se ve raro.
   const [modo,       setModo]       = usePestanaRecordada<ModoEnrutador>('enrutador_modo', MODOS_RECORDABLES, 'drag');
+  // Vista clásica o nueva («Un paso a la vez»). Solo cambia lo que se dibuja arriba del tablero.
+  const [vista, setVista] = useVistaEnrutador();
   const [calT,       setCalT]       = useState<Record<string, CalData>>({});
   // "Tienda Terminada" (marcador manual de Bodega, ver useTiendaTerminada) — filtro ORTOGONAL a
   // enElPool, solo para el tablero y la generación de rutas: sin esto, un despachador podía
@@ -2492,6 +2503,36 @@ export default function RutasScreen() {
     });
   }, [calTCong, asignacionesCong, cerradasCong]);
 
+  // [Vista nueva] La banda de arriba: qué falta ahora en la pestaña abierta. Mira el mismo estado
+  // que la fase (ver utils/bandaEnrutador); solo agrega cuántas de las tiendas sin camión ya las
+  // terminó Bodega, que es lo que «Asignar» puede mover.
+  const banda: Banda = useMemo(() => {
+    if (modo === 'drag' || modo === 'man') {
+      const enPoolHoy = codsEnPool(calT);
+      const asignadas = new Set(Object.values(manualAsignaciones).flat().map(s => s.c));
+      const sinCamion = enPoolHoy.filter(c => !asignadas.has(c));
+      return bandaTablero({
+        poolCount: enPoolHoy.length, asignadasCount: asignadas.size,
+        camionesConAsig: Object.values(manualAsignaciones).filter(a => a.length > 0).length,
+        cerradasCount: cerradasV1.size, diaCerrado: cerrado,
+        listasSinAsignar: sinCamion.filter(c => terminadas.has(c)).length,
+        esperandoBodega: sinCamion.filter(c => !terminadas.has(c)).length,
+      }, { seco: true });
+    }
+    if (modo === 'cong') {
+      const enPoolHoy = codsEnPool(calTCong);
+      const asignadas = new Set(Object.values(asignacionesCong).flat().map(s => s.c));
+      return bandaTablero({
+        poolCount: enPoolHoy.length, asignadasCount: asignadas.size,
+        camionesConAsig: Object.values(asignacionesCong).filter(a => a.length > 0).length,
+        cerradasCount: cerradasCong.size, diaCerrado: false,
+        listasSinAsignar: enPoolHoy.filter(c => !asignadas.has(c)).length, esperandoBodega: 0,
+      }, { seco: false });
+    }
+    if (modo === 'v2') return bandaSegundaVuelta({ pendientes: pendientesV2Origen.length, dias: fechasBacklogV2(pendientesV2Origen).length });
+    return bandaFija(modo === 'cal' ? 'cal' : modo === 'plan' ? 'plan' : 'flota');
+  }, [modo, calT, manualAsignaciones, cerradasV1, cerrado, terminadas, calTCong, asignacionesCong, cerradasCong, pendientesV2Origen]);
+
   const faseInfoV2 = useMemo(() => {
     const delDia = asignacionesV2[v2Fecha] ?? {};
     const asignadas = new Set(Object.values(delDia).flat().map(s => s.c));
@@ -2965,6 +3006,20 @@ export default function RutasScreen() {
       })()
     : null;
 
+  const hayPanelDerecho = !!results || !!comparisonData;
+  // [Vista nueva] El botón de la banda. Cada acción es una que la pantalla ya tenía.
+  const accionBanda = (id: AccionBanda) => {
+    if (id === 'actualizar') window.dispatchEvent(new CustomEvent('enrutador-refresh'));
+    // Los dos pools, como la asignación automática: la banda cuenta las tiendas de los dos.
+    else if (id === 'asignar') completarAsignacion(['rm-costa', 'regiones']);
+    else if (id === 'terminar-dia') setCierreOpen(true);
+    else if (id === 'ver-manifiestos') handleVerManifiestosDia();
+    else if (id === 'ver-camiones') {
+      document.querySelector('[data-dropzone]:not([data-dropzone="pool"])')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   const mapPanel = (
     <MapSection
       rutas={modo === 'plan' ? planRutas : (results?.rutas ?? dragLive?.rutas ?? previewRutas)}
@@ -3209,6 +3264,55 @@ export default function RutasScreen() {
       {/* La corrección manual vale para el día de armado que está abierto en la cabecera. Si un
           manifiesto se arma sobre OTRO día (la 2ª vuelta usa el de hoy), ese recalcula el suyo:
           arrastrar la corrección a un día distinto sería inventar. */}
+      {vista === 'nueva' ? (
+        <MarcoEnrutador
+          armado={fechaCabecera(fecha)}
+          sale={fechaCabecera(despachoDe(fecha))}
+          modo={modo}
+          onModo={m => { setModo(m as ModoEnrutador); if (m !== 'drag') setCamionSeleccionado(null); }}
+          pestanaBloqueada={m => hayPanelDerecho && m === 'drag'}
+          pendientesBacklog={pendientesV2Origen.length}
+          banda={banda}
+          onAccion={accionBanda}
+          esMovil={isMobile}
+          menu={cerrar => (
+            <div className="p-4 flex flex-col gap-4">
+              <HeaderFields
+                supervisor={supervisor} onSupervisor={setSupervisor}
+                fecha={fecha} onFecha={setFecha} hoy={todayStr()} manana={mananaStr()}
+                tipoCarga={tipoCargaActivo}
+                salidaOverride={salidaManual} onSalida={setSalidaManual}
+                stacked
+              />
+              <div className="flex items-center gap-2">
+                <AutoAsignarToggle on={asignacionAutomatica} onToggle={() => { void guardarAuto(!asignacionAutomatica); }}
+                  puedeCambiar={puedeAuto} motivoBloqueo={motivoBloqueoAuto(profile?.role)} />
+                <RefreshButton />
+              </div>
+              <div className="flex flex-col gap-2">
+                <AccionMenu onClick={() => { cerrar(); handleOpenParadas(); }}>
+                  + Parada{paradasAdicionales.length > 0 ? ` · ${paradasAdicionales.length}` : ''}
+                </AccionMenu>
+                {modo === 'drag' && !hayPanelDerecho && (
+                  <AccionMenu onClick={() => { cerrar(); setTableroOpen(true); }}>Tablero vivo</AccionMenu>
+                )}
+                {modo === 'drag' && !hayPanelDerecho && (
+                  <AccionMenu onClick={() => { cerrar(); setCierreOpen(true); }}>Terminar día</AccionMenu>
+                )}
+                {modo === 'man' && !hayPanelDerecho && (
+                  <AccionMenu onClick={() => { cerrar(); handleCalcular(); }}>Calcular rutas</AccionMenu>
+                )}
+                {modo !== 'cong' && modo !== 'flota' && modo !== 'cal' && modo !== 'plan' && (
+                  <AccionMenu onClick={() => { cerrar(); handleLimpiar(); }}>Limpiar</AccionMenu>
+                )}
+              </div>
+              {/* En el teléfono el mapa vive acá, como en el cajón de la vista clásica. */}
+              {isMobile && <div className="min-h-[360px] rounded-[12px] overflow-hidden border border-black/[0.09]">{mapPanel}</div>}
+              <AccionMenu tono="suave" onClick={() => { cerrar(); setVista('clasica'); }}>Volver a la vista clásica</AccionMenu>
+            </div>
+          )}
+        />
+      ) : (
       <DespachoHeader
         supervisor={supervisor} onSupervisor={setSupervisor}
         fecha={fecha} onFecha={setFecha}
@@ -3223,7 +3327,9 @@ export default function RutasScreen() {
         tipoCarga={tipoCargaActivo}
         fechaSalidaOverride={salidaManual}
         onFechaSalida={setSalidaManual}
+        onVistaNueva={() => setVista('nueva')}
       />
+      )}
 
       <main className="flex-1 overflow-hidden">
         {/* Tabs a ancho completo arriba; el contenido a la izquierda y el mapa a la DERECHA
@@ -3287,6 +3393,7 @@ export default function RutasScreen() {
             onAbrirTablero={() => setTableroOpen(true)}
             zonasCfg={zonasCfg}
             pendientesBacklogCount={pendientesV2Origen.length}
+            sinBarra={vista === 'nueva'}
             rightPanelContent={
               results ? (
                 <div className="h-full overflow-y-auto">
