@@ -960,10 +960,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     catchUp();
   };
 
-  const allDispatchItems = Object.values(dispatchData).flat();
-  const statP = allDispatchItems.filter(i => i.pkg === 'pallet').length;
-  const statB = bultosNacional(allDispatchItems);
-  const statCH = allDispatchItems.filter(i => i.pkg === 'chocolate').length;
   const activeTiendasCount = Object.entries(dispatchData).filter(([, its]) => its.length > 0).length;
   // Contador "terminadas/total del día" (Nacional): terminada = tienda con carga registrada.
   // "Terminada" = movimientos de Odoo completos (semáforo verde, done === total), la MISMA señal
@@ -973,7 +969,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const estadoDe = (t: { name: string; cod: string }) => estadoLista({
     cargadas: (dispatchData[t.name] || []).length, terminada: terminadas.get(t.cod)?.terminada === true,
   });
-  const resumenHoy = resumenDia(all.filter(t => allTodayCods.includes(t.cod)).map(estadoDe));
+  const tiendasBarra = all.filter(t => allTodayCods.includes(t.cod));
+  const resumenHoy = resumenDia(tiendasBarra.map(estadoDe));
+  // Las unidades de la barra salen de las MISMAS tiendas que su «X/Y listas» (ver StepForm).
+  const itemsBarra = tiendasBarra.flatMap(t => dispatchData[t.name] || []);
+  const barraP  = itemsBarra.filter(i => i.pkg === 'pallet').length;
+  const barraB  = bultosNacional(itemsBarra);
+  const barraCH = itemsBarra.filter(i => i.pkg === 'chocolate').length;
   const filtroHoy = filtroVigente(filtroLista, resumenHoy);
   const todayVisibles = today.filter(t => pasaFiltro(estadoDe(t), filtroHoy));
 
@@ -2756,7 +2758,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           </button>
         </div>
 
-        <BarraDelDia resumen={resumenHoy} unidades={[{ letra: 'P', n: statP }, { letra: 'B', n: statB }, { letra: 'CH', n: statCH }]} />
+        <BarraDelDia resumen={resumenHoy} unidades={[{ letra: 'P', n: barraP }, { letra: 'B', n: barraB }, { letra: 'CH', n: barraCH }]} />
         <FiltroTiendas filtro={filtroHoy} resumen={resumenHoy} onFiltro={setFiltroLista} />
 
         {/* Lista de tiendas: una fila por tienda. Ver `ListaTiendas.tsx`. */}
