@@ -51,6 +51,7 @@ export default function MarcoEnrutador({
 }: Props) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const color = colorDe(modo);
+  const pasos = banda.pasos ?? PASOS_DIA;
 
   useEffect(() => {
     if (!menuAbierto) return;
@@ -113,11 +114,11 @@ export default function MarcoEnrutador({
         {banda.paso !== null && (
           esMovil ? (
             <span className="text-rotulo font-bold uppercase text-kmuted">
-              Paso {banda.paso} de {PASOS_DIA.length} · {PASOS_DIA[banda.paso - 1]}
+              Paso {banda.paso} de {pasos.length} · {pasos[banda.paso - 1]}
             </span>
           ) : (
-            <ol className="flex items-center gap-2.5 list-none m-0 p-0 flex-shrink-0" aria-label={`Paso ${banda.paso} de ${PASOS_DIA.length}`}>
-              {PASOS_DIA.map((nombre, i) => {
+            <ol className="flex items-center gap-2.5 list-none m-0 p-0 flex-shrink-0" aria-label={`Paso ${banda.paso} de ${pasos.length}`}>
+              {pasos.map((nombre, i) => {
                 const n = i + 1;
                 const hecho = n < banda.paso!;
                 const activo = n === banda.paso;
@@ -132,7 +133,7 @@ export default function MarcoEnrutador({
                       style={activo ? { color } : undefined}>
                       {nombre}
                     </span>
-                    {i < PASOS_DIA.length - 1 && <span className="w-5 h-0.5 bg-black/[0.12]" aria-hidden="true" />}
+                    {i < pasos.length - 1 && <span className="w-5 h-0.5 bg-black/[0.12]" aria-hidden="true" />}
                   </li>
                 );
               })}

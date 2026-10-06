@@ -437,7 +437,7 @@ export default function InputSection({
         ) : modo === 'cong' ? (
           <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
             <div className="p-3">
-              <ManualDispatch fase={faseCongVista} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+              <ManualDispatch vistaA={sinBarra} frio fase={faseCongVista} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                 asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
                 seleccion={seleccionCong} onToggleSeleccion={onToggleSeleccionCong}
                 onCalcular={() => {}} hideCalcular
@@ -574,7 +574,7 @@ export default function InputSection({
       ) : modo === 'cong' ? (
         <div ref={dragScrollRef} className="flex-1 overflow-y-auto">
           <div className="p-4">
-            <ManualDispatch fase={faseCongVista} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+            <ManualDispatch vistaA={sinBarra} frio fase={faseCongVista} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
               asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
                 seleccion={seleccionCong} onToggleSeleccion={onToggleSeleccionCong}
               onCalcular={() => {}} hideCalcular

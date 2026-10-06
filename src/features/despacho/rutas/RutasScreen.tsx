@@ -8,7 +8,7 @@ import InputSection   from './components/InputSection';
 import DespachoHeader, { HeaderFields, AutoAsignarToggle, RefreshButton } from './components/DespachoHeader';
 import MarcoEnrutador, { AccionMenu } from './components/MarcoEnrutador';
 import { useVistaEnrutador } from './utils/vistaEnrutador';
-import { bandaTablero, bandaSegundaVuelta, bandaFija, fechaCabecera, type Banda, type AccionBanda } from './utils/bandaEnrutador';
+import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, fechaCabecera, type Banda, type AccionBanda } from './utils/bandaEnrutador';
 import { useIsMobile } from './utils/useIsMobile';
 import MapSection     from './components/MapSection';
 import ResultsSection from './components/ResultsSection';
@@ -2521,13 +2521,15 @@ export default function RutasScreen() {
     }
     if (modo === 'cong') {
       const enPoolHoy = codsEnPool(calTCong);
-      const asignadas = new Set(Object.values(asignacionesCong).flat().map(s => s.c));
-      return bandaTablero({
+      const enCamion = Object.values(asignacionesCong).flat();
+      const asignadas = new Set(enCamion.map(s => s.c));
+      return bandaCongelados({
         poolCount: enPoolHoy.length, asignadasCount: asignadas.size,
         camionesConAsig: Object.values(asignacionesCong).filter(a => a.length > 0).length,
         cerradasCount: cerradasCong.size, diaCerrado: false,
         listasSinAsignar: enPoolHoy.filter(c => !asignadas.has(c)).length, esperandoBodega: 0,
-      }, { seco: false });
+        bultosAsignados: enCamion.reduce((t, s) => t + s.b + ((s as { ch?: number }).ch ?? 0), 0),
+      });
     }
     if (modo === 'v2') return bandaSegundaVuelta({ pendientes: pendientesV2Origen.length, dias: fechasBacklogV2(pendientesV2Origen).length });
     return bandaFija(modo === 'cal' ? 'cal' : modo === 'plan' ? 'plan' : 'flota');
@@ -3014,6 +3016,15 @@ export default function RutasScreen() {
     else if (id === 'asignar') completarAsignacion(['rm-costa', 'regiones']);
     else if (id === 'terminar-dia') setCierreOpen(true);
     else if (id === 'ver-manifiestos') handleVerManifiestosDia();
+    else if (id === 'cerrar-camiones') {
+      // No cierra: marca los furgones abiertos en la barra «Cerrar seleccionados», que es la que
+      // avisa uno por uno los que van pasados y pide confirmar. Cerrar sigue siendo un toque más.
+      const abiertos = Object.entries(asignacionesCong)
+        .filter(([p, a]) => a.length > 0 && !isCerrada(cerradasCong, p)).map(([p]) => p);
+      setCerrarSelCong(new Set(abiertos));
+      requestAnimationFrame(() => document.querySelector('[data-cerrar-varios]')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'end' }));
+    }
     else if (id === 'ver-camiones') {
       document.querySelector('[data-dropzone]:not([data-dropzone="pool"])')
         ?.scrollIntoView({ behavior: 'smooth', block: 'start' });

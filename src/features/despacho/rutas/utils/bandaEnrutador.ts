@@ -14,6 +14,7 @@ export type AccionBanda =
   | 'actualizar'       // volver a descargar los datos (el botón «Actualizar» de la cabecera)
   | 'asignar'          // completar lo que falta, igual que la asignación automática
   | 'ver-camiones'     // bajar hasta las tarjetas de camión
+  | 'cerrar-camiones'  // marcar los abiertos en «Cerrar seleccionados»: el cierre lo confirma la barra de siempre
   | 'terminar-dia'     // abrir el cierre de jornada
   | 'ver-manifiestos'; // los manifiestos guardados del día
 
@@ -23,10 +24,15 @@ export interface Banda {
   accion: { id: AccionBanda; texto: string } | null;
   /** Paso del indicador, 1 a 5. `null` en las pestañas que no tienen pasos. */
   paso: number | null;
+  /** Nombres de los pasos, si la pestaña usa otros que `PASOS_DIA`. */
+  pasos?: readonly string[];
 }
 
 /** Los cinco pasos del día, con las palabras del diseño. Son los mismos de `FASES`. */
 export const PASOS_DIA = ['Tiendas', 'Asignar', 'Revisar', 'Cerrar camiones', 'Terminar día'] as const;
+
+/** Congelados cierra furgones, no camiones. */
+export const PASOS_CONGELADOS = ['Tiendas', 'Asignar', 'Revisar', 'Cerrar furgones', 'Terminar día'] as const;
 
 export interface BandaTableroInput extends FaseInput {
   /** Tiendas del pool que Bodega ya terminó y todavía no van en un camión: las que «Asignar» mueve. */
@@ -105,6 +111,61 @@ export function bandaTablero(i: BandaTableroInput, opciones: { seco: boolean }):
     paso: 3, titular: `Todo asignado: revisa y cierra ${i.camionesConAsig === 1 ? 'el camión' : `los ${i.camionesConAsig} camiones`}`,
     subtitulo: `${n(i.asignadasCount, 'tienda', 'tiendas')} en ${camiones}`,
     accion: { id: 'ver-camiones', texto: 'Ver camiones' },
+  };
+}
+
+export interface BandaCongeladosInput extends BandaTableroInput {
+  /** Bultos de las tiendas que ya van en un furgón. */
+  bultosAsignados: number;
+}
+
+/**
+ * Congelados: el mismo camino del día, contado en furgones y bultos. No tiene «Asignar»
+ * automático ni «Terminar día» propios (son del despacho seco); sí puede llevar a cerrar los
+ * furgones, y ese cierre pasa por la barra «Cerrar seleccionados», con sus mismos avisos.
+ */
+export function bandaCongelados(i: BandaCongeladosInput): Banda {
+  const fase = faseEnrutador({ ...i, diaCerrado: false });
+  const pasos = PASOS_CONGELADOS;
+  const furgones = n(i.camionesConAsig, 'furgón', 'furgones');
+  const abiertos = i.camionesConAsig - i.cerradasCount;
+
+  if (i.poolCount === 0) {
+    return {
+      paso: 1, pasos, titular: 'Esperando a Bodega Congelados',
+      subtitulo: 'Todavía no llegan tiendas con cajas para este día', accion: null,
+    };
+  }
+  if (fase.step === 5) {
+    return {
+      paso: 5, pasos, titular: 'Todos los furgones cerrados',
+      subtitulo: `${furgones} · ${n(i.bultosAsignados, 'bulto', 'bultos')} · el día lo termina Despacho`, accion: null,
+    };
+  }
+  if (fase.step === 4) {
+    return {
+      paso: 4, pasos, titular: `Faltan ${n(abiertos, 'furgón', 'furgones')} por cerrar`,
+      subtitulo: `${i.cerradasCount} de ${i.camionesConAsig} cerrados`,
+      accion: { id: 'cerrar-camiones', texto: abiertos === 1 ? 'Cerrar el que falta' : `Cerrar los ${abiertos} que faltan` },
+    };
+  }
+  if (i.listasSinAsignar > 0) {
+    return {
+      paso: fase.step, pasos,
+      titular: i.asignadasCount === 0
+        ? `${n(i.listasSinAsignar, 'tienda lista', 'tiendas listas')} para asignar`
+        : `Faltan ${n(i.listasSinAsignar, 'tienda', 'tiendas')} por asignar`,
+      subtitulo: i.asignadasCount > 0
+        ? `${i.asignadasCount} ya van en ${furgones} · arrástralas a un furgón`
+        : 'Arrástralas a un furgón de frío',
+      accion: null,
+    };
+  }
+  return {
+    paso: 3, pasos,
+    titular: `Todo asignado: revisa y cierra ${i.camionesConAsig === 1 ? 'el furgón' : `los ${i.camionesConAsig} furgones`}`,
+    subtitulo: `${n(i.asignadasCount, 'tienda', 'tiendas')} · ${n(i.bultosAsignados, 'bulto', 'bultos')}`,
+    accion: { id: 'cerrar-camiones', texto: i.camionesConAsig === 1 ? 'Cerrar el furgón' : `Cerrar los ${i.camionesConAsig} furgones` },
   };
 }
 

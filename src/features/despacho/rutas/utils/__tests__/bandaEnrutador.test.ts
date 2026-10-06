@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bandaTablero, bandaSegundaVuelta, bandaFija, PASOS_DIA, type BandaTableroInput } from '../bandaEnrutador';
+import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, PASOS_DIA, PASOS_CONGELADOS, type BandaTableroInput } from '../bandaEnrutador';
 import { FASES } from '../faseEnrutador';
 
 const base: BandaTableroInput = {
@@ -101,5 +101,44 @@ describe('bandaFija y pasos', () => {
   });
   it('los pasos del diseño son uno por fase', () => {
     expect(PASOS_DIA.length).toBe(FASES.length);
+  });
+});
+
+describe('bandaCongelados', () => {
+  const c = { ...base, bultosAsignados: 0 };
+  it('sin cajas de Bodega Congelados: espera, sin botón', () => {
+    expect(bandaCongelados(c)).toMatchObject({ paso: 1, titular: 'Esperando a Bodega Congelados', accion: null });
+  });
+  it('habla de furgones y usa sus propios pasos', () => {
+    const b = bandaCongelados({ ...c, poolCount: 9, asignadasCount: 9, camionesConAsig: 2, bultosAsignados: 31 });
+    expect(b.pasos).toBe(PASOS_CONGELADOS);
+    expect(b.titular).toBe('Todo asignado: revisa y cierra los 2 furgones');
+    expect(b.subtitulo).toBe('9 tiendas · 31 bultos');
+    expect(b.accion).toEqual({ id: 'cerrar-camiones', texto: 'Cerrar los 2 furgones' });
+  });
+  it('un solo furgón: singular', () => {
+    const b = bandaCongelados({ ...c, poolCount: 3, asignadasCount: 3, camionesConAsig: 1, bultosAsignados: 1 });
+    expect(b.titular).toBe('Todo asignado: revisa y cierra el furgón');
+    expect(b.subtitulo).toBe('3 tiendas · 1 bulto');
+    expect(b.accion?.texto).toBe('Cerrar el furgón');
+  });
+  it('tiendas sin furgón: no hay asignación automática, no ofrece botón', () => {
+    const b = bandaCongelados({ ...c, poolCount: 5, asignadasCount: 2, camionesConAsig: 1, listasSinAsignar: 3 });
+    expect(b).toMatchObject({ paso: 2, titular: 'Faltan 3 tiendas por asignar', accion: null });
+    expect(b.subtitulo).toBe('2 ya van en 1 furgón · arrástralas a un furgón');
+  });
+  it('cerrando: ofrece cerrar los que faltan', () => {
+    const b = bandaCongelados({ ...c, poolCount: 9, asignadasCount: 9, camionesConAsig: 4, cerradasCount: 1 });
+    expect(b).toMatchObject({ paso: 4, titular: 'Faltan 3 furgones por cerrar', subtitulo: '1 de 4 cerrados' });
+    expect(b.accion).toEqual({ id: 'cerrar-camiones', texto: 'Cerrar los 3 que faltan' });
+    expect(bandaCongelados({ ...c, poolCount: 9, asignadasCount: 9, camionesConAsig: 2, cerradasCount: 1 }).accion?.texto).toBe('Cerrar el que falta');
+  });
+  it('todos cerrados: no termina el día (eso es de Despacho)', () => {
+    const b = bandaCongelados({ ...c, poolCount: 9, asignadasCount: 9, camionesConAsig: 2, cerradasCount: 2, bultosAsignados: 31 });
+    expect(b).toMatchObject({ paso: 5, titular: 'Todos los furgones cerrados', accion: null });
+    expect(b.subtitulo).toBe('2 furgones · 31 bultos · el día lo termina Despacho');
+  });
+  it('ignora un diaCerrado que le llegue: terminar el día no ocurre en este tablero', () => {
+    expect(bandaCongelados({ ...c, poolCount: 3, listasSinAsignar: 3, diaCerrado: true }).paso).toBe(1);
   });
 });

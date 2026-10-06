@@ -110,6 +110,9 @@ interface Props {
    *  presentación — pool en filas, tarjetas con estado y cabina→puerta numerada. Solo cambia cómo se
    *  dibuja: cada botón y cada arrastre llama a lo mismo que en la vista clásica. */
   vistaA?: boolean;
+  /** [Vista A · Congelados] Furgones de frío: la carga se mide en bultos (las cajas de Bodega
+   *  Congelados llegan así) y el acento es el de la pestaña. La regla de exceso no cambia. */
+  frio?: boolean;
 }
 
 function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number[]): number {
@@ -178,8 +181,13 @@ export default function ManualDispatch({
   zonasCfg,
   terminadas,
   vistaA = false,
+  frio = false,
 }: Props) {
   const A = vistaA;
+  // [Vista A] Palabras y acento del tablero: Despacho arma camiones, Congelados arma furgones.
+  const furgon = A && frio;
+  const vehiculo = furgon ? 'furgón' : 'camión';
+  const acento = furgon ? '#0E7490' : '#1B2A6B';
   // [Vista A] La tira de «Camiones activos» se abre con «+ Sumar camión». Solo es mostrar u ocultar.
   const [verActivos, setVerActivos] = useState(false);
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
@@ -766,7 +774,13 @@ export default function ManualDispatch({
             </div>
           )}
           <div className={A ? 'p-2.5 flex flex-col gap-1.5 min-h-[64px]' : 'p-3 flex flex-wrap gap-[6px] min-h-[64px] items-start'}>
-            {pool.length === 0 && paradasPool.length === 0 ? (
+            {pool.length === 0 && paradasPool.length === 0 && A ? (
+              <div className="flex flex-col items-center text-center gap-1.5 py-5 px-3">
+                <span className="w-11 h-11 rounded-full bg-est-ok-suave text-est-ok flex items-center justify-center text-[22px] font-bold" aria-hidden="true">✓</span>
+                <span className="text-cuerpo font-bold text-ktext">Todas las tiendas tienen {vehiculo}</span>
+                <span className="text-apoyo text-kmuted">Las que Bodega termine después aparecen acá.</span>
+              </div>
+            ) : pool.length === 0 && paradasPool.length === 0 ? (
               <div className="flex items-center gap-2 text-green-600">
                 <span className="text-[18px]">✓</span>
                 <span className="text-[13px] font-semibold">Todo asignado</span>
@@ -841,7 +855,7 @@ export default function ManualDispatch({
           </div>
           {A && (
             <div className="px-4 py-3 border-t border-black/[0.07] text-rotulo tracking-normal text-kmuted">
-              Arrastra una tienda a un camión, o márcalas y toca el camión.
+              Arrastra una tienda a un {vehiculo}, o márcalas y toca el {vehiculo}.
             </div>
           )}
         </div>
@@ -854,7 +868,7 @@ export default function ManualDispatch({
       {/* [Fase 2] Camiones activos — PRIMERO (activar/desactivar sin salir de DESPACHO) */}
       {A && (
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-cuerpo font-bold text-ktext">Camiones</span>
+          <span className="text-cuerpo font-bold text-ktext">{furgon ? 'Furgones de frío' : 'Camiones'}</span>
           <span className="text-apoyo text-kmuted">
             {flotaDisp.filter(v => (asignaciones[v.p] || []).length > 0).length} en uso
             {totalEstKm > 0 ? ` · ~${totalEstKm} km en ruta` : ''}
@@ -864,7 +878,7 @@ export default function ManualDispatch({
           {onToggleFlota && flota.length > 0 && (
             <button type="button" onClick={() => setVerActivos(v => !v)} aria-expanded={verActivos}
               className="min-h-[36px] px-3 rounded-[10px] border border-black/[0.14] bg-white text-apoyo font-semibold text-knavy hover:border-knavy/40 transition-colors">
-              {verActivos ? 'Listo' : '+ Sumar camión'}
+              {verActivos ? 'Listo' : `+ Sumar ${vehiculo}`}
             </button>
           )}
         </div>
@@ -1106,14 +1120,24 @@ export default function ManualDispatch({
                 {A ? (
                   <div>
                     <div className="flex items-baseline justify-between gap-2 mb-1.5">
-                      <span className={`text-apoyo ${m.overCap ? 'text-orange-700' : 'text-ktext'}`}>
-                        <strong className="text-cuerpo">{m.tp}</strong> de {v.c} pallets{m.tb > 0 ? ` · ${m.tb} b` : ''}
-                      </span>
+                      {furgon ? (
+                        // Congelados: lo que se cuenta son cajas. Los pallets, si hay, van al lado.
+                        <span className={`text-apoyo ${m.overCap ? 'text-orange-700' : 'text-ktext'}`}>
+                          <strong className="text-cuerpo">{m.tb}</strong>{v.b > 0 ? ` de ${v.b}` : ''} bultos{m.tp > 0 ? ` · ${m.tp} p` : ''}
+                        </span>
+                      ) : (
+                        <span className={`text-apoyo ${m.overCap ? 'text-orange-700' : 'text-ktext'}`}>
+                          <strong className="text-cuerpo">{m.tp}</strong> de {v.c} pallets{m.tb > 0 ? ` · ${m.tb} b` : ''}
+                        </span>
+                      )}
                       {!esConsolidado && m.kmEst > 0 && <span className="text-apoyo text-kmuted whitespace-nowrap">~{m.kmEst} km</span>}
                     </div>
                     <div className="h-2 rounded bg-kbg overflow-hidden">
                       <div className="h-full rounded transition-all duration-300"
-                        style={{ width: `${Math.min(m.pct * 100, 100)}%`, background: cerrado ? '#15803D' : m.overCap ? '#C2410C' : '#1B2A6B' }} />
+                        style={{
+                          width: `${Math.min((furgon ? (v.b > 0 ? m.tb / v.b : 0) : m.pct) * 100, 100)}%`,
+                          background: cerrado ? '#15803D' : m.overCap ? '#C2410C' : acento,
+                        }} />
                     </div>
                   </div>
                 ) : (
@@ -1300,9 +1324,9 @@ export default function ManualDispatch({
                     className={`w-full ${A ? 'min-h-[44px] text-apoyo' : 'h-[38px] text-[12px]'} rounded-[10px] font-bold flex items-center justify-center gap-1.5 transition-all ${
                       cerrado ? 'bg-green-50 text-green-700 border-[1.5px] border-green-500/40 cursor-default'
                       : exceso ? 'bg-amber-500 text-white active:scale-[0.98]'
-                      : 'bg-knavy text-white active:scale-[0.98]'}`}
+                      : `${furgon ? 'bg-[#0E7490]' : 'bg-knavy'} text-white active:scale-[0.98]`}`}
                   >
-                    {cerrado ? '✓ Cerrado · ver manifiesto' : textoBotonCerrar(!!exceso)}
+                    {cerrado ? '✓ Cerrado · ver manifiesto' : furgon && !exceso ? 'Cerrar furgón y manifiesto' : textoBotonCerrar(!!exceso)}
                   </button>
                 </div>
               )}
@@ -1378,10 +1402,10 @@ export default function ManualDispatch({
 
       {/* [Cerrar en masa] Barra flotante para cerrar todos los camiones seleccionados de una. */}
       {onCerrarVarios && cerrarSel && cerrarSel.size > 0 && (
-        <div className="sticky bottom-0 z-20 px-3 py-2.5 rounded-[12px] flex items-center gap-2 flex-wrap"
+        <div data-cerrar-varios className="sticky bottom-0 z-20 px-3 py-2.5 rounded-[12px] flex items-center gap-2 flex-wrap"
           style={{ background: '#1B2A6B', boxShadow: '0 -2px 18px rgba(0,0,0,0.14)' }}>
           <span className="text-[13px] font-bold text-white flex-1 min-w-[130px]">
-            {cerrarSel.size} camión{cerrarSel.size === 1 ? '' : 'es'} seleccionado{cerrarSel.size === 1 ? '' : 's'}
+            {cerrarSel.size} {cerrarSel.size === 1 ? vehiculo : (furgon ? 'furgones' : 'camiones')} seleccionado{cerrarSel.size === 1 ? '' : 's'}
           </span>
           <button onClick={() => { const sel = [...cerrarSel]; sel.forEach(p => onToggleCerrarSel?.(p)); }}
             className="text-[12px] font-semibold text-white/75 underline cursor-pointer">Deseleccionar</button>
@@ -1545,7 +1569,10 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
         <span className="flex-1 min-w-0 truncate text-apoyo font-semibold">{info?.n ?? ''}</span>
         {pendienteTerminar
           ? <span className="text-rotulo font-semibold flex-shrink-0 whitespace-nowrap">En Bodega</span>
-          : <span className="text-apoyo font-bold text-knavy flex-shrink-0 whitespace-nowrap">{store.p} P{b > 0 ? ` · ${b} B` : ''}</span>}
+          : <span className="text-apoyo font-bold text-knavy flex-shrink-0 whitespace-nowrap">
+              {/* Congelados llega solo en bultos: «0 P · 3 B» es ruido, «3 B» dice lo mismo. */}
+              {[store.p > 0 || b === 0 ? `${store.p} P` : '', b > 0 ? `${b} B` : ''].filter(Boolean).join(' · ')}
+            </span>}
         {onRemove && (
           <button
             onClick={e => { e.stopPropagation(); if (requireConfirm) setConfirmOpen(true); else onRemove(); }}
