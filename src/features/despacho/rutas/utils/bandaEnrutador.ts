@@ -169,20 +169,50 @@ export function bandaCongelados(i: BandaCongeladosInput): Banda {
   };
 }
 
-/** 2ª vuelta: cuántas tiendas de días anteriores siguen sin camión. */
-export function bandaSegundaVuelta(i: { pendientes: number; dias: number }): Banda {
+export interface BandaVueltaInput {
+  /** Tiendas pendientes de todos los días anteriores. */
+  pendientes: number;
+  /** Cuántas fechas de origen distintas hay. */
+  dias: number;
+  /** El día que se está armando, como se dice: «sábado». */
+  dia: string;
+  /** De ese día: las que todavía no van en un camión. */
+  sinCamion: number;
+  /** De ese día: camiones con tiendas, todavía sin cerrar (al cerrar, salen del tablero). */
+  camiones: number;
+}
+
+/**
+ * 2ª vuelta: qué falta del día elegido. No hay asignación automática para la 2ª vuelta, así que
+ * mientras queden tiendas sin camión la banda solo lo dice; con todo asignado, lleva a cerrar.
+ */
+export function bandaSegundaVuelta(i: BandaVueltaInput): Banda {
   if (i.pendientes === 0) {
     return {
       paso: null, titular: 'Sin pendientes de 2ª vuelta',
       subtitulo: 'Lo que no salga hoy queda acá al terminar el día', accion: null,
     };
   }
+  const subtitulo = `Al cerrar, cada camión se registra como 2ª vuelta de hoy, con su manifiesto, bajo la fecha del ${i.dia}`;
+  if (i.sinCamion === 0 && i.camiones > 0) {
+    return {
+      paso: null, subtitulo,
+      titular: `Todo lo del ${i.dia} va en camión: revisa y cierra ${i.camiones === 1 ? 'el camión' : `los ${i.camiones} camiones`}`,
+      accion: { id: 'cerrar-camiones', texto: i.camiones === 1 ? 'Cerrar el camión' : `Cerrar los ${i.camiones} camiones` },
+    };
+  }
   return {
-    paso: null,
-    titular: `${n(i.pendientes, 'tienda', 'tiendas')} de ${i.dias === 1 ? 'un día anterior' : `${i.dias} días anteriores`} sin camión`,
-    subtitulo: 'Al cerrar, cada camión se registra como 2ª vuelta de hoy, con su manifiesto',
+    paso: null, subtitulo,
+    titular: `${n(i.sinCamion, 'tienda', 'tiendas')} del ${i.dia} sin camión`,
     accion: null,
   };
+}
+
+/** «sábado»: el día de la semana de una fecha, para nombrar el día de origen. */
+export function diaSemana(iso: string): string {
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('es-CL', { weekday: 'long' });
 }
 
 /** Flota, Plan y Calendario: por ahora solo dicen qué es cada pestaña. Sus fases las completan. */

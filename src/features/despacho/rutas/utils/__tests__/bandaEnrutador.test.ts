@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, PASOS_DIA, PASOS_CONGELADOS, type BandaTableroInput } from '../bandaEnrutador';
+import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, diaSemana, PASOS_DIA, PASOS_CONGELADOS, type BandaTableroInput } from '../bandaEnrutador';
 import { FASES } from '../faseEnrutador';
 
 const base: BandaTableroInput = {
@@ -86,12 +86,33 @@ describe('bandaTablero (Congelados)', () => {
 });
 
 describe('bandaSegundaVuelta', () => {
+  const v = { pendientes: 5, dias: 2, dia: 'sábado', sinCamion: 0, camiones: 0 };
   it('sin pendientes', () => {
-    expect(bandaSegundaVuelta({ pendientes: 0, dias: 0 }).titular).toBe('Sin pendientes de 2ª vuelta');
+    expect(bandaSegundaVuelta({ ...v, pendientes: 0, dias: 0 })).toMatchObject({ titular: 'Sin pendientes de 2ª vuelta', accion: null });
   });
-  it('con pendientes de uno o varios días', () => {
-    expect(bandaSegundaVuelta({ pendientes: 3, dias: 1 }).titular).toBe('3 tiendas de un día anterior sin camión');
-    expect(bandaSegundaVuelta({ pendientes: 1, dias: 2 }).titular).toBe('1 tienda de 2 días anteriores sin camión');
+  it('tiendas del día elegido sin camión: lo dice, sin botón (no hay asignación automática)', () => {
+    const b = bandaSegundaVuelta({ ...v, sinCamion: 3, camiones: 1 });
+    expect(b.titular).toBe('3 tiendas del sábado sin camión');
+    expect(b.subtitulo).toBe('Al cerrar, cada camión se registra como 2ª vuelta de hoy, con su manifiesto, bajo la fecha del sábado');
+    expect(b.accion).toBeNull();
+    expect(bandaSegundaVuelta({ ...v, sinCamion: 1 }).titular).toBe('1 tienda del sábado sin camión');
+  });
+  it('todo asignado: lleva a cerrar', () => {
+    expect(bandaSegundaVuelta({ ...v, camiones: 2 })).toMatchObject({
+      titular: 'Todo lo del sábado va en camión: revisa y cierra los 2 camiones',
+      accion: { id: 'cerrar-camiones', texto: 'Cerrar los 2 camiones' },
+    });
+    expect(bandaSegundaVuelta({ ...v, camiones: 1 }).accion?.texto).toBe('Cerrar el camión');
+  });
+  it('no tiene pasos', () => {
+    expect(bandaSegundaVuelta({ ...v, sinCamion: 2 }).paso).toBeNull();
+  });
+});
+
+describe('diaSemana', () => {
+  it('nombra el día', () => {
+    expect(diaSemana('2026-10-03')).toBe('sábado');
+    expect(diaSemana('raro')).toBe('raro');
   });
 });
 

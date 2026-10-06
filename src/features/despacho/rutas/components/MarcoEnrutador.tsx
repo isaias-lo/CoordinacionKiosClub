@@ -44,10 +44,15 @@ interface Props {
   esMovil: boolean;
   /** El contenido del menú ···. Recibe `cerrar` para que cada acción cierre el menú. */
   menu: (cerrar: () => void) => ReactNode;
+  /** Reemplaza «Armado → Sale» cuando la pestaña no sigue esa regla (la 2ª vuelta sale hoy). */
+  cabecera?: { etiqueta: string; fecha: string; nota?: string };
+  /** Algo propio de la pestaña a la izquierda de la banda, donde otras muestran los pasos. */
+  bandaInicio?: ReactNode;
 }
 
 export default function MarcoEnrutador({
   armado, sale, modo, onModo, pestanaBloqueada, pendientesBacklog, banda, onAccion, esMovil, menu,
+  cabecera, bandaInicio,
 }: Props) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const color = colorDe(modo);
@@ -67,6 +72,13 @@ export default function MarcoEnrutador({
       {/* 1. Cabecera */}
       <header className="mobile-menu-safe bg-white border-b border-black/[0.09] flex items-center gap-3 md:gap-6 px-3 md:px-5 min-h-[56px] py-1.5">
         <span className="font-barlow-condensed text-cifra font-extrabold text-knavy leading-none">Enrutador</span>
+        {cabecera ? (
+          <div className="flex items-center gap-1.5 md:gap-2.5 text-apoyo min-w-0 flex-wrap">
+            <span className="text-kmuted">{cabecera.etiqueta}</span>
+            <strong className="font-semibold text-ktext whitespace-nowrap">{cabecera.fecha}</strong>
+            {cabecera.nota && <span className="hidden md:inline text-kmuted">· {cabecera.nota}</span>}
+          </div>
+        ) : (
         <div className="flex items-center gap-1.5 md:gap-2.5 text-apoyo min-w-0 flex-wrap">
           <span className="hidden md:inline text-kmuted">Armado</span>
           <strong className="hidden md:inline font-semibold text-ktext whitespace-nowrap">{armado}</strong>
@@ -74,6 +86,7 @@ export default function MarcoEnrutador({
           <span className="text-kmuted">Sale</span>
           <strong className="font-semibold text-ktext whitespace-nowrap">{sale}</strong>
         </div>
+        )}
         <div className="flex-1" />
         <button type="button" onClick={() => setMenuAbierto(v => !v)}
           aria-label="Menú del despacho" aria-expanded={menuAbierto}
@@ -140,7 +153,8 @@ export default function MarcoEnrutador({
             </ol>
           )
         )}
-        <div className={`flex-1 min-w-0 flex flex-col gap-0.5 ${banda.paso !== null && !esMovil ? 'pl-5 border-l border-black/[0.09]' : ''}`}>
+        {bandaInicio}
+        <div className={`flex-1 min-w-0 flex flex-col gap-0.5 ${(banda.paso !== null || bandaInicio) && !esMovil ? 'pl-5 border-l border-black/[0.09]' : ''}`}>
           <span className="text-titulo font-bold text-ktext">{banda.titular}</span>
           <span className="text-apoyo text-kmuted">{banda.subtitulo}</span>
         </div>

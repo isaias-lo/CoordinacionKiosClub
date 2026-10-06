@@ -113,6 +113,9 @@ interface Props {
   /** [Vista A · Congelados] Furgones de frío: la carga se mide en bultos (las cajas de Bodega
    *  Congelados llegan así) y el acento es el de la pestaña. La regla de exceso no cambia. */
   frio?: boolean;
+  /** [Vista A · 2ª vuelta] Tablero de pendientes de un día anterior: acento morado, título del
+   *  pool con su día de origen y, en cada camión abierto, cuánto le cabe todavía. */
+  vuelta?: { poolTitulo: string; poolNota: string };
 }
 
 function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number[]): number {
@@ -182,12 +185,14 @@ export default function ManualDispatch({
   terminadas,
   vistaA = false,
   frio = false,
+  vuelta,
 }: Props) {
   const A = vistaA;
   // [Vista A] Palabras y acento del tablero: Despacho arma camiones, Congelados arma furgones.
   const furgon = A && frio;
   const vehiculo = furgon ? 'furgón' : 'camión';
-  const acento = furgon ? '#0E7490' : '#1B2A6B';
+  const deVuelta = A && !!vuelta;
+  const acento = furgon ? '#0E7490' : deVuelta ? '#5B21B6' : '#1B2A6B';
   // [Vista A] La tira de «Camiones activos» se abre con «+ Sumar camión». Solo es mostrar u ocultar.
   const [verActivos, setVerActivos] = useState(false);
   const [dragging,          setDragging]          = useState<DraggingState | null>(null);
@@ -639,7 +644,8 @@ export default function ManualDispatch({
           {A ? (
             <div className="px-4 pt-3.5 pb-3 border-b border-black/[0.07] flex flex-col gap-2.5">
               <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="text-cuerpo font-bold text-ktext">Sin asignar</span>
+                <span className="text-cuerpo font-bold text-ktext">{deVuelta ? vuelta!.poolTitulo : 'Sin asignar'}</span>
+                {deVuelta && !dragging && <span className="text-apoyo text-kmuted">{vuelta!.poolNota} ·</span>}
                 {dragging
                   ? <span className="text-apoyo text-knavy font-semibold animate-pulse">← Suelta aquí</span>
                   : <span className={`text-apoyo font-semibold ${poolAsignable.length > 0 ? 'text-kmuted' : 'text-green-700'}`}>
@@ -868,7 +874,7 @@ export default function ManualDispatch({
       {/* [Fase 2] Camiones activos — PRIMERO (activar/desactivar sin salir de DESPACHO) */}
       {A && (
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-cuerpo font-bold text-ktext">{furgon ? 'Furgones de frío' : 'Camiones'}</span>
+          <span className="text-cuerpo font-bold text-ktext">{furgon ? 'Furgones de frío' : deVuelta ? 'Camiones para la 2ª vuelta' : 'Camiones'}</span>
           <span className="text-apoyo text-kmuted">
             {flotaDisp.filter(v => (asignaciones[v.p] || []).length > 0).length} en uso
             {totalEstKm > 0 ? ` · ~${totalEstKm} km en ruta` : ''}
@@ -1139,6 +1145,12 @@ export default function ManualDispatch({
                           background: cerrado ? '#15803D' : m.overCap ? '#C2410C' : acento,
                         }} />
                     </div>
+                    {/* 2ª vuelta: lo que sirve saber al sumar una tienda más es cuánto queda. */}
+                    {deVuelta && !cerrado && stores.length > 0 && m.cap > m.tp && (
+                      <span className="block mt-1.5 text-apoyo font-semibold text-[#5B21B6]">
+                        Le {m.cap - m.tp === 1 ? 'cabe 1 pallet' : `caben ${m.cap - m.tp} pallets`} más
+                      </span>
+                    )}
                   </div>
                 ) : (
                 <div>
@@ -1324,7 +1336,7 @@ export default function ManualDispatch({
                     className={`w-full ${A ? 'min-h-[44px] text-apoyo' : 'h-[38px] text-[12px]'} rounded-[10px] font-bold flex items-center justify-center gap-1.5 transition-all ${
                       cerrado ? 'bg-green-50 text-green-700 border-[1.5px] border-green-500/40 cursor-default'
                       : exceso ? 'bg-amber-500 text-white active:scale-[0.98]'
-                      : `${furgon ? 'bg-[#0E7490]' : 'bg-knavy'} text-white active:scale-[0.98]`}`}
+                      : `${furgon ? 'bg-[#0E7490]' : deVuelta ? 'bg-[#5B21B6]' : 'bg-knavy'} text-white active:scale-[0.98]`}`}
                   >
                     {cerrado ? '✓ Cerrado · ver manifiesto' : furgon && !exceso ? 'Cerrar furgón y manifiesto' : textoBotonCerrar(!!exceso)}
                   </button>

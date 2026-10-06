@@ -8,7 +8,7 @@ import InputSection   from './components/InputSection';
 import DespachoHeader, { HeaderFields, AutoAsignarToggle, RefreshButton } from './components/DespachoHeader';
 import MarcoEnrutador, { AccionMenu } from './components/MarcoEnrutador';
 import { useVistaEnrutador } from './utils/vistaEnrutador';
-import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, fechaCabecera, type Banda, type AccionBanda } from './utils/bandaEnrutador';
+import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, fechaCabecera, diaSemana, type Banda, type AccionBanda } from './utils/bandaEnrutador';
 import { useIsMobile } from './utils/useIsMobile';
 import MapSection     from './components/MapSection';
 import ResultsSection from './components/ResultsSection';
@@ -2531,9 +2531,20 @@ export default function RutasScreen() {
         bultosAsignados: enCamion.reduce((t, s) => t + s.b + ((s as { ch?: number }).ch ?? 0), 0),
       });
     }
-    if (modo === 'v2') return bandaSegundaVuelta({ pendientes: pendientesV2Origen.length, dias: fechasBacklogV2(pendientesV2Origen).length });
+    if (modo === 'v2') {
+      // Del día de origen elegido: las que siguen sin camión y los camiones todavía abiertos
+      // (al cerrar uno, sus tiendas y él mismo salen del tablero).
+      const delDia = asignacionesV2[v2Fecha] ?? {};
+      const asignadas = new Set(Object.values(delDia).flat().map(s => s.c));
+      return bandaSegundaVuelta({
+        pendientes: pendientesV2Origen.length, dias: fechasBacklogV2(pendientesV2Origen).length,
+        dia: v2Fecha ? diaSemana(v2Fecha) : '',
+        sinCamion: Object.keys(calTV2).filter(c => !asignadas.has(c)).length,
+        camiones: Object.values(delDia).filter(a => a.length > 0).length,
+      });
+    }
     return bandaFija(modo === 'cal' ? 'cal' : modo === 'plan' ? 'plan' : 'flota');
-  }, [modo, calT, manualAsignaciones, cerradasV1, cerrado, terminadas, calTCong, asignacionesCong, cerradasCong, pendientesV2Origen]);
+  }, [modo, calT, manualAsignaciones, cerradasV1, cerrado, terminadas, calTCong, asignacionesCong, cerradasCong, pendientesV2Origen, asignacionesV2, v2Fecha, calTV2]);
 
   const faseInfoV2 = useMemo(() => {
     const delDia = asignacionesV2[v2Fecha] ?? {};
@@ -3019,9 +3030,14 @@ export default function RutasScreen() {
     else if (id === 'cerrar-camiones') {
       // No cierra: marca los furgones abiertos en la barra «Cerrar seleccionados», que es la que
       // avisa uno por uno los que van pasados y pide confirmar. Cerrar sigue siendo un toque más.
-      const abiertos = Object.entries(asignacionesCong)
-        .filter(([p, a]) => a.length > 0 && !isCerrada(cerradasCong, p)).map(([p]) => p);
-      setCerrarSelCong(new Set(abiertos));
+      if (modo === 'v2') {
+        // En la 2ª vuelta un camión cerrado sale del tablero: los que quedan con tiendas están abiertos.
+        setCerrarSelV2(new Set(Object.entries(asignacionesV2[v2Fecha] ?? {}).filter(([, a]) => a.length > 0).map(([p]) => p)));
+      } else {
+        const abiertos = Object.entries(asignacionesCong)
+          .filter(([p, a]) => a.length > 0 && !isCerrada(cerradasCong, p)).map(([p]) => p);
+        setCerrarSelCong(new Set(abiertos));
+      }
       requestAnimationFrame(() => document.querySelector('[data-cerrar-varios]')
         ?.scrollIntoView({ behavior: 'smooth', block: 'end' }));
     }
@@ -3286,6 +3302,32 @@ export default function RutasScreen() {
           banda={banda}
           onAccion={accionBanda}
           esMovil={isMobile}
+          cabecera={modo === 'v2' ? { etiqueta: 'Hoy', fecha: fechaCabecera(todayStr()), nota: 'la 2ª vuelta sale hoy mismo' } : undefined}
+          bandaInicio={modo === 'v2' && fechasV2.length > 0 ? (
+            // Las fechas de origen, que en la vista clásica son sub-pestañas sobre el tablero.
+            <div className="flex flex-col gap-1.5 flex-shrink-0 min-w-0">
+              <span className="text-rotulo font-bold uppercase text-kmuted">Quedaron pendientes de</span>
+              <div className="flex gap-2 overflow-x-auto [scrollbar-width:none]">
+                {fechasV2.map(f => {
+                  const activa = f === v2Fecha;
+                  const pallets = pendientesV2Origen.filter(p => p.fechaOrigen === f).reduce((t, p) => t + p.p, 0);
+                  const nombre = fechaCabecera(f);
+                  return (
+                    <button key={f} type="button" onClick={() => setV2Fecha(f)} aria-pressed={activa}
+                      className={`flex-shrink-0 text-left rounded-[10px] px-3 py-1.5 min-h-[44px] border-[1.5px] transition-colors ${
+                        activa ? 'border-[#5B21B6] bg-[#5B21B6]/[0.06]' : 'border-black/[0.12] bg-white hover:border-[#5B21B6]/40'}`}>
+                      <span className={`block text-apoyo font-bold ${activa ? 'text-[#5B21B6]' : 'text-ktext'}`}>
+                        {nombre.charAt(0).toUpperCase() + nombre.slice(1)}
+                      </span>
+                      <span className="block text-rotulo tracking-normal text-kmuted whitespace-nowrap">
+                        {conteoV2[f] ?? 0} {(conteoV2[f] ?? 0) === 1 ? 'tienda' : 'tiendas'}{pallets > 0 ? ` · ${pallets} P` : ''}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : undefined}
           menu={cerrar => (
             <div className="p-4 flex flex-col gap-4">
               <HeaderFields
@@ -3460,7 +3502,7 @@ export default function RutasScreen() {
                   <>
                     {/* Sub-pestañas por FECHA DE ORIGEN: cada día se ve, asigna y cierra por separado
                         (antes se sumaban todas las fechas por código y se perdía el detalle). */}
-                    <div className="flex gap-2 mb-3 flex-wrap">
+                    {vista !== 'nueva' && <div className="flex gap-2 mb-3 flex-wrap">
                       {fechasV2.map(f => {
                         const active = f === v2Fecha;
                         return (
@@ -3474,12 +3516,14 @@ export default function RutasScreen() {
                           </button>
                         );
                       })}
-                    </div>
-                    <div className="mb-3 text-[12px] text-kmuted">
+                    </div>}
+                    {vista !== 'nueva' && <div className="mb-3 text-[12px] text-kmuted">
                       Pendientes del <span className="font-semibold text-ktext">{v2Fecha ? fechaTxt(v2Fecha) : '—'}</span>: asigná
                       un camión y cerralo — se registra como 2ª vuelta (hoy) con su manifiesto, bajo esa fecha de origen.
-                    </div>
+                    </div>}
                     <ManualDispatch
+                      vistaA={vista === 'nueva'}
+                      vuelta={v2Fecha ? { poolTitulo: `Del ${diaSemana(v2Fecha)} ${Number(v2Fecha.slice(8, 10))}`, poolNota: 'No salieron en su día' } : undefined}
                       calT={calTV2}
                       flota={flota}
                       gps={gps}
