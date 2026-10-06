@@ -107,7 +107,18 @@ export interface PickerStatRow {
 export interface StatsCache { cachedAt: string; rows: PickerStatRow[]; }
 
 export type PickerType = 'P' | 'C' | 'B' | 'CH' | 'CC' | 'CN';
-export type SectionFilter = 'all' | 'aseo-comida' | 'hogar' | 'chocolates' | 'congelados';
+// COMIDA y ASEO son DOS secciones, no una.
+//
+// Hasta el 06/10/2026 iban juntas en 'aseo-comida'. El coordinador pidió separarlas, y los datos
+// lo respaldan: de los 286 pallets guardados con esa sección, 158 tenían contenido «comida» y 53
+// «aseo» — ya venían distinguidos, solo que la pestaña los juntaba.
+//
+// 'aseo-comida' YA NO se escribe, pero sigue existiendo en la base. Se resuelve por el contenido;
+// ver `seccionDeSlot` en `picking-secciones.ts`.
+export type SectionFilter = 'all' | 'comida' | 'aseo' | 'hogar' | 'chocolates' | 'congelados';
+
+/** El valor viejo, que ya no se escribe pero hay que saber leer. */
+export const SECCION_LEGADO = 'aseo-comida';
 
 // ─── localStorage keys ────────────────────────────────────────────────────────
 export const SAVED_NAMES_KEY     = 'picking_saved_picker_names';

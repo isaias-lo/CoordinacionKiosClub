@@ -16,14 +16,15 @@ describe('seccionEfectiva — el filtro guardado vale solo donde tiene sentido',
 
   it('en Seco las secciones de seco se respetan', () => {
     expect(seccionEfectiva('chocolates', false)).toBe('chocolates');
-    expect(seccionEfectiva('aseo-comida', false)).toBe('aseo-comida');
+    expect(seccionEfectiva('comida', false)).toBe('comida');
+    expect(seccionEfectiva('aseo', false)).toBe('aseo');
     expect(seccionEfectiva('all', false)).toBe('all');
   });
 });
 
 describe('seccionesDeLaPestana', () => {
   it('Seco ofrece sus cuatro secciones y NO Congelados', () => {
-    expect(seccionesDeLaPestana(false)).toEqual(['all', 'aseo-comida', 'hogar', 'chocolates']);
+    expect(seccionesDeLaPestana(false)).toEqual(['all', 'comida', 'aseo', 'hogar', 'chocolates']);
   });
 
   it('Congelados solo ofrece "Todas"', () => {
@@ -41,7 +42,8 @@ describe('tiposDeUnidad — qué contadores muestra la tarjeta', () => {
   });
 
   it('Aseo y Comida, y Hogar: todo menos Chocolate', () => {
-    expect(tiposDeUnidad(false, 'aseo-comida')).toEqual(['P', 'C', 'B']);
+    expect(tiposDeUnidad(false, 'comida')).toEqual(['P', 'C', 'B']);
+    expect(tiposDeUnidad(false, 'aseo')).toEqual(['P', 'C', 'B']);
     expect(tiposDeUnidad(false, 'hogar')).toEqual(['P', 'C', 'B']);
   });
 
@@ -79,13 +81,14 @@ describe('primeraUnidadPorDefecto — con qué nace un encargado manual', () => 
   });
 
   it('el resto nace con Pallet', () => {
-    expect(primeraUnidadPorDefecto('aseo-comida')).toBe('P');
+    expect(primeraUnidadPorDefecto('comida')).toBe('P');
+    expect(primeraUnidadPorDefecto('aseo')).toBe('P');
     expect(primeraUnidadPorDefecto('hogar')).toBe('P');
     expect(primeraUnidadPorDefecto('all')).toBe('P');
   });
 
   it('el default siempre es uno de los tipos que esa sección ofrece', () => {
-    for (const s of ['all', 'aseo-comida', 'hogar', 'chocolates'] as const) {
+    for (const s of ['all', 'comida', 'aseo', 'hogar', 'chocolates'] as const) {
       expect(tiposDeUnidad(false, s)).toContain(primeraUnidadPorDefecto(s));
     }
     expect(tiposDeUnidad(true, 'all')).toContain(primeraUnidadPorDefecto('congelados'));
@@ -95,7 +98,8 @@ describe('primeraUnidadPorDefecto — con qué nace un encargado manual', () => 
 describe('columnaSeco — en qué columna de "Todas" cae cada tarjeta', () => {
   it('un encargado de Odoo se ubica por sus categorías, como siempre', () => {
     expect(columnaSeco(['Chocolates'], false)).toBe('chocolates');
-    expect(columnaSeco(['Aseo'], false)).toBe('aseo-comida');
+    expect(columnaSeco(['Aseo'], false)).toBe('aseo');
+    expect(columnaSeco(['Comida'], false)).toBe('comida');
     expect(columnaSeco(['Hogar', 'Comida'], false)).toBe('mixto');
     expect(columnaSeco(['Hogar'], false)).toBe('hogar');
   });
@@ -104,7 +108,7 @@ describe('columnaSeco — en qué columna de "Todas" cae cada tarjeta', () => {
     // Antes la columna salía solo de las operaciones de Odoo; un manual no tiene, así que TODOS
     // terminaban en Hogar — también los de Chocolates.
     expect(columnaSeco(['Chocolates'], true)).toBe('chocolates');
-    expect(columnaSeco(['Aseo', 'Comida'], true)).toBe('aseo-comida');
+    expect(columnaSeco(['Aseo', 'Comida'], true)).toBe('mixto');   // dos secciones → mixto
   });
 
   it('un manual creado desde "Todas" (sin sección) va a Mixto, no a Hogar', () => {
@@ -132,7 +136,7 @@ describe('el chocolate va abierto en sus dos cajas (22/09/2026)', () => {
   });
 
   it('Aseo y Hogar siguen sin ofrecer chocolate, en ninguna de sus dos cajas', () => {
-    for (const s of ['aseo-comida', 'hogar'] as const) {
+    for (const s of ['comida', 'aseo', 'hogar'] as const) {
       expect(tiposDeUnidad(false, s)).not.toContain('CH:negra');
       expect(tiposDeUnidad(false, s)).not.toContain('CH:carton');
     }

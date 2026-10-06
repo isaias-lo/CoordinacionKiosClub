@@ -10,7 +10,8 @@ describe('pideSeccion', () => {
     expect(pideSeccion('chocolates')).toBe(false);
     expect(pideSeccion('congelados')).toBe(false);
     expect(pideSeccion('hogar')).toBe(false);
-    expect(pideSeccion('aseo-comida')).toBe(false);
+    expect(pideSeccion('comida')).toBe(false);
+    expect(pideSeccion('aseo')).toBe(false);
   });
 
   it('en la pestaña Congelados nunca se pregunta, aunque el chip sea "Todas"', () => {
@@ -32,11 +33,12 @@ describe('seccionYContenidoManual', () => {
     expect(seccionYContenidoManual('congelados')).toEqual({ seccion: 'congelados', contenido: 'congelados' });
   });
 
-  it('hogar y aseo-comida comparten contenido "hogar", pero la sección los distingue', () => {
+  it('hogar, comida y aseo comparten contenido "hogar", pero la sección los distingue', () => {
     // `contenido` es solo el fallback de clasificación; `seccionDeSlot` prefiere `section`,
     // que acá sí viene explícita y distinta. Se fija el comportamiento actual tal cual.
     expect(seccionYContenidoManual('hogar')).toEqual({ seccion: 'hogar', contenido: 'hogar' });
-    expect(seccionYContenidoManual('aseo-comida')).toEqual({ seccion: 'aseo-comida', contenido: 'hogar' });
+    expect(seccionYContenidoManual('comida')).toEqual({ seccion: 'comida', contenido: 'hogar' });
+    expect(seccionYContenidoManual('aseo')).toEqual({ seccion: 'aseo', contenido: 'hogar' });
   });
 
   it('la sección devuelta nunca es la cadena "all"', () => {

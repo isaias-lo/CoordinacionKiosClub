@@ -7,7 +7,7 @@ import type { SectionFilter, PickingOperation, PalletSlot } from './picking-type
  */
 export type Seccion = Exclude<SectionFilter, 'all'>;
 
-const SECCIONES: readonly Seccion[] = ['aseo-comida', 'hogar', 'chocolates', 'congelados'];
+const SECCIONES: readonly Seccion[] = ['comida', 'aseo', 'hogar', 'chocolates', 'congelados'];
 
 /** Normaliza un string suelto (p.ej. `slot.section` de la BD) a una `Seccion` válida o `null`. */
 export function normalizarSeccion(raw: string | null | undefined): Seccion | null {
@@ -26,14 +26,14 @@ export function seccionDeContenido(contenido: string | null | undefined): Seccio
   const c = (contenido ?? '').toLowerCase();
   if (c.includes('congelado')) return 'congelados';
   if (c.includes('chocolate')) return 'chocolates';
-  const hasHogar = c.includes('hogar') || c.includes('bazar') || c.includes('home');
-  const hasAC =
-    c.includes('comida') || c.includes('aliment') || c.includes('food') ||
-    c.includes('aseo') || c.includes('limpieza') || c.includes('clean');
-  if (hasHogar && hasAC) return null; // mixto
-  if (hasAC) return 'aseo-comida';
-  if (hasHogar) return 'hogar';
-  return null;
+  const hogar  = c.includes('hogar') || c.includes('bazar') || c.includes('home');
+  const comida = c.includes('comida') || c.includes('aliment') || c.includes('food');
+  const aseo   = c.includes('aseo') || c.includes('limpieza') || c.includes('clean');
+  // UNA sección o ninguna. Desde que Comida y Aseo son dos, «comida-aseo» también es mixto —
+  // antes caía en la sección común y ahora no hay una sola a la que pertenezca.
+  const cuantas = [comida, aseo, hogar].filter(Boolean).length;
+  if (cuantas !== 1) return null;
+  return comida ? 'comida' : aseo ? 'aseo' : 'hogar';
 }
 
 /**
@@ -43,20 +43,24 @@ export function seccionDeContenido(contenido: string | null | undefined): Seccio
  */
 export function seccionDeGrupo(categories: string[]): Seccion | null {
   const cats = new Set(categories);
-  const hasHogar = cats.has('Hogar');
-  const hasAC = cats.has('Aseo') || cats.has('Comida');
-  if (hasHogar && hasAC) return null; // mixto
+  const comida = cats.has('Comida');
+  const aseo   = cats.has('Aseo');
+  const hogar  = cats.has('Hogar');
+  // Mezclar DOS de las tres es mixto, igual que antes lo era Hogar + Aseo/Comida.
+  if ([comida, aseo, hogar].filter(Boolean).length > 1) return null;
   if (cats.has('Chocolates')) return 'chocolates';
   if (cats.has('Congelados')) return 'congelados';
-  if (hasAC) return 'aseo-comida';
-  if (hasHogar) return 'hogar';
+  if (comida) return 'comida';
+  if (aseo) return 'aseo';
+  if (hogar) return 'hogar';
   return null;
 }
 
 /** ¿Una operación (por sus categorías) pertenece a la sección dada? Test de inclusión por-op. */
 export function opEnSeccion(categories: string[], section: Seccion): boolean {
   const cats = new Set(categories);
-  if (section === 'aseo-comida') return cats.has('Aseo') || cats.has('Comida');
+  if (section === 'comida') return cats.has('Comida');
+  if (section === 'aseo') return cats.has('Aseo');
   if (section === 'hogar') return cats.has('Hogar');
   if (section === 'chocolates') return cats.has('Chocolates');
   return cats.has('Congelados');
@@ -73,6 +77,13 @@ export function filtrarOpsPorSeccion(ops: PickingOperation[], section: SectionFi
  * y en "Todas" se suma todo. Los mixtos sin clasificar (`null`) solo suman en "Todas".
  */
 export function seccionDeSlot(slot: Pick<PalletSlot, 'section' | 'contenido'>): Seccion | null {
+  // Un `section` que ya no es válido —'aseo-comida', de antes de separar Comida y Aseo— cae al
+  // contenido por el mismo camino que un pallet viejo sin columna. No hay rama especial: la
+  // resolución del legado y el respaldo de los viejos son la misma pregunta.
+  //
+  // Medido sobre los 286 guardados así: 158 dicen «comida» y 53 «aseo», o sea que 211 se resuelven
+  // solos. Los 75 restantes —«completo», «aseo-hogar», «comida-aseo»— eran ambiguos de entrada y
+  // quedan en «Todas», que es donde corresponde a lo que no pertenece a una sola sección.
   return normalizarSeccion(slot.section) ?? seccionDeContenido(slot.contenido);
 }
 
@@ -80,7 +91,8 @@ export function seccionDeSlot(slot: Pick<PalletSlot, 'section' | 'contenido'>): 
 // 'Comida' | 'Aseo' | 'Hogar' | 'Chocolates' | 'Congelados') — para que una etiqueta de un
 // encargado manual se vea igual que una de Odoo, no un formato distinto.
 const SECCION_A_CATEGORIAS: Record<Seccion, string[]> = {
-  'aseo-comida': ['Aseo', 'Comida'],
+  comida: ['Comida'],
+  aseo: ['Aseo'],
   hogar: ['Hogar'],
   chocolates: ['Chocolates'],
   congelados: ['Congelados'],
