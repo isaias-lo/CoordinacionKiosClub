@@ -33,7 +33,8 @@ import { avanceTienda, claseUnidad } from '@/features/despacho/shared/unidadVisu
 import { useTarjetaActiva } from '@/features/despacho/shared/useTarjetaActiva';
 import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada } from '@/features/despacho/shared/TiendaAbierta';
 import { confirmarCambioGuardado, confirmarEliminarVarios } from '@/features/despacho/shared/confirmarGuardado';
-import { FilaTienda, BarraDelDia, FiltroTiendas, RotuloLista, PieLista, BaldosaAgregar, GRILLA_MOSAICO } from '@/features/despacho/shared/ListaTiendasUI';
+import { FilaTienda, BarraDelDia, UnidadesDelDia, FechasBodega, RotuloLista, PieLista, BaldosaAgregar, GRILLA_MOSAICO } from '@/features/despacho/shared/ListaTiendasUI';
+import { usePlegarCabecera } from '@/features/despacho/shared/usePlegarCabecera';
 import { avanceFila, estadoLista, resumenDia, filtroVigente, pasaFiltro, type FiltroLista } from '@/features/despacho/shared/listaTiendas';
 import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
 import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';
@@ -86,7 +87,6 @@ import { levantarLapidasDeSlotsVivos } from '../../shared/lapidasBorrado';
 import { actualizarSlotPicking, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
 import { escribirCruceDelDia } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
-import { fechaCortaCL, conMayusculaInicial } from '@/lib/fechaTexto';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
 import { esAgregado, etiquetaAgregado, etiquetaDeUnidad } from '@/features/despacho/shared/adquisicion';
@@ -351,6 +351,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     return () => window.removeEventListener('bodega-conflicto-edicion', onConflicto);
   }, [showToast]);
   const [search, setSearch] = useState('');
+  const [buscadorConFoco, setBuscadorConFoco] = useState(false);
+  const { plegada: cabeceraPlegada, refLista, refCabecera } = usePlegarCabecera(!!search || buscadorConFoco);
   const [extraCods,         setExtraCods]         = useState<string[]>([]);
   const [removedCods,       setRemovedCods]        = useState<string[]>([]);
   const [confirmAddName,    setConfirmAddName]     = useState<string | null>(null);
@@ -515,8 +517,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const d = new Date(); d.setDate(d.getDate() + 1);
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   })();
-  // [m-01] `capitalize` de CSS pone mayúscula en CADA palabra: "Sábado, 12 De Septiembre".
-  const todayLabel = conMayusculaInicial(fechaCortaCL(_localDate + 'T12:00:00'));
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -2655,41 +2655,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       <div className="w-full flex-1 lg:flex-none flex flex-col overflow-hidden flex-shrink-0"
            style={isDesktop ? { width: leftWidth } : undefined}>
 
-        {/* Fecha Armado / Despacho */}
-        <div style={{
-          padding: '8px 14px', borderBottom: '1px solid var(--border, #E2E5EC)',
-          background: '#fff', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', flexShrink: 0,
-        }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <span style={{ fontSize: 9, color: '#999', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
-              Armado
-            </span>
-            <span style={{ fontSize: 12, color: '#555' }}>{todayLabel}</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <span style={{ fontSize: 9, color: '#999', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
-              Fecha de despacho
-            </span>
-            <input
-              type="date"
-              value={fechaDespacho}
-              min={_localDate}
-              onChange={e => dispatch({ type: 'SET_FECHA_DESPACHO', payload: e.target.value })}
-              style={{
-                border: '1.5px solid #dde3f0', borderRadius: 7, padding: '2px 8px',
-                fontSize: 12, fontWeight: 700, color: '#1a2550', background: '#fff',
-              }}
-            />
-          </div>
-          {registrado && (
-            <span style={{
-              marginLeft: 'auto', fontSize: 10, color: '#16A34A', fontWeight: 700,
-              background: '#dcfce7', border: '1px solid #86efac', borderRadius: 20, padding: '2px 8px',
-            }}>
-              ✓ Registrado
-            </span>
-          )}
-        </div>
+        {/* Fechas y buscador: en el teléfono se pliegan al bajar por la lista (ver
+            `usePlegarCabecera`). En escritorio quedan siempre. */}
+        <div ref={refCabecera} className={`flex-shrink-0 ${cabeceraPlegada ? 'max-lg:hidden' : ''}`}>
+        <FechasBodega armado={_localDate} despacho={fechaDespacho} min={_localDate} registrado={!!registrado}
+          onDespacho={fecha => dispatch({ type: 'SET_FECHA_DESPACHO', payload: fecha })} />
 
         {/* Search */}
         <div className="px-2 py-2 bg-bg border-b border-border flex-shrink-0">
@@ -2698,6 +2668,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               // La pistola de radiofrecuencia escribe el código y manda Enter, igual que un teclado.
               // Con esto, escanear termina el salto sin que nadie tenga que tocar el resultado.
               onKeyDown={e => { if (e.key === 'Enter' && palletEncontrado) { e.preventDefault(); saltarAPallet(); } }}
+              onFocus={() => setBuscadorConFoco(true)} onBlur={() => setBuscadorConFoco(false)}
               placeholder="Buscar tienda, Nº de pallet o escanear…"
               className="w-full bg-white border border-border rounded-btn px-2.5 py-2 pr-9 text-text font-barlow text-[15px] outline-none transition-all focus:border-[#1E40AF] placeholder:text-text-3" />
             {search && (
@@ -2730,6 +2701,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             </button>
           )}
         </div>
+        </div>
 
         {/* [P7] Tiendas traídas de la BD que aún no tienen los datos de envío de Sendu (region_sendu,
             comuna, número). Se muestran igual —antes desaparecían en silencio— pero se avisa para
@@ -2758,11 +2730,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           </button>
         </div>
 
-        <BarraDelDia resumen={resumenHoy} unidades={[{ letra: 'P', n: barraP }, { letra: 'B', n: barraB }, { letra: 'CH', n: barraCH }]} />
-        <FiltroTiendas filtro={filtroHoy} resumen={resumenHoy} onFiltro={setFiltroLista} />
+        <BarraDelDia resumen={resumenHoy} filtro={filtroHoy} onFiltro={setFiltroLista} />
 
         {/* Lista de tiendas: una fila por tienda. Ver `ListaTiendas.tsx`. */}
-        <div className="flex-1 overflow-y-auto bg-bg">
+        <div ref={refLista} className="flex-1 overflow-y-auto bg-bg">
 
           {/* HOY section — drop zone for adding */}
           {today.length > 0 && (
@@ -2775,6 +2746,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                 ? <button type="button" onClick={() => setEditarHoy(false)} className="text-apoyo font-bold text-navy normal-case cursor-pointer">Listo</button>
                 : <span className="flex items-center gap-1.5">
                     <span className="hidden lg:inline text-rotulo text-text-sub normal-case">arrastra aquí para agregar</span>
+                    <UnidadesDelDia unidades={[{ letra: 'P', n: barraP }, { letra: 'B', n: barraB }, { letra: 'CH', n: barraCH }]} />
                     {/* Tiendas con todos sus movimientos de Odoo hechos, como antes en este rótulo. */}
                     <span className="text-rotulo font-bold text-text-sub">Odoo</span>
                     <SectionCount done={nacProg.done} total={nacProg.total} />

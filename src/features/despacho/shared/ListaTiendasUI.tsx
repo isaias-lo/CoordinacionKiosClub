@@ -10,8 +10,8 @@
 // insignias de cabeza.
 //
 // Ahora:
-//   1. La barra del día, en una línea: «4/11 listas», los tres estados con su conteo y las unidades.
-//   2. Filtros con esos mismos tres estados.
+//   1. La barra del día, en una línea: «4/11 listas» y los tres estados con su conteo, que son
+//      también los filtros. Las unidades del día van en el rótulo «Hoy».
 //   3. «Hoy» en Mosaico (`BaldosaTienda`): anillo de avance con el código, nombre completo y el
 //      detalle en palabras. «Todas» sigue en filas (`FilaTienda`). Las dos reciben las mismas props.
 //   4. El pie: «Resumen» y un menú ⋯ con lo demás.
@@ -29,7 +29,7 @@ import { PresenciaBadge } from './PresenciaBadge';
 import { StoreProgressBar } from './StoreProgressBar';
 import type { ViendoInfo } from './usePresenciaTienda';
 import { chipFila, type EstadoLista, type FiltroLista, type ResumenDia, type TonoChip } from './listaTiendas';
-import { agregadosBaldosa, ariaBaldosa, detalleBaldosa, pctAnillo } from './baldosaTienda';
+import { agregadosBaldosa, ariaBaldosa, detalleBaldosa, pctAnillo, pctOdoo } from './baldosaTienda';
 
 const TONO_CHIP: Record<TonoChip, string> = {
   ok:      'text-est-ok bg-est-ok-suave',
@@ -165,6 +165,16 @@ const DETALLE_BALDOSA: Record<EstadoLista, string> = {
 /** La grilla de «Hoy»: tres columnas en el teléfono; desde `md`, las que quepan. */
 export const GRILLA_MOSAICO = 'grid grid-cols-3 md:grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2 px-2.5 py-2';
 
+/** El centro del anillo: la sigla grande y el número chico debajo. */
+function Centro({ sigla, numero, chico = false }: { sigla: string; numero: string; chico?: boolean }) {
+  return (
+    <span className={`${chico ? 'w-[40px] h-[40px]' : 'w-[48px] h-[48px]'} rounded-full bg-card flex flex-col items-center justify-center leading-none gap-0.5`}>
+      <span className="font-barlow-condensed text-cuerpo font-extrabold text-navy">{sigla}</span>
+      {numero && <span className="text-rotulo text-text-sub tabular-nums">{numero}</span>}
+    </span>
+  );
+}
+
 export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, odoo, viendo, onSelect, onDragStart, accion }: FilaTiendaProps) {
   const chip = chipFila({ estado, sinPesar, conGuia });
   const pct = pctAnillo(estado, avance);
@@ -175,19 +185,27 @@ export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avan
   const otros = agregadosBaldosa(agregados);
   const aviso = chip.tono === 'aviso' ? chip.texto : null;
   const conOdoo = !!odoo && odoo.total > 0;
+  const odooPct = pctOdoo(odoo);
+  const odooListo = odooPct === 100;
   return (
     <div draggable={!!onDragStart} onDragStart={onDragStart} className="relative min-w-0">
       <button type="button" onClick={onSelect} aria-current={activa ? 'true' : undefined}
         aria-label={ariaBaldosa({ nombre, cod, estado, avance, chip: chip.texto, conGuia, agregados, odoo })}
         title={tipo ? `${nombre} · ${tipo.label}` : nombre}
-        className={`w-full h-full min-h-[132px] rounded-card px-1.5 pt-2.5 pb-2 flex flex-col items-center gap-1 text-center cursor-pointer select-none transition-colors active:opacity-80 ${CAJA_BALDOSA[estado]} ${activa ? 'ring-2 ring-navy ring-offset-2 ring-offset-bg' : ''}`}>
+        className={`w-full h-full min-h-[116px] rounded-card px-1.5 pt-2 pb-1.5 flex flex-col items-center gap-0.5 text-center cursor-pointer select-none transition-colors active:opacity-80 ${CAJA_BALDOSA[estado]} ${activa ? 'ring-2 ring-navy ring-offset-2 ring-offset-bg' : ''}`}>
+        {/* Dos anillos: afuera lo pesado, adentro los movimientos de Odoo (ámbar mientras
+            faltan, verde al terminar). Sin movimientos de Odoo, solo el de afuera. */}
         <span aria-hidden="true"
           className={`relative w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 ${ANILLO[estado]}`}
           style={estado === 'pendiente' ? undefined : { background: `conic-gradient(var(--anillo) 0 ${pct}%, var(--color-bg-3) ${pct}% 100%)` }}>
           <PresenciaBadge viendo={viendo} />
-          <span className="w-[52px] h-[52px] rounded-full bg-card flex flex-col items-center justify-center leading-none gap-0.5">
-            <span className="font-barlow-condensed text-cuerpo font-extrabold text-navy">{sigla}</span>
-            {numero && <span className="text-rotulo text-text-sub tabular-nums">{numero}</span>}
+          <span className="w-[52px] h-[52px] rounded-full bg-card flex items-center justify-center">
+            {odooPct !== null ? (
+              <span className={`w-[48px] h-[48px] rounded-full flex items-center justify-center ${odooListo ? '[--anillo-odoo:var(--est-ok)]' : '[--anillo-odoo:var(--est-aviso)]'}`}
+                style={{ background: `conic-gradient(var(--anillo-odoo) 0 ${odooPct}%, var(--color-bg-3) ${odooPct}% 100%)` }}>
+                <Centro sigla={sigla} numero={numero} chico />
+              </span>
+            ) : <Centro sigla={sigla} numero={numero} />}
           </span>
         </span>
         <span aria-hidden="true" className="w-full text-apoyo font-bold text-text leading-tight line-clamp-2 break-words">{nombre}</span>
@@ -202,7 +220,7 @@ export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avan
             {aviso && <span className="font-bold text-est-aviso">{aviso}</span>}
             {conGuia && estado !== 'lista' && <span className="font-bold uppercase text-sky-600">Guía</span>}
             {otros.map(o => <span key={o} className="text-text-sub">{o}</span>)}
-            {conOdoo && <span className="text-text-sub tabular-nums">Odoo {odoo!.done}/{odoo!.total}</span>}
+            {conOdoo && <span className={`tabular-nums ${odooListo ? 'font-bold text-est-ok' : 'text-text-sub'}`}>{odooListo ? '✓ ' : ''}Odoo {odoo!.done}/{odoo!.total}</span>}
           </span>
         )}
       </button>
@@ -228,75 +246,117 @@ export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avan
 export function BaldosaAgregar({ onClick }: { onClick: () => void }) {
   return (
     <button type="button" onClick={onClick}
-      className="min-h-[132px] rounded-card border-[1.5px] border-dashed border-border-2 bg-transparent text-navy flex flex-col items-center justify-center gap-1.5 cursor-pointer active:bg-bg-2">
+      className="min-h-[116px] rounded-card border-[1.5px] border-dashed border-border-2 bg-transparent text-navy flex flex-col items-center justify-center gap-1.5 cursor-pointer active:bg-bg-2">
       <Plus size={22} aria-hidden="true" />
       <span className="text-apoyo font-bold">Agregar</span>
     </button>
   );
 }
 
-/** «4/11 listas», los tres estados con su conteo y las unidades del día, en una línea. */
-export function BarraDelDia({ resumen, unidades }: {
-  resumen: ResumenDia;
-  /** Las unidades del día, «84 P · 40 B», en grande y con el color de su tipo. */
-  unidades: { letra: string; n: number }[];
+/**
+ * «4/11 listas» y los tres estados con su conteo, en una línea. Cada estado es también el filtro:
+ * tocarlo deja solo esas tiendas, tocarlo de nuevo vuelve a todas. Antes los filtros eran otra
+ * fila debajo que repetía los mismos tres números, y en el teléfono la cabecera se comía media
+ * pantalla.
+ */
+export function BarraDelDia({ resumen, filtro, onFiltro }: {
+  resumen: ResumenDia; filtro: FiltroLista; onFiltro: (f: FiltroLista) => void;
 }) {
   if (resumen.total === 0) return null;
-  const visibles = unidades.filter(u => u.n > 0);
-  // Mosaico: el resumen en una línea. La barra partida y la leyenda de abajo repetían lo mismo
-  // que los puntos; quedan los puntos con su conteo.
+  const estados: { id: EstadoLista; n: number; punto: string; texto?: string; nombre: string }[] = [
+    { id: 'lista',     n: resumen.lista,     punto: 'bg-est-ok',                                   nombre: 'listas' },
+    { id: 'curso',     n: resumen.curso,     punto: 'bg-navy',                   texto: 'cargando', nombre: 'cargando' },
+    { id: 'pendiente', n: resumen.pendiente, punto: 'bg-card border-[1.5px] border-text-sub',      nombre: 'sin empezar' },
+  ];
   return (
-    <div className="bg-card border-b border-border px-3.5 py-2 flex items-center justify-between gap-x-3 gap-y-1.5 flex-wrap flex-shrink-0">
-      <span className="flex items-baseline gap-1.5 tabular-nums" aria-label={`${resumen.lista} de ${resumen.total} tiendas listas`}>
+    <div className="bg-card border-b border-border px-3 flex items-center justify-between gap-2 flex-shrink-0">
+      <span className="flex items-baseline gap-1.5 tabular-nums whitespace-nowrap" aria-label={`${resumen.lista} de ${resumen.total} tiendas listas`}>
         <span className="font-barlow-condensed text-cifra font-extrabold text-text leading-none">{resumen.lista}/{resumen.total}</span>
         <span className="text-cuerpo font-semibold text-text">{resumen.lista === 1 && resumen.total === 1 ? 'lista' : 'listas'}</span>
       </span>
-      <span className="flex items-center gap-3 text-apoyo text-text-2 tabular-nums">
-        <span className="inline-flex items-center gap-1.5" title="Listas"><i className="w-2.5 h-2.5 rounded-full bg-est-ok" aria-hidden="true" />{resumen.lista}<span className="sr-only"> listas</span></span>
-        <span className="inline-flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-navy" aria-hidden="true" />{resumen.curso} cargando</span>
-        <span className="inline-flex items-center gap-1.5" title="Sin empezar"><i className="w-2.5 h-2.5 rounded-full bg-card border-[1.5px] border-text-sub" aria-hidden="true" />{resumen.pendiente}<span className="sr-only"> sin empezar</span></span>
-      </span>
-      {visibles.length > 0 && (
-        <span className="flex items-center gap-1.5 flex-wrap" aria-label={visibles.map(u => `${u.n} ${u.letra}`).join(', ')}>
-          {visibles.map(u => {
-            const clase = CLASE_LETRA[u.letra];
-            const estilo = clase ? ESTILO_UNIDAD[clase] : null;
-            return (
-              <span key={u.letra} className={`inline-flex items-baseline gap-1 rounded-btn px-2 py-0.5 ${estilo?.suave ?? 'bg-bg-2'}`}>
-                <span className="font-barlow-condensed text-titulo font-extrabold text-text tabular-nums leading-none">{u.n}</span>
-                <span className={`font-barlow-condensed text-apoyo font-extrabold ${estilo?.texto ?? 'text-text-sub'}`}>{u.letra}</span>
+      <span className="flex items-center gap-1" role="group" aria-label="Filtrar tiendas de hoy">
+        {estados.map(e => {
+          const on = filtro === e.id;
+          return (
+            // 44 px de alto para el dedo; la píldora visible es la de adentro.
+            <button key={e.id} type="button" aria-pressed={on} disabled={!on && e.n === 0}
+              onClick={() => onFiltro(on ? 'todas' : e.id)}
+              aria-label={on ? `Mostrando solo ${e.nombre} (${e.n}). Tocar para ver todas` : `Mostrar solo ${e.nombre} (${e.n})`}
+              className="min-h-[44px] flex items-center cursor-pointer disabled:cursor-default group">
+              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-apoyo font-semibold tabular-nums whitespace-nowrap group-disabled:opacity-50 ${
+                on ? 'bg-navy text-white border-navy' : 'bg-card text-text-2 border-border'}`}>
+                <i className={`w-2.5 h-2.5 rounded-full ${e.punto} ${on ? 'ring-1 ring-white' : ''}`} aria-hidden="true" />
+                {e.n}{e.texto && <span className="max-[359px]:hidden"> {e.texto}</span>}
               </span>
-            );
-          })}
-        </span>
-      )}
+            </button>
+          );
+        })}
+      </span>
     </div>
   );
 }
 
-const FILTROS: { id: FiltroLista; texto: string }[] = [
-  { id: 'todas', texto: 'Hoy' },
-  { id: 'curso', texto: 'En curso' },
-  { id: 'pendiente', texto: 'Sin empezar' },
-  { id: 'lista', texto: 'Listas' },
-];
-
-export function FiltroTiendas({ filtro, resumen, onFiltro }: {
-  filtro: FiltroLista; resumen: ResumenDia; onFiltro: (f: FiltroLista) => void;
-}) {
-  if (resumen.total === 0) return null;
+/**
+ * Las unidades del día, «84 P · 40 B», grandes y con el color de su tipo. Van en el rótulo
+ * «Hoy», que queda pegado arriba al bajar por la lista: se siguen viendo sin ocupar una fila.
+ */
+export function UnidadesDelDia({ unidades }: { unidades: { letra: string; n: number }[] }) {
+  const visibles = unidades.filter(u => u.n > 0);
+  if (visibles.length === 0) return null;
   return (
-    <div className="flex gap-1.5 overflow-x-auto px-3.5 py-2 bg-bg border-b border-border flex-shrink-0 [scrollbar-width:none]" role="tablist" aria-label="Filtrar tiendas de hoy">
-      {FILTROS.map(f => {
-        const n = f.id === 'todas' ? resumen.total : resumen[f.id];
-        const on = filtro === f.id;
+    <span className="flex items-center gap-1" aria-label={visibles.map(u => `${u.n} ${u.letra}`).join(', ')}>
+      {visibles.map(u => {
+        const clase = CLASE_LETRA[u.letra];
+        const estilo = clase ? ESTILO_UNIDAD[clase] : null;
         return (
-          <button key={f.id} type="button" role="tab" aria-selected={on} onClick={() => onFiltro(f.id)} disabled={!on && n === 0}
-            className={`flex-shrink-0 text-apoyo font-semibold px-3 py-1.5 rounded-full border whitespace-nowrap cursor-pointer disabled:opacity-40 disabled:cursor-default ${on ? 'bg-navy text-white border-navy' : 'bg-card text-text-2 border-border'}`}>
-            {f.texto} <span className="tabular-nums">{n}</span>
-          </button>
+          <span key={u.letra} aria-hidden="true" className={`inline-flex items-baseline gap-0.5 rounded-btn px-1.5 normal-case ${estilo?.suave ?? 'bg-bg-2'}`}>
+            <span className="font-barlow-condensed text-titulo font-extrabold text-text tabular-nums leading-tight tracking-normal">{u.n}</span>
+            <span className={`font-barlow-condensed text-apoyo font-extrabold tracking-normal ${estilo?.texto ?? 'text-text-sub'}`}>{u.letra}</span>
+          </span>
         );
       })}
+    </span>
+  );
+}
+
+/** «lun 6 oct»: el día de armado, corto para que quepa en la misma línea que el despacho. */
+function armadoCorto(iso: string): string {
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/[.,]/g, '');
+}
+
+/**
+ * Armado, despacho y (en RM/Costa) los grupos, en una sola línea. Antes eran dos columnas con
+ * la fecha larga, y en el teléfono RM|Costa bajaba a una fila propia.
+ */
+export function FechasBodega({ armado, despacho, min, onDespacho, registrado, children }: {
+  /** Día de armado, `AAAA-MM-DD`. */
+  armado: string;
+  despacho: string;
+  min: string;
+  onDespacho: (fecha: string) => void;
+  registrado: boolean;
+  /** A la derecha: el selector RM|Costa. */
+  children?: ReactNode;
+}) {
+  return (
+    <div className="bg-card border-b border-border px-3 py-1.5 flex items-center gap-3 flex-shrink-0">
+      <span className="flex flex-col leading-tight">
+        <span className="text-rotulo font-bold uppercase text-text-sub">Armado</span>
+        <span className="text-apoyo text-text-2 whitespace-nowrap">{armadoCorto(armado)}</span>
+      </span>
+      <label className="flex flex-col leading-tight">
+        <span className="text-rotulo font-bold uppercase text-text-sub">Despacho</span>
+        <input type="date" value={despacho} min={min} onChange={e => onDespacho(e.target.value)}
+          className="border-[1.5px] border-border rounded-btn px-1.5 py-0.5 text-apoyo font-bold text-navy bg-card" />
+      </label>
+      {children && <span className="ml-auto">{children}</span>}
+      {registrado && (
+        <span title="Registrado" className={`${children ? '' : 'ml-auto'} inline-flex items-center gap-1 rounded-full border border-est-ok bg-est-ok-suave text-est-ok text-rotulo font-bold px-1.5 py-0.5`}>
+          ✓<span className="max-sm:sr-only">Registrado</span>
+        </span>
+      )}
     </div>
   );
 }

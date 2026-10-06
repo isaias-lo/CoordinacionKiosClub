@@ -28,12 +28,14 @@ const contar = (re: RegExp) => (fuente.match(re) ?? []).length;
 
 /** Topes de hoy. Solo pueden bajar. */
 const TOPE = {
-  tamanosSueltos: 408,   // text-[Npx] + fontSize numérico
-  menoresA12:     181,   // los de 9 a 11,5 px: no se leen en una handheld
+  // Bajan 408/181/452 → 397/175/436: la línea de fechas de Bodega pasó a `FechasBodega`, con
+  // las clases de la escala en vez de estilos sueltos.
+  tamanosSueltos: 397,   // text-[Npx] + fontSize numérico
+  menoresA12:     175,   // los de 9 a 11,5 px: no se leen en una handheld
   // Baja de 453: la etiqueta de Picking pasó a nombrar sus dos tintas (`TINTA` y `ACENTO` en
   // `BarcodeCard`) en vez de repetir el hex en cada regla. Se fija el piso nuevo, como pide el
   // encabezado de este archivo.
-  hexSueltos:     452,
+  hexSueltos:     436,
 };
 
 describe('escala y paleta de Bodega', () => {
