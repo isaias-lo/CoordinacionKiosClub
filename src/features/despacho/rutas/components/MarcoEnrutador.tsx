@@ -11,7 +11,7 @@
 // limpiar) vive en el menú ···, con los mismos controles y manejadores. El contenido de cada
 // pestaña es el de siempre (InputSection con `sinBarra`).
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowRight, MoreHorizontal, X } from 'lucide-react';
 import { PASOS_DIA, type Banda, type SeccionEnrutador } from '../utils/bandaEnrutador';
 
@@ -67,6 +67,18 @@ export default function MarcoEnrutador({
 
   const cerrar = () => setMenuAbierto(false);
 
+  // En el teléfono las pestañas no caben: la activa se trae a la vista (Calendario quedaba fuera).
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const activa = navRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    const nav = navRef.current;
+    if (!activa || !nav) return;
+    const izq = activa.offsetLeft - nav.offsetLeft;
+    if (izq < nav.scrollLeft || izq + activa.offsetWidth > nav.scrollLeft + nav.clientWidth) {
+      nav.scrollLeft = izq - (nav.clientWidth - activa.offsetWidth) / 2;
+    }
+  }, [modo]);
+
   return (
     <div className="flex-shrink-0 relative">
       {/* 1. Cabecera */}
@@ -97,7 +109,7 @@ export default function MarcoEnrutador({
       </header>
 
       {/* 2. Pestañas */}
-      <nav aria-label="Secciones del Enrutador"
+      <nav ref={navRef} aria-label="Secciones del Enrutador"
         className="bg-white border-b border-black/[0.09] flex items-stretch gap-1 px-2 md:px-4 h-[46px] overflow-x-auto [scrollbar-width:none]">
         {PESTANAS.map(p => {
           const activa = modo === p.id;

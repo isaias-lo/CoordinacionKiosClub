@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, diaSemana, bandaFlota, listaPatentes, bandaPlan, PASOS_PLAN, PASOS_DIA, PASOS_CONGELADOS, type BandaTableroInput } from '../bandaEnrutador';
+import { bandaTablero, bandaCongelados, bandaSegundaVuelta, diaSemana, bandaFlota, listaPatentes, bandaPlan, PASOS_PLAN, bandaCalendario, PASOS_DIA, PASOS_CONGELADOS, type BandaTableroInput } from '../bandaEnrutador';
 import { FASES } from '../faseEnrutador';
 
 const base: BandaTableroInput = {
@@ -116,10 +116,7 @@ describe('diaSemana', () => {
   });
 });
 
-describe('bandaFija y pasos', () => {
-  it('calendario no tiene pasos ni botón', () => {
-    for (const s of ['cal'] as const) expect(bandaFija(s)).toMatchObject({ paso: null, accion: null });
-  });
+describe('pasos', () => {
   it('los pasos del diseño son uno por fase', () => {
     expect(PASOS_DIA.length).toBe(FASES.length);
   });
@@ -219,5 +216,18 @@ describe('bandaPlan', () => {
   it('todo a tiempo: compartir', () => {
     expect(bandaPlan(p)).toMatchObject({ paso: 4, titular: 'La Ruta 1 llega a tiempo a todas', accion: { id: 'compartir', texto: 'Compartir las 4' } });
     expect(bandaPlan({ ...p, rutas: 1 }).accion?.texto).toBe('Compartir la ruta');
+  });
+});
+
+describe('bandaCalendario', () => {
+  it('cuenta las tiendas del día y dónde van', () => {
+    const b = bandaCalendario({ fuente: 'despacho', dia: 'MA', grupos: { rm: 19, costa: 0, fal: 6 } });
+    expect(b).toMatchObject({ titular: 'Los martes de seco se reparten 25 tiendas', subtitulo: '19 en RM y 6 en regiones', accion: null, paso: null });
+    expect(bandaCalendario({ fuente: 'despacho', dia: 'LU', grupos: { rm: 17, costa: 5, fal: 9 } }).subtitulo).toBe('17 en RM, 5 en costa y 9 en regiones');
+  });
+  it('congelados, día vacío y cargando', () => {
+    expect(bandaCalendario({ fuente: 'congelados', dia: 'SA', grupos: { rm: 0, costa: 0, fal: 0 } }).titular).toBe('Los sábados de congelados no tienen tiendas');
+    expect(bandaCalendario({ fuente: 'congelados', dia: 'JU', grupos: { rm: 1, costa: 0, fal: 0 } }).titular).toBe('Los jueves de congelados se reparten 1 tienda');
+    expect(bandaCalendario({ fuente: 'despacho', dia: 'MI', grupos: null }).titular).toBe('Cargando el calendario');
   });
 });

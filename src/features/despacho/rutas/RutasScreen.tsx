@@ -8,7 +8,7 @@ import InputSection   from './components/InputSection';
 import DespachoHeader, { HeaderFields, AutoAsignarToggle, RefreshButton } from './components/DespachoHeader';
 import MarcoEnrutador, { AccionMenu } from './components/MarcoEnrutador';
 import { useVistaEnrutador } from './utils/vistaEnrutador';
-import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaFija, bandaFlota, bandaPlan, SUBS_FLOTA, type SubFlota, type ResumenPlan, fechaCabecera, diaSemana, type Banda, type AccionBanda } from './utils/bandaEnrutador';
+import { bandaTablero, bandaCongelados, bandaSegundaVuelta, bandaCalendario, FUENTES_CALENDARIO, type FuenteCalendario, bandaFlota, bandaPlan, SUBS_FLOTA, type SubFlota, type ResumenPlan, fechaCabecera, diaSemana, type Banda, type AccionBanda } from './utils/bandaEnrutador';
 import { useIsMobile } from './utils/useIsMobile';
 import MapSection     from './components/MapSection';
 import ResultsSection from './components/ResultsSection';
@@ -244,6 +244,10 @@ export default function RutasScreen() {
   // [Vista nueva · Flota] La sección de Flota se elige en la banda, y «Quién maneja» le cuenta
   // a la banda qué rutas siguen sin conductor.
   const [flotaSub, setFlotaSub] = useState<SubFlota>('gestionar');
+  // [Vista nueva · Calendario] Seco o Congelados se elige en la banda; el calendario que muestra
+  // la pestaña le dice a la banda cuántas tiendas reparte el día que sale.
+  const [calFuente, setCalFuente] = useState<FuenteCalendario>('despacho');
+  const [calResumen, setCalResumen] = useState<CalRecord | null>(null);
   // [Vista nueva · Plan] Lo que el Planificador tiene armado; hasta que monta, «sin rutas».
   const [resumenPlan, setResumenPlan] = useState<ResumenPlan>({ rutas: 0, paradas: 0, activa: 'Ruta 1', orden: 'ventanas', conEtas: false, tarde: [] });
   const [resumenFlota, setResumenFlota] = useState<{ rutas: number | null; sinConductor: string[] }>({ rutas: null, sinConductor: [] });
@@ -2512,6 +2516,8 @@ export default function RutasScreen() {
   // [Vista nueva] La banda de arriba: qué falta ahora en la pestaña abierta. Mira el mismo estado
   // que la fase (ver utils/bandaEnrutador); solo agrega cuántas de las tiendas sin camión ya las
   // terminó Bodega, que es lo que «Asignar» puede mover.
+  // El día que sale, como lo guarda el calendario ('LU' … 'SA'): el de la cabecera.
+  const diaSaleCal = getDia(despachoDe(fecha));
   const banda: Banda = useMemo(() => {
     if (modo === 'drag' || modo === 'man') {
       const enPoolHoy = codsEnPool(calT);
@@ -2553,8 +2559,12 @@ export default function RutasScreen() {
       return bandaFlota({ sub: flotaSub, ...resumenFlota, encendidos: flota.filter(v => v.on).length, vehiculos: flota.length });
     }
     if (modo === 'plan') return bandaPlan(resumenPlan);
-    return bandaFija('cal');
-  }, [resumenPlan, flotaSub, resumenFlota, flota, modo, calT, manualAsignaciones, cerradasV1, cerrado, terminadas, calTCong, asignacionesCong, cerradasCong, pendientesV2Origen, asignacionesV2, v2Fecha, calTV2]);
+    const delDia = calResumen?.[diaSaleCal];
+    return bandaCalendario({
+      fuente: calFuente, dia: diaSaleCal,
+      grupos: calResumen ? { rm: delDia?.rm?.length ?? 0, costa: delDia?.costa?.length ?? 0, fal: delDia?.fal?.length ?? 0 } : null,
+    });
+  }, [calFuente, calResumen, diaSaleCal, resumenPlan, flotaSub, resumenFlota, flota, modo, calT, manualAsignaciones, cerradasV1, cerrado, terminadas, calTCong, asignacionesCong, cerradasCong, pendientesV2Origen, asignacionesV2, v2Fecha, calTV2]);
 
   const faseInfoV2 = useMemo(() => {
     const delDia = asignacionesV2[v2Fecha] ?? {};
@@ -3317,7 +3327,20 @@ export default function RutasScreen() {
           onAccion={accionBanda}
           esMovil={isMobile}
           cabecera={modo === 'v2' ? { etiqueta: 'Hoy', fecha: fechaCabecera(todayStr()), nota: 'la 2ª vuelta sale hoy mismo' } : undefined}
-          bandaInicio={modo === 'flota' ? (
+          bandaInicio={modo === 'cal' ? (
+            <div className="grid grid-cols-2 bg-kbg rounded-[10px] p-[3px] gap-[3px] flex-shrink-0" role="group" aria-label="Calendario de">
+              {FUENTES_CALENDARIO.map(f => {
+                const on = calFuente === f.id;
+                return (
+                  <button key={f.id} type="button" aria-pressed={on}
+                    onClick={() => { if (!on) { setCalResumen(null); setCalFuente(f.id); } }}
+                    className={`rounded-[8px] min-h-[40px] px-4 text-apoyo whitespace-nowrap transition-colors ${on ? 'bg-white font-bold text-ktext shadow-[0_1px_2px_rgba(20,30,60,0.12)]' : 'font-semibold text-kmuted hover:text-ktext'}`}>
+                    {f.texto}
+                  </button>
+                );
+              })}
+            </div>
+          ) : modo === 'flota' ? (
             <div className="grid grid-cols-2 md:flex bg-kbg rounded-[10px] p-[3px] gap-[3px] flex-shrink-0" role="group" aria-label="Sección de Flota">
               {SUBS_FLOTA.map(sb => {
                 const on = flotaSub === sb.id;
@@ -3476,6 +3499,8 @@ export default function RutasScreen() {
             flotaSub={vista === 'nueva' ? flotaSub : undefined}
             onResumenFlota={vista === 'nueva' ? setResumenFlota : undefined}
             onResumenPlan={vista === 'nueva' ? setResumenPlan : undefined}
+            calFuente={vista === 'nueva' ? calFuente : undefined}
+            onResumenCal={vista === 'nueva' ? setCalResumen : undefined}
             rightPanelContent={
               results ? (
                 <div className="h-full overflow-y-auto">

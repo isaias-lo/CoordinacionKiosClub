@@ -357,12 +357,46 @@ export function bandaPlan(i: ResumenPlan): Banda {
   };
 }
 
-/** Calendario: por ahora solo dicen qué es cada pestaña. Sus fases las completan. */
-export function bandaFija(s: 'cal'): Banda {
-  const textos = {
-    cal:   ['Calendario de reparto', 'Qué tiendas se despachan cada día de la semana'],
-  } as const;
-  return { paso: null, titular: textos[s][0], subtitulo: textos[s][1], accion: null };
+export type FuenteCalendario = 'despacho' | 'congelados';
+export const FUENTES_CALENDARIO: { id: FuenteCalendario; texto: string }[] = [
+  { id: 'despacho',   texto: 'Seco' },
+  { id: 'congelados', texto: '❄ Congelados' },
+];
+
+const DIA_PLURAL: Record<string, string> = {
+  LU: 'lunes', MA: 'martes', MI: 'miércoles', JU: 'jueves', VI: 'viernes', SA: 'sábados', DO: 'domingos',
+};
+
+export interface BandaCalendarioInput {
+  fuente: FuenteCalendario;
+  /** Día de la semana que sale, como lo guarda el calendario: 'LU' … 'SA'. */
+  dia: string;
+  /** Las tiendas de ese día por grupo. `null` mientras el calendario carga. */
+  grupos: { rm: number; costa: number; fal: number } | null;
+}
+
+/** Calendario: cuántas tiendas reparte el día que sale, y dónde. Es de solo lectura acá. */
+export function bandaCalendario(i: BandaCalendarioInput): Banda {
+  const dia = DIA_PLURAL[i.dia] ?? i.dia;
+  const carga = i.fuente === 'congelados' ? 'congelados' : 'seco';
+  if (!i.grupos) {
+    return { paso: null, accion: null, titular: 'Cargando el calendario', subtitulo: `Qué tiendas reciben ${carga} cada día de la semana` };
+  }
+  const { rm, costa, fal } = i.grupos;
+  const total = rm + costa + fal;
+  if (total === 0) {
+    return {
+      paso: null, accion: null, titular: `Los ${dia} de ${carga} no tienen tiendas`,
+      subtitulo: 'Ninguna tienda tiene este día en el calendario',
+    };
+  }
+  const partes = [rm > 0 ? `${rm} en RM` : '', costa > 0 ? `${costa} en costa` : '', fal > 0 ? `${fal} en regiones` : ''].filter(Boolean);
+  const reparto = partes.length > 1 ? `${partes.slice(0, -1).join(', ')} y ${partes[partes.length - 1]}` : partes[0];
+  return {
+    paso: null, accion: null,
+    titular: `Los ${dia} de ${carga} se reparten ${n(total, 'tienda', 'tiendas')}`,
+    subtitulo: reparto,
+  };
 }
 
 /** «lunes 6 oct»: las fechas de la cabecera. */
