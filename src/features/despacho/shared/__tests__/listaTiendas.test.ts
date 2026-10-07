@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { avanceFila, chipFila, estadoLista, filtroVigente, pasaFiltro, resumenDia } from '../listaTiendas';
+import { avanceFila, chipFila, estadoLista, filtroVigente, nuevasTrasTerminar, pasaFiltro, resumenDia } from '../listaTiendas';
 
 const cero = { pallet: 0, bulto: 0, contenedor: 0, chocolate: 0 };
 
@@ -59,5 +59,20 @@ describe('chipFila', () => {
   it('en curso y sin empezar', () => {
     expect(chipFila({ estado: 'curso', sinPesar: 0, conGuia: false }).texto).toBe('En curso');
     expect(chipFila({ estado: 'pendiente', sinPesar: 0, conGuia: false }).tono).toBe('apagado');
+  });
+});
+
+describe('terminada, y Picking imprime algo después', () => {
+  it('deja de estar lista: vuelve a curso con su avance real', () => {
+    expect(estadoLista({ cargadas: 4, terminada: true, nuevas: 1 })).toBe('curso');
+    expect(estadoLista({ cargadas: 4, terminada: true, nuevas: 0 })).toBe('lista');
+  });
+  it('solo cuenta en una tienda terminada', () => {
+    expect(nuevasTrasTerminar(true, 2)).toBe(2);
+    expect(nuevasTrasTerminar(false, 2)).toBe(0);
+  });
+  it('el aviso gana sobre todo lo demás', () => {
+    expect(chipFila({ estado: 'curso', sinPesar: 3, conGuia: true, nuevas: 1 })).toEqual({ texto: '1 nueva de Picking', tono: 'aviso' });
+    expect(chipFila({ estado: 'curso', sinPesar: 0, conGuia: true, nuevas: 2 }).texto).toBe('2 nuevas de Picking');
   });
 });

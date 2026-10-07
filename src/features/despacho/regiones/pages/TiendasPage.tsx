@@ -35,7 +35,9 @@ import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion,
 import { confirmarCambioGuardado, confirmarEliminarVarios } from '@/features/despacho/shared/confirmarGuardado';
 import { FilaTienda, BarraDelDia, UnidadesDelDia, FechasBodega, RotuloLista, PieLista, BaldosaAgregar, GRILLA_MOSAICO } from '@/features/despacho/shared/ListaTiendasUI';
 import { usePlegarCabecera } from '@/features/despacho/shared/usePlegarCabecera';
-import { avanceFila, estadoLista, resumenDia, filtroVigente, pasaFiltro, type FiltroLista } from '@/features/despacho/shared/listaTiendas';
+import { avisoAntesDeRegistrar } from '@/features/despacho/shared/resumenDia';
+import { useAvisoNuevasTrasTerminar } from '@/features/despacho/shared/avisoNuevasTrasTerminar';
+import { avanceFila, estadoLista, nuevasTrasTerminar, resumenDia, filtroVigente, pasaFiltro, type FiltroLista } from '@/features/despacho/shared/listaTiendas';
 import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
 import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';
 import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
@@ -61,8 +63,10 @@ import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
-import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo, pesoPalletConCajas,
+import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
+import { pesoEnTarjeta, pesoNetoPallet, taraEnTarjeta, taraParaGuardar, textoPesoConTara } from '../../shared/pesoDelPallet';
+import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
 import { abreviaturaContenido, nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional, bultosNacional } from '@/features/despacho/shared/numeroCard';
 import { leerPeso, limpiarTecleo, avisoDePeso, excedeTopeDuro } from '@/features/despacho/shared/pesoIngresado';
@@ -140,9 +144,9 @@ interface FormRow {
   alto: string;
   ancho: string;
   largo: string;
-  /** Solo pallets: cuántas cajas negras estuvieron EN LA BALANZA junto con el pallet. Se les
-   *  descuenta la tara. Vacío = ninguna, que es el caso normal. Ver `pesoPalletConCajas`. */
-  cajasNegras?: string;
+  /** Solo pallets: lo que pesa el pallet mismo, en kg. Se le resta al peso. Vacío = nada, que es
+   *  el caso normal. Ver `pesoNetoPallet`. */
+  pesoPallet?: string;
   guia: string;
   valor: string;
   saved?: boolean;
@@ -209,6 +213,8 @@ interface GridCardProps {
   /** Unidades guardadas sin pesar. Se veía solo DENTRO de la tienda; ahora también desde la
    *  lista, que es donde se decide a cuál entrar. Ver `chipFila`. */
   sinPesarCount?: number;
+  /** Lo que Picking imprimió después de marcarla terminada. Ver `nuevasTrasTerminar`. */
+  nuevas?: number;
   onSelect: () => void;
   onDragStart?: (e: React.DragEvent) => void;
   /** [Bug tablet 2026-09-09] El drag HTML5 nativo no dispara de forma confiable con touch — en una
@@ -219,7 +225,7 @@ interface GridCardProps {
   /** «Hoy» en baldosas (Mosaico), «Todas» en filas. Ver `ListaTiendasUI`. */
   forma?: 'fila' | 'baldosa';
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, bultoCount, adquisicionCount = 0, webRetiroCount = 0, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, sinPesarCount, onSelect, onDragStart, onAddToday, onRemoveFromToday, forma }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, bultoCount, adquisicionCount = 0, webRetiroCount = 0, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, sinPesarCount, nuevas = 0, onSelect, onDragStart, onAddToday, onRemoveFromToday, forma }: GridCardProps) {
   const t = TIENDAS[name];
   // El bulto ya NO sale por resta: así caían adentro las adquisiciones y los web/retiro. Ver
   // `contarPorClase`. Lo que falta es lo que Picking imprimió y Bodega todavía no cargó; sin
@@ -235,8 +241,8 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
     : onAddToday ? { tipo: 'agregar' as const, onClick: onAddToday } : undefined;
   return (
     <FilaTienda cod={formatCod(t.cod)} nombre={t.name} tipo={tipoBadge(tipoCat)}
-      estado={estadoLista({ cargadas: itemCount, terminada: !!terminada })}
-      activa={isActive} conGuia={!!hasPdf}
+      estado={estadoLista({ cargadas: itemCount, terminada: !!terminada, nuevas })}
+      activa={isActive} conGuia={!!hasPdf} nuevas={nuevas}
       avance={avanceFila(cargadas, faltan)}
       agregados={{ adquisicion: adquisicionCount, webRetiro: webRetiroCount }}
       sinPesar={sinPesarCount ?? 0}
@@ -552,7 +558,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       prev, selectedItems, selectedSlotsFull,
       (row, it) => ({
         ...row, pkg: it.pkg, tipo: it.tipo,
-        peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
+        peso: pesoEnTarjeta(it.peso, it.taraPallet), pesoPallet: taraEnTarjeta(it.taraPallet), alto: String(it.alto ?? ''),
         ancho: String(it.ancho ?? ''), largo: String(it.largo ?? ''),
         guia: it.guia || '', valor: it.valor ? String(it.valor) : '',
         saved: true, savedItem: it,
@@ -566,7 +572,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               // haría que volver a guardar restara la tara otra vez (17 → 13,5 → 10).
               peso: String(saved.pkg === 'chocolate'
                 ? pesoParaMostrar(Number(saved.peso ?? 0), subtipoDeCaja(s.subtipo))
-                : (saved.peso ?? '')),
+                : pesoEnTarjeta(saved.peso, saved.taraPallet)),
+              pesoPallet: taraEnTarjeta(saved.taraPallet),
               alto: String(saved.alto ?? ''),
               ancho: String(saved.ancho ?? ''), largo: String(saved.largo ?? ''),
               guia: saved.guia || '', valor: saved.valor ? String(saved.valor) : '',
@@ -828,7 +835,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               // Mismo motivo que arriba: el formulario muestra el bruto, el ítem guarda el neto.
               peso: String(saved.pkg === 'chocolate'
                 ? pesoParaMostrar(Number(saved.peso ?? 0), subtipoDeCaja(s.subtipo))
-                : (saved.peso ?? '')),
+                : pesoEnTarjeta(saved.peso, saved.taraPallet)),
+              pesoPallet: taraEnTarjeta(saved.taraPallet),
               alto: String(saved.alto ?? ''),
               ancho: String(saved.ancho ?? ''), largo: String(saved.largo ?? ''),
               guia: saved.guia || '', valor: saved.valor ? String(saved.valor) : '',
@@ -854,7 +862,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         remaining.forEach((it, ri) => {
           rows.push({
             id: `savedm-${it.orden}-${ri}-${Date.now()}`, pkg: it.pkg, tipo: it.tipo,
-            peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
+            peso: pesoEnTarjeta(it.peso, it.taraPallet), pesoPallet: taraEnTarjeta(it.taraPallet), alto: String(it.alto ?? ''),
             ancho: String(it.ancho ?? ''), largo: String(it.largo ?? ''),
             guia: it.guia || '', valor: it.valor ? String(it.valor) : '',
             saved: true, savedItem: it, pickingSlotId: it.pickingSlotId,
@@ -894,7 +902,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             id: `saved-${i}-${item.pkg}-${Date.now()}`,
             pkg: item.pkg,
             tipo: item.tipo,
-            peso: String(item.peso ?? ''),
+            peso: pesoEnTarjeta(item.peso, item.taraPallet), pesoPallet: taraEnTarjeta(item.taraPallet),
             alto: String(item.alto ?? ''),
             ancho: String(item.ancho ?? ''),
             largo: String(item.largo ?? ''),
@@ -958,11 +966,29 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   // que la barra "X/Y" de la card. Antes contaba carga registrada (items), que no coincide con el verde.
   const nacProg = sectionProgress(today, t => odooProgress.get(t.cod)?.status === 'complete');
   // La barra del día cuenta TODAS las tiendas de hoy, no solo las que pasan la búsqueda.
+  // Picking imprimió algo después de marcarla terminada: la tienda deja de contar como lista.
+  const nuevasDe = (t: { name: string; cod: string }) => nuevasTrasTerminar(
+    terminadas.get(t.cod)?.terminada === true,
+    unidadesSinGuardar(pickingSlotsFull[t.name] ?? [], dispatchData[t.name] || []).total,
+  );
   const estadoDe = (t: { name: string; cod: string }) => estadoLista({
     cargadas: (dispatchData[t.name] || []).length, terminada: terminadas.get(t.cod)?.terminada === true,
+    nuevas: nuevasDe(t),
   });
   const tiendasBarra = all.filter(t => allTodayCods.includes(t.cod));
   const resumenHoy = resumenDia(tiendasBarra.map(estadoDe));
+  const avanceResumen = { listas: resumenHoy.lista, total: resumenHoy.total };
+  // Picking imprime algo en una tienda de hoy ya terminada: toast, aunque se esté en otra tienda.
+  useAvisoNuevasTrasTerminar(
+    tiendasBarra.map(t => ({ cod: t.cod, nombre: TIENDAS[t.name]?.name ?? t.name, nuevas: nuevasDe(t) })),
+    showToast,
+  );
+  // Lo que todavía no está cerrado, para avisar antes de registrar el día.
+  const avisoRegistrar = avisoAntesDeRegistrar({
+    sinTerminar: tiendasBarra.filter(t => !tiendaTerminada(t.cod)).map(t => TIENDAS[t.name]?.name ?? t.name),
+    sinPesar: Object.values(dispatchData).flat().filter(esSinPesar).length,
+    sinGuardar: tiendasBarra.reduce((a, t) => a + unidadesSinGuardar(pickingSlotsFull[t.name] ?? [], dispatchData[t.name] || []).total, 0),
+  });
   // Las unidades de la barra salen de las MISMAS tiendas que su «X/Y listas» (ver StepForm).
   const itemsBarra = tiendasBarra.flatMap(t => dispatchData[t.name] || []);
   const barraP  = itemsBarra.filter(i => i.pkg === 'pallet').length;
@@ -1370,6 +1396,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       : null;
     const medidasCaja = caja ? medidasDeCaja(caja) : null;
     let p: number, a: number, aw: number, l: number;
+    let tara: number | undefined;
     if (sinPesar) {
       // "Agregar sin pesar": se guarda con dimensiones en 0 (marca "sin pesar"), sin pedir
       // peso/alto/largo/ancho ni pasar por validarDimensiones.
@@ -1382,12 +1409,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
         p = neto.neto;
       } else if (row.pkg === 'pallet') {
-        // Las cajas negras pesadas ENCIMA del pallet son retornables: no son mercadería. Un
-        // chocolate sumado con el botón ya vino neto, así que ahí no se declara ninguna —
-        // declararla restaría la tara dos veces. Espejo de StepForm.
-        const neto = pesoPalletConCajas(row.peso, parseInt(row.cajasNegras ?? '', 10) || 0);
+        // «Peso del pallet»: la tarima no es mercadería, se resta de lo que marcó la balanza.
+        // Vacío = nada. Espejo de StepForm.
+        const neto = pesoNetoPallet(row.peso, row.pesoPallet);
         if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
         p = neto.neto;
+        tara = taraParaGuardar(neto.tara);
       } else {
         p = (leerPeso(row.peso) ?? 0);
         if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
@@ -1439,7 +1466,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const posItem = previo ? currentItems.indexOf(previo) : currentItems.length;
     const itemGuia  = hasPdf ? (pdfInfo?.guias[posItem]?.num || '') : row.guia.trim();
     const itemValor = hasPdf ? 0 : (parseFloat(row.valor) || 0);
-    const candidato: DispatchItem = { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: slotId };
+    const candidato: DispatchItem = { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: slotId, taraPallet: tara };
     const item = previo ? fusionarConPrevio(previo, candidato) : candidato;
     dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item });
     if (hasPdf && pdfInfo) {
@@ -1777,7 +1804,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     setFormRows(prev => prev
       .filter(r => r.id !== bultoRowId)
       .map(r => r.id === palletRowId
-        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: String(nuevoPeso),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, r.savedItem?.taraPallet), pesoPallet: taraEnTarjeta(r.savedItem?.taraPallet),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
@@ -1844,7 +1871,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     setFormRows(prev => prev
       .filter(r => !bultoRowIdSet.has(r.id))
       .map(r => r.id === palletRowId
-        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: String(nuevoPeso),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, r.savedItem?.taraPallet), pesoPallet: taraEnTarjeta(r.savedItem?.taraPallet),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
@@ -1933,7 +1960,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     setFormRows(prev => prev
       .filter(r => r.id !== sourceRow.id)
       .map(r => r.id === targetRow.id
-        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: String(nuevoPeso),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, r.savedItem?.taraPallet), pesoPallet: taraEnTarjeta(r.savedItem?.taraPallet),
             alto: prevAlto ? String(prevAlto) : '', guia: mguia || r.guia, mergeReopened: true }
         : r));
     setFormMergeState(null);
@@ -2014,9 +2041,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     // Una adquisición no tiene peso ni medidas: escribir «0kg · 0cm» haría pasar la
                     // AUSENCIA de un dato por un dato. Dice qué es.
                     resumen={etiquetaDeUnidad(row.savedItem)
-                      ?? `${row.savedItem.peso} kg${row.savedItem.pkg !== 'contenedor' ? ` · ${row.savedItem.alto} cm` : ''}`}
+                      ?? `${textoPesoConTara(row.savedItem.peso, row.savedItem.taraPallet)}${row.savedItem.pkg !== 'contenedor' ? ` · ${row.savedItem.alto} cm` : ''}`}
                     campos={etiquetaDeUnidad(row.savedItem) ? undefined : [
-                      { rotulo: 'Peso', valor: `${row.savedItem.peso} kg` },
+                      { rotulo: 'Peso', valor: textoPesoConTara(row.savedItem.peso, row.savedItem.taraPallet) },
                       ...(row.savedItem.pkg !== 'contenedor' ? [{ rotulo: 'Alto', valor: `${row.savedItem.alto} cm` }] : []),
                       ...(medidas ? [{ rotulo: row.savedItem.pkg === 'box' ? 'Medidas' : 'Tipo', valor: medidas }] : []),
                     ]}
@@ -2179,18 +2206,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   )}
                   {row.pkg === 'pallet' && (
                     <div className="mb-1.5">
-                      {/* Se pregunta por lo que estuvo EN LA BALANZA, no por lo que hay en el pallet:
-                          un chocolate sumado con el botón ya vino neto y declararlo acá restaría la
-                          tara dos veces. */}
-                      <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">Cajas negras pesadas con el pallet</label>
-                      <input type="number" value={row.cajasNegras ?? ''} onChange={e => updateRow(row.id, 'cajasNegras', e.target.value)}
-                        onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="0" inputMode="numeric" min={0}
-                        className={`${CAMPO} mb-2`} />
-                      {(parseInt(row.cajasNegras ?? '', 10) || 0) > 0 && (
-                        <div className="text-[10px] font-bold mb-1.5" style={{ color: '#C2410C' }}>
-                          se descuentan {String(Math.round((parseInt(row.cajasNegras!, 10) * TARA_CAJA_NEGRA) * 10) / 10).replace('.', ',')} kg de cajas
-                        </div>
-                      )}
                       <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">Tipo de carga</label>
                       <div className="flex gap-1.5">
                         {/* Chocolate también es tipo de carga de un pallet: dice QUÉ va adentro, no
@@ -2205,7 +2220,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       </div>
                     </div>
                   )}
-                  <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div className={`grid ${row.pkg === 'pallet' ? 'grid-cols-3' : 'grid-cols-2'} gap-2 mb-2`}>
                     <div>
                       <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">
                         Peso{cajaDeFila === 'negra' && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(TARA_CAJA_NEGRA).replace('.', ',')} kg de caja</span>}
@@ -2225,6 +2240,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                           <div className="text-[10px] text-warn mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
                         )}
                       </div>
+                    )}
+                    {row.pkg === 'pallet' && (
+                      <CampoPesoPallet peso={row.peso} valor={row.pesoPallet ?? ''} claseCampo={CAMPO_GRANDE}
+                        onChange={v => updateRow(row.id, 'pesoPallet', v)} onFocus={marcarEnFoco} onBlur={quitarFoco} />
                     )}
                   </div>
                   {row.pkg === 'box' ? (
@@ -2372,6 +2391,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           ? <span className="text-rotulo font-bold uppercase text-est-ok bg-est-ok-suave rounded-full px-2.5 py-1 flex-shrink-0">✓ Terminada</span>
           : undefined}
         arrastre={isMobile ? { onTouchStart: onSheetDragStart, onTouchMove: onSheetDragMove, onTouchEnd: onSheetDragEnd } : undefined}
+        agregar={{ bloqueado: bloqueada, opciones: [
+          { texto: 'Pallet',      clase: 'pallet',     onClick: () => setDialogPkg('pallet') },
+          { texto: 'Bulto',       clase: 'bulto',      onClick: () => setDialogPkg('box') },
+          { texto: 'Cont.',       clase: 'contenedor', onClick: () => setDialogPkg('contenedor') },
+          { texto: 'Choc.',       clase: 'chocolate',  onClick: () => setDialogPkg('chocolate') },
+          // No piden medidas ni peso: se crean de un toque, sin diálogo.
+          { texto: 'Adquisición', clase: 'agregado', detalle: 'no se pesa', onClick: () => void addFormRow('adquisicion') },
+          { texto: 'Web / retiro', clase: 'agregado', detalle: 'no se pesa', onClick: () => void addFormRow('web-retiro') },
+        ] }}
         acciones={tienda?.cod ? (
           <>
             <RegistrarTiendaButton rol={profile?.role} terminada={tiendaTerminada(tienda.cod)} variante="claro"
@@ -2435,7 +2463,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         {header}
         <fieldset disabled={bloqueada} className="contents">{pdfStrip}</fieldset>
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
-          {bloqueada && <AvisoTiendaTerminada />}
+          {bloqueada && tienda?.cod && (
+            <AvisoTiendaTerminada nuevas={nuevasDe({ name: selectedTienda ?? '', cod: tienda.cod })}
+              onReabrir={() => { if (window.confirm('¿Reabrir esta tienda para pesar lo nuevo? Ya no se mostrará como lista para despachar.')) marcarTerminada(tienda.cod, false); }} />
+          )}
           {/* Terminada: todo lo de adentro queda deshabilitado de una vez (inputs y botones). */}
           <fieldset disabled={bloqueada} className="contents">
           {/* ── AHORA · FALTAN · PESADOS ──────────────────────────────────────────────────
@@ -2577,44 +2608,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               </div>
             );
           })()}
-          <div className="grid grid-cols-4 gap-1.5 pb-1">
-            <button onClick={() => setDialogPkg('pallet')}
-              className="py-2 border border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer hover:bg-[rgba(37,99,235,0.05)] transition-all">
-              + Pallet
-            </button>
-            <button onClick={() => setDialogPkg('box')}
-              className="py-2 border border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer hover:bg-[rgba(217,119,6,0.05)] transition-all">
-              + Bulto
-            </button>
-            <button onClick={() => setDialogPkg('contenedor')}
-              className="py-2 border border-dashed rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all"
-              style={{ borderColor: 'rgba(107,33,168,0.4)', color: '#6B21A8', background: 'transparent' }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(107,33,168,0.05)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-              + Cont.
-            </button>
-            <button onClick={() => setDialogPkg('chocolate')}
-              className="py-2 border border-dashed rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all"
-              style={{ borderColor: 'rgba(120,53,15,0.4)', color: '#92400E', background: 'transparent' }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(120,53,15,0.05)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-              + Choc.
-            </button>
-          </div>
-          {/* [Agregados] Segunda fila: no piden medidas ni peso y se crean de UN TOQUE, sin diálogo.
-              Van aparte porque son otra cosa: los de arriba se miden, estos no. */}
-          <div className="grid grid-cols-2 gap-1.5 pb-1">
-            <button onClick={() => void addFormRow('adquisicion')}
-              className="py-2 border border-dashed rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all"
-              style={{ borderColor: 'rgba(15,118,110,0.4)', color: '#0F766E', background: 'transparent' }}>
-              + Adquisición
-            </button>
-            <button onClick={() => void addFormRow('web-retiro')}
-              className="py-2 border border-dashed rounded-btn font-barlow-condensed text-[11px] font-bold cursor-pointer transition-all"
-              style={{ borderColor: 'rgba(109,40,217,0.4)', color: '#6D28D9', background: 'transparent' }}>
-              + Web / retiro
-            </button>
-          </div>
           </fieldset>
           {dialogPkg && selectedTienda && !bloqueada && (
             <AgregarPalletDialog
@@ -2782,7 +2775,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       storeStatus={prog?.status ?? 'none'}
                       storeDoneOps={storeDoneOpsSeco}
                       storeTotalOps={storeTotalOpsSeco}
-                      terminada={terminadas.get(t.cod)?.terminada === true}
+                      terminada={terminadas.get(t.cod)?.terminada === true} nuevas={nuevasDe(t)}
                       viendo={viendoPorTienda.get(t.cod)}
                       onSelect={() => select(t.name)}
                       onDragStart={e => handleRemoveDragStart(e, t.name)}
@@ -2835,7 +2828,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                         storeStatus="none"
                         storeDoneOps={0}
                         storeTotalOps={0}
-                        terminada={terminadas.get(t.cod)?.terminada === true}
+                        terminada={terminadas.get(t.cod)?.terminada === true} nuevas={nuevasDe(t)}
                         viendo={viendoPorTienda.get(t.cod)}
                         onSelect={() => select(t.name)}
                         onDragStart={e => handleAddDragStart(e, t.name)}
@@ -2968,35 +2961,26 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       {/* RIGHT PANEL — resumen (right column on desktop only) */}
       <div className="hidden lg:flex lg:flex-col overflow-hidden flex-shrink-0"
            style={isDesktop ? { width: rightWidth } : undefined}>
-        <ResumenPage panel onRegistrar={onRegistrar} />
+        <ResumenPage panel onRegistrar={onRegistrar} terminada={tiendaTerminada} avance={avanceResumen} avisoRegistrar={avisoRegistrar} />
       </div>
 
       {/* Mobile Resumen Overlay */}
       {showMobileResumen && (
         <div className="fixed inset-0 z-50 flex flex-col lg:hidden bg-bg">
-          <div className="bg-navy px-3 py-3 flex items-center gap-3 flex-shrink-0"
-               style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
-            <button
-              onClick={() => setShowMobileResumen(false)}
-              className="flex items-center justify-center rounded-full flex-shrink-0 cursor-pointer transition-all active:scale-95"
-              style={{
-                width: 36, height: 36,
-                background: 'rgba(255,255,255,0.10)',
-                border: '1px solid rgba(255,255,255,0.15)',
-              }}>
-              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-            </button>
-            <span className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-wide flex-1">Resumen</span>
-            <button
-              onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); flushPending(); router.push('/despacho'); }}
-              className="flex items-center gap-2 py-2 px-3 rounded cursor-pointer transition-all active:opacity-70"
-              style={{ background: 'rgba(30,64,175,0.25)', border: '1px solid rgba(30,64,175,0.60)' }}>
-              <Navigation size={13} color="#93C5FD" strokeWidth={2} />
-              <span className="font-barlow-condensed text-[13px] font-bold tracking-wide" style={{ color: '#93C5FD' }}>Enrutador</span>
-            </button>
-          </div>
           <div className="flex-1 overflow-hidden flex flex-col">
-            <ResumenPage panel onRegistrar={onRegistrar} />
+            <ResumenPage panel onRegistrar={onRegistrar} terminada={tiendaTerminada} avance={avanceResumen} avisoRegistrar={avisoRegistrar}
+              volver={
+                <button type="button" onClick={() => setShowMobileResumen(false)} aria-label="Volver a las tiendas"
+                  className="w-10 h-10 -ml-1 flex items-center justify-center rounded-btn text-text-2 bg-bg-2 active:bg-bg-3 flex-shrink-0">
+                  <ChevronLeft size={22} aria-hidden="true" />
+                </button>
+              }
+              extra={
+                <button type="button" onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); flushPending(); router.push('/despacho'); }}
+                  className="min-h-[36px] px-2.5 rounded-btn bg-navy text-white text-apoyo font-bold flex items-center gap-1.5 active:opacity-80">
+                  <Navigation size={14} aria-hidden="true" /> Enrutador
+                </button>
+              } />
           </div>
         </div>
       )}
@@ -3010,7 +2994,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         const mergedValor = (src.valor ?? 0) + (tgt.valor ?? 0);
         return (
           <CombineItemsModal
-            pkgLabel={src.pkg === 'pallet' ? 'Pallets' : 'Bultos'}
+            pkgLabel={src.pkg === 'pallet' ? 'Pallets' : src.pkg === 'contenedor' ? 'Contenedores' : src.pkg === 'chocolate' ? 'Chocolates' : 'Bultos'}
             srcLabel={srcLabel}
             tgtLabel={tgtLabel}
             mergedGuia={mergedGuia || undefined}

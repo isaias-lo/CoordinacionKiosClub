@@ -33,6 +33,7 @@ export interface SantiagoItem {
   estado: EstadoItem;
   pickingSlotId?: number;   // FK a picking_pallets.id (trazabilidad)
   canonical_id?: string;    // P3MAI13062026P — del picking slot (para CÓDIGO en Sheets/Supabase)
+  taraPallet?: number;      // kg del pallet que se restaron del peso (`peso` ya es neto). Ver pesoDelPallet.ts
 }
 
 export type SantiagoStep = 'regimen' | 'form';

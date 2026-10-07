@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { bultosNacional } from '../../shared/numeroCard';
+import { useState, useRef, type ReactNode } from 'react';
+import { claseNacional } from '../../shared/numeroCard';
 import { finalizarSlotUnion } from '@/features/despacho/shared/finalizarSlotUnion';
 import { logActividad } from '@/lib/actividad';
 import { useAuth } from '@/components/AuthProvider';
@@ -10,7 +10,7 @@ import { fechaChile } from '@/lib/fechaChile';
 import { renumerarSoloSinOrden } from '@/features/despacho/shared/numeroCard';
 import { leerPeso, limpiarTecleo } from '@/features/despacho/shared/pesoIngresado';
 import { combinarEnLista } from '@/features/despacho/shared/combinarEnLista';
-import { GripVertical } from 'lucide-react';
+import { Check, Download } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { buildRows, exportToTemplate } from '../utils/exportUtils';
 import { TIENDAS, getTodayTiendas } from '../data/tiendas';
@@ -20,15 +20,16 @@ import { REGIONES_TERMINADO_KEY } from '@/components/modals/FinishModal';
 import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { eliminarSlotPicking } from '../../shared/eliminarSlotPicking';
-import { formatCLP, formatCLPCorto } from '../../shared/formatoCLP';
+import { formatCLPCorto } from '../../shared/formatoCLP';
+import { excedeTopeDuro } from '../../shared/pesoIngresado';
+import { claseUnidad } from '../../shared/unidadVisual';
+import { confirmarCambioGuardado } from '../../shared/confirmarGuardado';
+import { textoPesoConTara } from '../../shared/pesoDelPallet';
+import { copiaParaOtraTienda, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
+import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTienda, ResumenVacio, UnidadResumen } from '../../shared/ResumenDia';
 
-const TAG: Record<string, string> = {
-  comida:        'bg-[rgba(217,119,6,0.15)] text-warn',
-  hogar:         'bg-[rgba(124,58,237,0.15)] text-hogar',
-  'comida-hogar':'bg-[rgba(8,145,178,0.15)] text-mixto',
-  pallet:        'bg-[rgba(37,99,235,0.15)] text-info',
-  box:           'bg-[rgba(217,119,6,0.15)] text-warn',
-  chocolate:     'bg-[rgba(120,53,15,0.12)] text-[#92400E]',
+const NOMBRE_PLURAL: Partial<Record<TipoPaquete, string>> = {
+  pallet: 'Pallets', box: 'Bultos', contenedor: 'Contenedores', chocolate: 'Chocolates',
 };
 const LABEL: Record<TipoContenido | TipoPaquete, string> = {
   comida: 'Comida', hogar: 'Hogar', 'comida-hogar': 'Mixto', pallet: 'Pallet', box: 'Bulto', contenedor: 'Contenedor', chocolate: 'Chocolate',
@@ -41,16 +42,31 @@ const LABEL: Record<TipoContenido | TipoPaquete, string> = {
 // bastaba para que el CH3 volviera a llamarse CH1.
 const renumber = renumerarSoloSinOrden;
 
-const INPUT = 'w-full border border-border rounded-btn px-2 py-1.5 text-[13px] font-mono text-navy bg-white';
-const LABEL_SM = 'text-[9px] text-text-3 mb-0.5 uppercase tracking-wide';
+const INPUT = 'w-full min-h-[44px] bg-card border-[1.5px] border-border rounded-btn px-2 text-cuerpo font-barlow tabular-nums text-text outline-none focus:border-navy';
+const LABEL_SM = 'text-rotulo font-bold text-text-sub uppercase mb-1';
+/** El paquete elegido al editar, en el color de su tipo. */
+const ESTILO_EDIT: Partial<Record<TipoPaquete, string>> = {
+  pallet: 'bg-uni-pallet text-white border-uni-pallet',
+  box: 'bg-uni-bulto text-white border-uni-bulto',
+  contenedor: 'bg-uni-contenedor text-white border-uni-contenedor',
+};
 
 interface ResumenPageProps {
   panel?: boolean;
   /** Abre el FinishModal de registro (el botón "Registrar" vive ahora en esta barra, no en el header). */
   onRegistrar?: () => void;
+  /** ¿La tienda (por código) está marcada terminada? Sus unidades no se pueden tocar desde acá. */
+  terminada?: (cod: string) => boolean;
+  /** Tiendas de hoy terminadas, sobre las de hoy: la barra de la cabecera. */
+  avance?: { listas: number; total: number };
+  /** En el teléfono: volver a la lista y lo que va a la derecha (Enrutador). */
+  volver?: ReactNode;
+  extra?: ReactNode;
+  /** Lo que falta cerrar del día (tiendas sin terminar, sin pesar). Se avisa antes de registrar. */
+  avisoRegistrar?: string | null;
 }
 
-export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
+export function ResumenPage({ panel = false, onRegistrar, terminada = () => false, avance, volver, extra, avisoRegistrar }: ResumenPageProps) {
   const { state, dispatch, showToast } = useApp();
   const { profile } = useAuth();
   const { dispatch: dispatchData, selection } = state;
@@ -64,7 +80,8 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
     });
   }
 
-  const [editingItem, setEditingItem] = useState<{ tienda: string; idx: number } | null>(null);
+  // Se edita por `id`: la posición puede cambiar si otro equipo agrega o borra mientras tanto.
+  const [editingItem, setEditingItem] = useState<{ tienda: string; idx: number; id?: string } | null>(null);
 
   /* Copy to tiendas */
   const [copyModal,   setCopyModal]   = useState<{ tienda: string; item: DispatchItem } | null>(null);
@@ -91,15 +108,9 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
     ...todayOrder.filter(n => dispatchData[n]?.length > 0),
     ...Object.keys(dispatchData).filter(n => dispatchData[n].length > 0 && !todayOrder.includes(n)),
   ];
-  const stats = names.reduce((a, n) => {
-    (dispatchData[n] || []).forEach(i => {
-      if (i.pkg === 'pallet') a.pallets++;
-      else if (i.pkg === 'chocolate') a.chocolates++;
-      else a.bultos++;
-      a.monto += i.valor || 0;
-    });
-    return a;
-  }, { pallets: 0, bultos: 0, chocolates: 0, monto: 0 });
+  // La misma cuenta que la lista de tiendas (`contarPorClase`): antes todo lo que no era pallet
+  // ni chocolate sumaba como bulto, contenedores y adquisiciones incluidos.
+  const totales = totalesResumen(names.flatMap(n => dispatchData[n] || []), i => claseNacional(i.pkg));
 
   const date = new Date().toLocaleDateString('es-CL').replace(/\//g, '-');
 
@@ -139,7 +150,7 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
     setEditLargo(String(item.largo || ''));
     setEditGuia(item.guia || '');
     setEditValor(item.valor ? String(item.valor) : '');
-    setEditingItem({ tienda, idx });
+    setEditingItem({ tienda, idx, id: item.id });
     setExpanded(prev => { const next = new Set(prev); next.add(tienda); return next; });
   };
 
@@ -177,7 +188,9 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
   const handleCopyConfirm = () => {
     if (!copyModal || copyTargets.size === 0) return;
     const { item } = copyModal;
-    const itemCopy: DispatchItem = { ...item, guia: '', orden: '' };
+    // Sin id, slot ni código: la copia es otra unidad. Con ellos, dos tiendas compartían la misma
+    // y el merge entre equipos o la reconciliación con Picking pisaba una con la otra.
+    const itemCopy: DispatchItem = copiaParaOtraTienda(item);
     copyTargets.forEach(tienda => {
       dispatch({ type: 'ADD_ITEM', tienda, item: { ...itemCopy } });
     });
@@ -191,16 +204,30 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
 
   const saveEdit = () => {
     if (!editingItem) return;
-    const { tienda, idx } = editingItem;
+    const { tienda, idx: idxAntes, id } = editingItem;
     const list = [...(dispatchData[tienda] || [])];
+    const idx = posicionDeUnidad(list, id, idxAntes);
+    if (idx < 0) {
+      showToast('⚠ Esa unidad ya no está (la cambió otro equipo). No se guardó nada.', '#D32F2F');
+      setEditingItem(null);
+      return;
+    }
+    // Las mismas guardias que la tarjeta de pesaje: sin peso no se guarda, y un peso imposible
+    // (la coma que se perdió) se ataja acá y no en el cruce del día siguiente.
+    const clase = claseNacional(editPkg);
+    const sinPeso = clase === 'adquisicion' || clase === 'webretiro';
+    const peso = sinPeso ? (leerPeso(editPeso) ?? 0) : leerPeso(editPeso);
+    if (peso == null) { showToast('Ingresa el peso', '#D97706'); return; }
+    const duro = excedeTopeDuro(peso, clase);
+    if (duro) { showToast(`⚠ ${duro}`, '#D32F2F'); return; }
     list[idx] = {
       ...list[idx],
       pkg:   editPkg,
       tipo:  editTipo,
-      peso:  (leerPeso(editPeso) ?? 0),
-      alto:  parseInt(editAlto)    || 0,
-      ancho: parseInt(editAncho)   || 0,
-      largo: parseInt(editLargo)   || 0,
+      peso,
+      alto:  parseFloat(editAlto)  || 0,
+      ancho: parseFloat(editAncho) || 0,
+      largo: parseFloat(editLargo) || 0,
       guia:  editGuia,
       valor: parseInt(editValor)   || 0,
     };
@@ -209,29 +236,32 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
     showToast('✓ Item actualizado', '#16A34A');
   };
 
-  /* ── Stats strip ──
-     [M-01] Antes decía "19 P · 14 B · 8 T · $25259K". Las iniciales sueltas obligan a recordar cuál
-     es cuál, y el `$…K` no es un formato: eran $25.259.000. La versión angosta de esta misma app y
-     el panel de RM/Costa ya escriben la palabra completa — esto los alcanza. */
-  const celdas: { valor: string; etiqueta: string; color: string; title?: string }[] = [
-    { valor: String(stats.pallets), etiqueta: 'Pallets', color: '#93C5FD' },
-    { valor: String(stats.bultos),  etiqueta: 'Bultos',  color: '#FCD34D' },
-    ...(stats.chocolates > 0 ? [{ valor: String(stats.chocolates), etiqueta: 'Choc.', color: '#FBB6A0' }] : []),
-    { valor: String(names.length),  etiqueta: 'Tiendas', color: '#86EFAC' },
-    ...(stats.monto > 0 ? [{ valor: formatCLPCorto(stats.monto), etiqueta: 'Monto', color: '#FFFFFF', title: formatCLP(stats.monto) }] : []),
-  ];
-  const statsStrip = (
-    <div className="bg-navy flex items-center px-3 py-2 gap-0 flex-shrink-0">
-      {celdas.map((c, i) => (
-        <div key={c.etiqueta}
-          title={c.title}
-          className={`flex-1 min-w-0 text-center ${i < celdas.length - 1 ? 'border-r border-white/10' : ''}`}>
-          <div className="font-barlow-condensed text-[22px] font-extrabold leading-none truncate" style={{ color: c.color }}>
-            {c.valor}
-          </div>
-          <div className="text-[11px] text-white/55 uppercase tracking-widest mt-0.5">{c.etiqueta}</div>
-        </div>
-      ))}
+  const totalItems  = names.reduce((a, n) => a + (dispatchData[n]?.length ?? 0), 0);
+  const totalSel    = names.reduce((a, n) => a + (selection[n]?.size ?? 0), 0);
+  const allSelected = totalItems > 0 && totalSel === totalItems;
+  const cabecera = (
+    <CabeceraResumen totales={totales} tiendas={names.length} avance={avance} volver={volver}
+      herramientas={
+        <>
+          {/* El lado de Odoo no depende de Bodega: existe desde temprano y se puede traer sin
+              esperar al registro. Solo admin. Ver `TraerOdooButton`. */}
+          <TraerOdooButton rol={profile?.role} fechaISO={fechaChile()} showToast={showToast} />
+          {extra}
+        </>
+      } />
+  );
+  // Seleccionar (para exportar) y desplegar: una fila de herramientas, no texto gris en la barra navy.
+  const herramientas = names.length > 0 && (
+    <div className="flex items-center gap-1.5 px-3 py-2 bg-bg border-b border-border flex-shrink-0">
+      <BotonHerramienta activo={allSelected} title="Marcar o desmarcar todo para exportar"
+        onClick={() => dispatch({ type: 'SELECT_ALL_GLOBAL', selectAll: !allSelected })}>
+        {allSelected ? '✓ Todo marcado' : 'Marcar todo'}
+      </BotonHerramienta>
+      <span className="text-apoyo text-text-sub tabular-nums">{totalSel}/{totalItems} para exportar</span>
+      <span className="flex-1" />
+      <BotonHerramienta onClick={() => setExpanded(expanded.size === names.length ? new Set() : new Set(names))}>
+        {expanded.size === names.length ? 'Plegar todo' : 'Desplegar todo'}
+      </BotonHerramienta>
     </div>
   );
 
@@ -243,322 +273,225 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
     showToast('Despacho reabierto', '#8896A8');
   };
 
-  /* ── Bottom action bar ── EXPORTAR + Registrar (el 🗑 y el Registrar del header se movieron aquí). */
+  /* ── Pie: Exportar + Registrar ── */
   const actionBar = (
-    <div className={`bg-white border-t border-border px-3 py-2.5 flex gap-2 flex-shrink-0 justify-end ${
+    <div className={`bg-card border-t border-border px-3 py-2.5 flex gap-2 flex-shrink-0 items-center ${
       panel ? '' : 'fixed bottom-0 left-0 right-0 z-[150]'
-    }`}
-      style={{ boxShadow: '0 -4px 16px rgba(26,37,80,0.10)' }}>
-      <button onClick={exportAll}
-        className="py-2.5 px-4 bg-bg-2 text-text-2 border border-border rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide uppercase cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5">
-        ↓ Exportar
+    }`}>
+      <button type="button" onClick={exportAll} disabled={totalSel === 0}
+        title={totalSel === 0 ? 'Marca unidades para exportar' : `Exportar ${totalSel} a Excel`}
+        className="min-h-[44px] px-4 bg-bg-2 text-text-2 rounded-btn text-apoyo font-bold cursor-pointer active:bg-bg-3 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5">
+        <Download size={16} aria-hidden="true" /> Exportar{totalSel > 0 ? ` (${totalSel})` : ''}
       </button>
+      <span className="flex-1" />
       {state.registrado ? (
-        <button onClick={handleReopen}
-          title="Registrado · toca para reabrir"
-          className="py-2.5 px-5 bg-[#16A34A] text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide uppercase cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
-          style={{ boxShadow: '0 4px 16px rgba(22,163,74,0.30)' }}>
-          ✓ Completado
+        <button type="button" onClick={handleReopen} title="Registrado · toca para reabrir"
+          className="min-h-[44px] px-5 bg-est-ok text-white rounded-btn text-cuerpo font-bold cursor-pointer active:opacity-80 flex items-center gap-1.5">
+          <Check size={18} aria-hidden="true" /> Registrado
         </button>
       ) : (
-        <button onClick={() => onRegistrar?.()}
-          className="py-2.5 px-5 bg-red text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide uppercase cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
-          style={{ boxShadow: '0 4px 16px rgba(211,47,47,0.30)' }}>
-          Registrar
+        <button type="button" disabled={names.length === 0}
+          onClick={() => { if (avisoRegistrar && !window.confirm(`${avisoRegistrar}\n\n¿Registrar igual?`)) return; onRegistrar?.(); }}
+          className="min-h-[44px] px-5 bg-navy text-white rounded-btn text-cuerpo font-bold cursor-pointer active:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">
+          Registrar despacho
         </button>
       )}
     </div>
   );
 
-  /* ── Tiendas accordion ── */
+  /* ── Una fila por tienda; tocarla despliega sus unidades ── */
   const acordeon = (
     <>
-      {!names.length ? (
-        <div className="flex-1 flex flex-col items-center justify-center py-10 text-text-3">
-          <div className="text-3xl mb-2 opacity-40">📋</div>
-          <p className="text-xs opacity-60 font-barlow-condensed uppercase tracking-wide text-center px-4">
-            Sin items aún
-          </p>
-        </div>
-      ) : names.map(name => {
+      {!names.length ? <ResumenVacio /> : names.map(name => {
         const t = TIENDAS[name];
         const items = dispatchData[name] || [];
         const sel   = selection[name] || new Set<number>();
         const allSel = sel.size === items.length;
         const isOpen = expanded.has(name);
-        let pesoT = 0, valorT = 0;
-        items.forEach(i => { pesoT += i.peso; valorT += i.valor || 0; });
-        const pallets     = items.filter(i => i.pkg === 'pallet').length;
-        const bultos      = bultosNacional(items);
-        const chocolates  = items.filter(i => i.pkg === 'chocolate').length;
+        const cerrada = !!t?.cod && terminada(t.cod);
+        const tot = totalesResumen(items, i => claseNacional(i.pkg));
 
         return (
-          <div key={name} className={`border-b border-border ${isOpen ? 'bg-white' : ''}`}>
-
-            {/* Row header */}
-            <div
-              onClick={() => { cancelEdit(); toggleExpanded(name); }}
-              className={`flex items-center gap-2 px-2.5 py-2 cursor-pointer transition-all active:bg-bg ${
-                isOpen ? 'bg-[#F0F2F7] border-b border-border' : 'bg-white'
-              } ${sel.size > 0 ? 'border-l-4 border-l-success' : ''}`}>
-
-              <div className="font-mono text-[10px] text-text-3 bg-bg-2 border border-border-2 px-1 py-0.5 rounded min-w-[40px] text-center flex-shrink-0">
-                {t?.cod ? formatCod(t.cod) : ''}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-bold text-navy truncate leading-tight">{name}</div>
-                <div className="text-[10px] text-text-3 truncate">{t?.region}</div>
-              </div>
-              <div className="flex items-center gap-1 flex-shrink-0">
-                {pallets > 0 && (
-                  <span className="font-barlow-condensed text-[11px] font-bold text-info bg-[rgba(37,99,235,0.10)] border border-[rgba(37,99,235,0.20)] px-1.5 py-0.5 rounded-full">
-                    {pallets}P
-                  </span>
-                )}
-                {bultos > 0 && (
-                  <span className="font-barlow-condensed text-[11px] font-bold text-warn bg-[rgba(217,119,6,0.10)] border border-[rgba(217,119,6,0.20)] px-1.5 py-0.5 rounded-full">
-                    {bultos}B
-                  </span>
-                )}
-                {chocolates > 0 && (
-                  <span className="font-barlow-condensed text-[11px] font-bold text-[#92400E] bg-[rgba(120,53,15,0.10)] border border-[rgba(120,53,15,0.20)] px-1.5 py-0.5 rounded-full">
-                    {chocolates}CH
-                  </span>
-                )}
-                {sel.size > 0 && (
-                  <span className="font-mono text-[10px] text-success font-bold">✓{sel.size}</span>
-                )}
-                <span className="text-text-3 text-[10px] ml-0.5">{isOpen ? '▲' : '▼'}</span>
-              </div>
+          <FilaResumenTienda key={name} cod={t?.cod ? formatCod(t.cod) : ''} nombre={name} sub={t?.region}
+            totales={tot} terminada={cerrada} abierta={isOpen}
+            seleccion={{ n: sel.size, total: items.length }}
+            onToggle={() => { cancelEdit(); toggleExpanded(name); }}>
+            {cerrada && <AvisoResumenTerminada />}
+            <div className="flex items-center gap-1.5 px-3.5 py-2 bg-bg">
+              <BotonHerramienta activo={allSel} onClick={() => dispatch({ type: 'TOGGLE_ALL_SELECTION', tienda: name, count: items.length })}>
+                {allSel ? '✓ Todas' : 'Marcar todas'}
+              </BotonHerramienta>
+              <span className="flex-1" />
+              <button type="button" onClick={() => exportTiendaSel(name)} disabled={sel.size === 0}
+                className="min-h-[36px] px-2.5 rounded-btn bg-navy text-white text-apoyo font-bold cursor-pointer active:opacity-80 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1">
+                <Download size={14} aria-hidden="true" /> Exportar {sel.size > 0 ? sel.size : ''}
+              </button>
             </div>
 
-            {/* Expanded panel */}
-            {isOpen && (
-              <div>
-                <div className="flex items-center gap-2 px-2.5 py-1.5 bg-bg border-b border-border">
-                  <div
-                    onClick={() => dispatch({ type: 'TOGGLE_ALL_SELECTION', tienda: name, count: items.length })}
-                    className={`flex items-center gap-1 cursor-pointer flex-shrink-0 px-1.5 py-0.5 rounded-btn transition-all ${
-                      allSel ? 'bg-[rgba(22,163,74,0.12)]' : 'bg-white border border-border'
-                    }`}>
-                    <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center text-[9px] font-bold flex-shrink-0 transition-all ${
-                      allSel ? 'bg-success border-success text-white' : 'border-border-2 bg-white'
-                    }`}>
-                      {allSel && '✓'}
-                    </div>
-                    <span className="text-[11px] font-semibold text-text-2">{allSel ? 'Quitar' : 'Todo'}</span>
-                    <span className="font-mono text-[10px] text-text-3">{sel.size}/{items.length}</span>
-                  </div>
-                  <div className="flex-1 font-mono text-[10px] text-text-3 text-right">
-                    {pesoT.toLocaleString('es-CL')}kg{valorT > 0 ? ` · ${formatCLPCorto(valorT)}` : ''}
-                  </div>
-                </div>
+            {items.map((item, idx) => {
+              const isSel = sel.has(idx);
+              const isEditing = editingItem?.tienda === name && (editingItem.id ? editingItem.id === item.id : editingItem.idx === idx);
 
-                {items.map((item, idx) => {
-                  const isSel = sel.has(idx);
-                  const dims  = [item.alto, item.ancho, item.largo].filter(Boolean);
-                  const isEditing = editingItem?.tienda === name && editingItem?.idx === idx;
-
-                  if (isEditing) {
-                    return (
-                      <div key={idx} className="border-l-4 border-info bg-[rgba(37,99,235,0.04)] border-b border-border/40">
-                        <div className="px-2.5 pt-2 pb-2">
-                          <div className="flex flex-wrap gap-x-3 gap-y-1.5 mb-2">
-                            <div>
-                              <div className={LABEL_SM}>Paquete</div>
-                              <div className="flex gap-1">
-                                {(['pallet', 'box', 'contenedor'] as TipoPaquete[]).map(p => (
-                                  <button key={p} onClick={() => setEditPkg(p)}
-                                    className={`font-barlow-condensed text-[11px] font-bold px-2 py-0.5 rounded-full border transition-all ${
-                                      editPkg === p
-                                        ? p === 'pallet'     ? 'bg-info text-white border-info'
-                                        : p === 'contenedor' ? 'bg-[#6B21A8] text-white border-[#6B21A8]'
-                                        : 'bg-warn text-white border-warn'
-                                        : 'bg-white text-text-2 border-border'
-                                    }`}>
-                                    {LABEL[p]}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                            <div>
-                              <div className={LABEL_SM}>Contenido</div>
-                              <div className="flex gap-1">
-                                {(['comida', 'hogar', 'comida-hogar'] as TipoContenido[]).map(tp => (
-                                  <button key={tp} onClick={() => setEditTipo(tp)}
-                                    className={`font-barlow-condensed text-[11px] font-bold px-2 py-0.5 rounded-full border transition-all ${
-                                      editTipo === tp ? 'bg-navy text-white border-navy' : 'bg-white text-text-2 border-border'
-                                    }`}>
-                                    {LABEL[tp]}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-4 gap-1 mb-1">
-                            {([
-                              { label: 'Peso', val: editPeso,  set: setEditPeso, decimal: true },
-                              { label: 'Alto', val: editAlto,  set: setEditAlto, max: editPkg === 'pallet' ? MAX_ALTO_CM : undefined },
-                              { label: 'Ancho', val: editAncho, set: setEditAncho },
-                              { label: 'Largo', val: editLargo, set: setEditLargo },
-                            ] as { label: string; val: string; set: (v: string) => void; max?: number; decimal?: boolean }[]).map(({ label, val, set, max, decimal }) => (
-                              <div key={label}>
-                                <div className={LABEL_SM}>{label}</div>
-                                <input type={decimal ? 'text' : 'number'} inputMode={decimal ? 'decimal' : undefined} value={val}
-                                  onChange={e => set(decimal ? limpiarTecleo(e.target.value) : e.target.value)}
-                                  max={decimal ? undefined : max} className={INPUT} />
-                                {label === 'Alto' && editPkg === 'pallet' && excedeAltoMax(parseFloat(val) || 0) && (
-                                  <div className="text-[9px] text-warn">⚠ máx {MAX_ALTO_CM}</div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                          <div className="grid grid-cols-2 gap-1 mb-2">
-                            <div>
-                              <div className={LABEL_SM}>Guía</div>
-                              <input type="text" value={editGuia} onChange={e => setEditGuia(e.target.value)} className={INPUT} />
-                            </div>
-                            <div>
-                              <div className={LABEL_SM}>Valor $</div>
-                              <input type="number" value={editValor} onChange={e => setEditValor(e.target.value)} className={INPUT} />
-                            </div>
-                          </div>
-                          <div className="flex gap-1.5">
-                            <button onClick={saveEdit}
-                              className="flex-1 py-1.5 bg-info text-white border-none rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">
-                              ✓ Guardar
+              if (isEditing) {
+                return (
+                  <div key={item.id ?? idx} className="border-t border-border/60 bg-navy/[0.04] shadow-[inset_4px_0_0_theme(colors.navy.DEFAULT)] px-3.5 py-3">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 mb-2.5">
+                      <div>
+                        <div className={LABEL_SM}>Paquete</div>
+                        <div className="flex gap-1">
+                          {(['pallet', 'box', 'contenedor'] as TipoPaquete[]).map(p => (
+                            <button key={p} type="button" onClick={() => setEditPkg(p)}
+                              className={`min-h-[36px] px-2.5 rounded-btn border-[1.5px] text-apoyo font-bold cursor-pointer ${
+                                editPkg === p ? `${ESTILO_EDIT[p]}` : 'bg-card text-text-2 border-border'}`}>
+                              {LABEL[p]}
                             </button>
-                            <button onClick={cancelEdit}
-                              className="px-3 py-1.5 bg-bg-2 text-text-2 border border-border rounded-btn font-barlow-condensed text-[13px] cursor-pointer">
-                              ✕
-                            </button>
-                          </div>
+                          ))}
                         </div>
                       </div>
-                    );
-                  }
-
-                  const isDragging = dragIdx === idx && dragTienda === name;
-                  const isDropTarget = dropIdx === idx && dragTienda === name && dragIdx !== null && items[dragIdx]?.pkg === item.pkg;
-                  return (
-                    <div key={idx}
-                      data-item-idx={idx}
-                      data-item-tienda={name}
-                      draggable
-                      onDragStart={() => { setDragIdx(idx); setDragTienda(name); }}
-                      onDragOver={(e) => {
-                        if (dragIdx !== null && dragTienda === name && dragIdx !== idx && items[dragIdx]?.pkg === item.pkg)
-                          { e.preventDefault(); setDropIdx(idx); }
-                      }}
-                      onDragLeave={() => setDropIdx(prev => prev === idx ? null : prev)}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        if (dragIdx !== null && dragTienda === name && dragIdx !== idx && items[dragIdx]?.pkg === item.pkg)
-                          setCombineModal({ srcIdx: dragIdx, tgtIdx: idx, tienda: name });
-                        setDragIdx(null); setDropIdx(null); setDragTienda(null);
-                      }}
-                      onDragEnd={() => { setDragIdx(null); setDropIdx(null); setDragTienda(null); }}
-                      onTouchStart={(e) => {
-                        const t = e.touches[0];
-                        (e.currentTarget as HTMLElement).dataset.txS = String(t.clientX);
-                        (e.currentTarget as HTMLElement).dataset.tyS = String(t.clientY);
-                        longPressRef.current = setTimeout(() => { setDragIdx(idx); setDragTienda(name); navigator.vibrate?.(25); }, 220);
-                      }}
-                      onTouchMove={(e) => {
-                        const t = e.touches[0];
-                        const el = e.currentTarget as HTMLElement;
-                        if (longPressRef.current && (Math.abs(t.clientX - parseFloat(el.dataset.txS ?? '0')) > 8 || Math.abs(t.clientY - parseFloat(el.dataset.tyS ?? '0')) > 8))
-                          { clearTimeout(longPressRef.current); longPressRef.current = null; }
-                        if (dragIdx === null) return;
-                        e.preventDefault();
-                        const under = document.elementFromPoint(t.clientX, t.clientY);
-                        const itemEl = under?.closest('[data-item-tienda]') as HTMLElement | null;
-                        const tgt = itemEl ? parseInt(itemEl.dataset.itemIdx ?? '-1') : -1;
-                        const tgtTienda = itemEl?.dataset.itemTienda;
-                        setDropIdx(tgt !== -1 && tgt !== dragIdx && tgtTienda === name ? tgt : null);
-                      }}
-                      onTouchEnd={(e) => {
-                        if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
-                        if (dragIdx === null) return;
-                        e.preventDefault();
-                        const t = e.changedTouches[0];
-                        const under = document.elementFromPoint(t.clientX, t.clientY);
-                        const itemEl = under?.closest('[data-item-tienda]') as HTMLElement | null;
-                        const tgt = itemEl ? parseInt(itemEl.dataset.itemIdx ?? '-1') : -1;
-                        const tgtTienda = itemEl?.dataset.itemTienda;
-                        if (tgt !== -1 && tgt !== dragIdx && tgtTienda === name && items[dragIdx]?.pkg === items[tgt]?.pkg)
-                          setCombineModal({ srcIdx: dragIdx, tgtIdx: tgt, tienda: name });
-                        setDragIdx(null); setDropIdx(null); setDragTienda(null);
-                      }}
-                      onClick={() => { if (!dragTienda) dispatch({ type: 'TOGGLE_SELECTION', tienda: name, idx }); }}
-                      className={[
-                        'flex items-center gap-1.5 px-2.5 py-1.5 border-b border-border/40 last:border-b-0 transition-all select-none',
-                        isDropTarget ? 'bg-emerald-50 border-l-4 border-l-emerald-500' : isSel ? 'bg-[rgba(22,163,74,0.06)]' : 'bg-white',
-                        isDragging ? 'opacity-40' : '',
-                        dragIdx !== null && dragTienda === name ? 'cursor-grabbing' : 'cursor-grab',
-                      ].join(' ')}>
-                      <GripVertical size={11} color="#CBD5E1" className="flex-shrink-0" />
-                      <div
-                        onClick={e => { e.stopPropagation(); dispatch({ type: 'TOGGLE_SELECTION', tienda: name, idx }); }}
-                        className={`w-4 h-4 rounded border-2 flex items-center justify-center text-[9px] font-bold flex-shrink-0 transition-all ${
-                          isSel ? 'bg-success border-success text-white' : 'border-border-2 bg-white'
-                        }`}>
-                        {isSel && '✓'}
+                      <div>
+                        <div className={LABEL_SM}>Contenido</div>
+                        <div className="flex gap-1">
+                          {(['comida', 'hogar', 'comida-hogar'] as TipoContenido[]).map(tp => (
+                            <button key={tp} type="button" onClick={() => setEditTipo(tp)}
+                              className={`min-h-[36px] px-2.5 rounded-btn border-[1.5px] text-apoyo font-bold cursor-pointer ${
+                                editTipo === tp ? 'bg-navy text-white border-navy' : 'bg-card text-text-2 border-border'}`}>
+                              {LABEL[tp]}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      <span className={`text-[10px] font-bold px-1 py-0.5 rounded-full font-barlow-condensed uppercase flex-shrink-0 ${TAG[item.pkg]}`}>
-                        {item.orden}
-                      </span>
-                      <span className={`text-[10px] font-bold px-1 py-0.5 rounded-full font-barlow-condensed uppercase flex-shrink-0 ${TAG[item.tipo]}`}>
-                        {LABEL[item.tipo]}
-                      </span>
-                      <div className="flex-1 font-mono text-[10px] text-text-3 truncate">
-                        {item.peso}kg
-                        {dims.length ? ' · ' + dims.join('×') + 'cm' : ''}
-                        {item.guia ? ' · #' + item.guia : ''}
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5 mb-1.5">
+                      {([
+                        { label: 'Peso kg', val: editPeso,  set: setEditPeso, decimal: true },
+                        { label: 'Alto cm', val: editAlto,  set: setEditAlto, max: editPkg === 'pallet' ? MAX_ALTO_CM : undefined },
+                        { label: 'Ancho cm', val: editAncho, set: setEditAncho },
+                        { label: 'Largo cm', val: editLargo, set: setEditLargo },
+                      ] as { label: string; val: string; set: (v: string) => void; max?: number; decimal?: boolean }[]).map(({ label, val, set, max, decimal }) => (
+                        <div key={label}>
+                          <div className={LABEL_SM}>{label}</div>
+                          <input type={decimal ? 'text' : 'number'} inputMode="decimal" value={val}
+                            onChange={e => set(decimal ? limpiarTecleo(e.target.value) : e.target.value)}
+                            max={decimal ? undefined : max} className={INPUT} />
+                          {label.startsWith('Alto') && editPkg === 'pallet' && excedeAltoMax(parseFloat(val) || 0) && (
+                            <div className="text-rotulo text-est-aviso">⚠ máx {MAX_ALTO_CM}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5 mb-2.5">
+                      <div>
+                        <div className={LABEL_SM}>Guía</div>
+                        <input type="text" value={editGuia} onChange={e => setEditGuia(e.target.value)} className={INPUT} />
                       </div>
-                      <button
-                        onClick={e => { e.stopPropagation(); startEdit(name, idx); }}
-                        className="text-text-3 border border-border bg-bg-2 px-1.5 py-0.5 rounded text-[11px] cursor-pointer hover:text-info flex-shrink-0"
-                        title="Editar">
-                        ✎
+                      <div>
+                        <div className={LABEL_SM}>Valor $</div>
+                        <input type="number" inputMode="numeric" value={editValor} onChange={e => setEditValor(e.target.value)} className={INPUT} />
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button type="button" onClick={saveEdit}
+                        className="flex-1 min-h-[44px] bg-navy text-white rounded-btn text-cuerpo font-bold cursor-pointer active:opacity-80">
+                        Guardar
                       </button>
-                      <button
-                        onClick={e => { e.stopPropagation(); setCopyModal({ tienda: name, item }); setCopyTargets(new Set()); setCopySearch(''); }}
-                        className="text-text-3 border border-border bg-bg-2 px-1.5 py-0.5 rounded text-[11px] cursor-pointer hover:text-success flex-shrink-0"
-                        title="Copiar a otras tiendas">
-                        ⧉
-                      </button>
-                      <button
-                        onClick={e => {
-                          e.stopPropagation();
-                          // Borra también el slot de picking_pallets: sin esto el ítem reaparecía
-                          // al reconstruir el formulario (backfill lo revivía).
-                          eliminarSlotPicking(item.pickingSlotId, {
-                            fuente: 'nacional', tiendaCod: TIENDAS[name]?.cod, tiendaNombre: name,
-                            label: item.orden,
-                          });
-                          dispatch({ type: 'DELETE_ITEM', tienda: name, idx });
-                          showToast(`${item.orden} eliminado`, '#D97706');
-                        }}
-                        className="text-text-3 border border-border bg-bg-2 px-1.5 py-0.5 rounded text-[11px] cursor-pointer hover:text-red flex-shrink-0"
-                        title="Eliminar">
-                        ✕
+                      <button type="button" onClick={cancelEdit}
+                        className="min-h-[44px] px-4 bg-bg-2 text-text-2 rounded-btn text-cuerpo font-bold cursor-pointer active:bg-bg-3">
+                        Cancelar
                       </button>
                     </div>
-                  );
-                })}
+                  </div>
+                );
+              }
 
-                <div className="px-2.5 py-1.5 bg-bg">
-                  <button
-                    onClick={() => exportTiendaSel(name)}
-                    disabled={sel.size === 0}
-                    className="w-full py-2 bg-navy text-white border-none rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer transition-all disabled:opacity-30">
-                    ↓ {sel.size > 0 ? `${sel.size} item${sel.size > 1 ? 's' : ''}` : 'seleccionados'} · {t?.cod ? formatCod(t.cod) : ''}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+              const isDragging = dragIdx === idx && dragTienda === name;
+              const isDropTarget = dropIdx === idx && dragTienda === name && dragIdx !== null && items[dragIdx]?.pkg === item.pkg;
+              const clase = claseUnidad(item.pkg);
+              const sinPeso = clase === 'agregado';
+              const detalle = [
+                LABEL[item.tipo],
+                sinPeso ? '' : formatoMedidas(item.alto, item.ancho, item.largo),
+                item.guia ? `guía ${item.guia}` : '',
+                item.valor ? formatCLPCorto(item.valor) : '',
+              ].filter(Boolean).join(' · ');
+              // Arrastrar una unidad sobre otra del mismo tipo las combina. En una tienda terminada no.
+              const arrastre = cerrada ? {} : {
+                draggable: true,
+                onDragStart: () => { setDragIdx(idx); setDragTienda(name); },
+                onDragOver: (e: React.DragEvent) => {
+                  if (dragIdx !== null && dragTienda === name && dragIdx !== idx && items[dragIdx]?.pkg === item.pkg)
+                    { e.preventDefault(); setDropIdx(idx); }
+                },
+                onDragLeave: () => setDropIdx(prev => prev === idx ? null : prev),
+                onDrop: (e: React.DragEvent) => {
+                  e.preventDefault();
+                  if (dragIdx !== null && dragTienda === name && dragIdx !== idx && items[dragIdx]?.pkg === item.pkg)
+                    setCombineModal({ srcIdx: dragIdx, tgtIdx: idx, tienda: name });
+                  setDragIdx(null); setDropIdx(null); setDragTienda(null);
+                },
+                onDragEnd: () => { setDragIdx(null); setDropIdx(null); setDragTienda(null); },
+                onTouchStart: (e: React.TouchEvent) => {
+                  const t = e.touches[0];
+                  (e.currentTarget as HTMLElement).dataset.txS = String(t.clientX);
+                  (e.currentTarget as HTMLElement).dataset.tyS = String(t.clientY);
+                  longPressRef.current = setTimeout(() => { setDragIdx(idx); setDragTienda(name); navigator.vibrate?.(25); }, 220);
+                },
+                onTouchMove: (e: React.TouchEvent) => {
+                  const t = e.touches[0];
+                  const el = e.currentTarget as HTMLElement;
+                  if (longPressRef.current && (Math.abs(t.clientX - parseFloat(el.dataset.txS ?? '0')) > 8 || Math.abs(t.clientY - parseFloat(el.dataset.tyS ?? '0')) > 8))
+                    { clearTimeout(longPressRef.current); longPressRef.current = null; }
+                  if (dragIdx === null) return;
+                  e.preventDefault();
+                  const under = document.elementFromPoint(t.clientX, t.clientY);
+                  const itemEl = under?.closest('[data-item-tienda]') as HTMLElement | null;
+                  const tgt = itemEl ? parseInt(itemEl.dataset.itemIdx ?? '-1') : -1;
+                  const tgtTienda = itemEl?.dataset.itemTienda;
+                  setDropIdx(tgt !== -1 && tgt !== dragIdx && tgtTienda === name ? tgt : null);
+                },
+                onTouchEnd: (e: React.TouchEvent) => {
+                  if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
+                  if (dragIdx === null) return;
+                  e.preventDefault();
+                  const t = e.changedTouches[0];
+                  const under = document.elementFromPoint(t.clientX, t.clientY);
+                  const itemEl = under?.closest('[data-item-tienda]') as HTMLElement | null;
+                  const tgt = itemEl ? parseInt(itemEl.dataset.itemIdx ?? '-1') : -1;
+                  const tgtTienda = itemEl?.dataset.itemTienda;
+                  if (tgt !== -1 && tgt !== dragIdx && tgtTienda === name && items[dragIdx]?.pkg === items[tgt]?.pkg)
+                    setCombineModal({ srcIdx: dragIdx, tgtIdx: tgt, tienda: name });
+                  setDragIdx(null); setDropIdx(null); setDragTienda(null);
+                },
+              };
+              return (
+                <UnidadResumen key={item.id ?? idx}
+                  data-item-idx={idx} data-item-tienda={name}
+                  {...arrastre}
+                  className={cerrada ? '' : dragIdx !== null && dragTienda === name ? 'cursor-grabbing' : 'cursor-grab'}
+                  clase={clase} etiqueta={item.orden || LABEL[item.pkg]}
+                  peso={sinPeso ? LABEL[item.pkg] : textoPesoConTara(item.peso, item.taraPallet)}
+                  detalle={detalle}
+                  seleccion={{ activa: isSel, onToggle: () => dispatch({ type: 'TOGGLE_SELECTION', tienda: name, idx }) }}
+                  bloqueada={cerrada} resaltada={isDropTarget} apagada={isDragging}
+                  onEditar={() => { if (confirmarCambioGuardado('editar', item.orden)) startEdit(name, idx); }}
+                  onCopiar={() => { setCopyModal({ tienda: name, item }); setCopyTargets(new Set()); setCopySearch(''); }}
+                  onEliminar={() => {
+                    if (!confirmarCambioGuardado('eliminar', item.orden)) return;
+                    // Por id, no por la posición de cuando se pintó la fila: si otro equipo cambió
+                    // la lista en el medio, se borraba otra unidad.
+                    const pos = posicionDeUnidad(dispatchData[name] || [], item.id, idx);
+                    if (pos < 0) { showToast('⚠ Esa unidad ya no está', '#D32F2F'); return; }
+                    // Borra también el slot de picking_pallets: sin esto el ítem reaparecía
+                    // al reconstruir el formulario (backfill lo revivía).
+                    eliminarSlotPicking(item.pickingSlotId, {
+                      fuente: 'nacional', tiendaCod: TIENDAS[name]?.cod, tiendaNombre: name,
+                      label: item.orden,
+                    });
+                    dispatch({ type: 'DELETE_ITEM', tienda: name, idx: pos });
+                    showToast(`${item.orden} eliminado`, '#D97706');
+                  }} />
+              );
+            })}
+          </FilaResumenTienda>
         );
       })}
     </>
@@ -575,7 +508,7 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
     const mergedValor = (src.valor || 0) + (tgt.valor || 0);
     return (
       <CombineItemsModal
-        pkgLabel={src.pkg === 'pallet' ? 'Pallets' : 'Bultos'}
+        pkgLabel={NOMBRE_PLURAL[src.pkg] ?? 'Bultos'}
         srcLabel={srcLabel}
         tgtLabel={tgtLabel}
         mergedGuia={mergedGuia || undefined}
@@ -712,35 +645,9 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
 
   if (panel) {
     return (
-      <div className="flex-1 flex flex-col overflow-hidden border-l-2 border-border">
-        {/* Panel header */}
-        <div className="bg-navy px-3 py-2 flex-shrink-0 flex items-center gap-2">
-          <span className="font-barlow-condensed text-[13px] font-bold text-white/70 uppercase tracking-widest flex-1">Resumen del día</span>
-          {/* El lado de Odoo no depende de Bodega: existe desde temprano y se puede traer sin
-              esperar al registro. Solo admin. Ver `TraerOdooButton`. */}
-          <TraerOdooButton rol={profile?.role} fechaISO={fechaChile()} showToast={showToast} />
-          {names.length > 0 && (() => {
-            const totalItems = names.reduce((a, n) => a + (dispatchData[n]?.length ?? 0), 0);
-            const totalSel   = names.reduce((a, n) => a + (selection[n]?.size ?? 0), 0);
-            const allSelected = totalItems > 0 && totalSel === totalItems;
-            return (
-              <button
-                onClick={() => dispatch({ type: 'SELECT_ALL_GLOBAL', selectAll: !allSelected })}
-                className="font-barlow-condensed text-[11px] font-bold uppercase tracking-wider text-white/50 hover:text-white/90 cursor-pointer transition-colors"
-                title="Seleccionar/Quitar todas las tiendas para exportar">
-                {allSelected ? '✓ Quitar todo' : '☐ Seleccionar todo'}
-              </button>
-            );
-          })()}
-          {names.length > 0 && (
-            <button
-              onClick={() => setExpanded(expanded.size === names.length ? new Set() : new Set(names))}
-              className="font-barlow-condensed text-[11px] font-bold uppercase tracking-wider text-white/50 hover:text-white/90 cursor-pointer transition-colors">
-              {expanded.size === names.length ? '▲ Colapsar' : '▼ Ver todo'}
-            </button>
-          )}
-        </div>
-        {statsStrip}
+      <div className="flex-1 flex flex-col overflow-hidden border-l border-border bg-bg">
+        {cabecera}
+        {herramientas}
         <div className="flex-1 overflow-y-auto">
           {acordeon}
         </div>
@@ -752,8 +659,9 @@ export function ResumenPage({ panel = false, onRegistrar }: ResumenPageProps) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto pb-20">
-      {statsStrip}
+    <div className="flex-1 overflow-y-auto pb-20 bg-bg">
+      {cabecera}
+      {herramientas}
       {acordeon}
       {actionBar}
       {combineModalEl}
