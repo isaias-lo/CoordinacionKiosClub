@@ -1,3 +1,4 @@
+import { canonicalDeSlot } from '@/lib/canonicalSlot';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
@@ -102,13 +103,6 @@ export async function POST(request: NextRequest) {
     const [yyyy, mm, dd] = body.date.split('-');
     const stampFmt = `${dd}${mm}${yyyy}`;
 
-    function buildCanonical(tipo: string, seq: number, cod: string, st: string): string {
-      if (tipo === 'P')  return `P${seq}${cod}${st}P`;
-      if (tipo === 'B')  return `${seq}B${cod}${st}B`;
-      if (tipo === 'CH') return `CH${seq}${cod}${st}CH`;
-      if (tipo === 'C')  return `C${seq}${cod}${st}C`;
-      return `${seq}${cod}${st}`;
-    }
 
     const renumbered: { id: number; oldSeq: number | null; newSeq: number; canonical_id: string }[] = [];
     const needsReprint: number[] = [];
@@ -116,7 +110,7 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < (allActive ?? []).length; i++) {
       const slot = allActive![i] as { id: number };
       const newSeq      = i + 1;
-      const canonical   = buildCanonical(body.tipo, newSeq, body.store_cod, stampFmt);
+      const canonical   = canonicalDeSlot(body.tipo, newSeq, body.store_cod, stampFmt);
 
       // Leer seq actual para detectar cambio
       const { data: cur } = await sb

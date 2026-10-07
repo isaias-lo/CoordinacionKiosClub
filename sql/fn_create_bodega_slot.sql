@@ -42,11 +42,25 @@ begin
   v_stamp := substr(p_date, 9, 2) || substr(p_date, 6, 2) || substr(p_date, 1, 4);
 
   -- canonical_id EXACTAMENTE como buildCanonical() del route.
+  -- El formato tiene que decir lo MISMO que `src/lib/canonicalSlot.ts`. Es el codigo de barras
+  -- que se imprime en la etiqueta: si las dos puntas no coinciden, la pistola no encuentra nada.
+  --
+  -- A y W faltaban. Esta funcion es el camino REAL (create-bodega llama al RPC y solo cae a su
+  -- copia de TypeScript si el RPC falla), asi que el #617 arreglo el fallback y aca siguio igual:
+  -- las 26 adquisiciones y los 3 web/retiro de toda la historia quedaron sin su letra, con el
+  -- descarte `{seq}{cod}{stamp}`. El 02/10/2026 eso hizo chocar A1 y W1 de 23PEN en el MISMO id.
+  --
+  -- El bulto escribe el numero ANTES de la letra (`1B...B`). Es asi desde el primer dia y esta
+  -- impreso en etiquetas vivas: no se ordena, se preserva.
   v_canonical := case p_tipo
     when 'P'  then 'P'  || v_seq || p_store_cod || v_stamp || 'P'
     when 'B'  then          v_seq || 'B' || p_store_cod || v_stamp || 'B'
     when 'CH' then 'CH' || v_seq || p_store_cod || v_stamp || 'CH'
     when 'C'  then 'C'  || v_seq || p_store_cod || v_stamp || 'C'
+    when 'CC' then 'CC' || v_seq || p_store_cod || v_stamp || 'CC'
+    when 'CN' then 'CN' || v_seq || p_store_cod || v_stamp || 'CN'
+    when 'A'  then 'A'  || v_seq || p_store_cod || v_stamp || 'A'
+    when 'W'  then 'W'  || v_seq || p_store_cod || v_stamp || 'W'
     else               v_seq || p_store_cod || v_stamp
   end;
 

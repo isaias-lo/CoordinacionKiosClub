@@ -78,7 +78,7 @@ import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBo
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { levantarLapidasDeSlotsVivos } from '../../shared/lapidasBorrado';
 import { actualizarSlotPicking, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
-import { escribirCruceDelDia } from '../../shared/avisarCruce';
+import { sincronizarYCruzar } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo, pesoPalletConCajas,
@@ -385,18 +385,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const hoyISO = fechaChile();
     try {
       await sheetsSantiagoWrite({ [cod]: lista }, regimen, fechaDespachoBodega(state.fechaDespacho), hoyISO);
-      // El cruce se escribe del lado del servidor, despues del sync. Ver `api/sync-despacho`.
-      //
-      // Las DOS salen juntas y ninguna espera a la otra. El cruce no necesita al sync: lee
-      // `despacho_rm` / `despacho_regiones`, donde el espejo de `sheets-write` ya dejó los pesos.
-      // Ver `escribirCruceDelDia` — ahí está por qué dejó de viajar adentro del sync.
-      const [, avisoCruce] = await Promise.all([
-        fetch('/api/sync-despacho', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dia: hoyISO }), keepalive: true,
-        }).catch(e => { console.error('[sync-despacho]', e); }),
-        escribirCruceDelDia(hoyISO),
-      ]);
+      // Volcar la hoja a la base y rehacer el cruce del día. Ver `sincronizarYCruzar`.
+      const avisoCruce = await sincronizarYCruzar(hoyISO);
       registroTiendas.marcar(cod);
       logActividad({ accion: 'registrar_tienda', fuente: 'rmcosta', tiendaCod: cod,
         tiendaNombre: getTiendaSantiagoByCod(cod)?.tienda ?? cod });
@@ -2192,6 +2182,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       return tiendaTerminada(p.claveTienda) ? avisoEnTerminada(aviso) : aviso;
     },
     bloqueada: cod => tiendaTerminada(cod),
+    // Acá los mapas se indexan por código, así que la clave ya ES el código.
+    codDeClave: c => c,
+    // `tiendaByCod` trae TODO el catálogo de /api/tiendas, Nacional incluido, así que sin esto la
+    // pistola abría una tienda de Regiones acá dentro. Ver `vetoEscaneo.ts`.
+    deOtraBodega: cod => (esDeOtroEspejo(cod, 'rmcosta', isRegionesCod)
+      ? avisoDeOtroEspejo(cod, espejoDeTienda(cod, isRegionesCod))
+      : null),
     irA: p => {
       const tienda = tiendaByCod[p.claveTienda];
       if (!tienda) return false;

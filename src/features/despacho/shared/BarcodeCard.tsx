@@ -38,6 +38,10 @@ export interface LabelConfig {
 const TINTA = '#111827';
 /** El ámbar del número de unidad. En una impresora B/N sale gris oscuro y se lee igual. */
 const ACENTO = '#D97706';
+/** El gris del texto secundario: nombre de tienda, rótulos, pie. */
+const GRIS = '#4B5563';
+/** Las rayas finas que separan las tres bandas, y el borde del recuadro donde se escribe. */
+const RAYA = '#D1D5DB';
 
 export const DEFAULT_LABEL_CONFIG: LabelConfig = {
   borderWidth: 2, pickerFontSize: 34, storeFontSize: 150, catFontSize: 22,
@@ -205,6 +209,11 @@ export function BarcodeCard({
   // configuración de la etiqueta en vez de quedar clavados, y no suman tamaños sueltos al trinquete.
   const tamRotuloTienda = Math.round(cfg.storeNameFontSize * 0.77);
   const tamUnidadManual = Math.round(cfg.storeNameFontSize * 0.73);
+  // El recuadro de KG/CM sube a la altura del código de la tienda (lo pidió el coordinador: «los
+  // KG y CM más arriba, casi a la par del Código»). Su ancho y el alto del renglón donde se
+  // escribe salen del tamaño del código, así que la franja crece y se achica con la etiqueta.
+  const anchoCasilla = Math.round(cfg.storeFontSize * 0.78);
+  const altoRenglon  = Math.round(cfg.storeFontSize * 0.46);
 
   const s = compact ? {
     // innerMinH: 0 → la tarjeta abraza su contenido (no se estira hacia abajo);
@@ -296,8 +305,21 @@ export function BarcodeCard({
               {pickerLabel}
             </div>
             {!compact && showSubText && (
-              <div style={{ fontSize: s.subSize, color: '#888', marginTop: 4, fontWeight: 500 }}>
+              <div style={{ fontSize: s.subSize, color: GRIS, marginTop: 4, fontWeight: 500 }}>
                 {subText}
+              </div>
+            )}
+            {/* Los chips de contenido van ACA, pegados al nombre del picker. Antes eran una fila
+                propia mas abajo y la etiqueta quedaba cargada hacia el codigo de barras. */}
+            {!compact && allCategories.length > 0 && cfg.showCategories && (
+              <div style={{ display: 'flex', gap: s.catGap, flexWrap: 'wrap', marginTop: 10 }}>
+                {allCategories.map(c => (
+                  <span key={c} style={{
+                    fontSize: s.catSize, fontWeight: 800, color: TINTA,
+                    background: 'rgba(17,24,39,0.09)', borderRadius: s.catRadius,
+                    padding: s.catPad, letterSpacing: '0.5px',
+                  }}>{c}</span>
+                ))}
               </div>
             )}
           </div>
@@ -325,9 +347,9 @@ export function BarcodeCard({
           </div>
         </div>
 
-        {/* Categorías / guías */}
-        {allCategories.length > 0 && (cfg.showCategories || compact) && (
-          <div style={{ display: 'flex', gap: s.catGap, marginBottom: compact ? 3 : 8, flexWrap: 'wrap' }}>
+        {/* Categorias — en la etiqueta grande ya salieron arriba, junto al picker */}
+        {compact && allCategories.length > 0 && (
+          <div style={{ display: 'flex', gap: s.catGap, marginBottom: 3, flexWrap: 'wrap' }}>
             {allCategories.map(c => (
               <span key={c} style={{
                 fontSize: s.catSize, fontWeight: 800, color: '#1A2550',
@@ -343,12 +365,13 @@ export function BarcodeCard({
           const showBatchVal  = !!batch && cfg.showBatch;
           const showFinishVal = !!finishedAt && cfg.showFinishTime;
           if (!showBatchVal && !showFinishVal) return null;
-          const microStyle = { fontSize: 12, color: '#888', fontWeight: 700 as const, textTransform: 'uppercase' as const, letterSpacing: '0.5px' };
+          const microStyle = { fontSize: 12, color: GRIS, fontWeight: 700 as const, textTransform: 'uppercase' as const, letterSpacing: '0.5px' };
           return (
+            // Apretado contra las dos rayas, sin margen abajo: el coordinador pidio subirlo.
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
-              padding: '8px 0', marginBottom: 8,
-              borderTop: '1px solid #E5E7EB', borderBottom: '1px solid #E5E7EB',
+              padding: '8px 0',
+              borderTop: `1.5px solid ${RAYA}`, borderBottom: `1.5px solid ${RAYA}`,
             }}>
               <div>
                 {showBatchVal && (
@@ -372,69 +395,94 @@ export function BarcodeCard({
           );
         })()}
 
-        {/* TIPO Y ZONA — lo que hoy se escribe a mano.
-            En su propia banda, debajo del lote y encima del código, que es donde el coordinador lo
-            venía poniendo con plumón. Solo en la etiqueta grande: la `compact` es la vista en
-            pantalla y ahí el dato ya está en la ficha de la tienda.
-            Negro pleno y negro con borde, no color: esto se imprime en blanco y negro. */}
-        {!compact && (tipoTienda || zonaTienda) && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, padding: '10px 0 2px' }}>
-            {tipoTienda && (
-              <span className="font-barlow-condensed" style={{
-                fontSize: tamRotuloTienda, fontWeight: 900, letterSpacing: '3px', color: '#fff',
-                background: TINTA, borderRadius: 8, padding: '3px 22px', lineHeight: 1.15, whiteSpace: 'nowrap',
-              }}>{tipoTienda}</span>
-            )}
-            {zonaTienda && (
-              <span className="font-barlow-condensed" style={{
-                fontSize: tamRotuloTienda, fontWeight: 900, letterSpacing: '3px', color: TINTA,
-                border: `3px solid ${TINTA}`, borderRadius: 8, padding: '0 22px', lineHeight: 1.15, whiteSpace: 'nowrap',
-              }}>{zonaTienda}</span>
-            )}
-          </div>
-        )}
+        {/* LA TIENDA, Y A SU LADO DONDE SE ESCRIBE.
+            El CODIGO manda: es lo que se lee a diez metros. El nombre y los dos rotulos lo
+            acompanan en la MISMA linea, sin gastar una fila entera y sin competirle.
+            Los recuadros de KG y CM suben hasta aca —antes flanqueaban el codigo de barras, muy
+            abajo— y los separa una raya vertical, porque "que tienda es" y "que hay que escribir"
+            son dos cosas distintas. El codigo de barras queda limpio debajo: un plumon encima lo
+            arruinaria, y por eso el espacio para escribir nunca va sobre el. */}
+        {!compact ? (
+          <div className="flex-1" style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', gap: 22, padding: s.centerPad }}>
+            <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div className="font-barlow-condensed font-black text-gray-900 uppercase leading-none"
+                style={{ fontSize: s.storeCodeSize, letterSpacing: s.storeCodeLS }}>
+                {storeCod}
+              </div>
+              {(cfg.showStoreName || tipoTienda || zonaTienda) && (
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap', marginTop: s.storeNameMT }}>
+                  {cfg.showStoreName && (
+                    <span className="font-barlow-condensed font-semibold uppercase tracking-wide"
+                      style={{ fontSize: s.storeNameSize, color: GRIS, whiteSpace: 'nowrap' }}>
+                      {storeName}
+                    </span>
+                  )}
+                  {(tipoTienda || zonaTienda) && (
+                    <span style={{ display: 'flex', gap: 8 }}>
+                      {tipoTienda && (
+                        <span className="font-barlow-condensed" style={{
+                          fontSize: tamRotuloTienda, fontWeight: 900, letterSpacing: '2px', color: '#fff',
+                          background: TINTA, borderRadius: 6, padding: '1px 14px', lineHeight: 1.25, whiteSpace: 'nowrap',
+                        }}>{tipoTienda}</span>
+                      )}
+                      {zonaTienda && (
+                        <span className="font-barlow-condensed" style={{
+                          fontSize: tamRotuloTienda, fontWeight: 900, letterSpacing: '2px', color: TINTA,
+                          border: `2.5px solid ${TINTA}`, borderRadius: 6, padding: '0 14px', lineHeight: 1.25, whiteSpace: 'nowrap',
+                        }}>{zonaTienda}</span>
+                      )}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
 
-        {/* Centro: código + nombre + dirección */}
-        <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ padding: s.centerPad }}>
-          <div className="font-barlow-condensed font-black text-gray-900 tracking-widest uppercase leading-none"
-            style={{ fontSize: s.storeCodeSize, letterSpacing: s.storeCodeLS }}>
-            {storeCod}
+            <div style={{ flexShrink: 0, width: 2, background: RAYA }} />
+
+            <div style={{ flexShrink: 0, display: 'flex', gap: 14 }}>
+              {(['KG', 'CM'] as const).map(rotulo => (
+                <div key={rotulo} style={{
+                  width: anchoCasilla, border: `4px solid ${TINTA}`, borderRadius: 11,
+                  padding: '12px 14px 8px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
+                }}>
+                  <div style={{ flex: 1, minHeight: altoRenglon, borderBottom: `3px solid ${RAYA}` }} />
+                  <div className="font-barlow-condensed" style={{
+                    fontSize: tamUnidadManual, fontWeight: 900, letterSpacing: '4px', lineHeight: 1.05,
+                    marginTop: 5, color: TINTA, textAlign: rotulo === 'CM' ? 'right' : 'left',
+                  }}>{rotulo}</div>
+                </div>
+              ))}
+            </div>
           </div>
-          {(cfg.showStoreName || compact) && (
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ padding: s.centerPad }}>
+            <div className="font-barlow-condensed font-black text-gray-900 tracking-widest uppercase leading-none"
+              style={{ fontSize: s.storeCodeSize, letterSpacing: s.storeCodeLS }}>
+              {storeCod}
+            </div>
             <div className="font-barlow-condensed font-semibold text-gray-600 uppercase tracking-wide"
               style={{ fontSize: s.storeNameSize, marginTop: s.storeNameMT }}>
               {storeName}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Código de barras — y, a los lados, el espacio para escribir el peso y la altura.
             ARRIBA del código no: el lector tiene que seguir viendo el código limpio, y un plumón
             encima lo arruina. Por eso van flanqueándolo y no debajo.
             La raya es dónde se escribe; la palabra, abajo, es el rótulo. Solo etiqueta grande. */}
         <div style={{ marginTop: s.barMT }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: compact ? 0 : 22 }}>
-            {!compact && (
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ height: 58, borderBottom: `3px solid ${TINTA}` }} />
-                <div className="font-barlow-condensed" style={{ fontSize: tamUnidadManual, fontWeight: 900, letterSpacing: '4px', lineHeight: 1.1, marginTop: 4, color: TINTA }}>KG</div>
-              </div>
-            )}
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
             <div style={{ width: s.barW, flexShrink: 0 }}>
               <Barcode1D
                 value={canonicalId || (slotId != null ? String(slotId) : value)}
                 height={s.barH} barWidth={s.barBW}
               />
             </div>
-            {!compact && (
-              <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
-                <div style={{ height: 58, borderBottom: `3px solid ${TINTA}` }} />
-                <div className="font-barlow-condensed" style={{ fontSize: tamUnidadManual, fontWeight: 900, letterSpacing: '4px', lineHeight: 1.1, marginTop: 4, color: TINTA }}>CM</div>
-              </div>
-            )}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
-            <div style={{ fontSize: s.footerFS, fontFamily: 'monospace', color: '#bbb', wordBreak: 'break-all', lineHeight: 1.2, flex: 1 }}>
+          {/* El pie, LEJOS del borde: quedaba a 2 px y la impresora se lo comia. */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: compact ? 2 : 6, marginBottom: compact ? 0 : 10 }}>
+            <div style={{ fontSize: s.footerFS, fontFamily: 'monospace', color: compact ? '#bbb' : GRIS, fontWeight: compact ? 400 : 600, wordBreak: 'break-all', lineHeight: 1.2, flex: 1 }}>
               {footerExtra && !compact && (
                 <span style={{ fontWeight: 700, color: '#555', marginRight: 8 }}>{footerExtra}</span>
               )}
@@ -443,7 +491,7 @@ export function BarcodeCard({
                 : (slotId != null ? `ID #${slotId}` : value)}
             </div>
             {(compact || cfg.showDate) && (
-              <div style={{ fontSize: s.footerDateFS, fontWeight: 700, color: '#888', fontFamily: 'monospace', whiteSpace: 'nowrap', marginLeft: 6 }}>
+              <div style={{ fontSize: s.footerDateFS, fontWeight: 700, color: compact ? '#888' : TINTA, fontFamily: 'monospace', whiteSpace: 'nowrap', marginLeft: 6 }}>
                 {new Date().toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })}
               </div>
             )}

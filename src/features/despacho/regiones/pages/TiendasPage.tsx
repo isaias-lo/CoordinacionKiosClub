@@ -85,7 +85,7 @@ import { fechaChile } from '@/lib/fechaChile';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { levantarLapidasDeSlotsVivos } from '../../shared/lapidasBorrado';
 import { actualizarSlotPicking, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
-import { escribirCruceDelDia } from '../../shared/avisarCruce';
+import { sincronizarYCruzar } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
@@ -310,16 +310,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const hoyISO = fechaChile();
     try {
       await sheetsRegionesWrite({ [nombre]: lista }, 'Luis Fica', fechaDespachoBodega(state.fechaDespacho), hoyISO);
-      // Las DOS salen juntas y ninguna espera a la otra. El cruce no necesita al sync: lee
-      // `despacho_rm` / `despacho_regiones`, donde el espejo de `sheets-write` ya dejó los pesos.
-      // Ver `escribirCruceDelDia` — ahí está por qué dejó de viajar adentro del sync.
-      const [, avisoCruce] = await Promise.all([
-        fetch('/api/sync-despacho', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dia: hoyISO }), keepalive: true,
-        }).catch(e => { console.error('[sync-despacho]', e); }),
-        escribirCruceDelDia(hoyISO),
-      ]);
+      // Volcar la hoja a la base y rehacer el cruce del día. Ver `sincronizarYCruzar`.
+      const avisoCruce = await sincronizarYCruzar(hoyISO);
       registroTiendas.marcar(cod);
       logActividad({ accion: 'registrar_tienda', fuente: 'nacional', tiendaCod: cod, tiendaNombre: nombre });
       // La tienda SÍ quedó registrada — eso no se discute. Lo que puede haber fallado es el informe.
@@ -1329,6 +1321,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       return tiendaTerminada(TIENDAS[p.claveTienda]?.cod) ? avisoEnTerminada(aviso) : aviso;
     },
     bloqueada: cod => tiendaTerminada(cod),
+    // Acá los mapas se indexan por NOMBRE de tienda; la pertenencia se decide por código.
+    codDeClave: c => TIENDAS[c]?.cod,
+    // Hoy `TIENDAS` solo tiene tiendas de Regiones, así que esto no bloquea nada que antes
+    // funcionara. Va igual porque el control tiene que ser simétrico: el día que este catálogo
+    // crezca, el agujero se abre solo y en silencio. Ver CLAUDE.md, «Bodega tiene DOS espejos».
+    deOtraBodega: cod => (esDeOtroEspejo(cod, 'nacional', isRegionesCod)
+      ? avisoDeOtroEspejo(cod, espejoDeTienda(cod, isRegionesCod))
+      : null),
     irA: p => {
       const tienda = TIENDAS[p.claveTienda];
       if (!tienda) return false;

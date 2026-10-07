@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { sheetsSantiagoWrite } from '../santiago/utils/sheetsSantiago';
+import { sincronizarYCruzar } from './avisarCruce';
 import { bultosSantiago, bultosNacional } from './numeroCard';
 import { fechaDespachoBodega } from './fechaLocal';
 import { sheetsRegionesWrite } from '../regiones/utils/sheetsRegiones';
@@ -141,15 +142,34 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
       // día, y ESA es toda la razón por la que este banner existe.
       // El mediodía evita que la zona horaria corra el día al construir la fecha.
       const fechaDespacho = fechaDespachoBodega(d.state?.fechaDespacho, new Date(`${d.fecha}T12:00:00`));
+      // SE ESPERA la escritura. Antes salía sin `await`, así que la línea de abajo marcaba el
+      // borrador como atendido y lo sacaba de la lista ANTES de saber si la planilla lo recibió.
       if (fuente === 'santiago') {
-        sheetsSantiagoWrite(d.state.items ?? {}, d.state.regimen ?? 'Seco', fechaDespacho, d.fecha);
+        await sheetsSantiagoWrite(d.state.items ?? {}, d.state.regimen ?? 'Seco', fechaDespacho, d.fecha);
       } else {
-        sheetsRegionesWrite(d.state.dispatch ?? {}, 'Luis Fica', fechaDespacho, d.fecha);
+        await sheetsRegionesWrite(d.state.dispatch ?? {}, 'Luis Fica', fechaDespacho, d.fecha);
       }
+
+      // Y SE REHACE EL CRUCE, que es lo que faltaba.
+      //
+      // Escribir la planilla es el primer paso de tres; los otros dos son volcar la hoja a la base
+      // y rehacer el cruce del día. Este botón hacía solo el primero, así que el día quedaba
+      // registrado y la hoja CRUCE PESOS seguía mostrando lo que había mostrado antes.
+      //
+      // Medido el 06/10/2026: el 05/10 tenía las 8 tiendas de Nacional con su peso y TODAS las de
+      // RM/Costa en blanco. Las 157 filas de RM habían entrado bien a las 06:53 — la hoja seguía
+      // diciendo lo de las 16:04 del día anterior, cuando registró Nacional y RM todavía no.
+      //
+      // `d.fecha` y NO hoy: este botón registra un día PASADO. Con hoy dejaría el día viejo igual
+      // de vacío y de paso tocaría el de hoy sin motivo. Ver `sincronizarYCruzar`.
+      const avisoCruce = await sincronizarYCruzar(d.fecha);
+
       await marcarAtendido(d.fecha);
       setDrafts(prev => prev.filter(x => x.fecha !== d.fecha));
       setReviewing(null);
-      setToast(`✓ Registrado el despacho del ${fechaBonita(d.fecha)}`);
+      // El día SÍ quedó registrado — eso no se discute. Lo que puede haber fallado es el informe,
+      // y por eso se avisa sin deshacer nada.
+      setToast(avisoCruce ?? `✓ Registrado el despacho del ${fechaBonita(d.fecha)}`);
       setTimeout(() => setToast(null), 4000);
     } finally {
       setBusy(null);

@@ -1,3 +1,4 @@
+import { canonicalDeSlot, stampDesdeISO } from '@/lib/canonicalSlot';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import type { TodayStore, StoreGroupKey, PickerStatRow, PalletSlot } from './picking-types';
 import { CANONICAL_PICKER_KEYS } from './picking-types';
@@ -82,14 +83,7 @@ export function computePalletNums(
 }
 
 export function buildCanonicalId(tipo: string, seq: number, cod: string, isoDate: string): string {
-  const stamp = stampFromISO(isoDate);
-  if (tipo === 'P')  return `P${seq}${cod}${stamp}P`;
-  if (tipo === 'B')  return `${seq}B${cod}${stamp}B`;
-  if (tipo === 'CH') return `CH${seq}${cod}${stamp}CH`;
-  if (tipo === 'C')  return `C${seq}${cod}${stamp}C`;
-  if (tipo === 'CC') return `CC${seq}${cod}${stamp}CC`;
-  if (tipo === 'CN') return `CN${seq}${cod}${stamp}CN`;
-  return `${seq}${cod}${stamp}`;
+  return canonicalDeSlot(tipo, seq, cod, stampDesdeISO(isoDate));
 }
 
 // ─── String helpers ───────────────────────────────────────────────────────────

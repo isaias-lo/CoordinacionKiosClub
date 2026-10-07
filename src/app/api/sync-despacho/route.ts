@@ -4,6 +4,7 @@ import { verifyAuth } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { isDataRow, makeRmMapper, makeRegionesMapper, missingHeaders, soloDelDia, aFechaDeHoja, RM_HEADERS, REGIONES_HEADERS } from './parseRows';
 import { repartirCongelados } from './congelados';
+import { clasificadorDeTiendas } from './catalogoServidor';
 import { isRegionesCod } from '@/features/despacho/regiones/data/tiendas';
 import { getTiendaSantiagoByCod } from '@/features/despacho/santiago/data/tiendasSantiago';
 import { construirCruceDelDia } from '@/lib/crucePesosDia';
@@ -107,13 +108,29 @@ export async function POST(request: NextRequest) {
     // Sin esto, la hoja sería el ÚNICO lugar donde viven esos datos y la base dependería solo del
     // espejo directo — que es justo lo que falló durante meses (PR #492).
     const congRecords = soloDelDia(congValues.filter(isDataRow).map(makeRmMapper(congValues[0] ?? [])), diaDeHoja);
-    const cong = repartirCongelados(
-      congRecords,
-      cod => isRegionesCod(cod),
-      cod => getTiendaSantiagoByCod(cod) !== undefined,
-    );
+    //
+    // EL CATÁLOGO SALE DE LA BASE, NO DE LOS DOS DEL NAVEGADOR.
+    //
+    // `isRegionesCod` y `getTiendaSantiagoByCod` conocen 54 tiendas entre los dos y NO se hidratan
+    // acá: el Set de regiones solo crece cuando una pantalla llama a `registrarTiendasBD`, y en el
+    // servidor eso no pasa nunca. Una tienda creada desde Config no estaba en ninguno, caía en
+    // `huerfanos` y su fila NO se sincronizaba.
+    //
+    // Medido el 02/10/2026: 27 filas de congelados —26ALC, 56PZA, 59EGN y 60PBL— estaban en la
+    // hoja y no en la base. Ver `catalogoServidor.ts`.
+    const { data: catalogo } = await sb.from('tiendas').select('codigo,sector_comuna,activo');
+    const clasificador = clasificadorDeTiendas(catalogo, {
+      esNacional: cod => isRegionesCod(cod),
+      esSantiago: cod => getTiendaSantiagoByCod(cod) !== undefined,
+    });
+    if (!clasificador.conocidas) {
+      console.warn('[sync-despacho] el catálogo de la base vino vacío — se reparte con los estáticos');
+    }
+    const cong = repartirCongelados(congRecords, clasificador.esNacional, clasificador.esSantiago);
     if (cong.huerfanos.length) {
-      console.warn('[sync-despacho] congelados sin catálogo (no se sincronizan):', [...new Set(cong.huerfanos)]);
+      // Esto YA no debería pasar con una tienda que exista en Config. Si aparece, es un código que
+      // no está en la tabla `tiendas`: hay que crearlo ahí, no tocar este archivo.
+      console.error('[sync-despacho] congelados SIN CATÁLOGO — estas filas no se sincronizan:', [...new Set(cong.huerfanos)]);
     }
 
     const errors: string[] = [];

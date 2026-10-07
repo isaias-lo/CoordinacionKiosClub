@@ -16,12 +16,19 @@ import type { PickerType, SectionFilter } from './picking-types';
  */
 export function seccionEfectiva(guardada: SectionFilter, esTabCongelados: boolean): SectionFilter {
   if (esTabCongelados) return 'all';
+  // El filtro se guarda en el equipo. Alguien que lo dejó en 'aseo-comida' antes de separar Comida
+  // y Aseo abriría Picking con un filtro que ya no existe y no vería NADA. Cae a «Todas», que es
+  // la respuesta honesta: ve todo y elige.
+  if (!SECCIONES_SECO.includes(guardada)) return 'all';
   return guardada === 'congelados' ? 'all' : guardada;
 }
 
+/** Las secciones que ofrece Seco, en el orden en que se muestran. */
+const SECCIONES_SECO: readonly SectionFilter[] = ['all', 'comida', 'aseo', 'hogar', 'chocolates'];
+
 /** Los chips de sección que ofrece cada pestaña. */
 export function seccionesDeLaPestana(esTabCongelados: boolean): SectionFilter[] {
-  return esTabCongelados ? ['all'] : ['all', 'aseo-comida', 'hogar', 'chocolates'];
+  return esTabCongelados ? ['all'] : [...SECCIONES_SECO];
 }
 
 /** Las claves que puede ofrecer una pestaña. El chocolate se abre en sus dos cajas (`subtipoCaja.ts`);
@@ -50,7 +57,7 @@ export function tiposDeUnidad(
     // Antes ofrecía un único 'CH', que no distinguía cuál era y dejaba a Bodega pidiendo medidas
     // a una caja que no las tiene.
     if (seccion === 'chocolates') return t === 'P' || esChocolate;
-    if (seccion === 'aseo-comida' || seccion === 'hogar') return !esChocolate;
+    if (seccion === 'comida' || seccion === 'aseo' || seccion === 'hogar') return !esChocolate;
     return true;
   };
   return ORDEN.filter(t => permitido(t) || (conteos[t] ?? 0) > 0);
@@ -73,7 +80,7 @@ export function primeraUnidadPorDefecto(seccion: SectionFilter): ClaveUnidad {
 }
 
 /** Las columnas de la vista "Todas" de Seco. Congelados tiene su propia pestaña. */
-export type ColumnaSeco = 'aseo-comida' | 'hogar' | 'chocolates' | 'mixto';
+export type ColumnaSeco = 'comida' | 'aseo' | 'hogar' | 'chocolates' | 'mixto';
 
 /**
  * En qué columna de "Todas" (Seco) cae una tarjeta.
@@ -90,11 +97,14 @@ export type ColumnaSeco = 'aseo-comida' | 'hogar' | 'chocolates' | 'mixto';
 export function columnaSeco(categorias: string[], esManual: boolean): ColumnaSeco {
   const cats = new Set(categorias.filter(c => c !== 'Congelados'));
   if (esManual && cats.size === 0) return 'mixto';
-  const hogar = cats.has('Hogar');
-  const aseoComida = cats.has('Aseo') || cats.has('Comida');
-  if (hogar && aseoComida) return 'mixto';
+  const comida = cats.has('Comida');
+  const aseo   = cats.has('Aseo');
+  const hogar  = cats.has('Hogar');
+  // Mezclar DOS de las tres va a Mixto, igual que antes iba Hogar + Aseo/Comida.
+  if ([comida, aseo, hogar].filter(Boolean).length > 1) return 'mixto';
   if (cats.has('Chocolates')) return 'chocolates';
-  if (aseoComida) return 'aseo-comida';
+  if (comida) return 'comida';
+  if (aseo) return 'aseo';
   if (hogar) return 'hogar';
   return esManual ? 'mixto' : 'hogar';
 }

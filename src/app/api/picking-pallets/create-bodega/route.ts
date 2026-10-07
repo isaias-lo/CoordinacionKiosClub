@@ -1,3 +1,4 @@
+import { canonicalDeSlot } from '@/lib/canonicalSlot';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
@@ -7,15 +8,6 @@ const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401
 // Ojo con el `return` final: NO lleva letra de tipo. Los slots de adquisición y web/retiro caían
 // ahí y salían como `160PBL29092026` —sin la A—, así que una adquisición A1 y un web/retiro W1 de
 // la misma tienda producían EXACTAMENTE el mismo id. Hoy no había W, así que todavía no chocó.
-function buildCanonical(tipo: string, seq: number, cod: string, stamp: string): string {
-  if (tipo === 'P')  return `P${seq}${cod}${stamp}P`;
-  if (tipo === 'B')  return `${seq}B${cod}${stamp}B`;
-  if (tipo === 'CH') return `CH${seq}${cod}${stamp}CH`;
-  if (tipo === 'C')  return `C${seq}${cod}${stamp}C`;
-  if (tipo === 'A')  return `A${seq}${cod}${stamp}A`;
-  if (tipo === 'W')  return `W${seq}${cod}${stamp}W`;
-  return `${seq}${cod}${stamp}`;
-}
 
 /**
  * POST /api/picking-pallets/create-bodega
@@ -76,7 +68,7 @@ export async function POST(request: NextRequest) {
     const seq = (existing?.length ?? 0) + 1;
     const [yyyy, mm, dd] = body.date.split('-');
     const stamp = `${dd}${mm}${yyyy}`;
-    const canonical_id = buildCanonical(body.tipo, seq, body.store_cod, stamp);
+    const canonical_id = canonicalDeSlot(body.tipo, seq, body.store_cod, stamp);
 
     const { data, error } = await sb
       .from('picking_pallets')

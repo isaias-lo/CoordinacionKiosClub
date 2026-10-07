@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { recordarFila, combinadasPorTienda, type MemoriaSesion } from '@/features/despacho/rutas/utils/conteosPorFuente';
 import { supabaseServer, hayServiceRole } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
 import { fechaChile, fechaChileDe } from '@/lib/fechaChile';
@@ -93,14 +94,42 @@ export async function GET(request: NextRequest) {
     }
     const despachos = [...porFecha.entries()].map(([fecha, cods]) => ({ fecha, cods }));
 
+    // UNA FILA POR TIENDA, NO UNA POR BODEGA.
+    //
+    // Una tienda puede tener DOS filas en `despacho_sesion`, una por espejo de Bodega: pasa cuando
+    // se pesa en RM/Costa un pallet de una tienda de Regiones. Son las MISMAS unidades vistas desde
+    // dos lados, así que sumarlas cuenta doble y quedarse con una cuenta de menos.
+    //
+    // Acá se metía una entrada por FILA, así que el backlog listaba la tienda dos veces, cada vez
+    // con su conteo parcial. Medido el 06/10/2026: 60PBL con `regiones:2P` y `santiago:1P`, y el
+    // 05/10 ocho tiendas iguales —47PTV salía dos veces con 2P cada una, teniendo 2 en total—.
+    //
+    // La regla de combinación —el máximo por envase, y por qué no la suma— ya existe en
+    // `conteosPorFuente`, con los ocho casos reales del 29/09 como tests. El Enrutador la usa desde
+    // el #613; esta ruta del SERVIDOR se había quedado afuera. Mismo patrón que el #677: el arreglo
+    // llegó al cliente y no al servidor.
+    //
     // Congelados NO entra: tiene su propio flujo y su propia pestaña.
-    const cargaPorFecha = new Map<string, { cod: string; pallets: number; bultos: number; contenedores: number; chocolates: number }[]>();
+    const memPorFecha = new Map<string, MemoriaSesion>();
     for (const f of (sesion.data ?? []) as { fecha: string; tienda_cod: string; fuente: string | null; pallets: number; bultos: number; contenedores: number | null; chocolates: number | null }[]) {
       if ((f.fuente ?? '').startsWith('congelados')) continue;
-      cargaPorFecha.set(f.fecha, [...(cargaPorFecha.get(f.fecha) ?? []), {
-        cod: f.tienda_cod, pallets: f.pallets, bultos: f.bultos,
+      const cod = String(f.tienda_cod ?? '').trim().toUpperCase();
+      if (!cod) continue;
+      let mem = memPorFecha.get(f.fecha);
+      if (!mem) { mem = new Map(); memPorFecha.set(f.fecha, mem); }
+      recordarFila(mem, cod, {
+        fecha: f.fecha, fuente: f.fuente ?? '', tienda_cod: cod,
+        pallets: f.pallets ?? 0, bultos: f.bultos ?? 0,
         contenedores: f.contenedores ?? 0, chocolates: f.chocolates ?? 0,
-      }]);
+      });
+    }
+
+    const cargaPorFecha = new Map<string, { cod: string; pallets: number; bultos: number; contenedores: number; chocolates: number }[]>();
+    for (const [fecha, mem] of memPorFecha) {
+      cargaPorFecha.set(fecha, [...combinadasPorTienda(mem)].map(([cod, r]) => ({
+        cod, pallets: r.pallets, bultos: r.bultos,
+        contenedores: r.contenedores, chocolates: r.chocolates,
+      })));
     }
 
     const pendientes: PendienteBacklog[] = [];
