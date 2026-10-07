@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
+import { elegirFilaDeDespacho } from './elegirFila';
 
 /**
  * GET /api/pallet-lookup?id=<canonicalId>
@@ -21,6 +22,8 @@ import { verifyAuth } from '@/lib/apiAuth';
  */
 
 interface DespachoRow {
+  /** Quien escribio la fila. 'picking' es el BORRADOR que nace al crear el slot. */
+  fuente?: string | null;
   id: string;
   fecha: string;
   cod: string;
@@ -84,26 +87,22 @@ export async function GET(request: NextRequest) {
 
   const sb = supabaseServer();
 
-  // 1. Try despacho_rm
+  // 1 y 2. Las dos tablas, y despues se ELIGE.
+  //
+  // Antes era `despacho_rm` primero y lo que apareciera. Pero Picking escribe un BORRADOR al
+  // crear el slot —sin conductor, sin ruta, con `estado: 'En picking'`— y hasta el #684 lo
+  // escribia siempre en `despacho_rm`, tambien para las tiendas de Region: 95 ids viven en las
+  // dos tablas y en 82 la de RM esta vacia. Ver `elegirFila.ts`.
   let table: Source | null = null;
   let row: DespachoRow | null = null;
 
-  const { data: rm } = await sb
-    .from('despacho_rm')
-    .select('id, fecha, cod, tienda, tipo, carga, regimen, conductor, ruta, ventana, estado, seguimiento, n_pallet_bulto')
-    .eq('id', id)
-    .maybeSingle();
-  if (rm) { row = rm as DespachoRow; table = 'despacho_rm'; }
-
-  // 2. Try despacho_regiones
-  if (!row) {
-    const { data: reg } = await sb
-      .from('despacho_regiones')
-      .select('id, fecha, cod, tienda, tipo, carga, regimen, conductor, ruta, ventana, estado, seguimiento, n_pallet_bulto')
-      .eq('id', id)
-      .maybeSingle();
-    if (reg) { row = reg as DespachoRow; table = 'despacho_regiones'; }
-  }
+  const COLS = 'id, fecha, cod, tienda, tipo, carga, regimen, conductor, ruta, ventana, estado, seguimiento, n_pallet_bulto, fuente';
+  const [{ data: rm }, { data: reg }] = await Promise.all([
+    sb.from('despacho_rm').select(COLS).eq('id', id).maybeSingle(),
+    sb.from('despacho_regiones').select(COLS).eq('id', id).maybeSingle(),
+  ]);
+  const elegida = elegirFilaDeDespacho(rm as DespachoRow | null, reg as DespachoRow | null);
+  if (elegida) { row = elegida.fila; table = elegida.tabla; }
 
   // 3. Fallback: numeric slot_id → picking_pallets (compat with old workflows)
   if (!row && /^\d+$/.test(id)) {
