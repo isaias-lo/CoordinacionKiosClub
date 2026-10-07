@@ -26,7 +26,7 @@ import { claseUnidad } from '../../shared/unidadVisual';
 import { confirmarCambioGuardado } from '../../shared/confirmarGuardado';
 import { textoPesoConTara } from '../../shared/pesoDelPallet';
 import { copiaParaOtraTienda, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
-import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTienda, ResumenVacio, UnidadResumen } from '../../shared/ResumenDia';
+import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTienda, ResumenVacio, UnidadResumen } from '../../shared/ResumenDiaUI';
 
 const NOMBRE_PLURAL: Partial<Record<TipoPaquete, string>> = {
   pallet: 'Pallets', box: 'Bultos', contenedor: 'Contenedores', chocolate: 'Chocolates',
