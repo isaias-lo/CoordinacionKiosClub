@@ -11,7 +11,7 @@
 // limpiar) vive en el menú ···, con los mismos controles y manejadores. El contenido de cada
 // pestaña es el de siempre (InputSection con `sinBarra`).
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowRight, MoreHorizontal, X } from 'lucide-react';
 import { PASOS_DIA, type Banda, type SeccionEnrutador } from '../utils/bandaEnrutador';
 
@@ -44,13 +44,19 @@ interface Props {
   esMovil: boolean;
   /** El contenido del menú ···. Recibe `cerrar` para que cada acción cierre el menú. */
   menu: (cerrar: () => void) => ReactNode;
+  /** Reemplaza «Armado → Sale» cuando la pestaña no sigue esa regla (la 2ª vuelta sale hoy). */
+  cabecera?: { etiqueta: string; fecha: string; nota?: string };
+  /** Algo propio de la pestaña a la izquierda de la banda, donde otras muestran los pasos. */
+  bandaInicio?: ReactNode;
 }
 
 export default function MarcoEnrutador({
   armado, sale, modo, onModo, pestanaBloqueada, pendientesBacklog, banda, onAccion, esMovil, menu,
+  cabecera, bandaInicio,
 }: Props) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const color = colorDe(modo);
+  const pasos = banda.pasos ?? PASOS_DIA;
 
   useEffect(() => {
     if (!menuAbierto) return;
@@ -61,11 +67,30 @@ export default function MarcoEnrutador({
 
   const cerrar = () => setMenuAbierto(false);
 
+  // En el teléfono las pestañas no caben: la activa se trae a la vista (Calendario quedaba fuera).
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const activa = navRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    const nav = navRef.current;
+    if (!activa || !nav) return;
+    const izq = activa.offsetLeft - nav.offsetLeft;
+    if (izq < nav.scrollLeft || izq + activa.offsetWidth > nav.scrollLeft + nav.clientWidth) {
+      nav.scrollLeft = izq - (nav.clientWidth - activa.offsetWidth) / 2;
+    }
+  }, [modo]);
+
   return (
     <div className="flex-shrink-0 relative">
       {/* 1. Cabecera */}
       <header className="mobile-menu-safe bg-white border-b border-black/[0.09] flex items-center gap-3 md:gap-6 px-3 md:px-5 min-h-[56px] py-1.5">
         <span className="font-barlow-condensed text-cifra font-extrabold text-knavy leading-none">Enrutador</span>
+        {cabecera ? (
+          <div className="flex items-center gap-1.5 md:gap-2.5 text-apoyo min-w-0 flex-wrap">
+            <span className="text-kmuted">{cabecera.etiqueta}</span>
+            <strong className="font-semibold text-ktext whitespace-nowrap">{cabecera.fecha}</strong>
+            {cabecera.nota && <span className="hidden md:inline text-kmuted">· {cabecera.nota}</span>}
+          </div>
+        ) : (
         <div className="flex items-center gap-1.5 md:gap-2.5 text-apoyo min-w-0 flex-wrap">
           <span className="hidden md:inline text-kmuted">Armado</span>
           <strong className="hidden md:inline font-semibold text-ktext whitespace-nowrap">{armado}</strong>
@@ -73,6 +98,7 @@ export default function MarcoEnrutador({
           <span className="text-kmuted">Sale</span>
           <strong className="font-semibold text-ktext whitespace-nowrap">{sale}</strong>
         </div>
+        )}
         <div className="flex-1" />
         <button type="button" onClick={() => setMenuAbierto(v => !v)}
           aria-label="Menú del despacho" aria-expanded={menuAbierto}
@@ -83,7 +109,7 @@ export default function MarcoEnrutador({
       </header>
 
       {/* 2. Pestañas */}
-      <nav aria-label="Secciones del Enrutador"
+      <nav ref={navRef} aria-label="Secciones del Enrutador"
         className="bg-white border-b border-black/[0.09] flex items-stretch gap-1 px-2 md:px-4 h-[46px] overflow-x-auto [scrollbar-width:none]">
         {PESTANAS.map(p => {
           const activa = modo === p.id;
@@ -113,11 +139,11 @@ export default function MarcoEnrutador({
         {banda.paso !== null && (
           esMovil ? (
             <span className="text-rotulo font-bold uppercase text-kmuted">
-              Paso {banda.paso} de {PASOS_DIA.length} · {PASOS_DIA[banda.paso - 1]}
+              Paso {banda.paso} de {pasos.length} · {pasos[banda.paso - 1]}
             </span>
           ) : (
-            <ol className="flex items-center gap-2.5 list-none m-0 p-0 flex-shrink-0" aria-label={`Paso ${banda.paso} de ${PASOS_DIA.length}`}>
-              {PASOS_DIA.map((nombre, i) => {
+            <ol className="flex items-center gap-2.5 list-none m-0 p-0 flex-shrink-0" aria-label={`Paso ${banda.paso} de ${pasos.length}`}>
+              {pasos.map((nombre, i) => {
                 const n = i + 1;
                 const hecho = n < banda.paso!;
                 const activo = n === banda.paso;
@@ -132,14 +158,15 @@ export default function MarcoEnrutador({
                       style={activo ? { color } : undefined}>
                       {nombre}
                     </span>
-                    {i < PASOS_DIA.length - 1 && <span className="w-5 h-0.5 bg-black/[0.12]" aria-hidden="true" />}
+                    {i < pasos.length - 1 && <span className="w-5 h-0.5 bg-black/[0.12]" aria-hidden="true" />}
                   </li>
                 );
               })}
             </ol>
           )
         )}
-        <div className={`flex-1 min-w-0 flex flex-col gap-0.5 ${banda.paso !== null && !esMovil ? 'pl-5 border-l border-black/[0.09]' : ''}`}>
+        {bandaInicio}
+        <div className={`flex-1 min-w-0 flex flex-col gap-0.5 ${(banda.paso !== null || bandaInicio) && !esMovil ? 'pl-5 border-l border-black/[0.09]' : ''}`}>
           <span className="text-titulo font-bold text-ktext">{banda.titular}</span>
           <span className="text-apoyo text-kmuted">{banda.subtitulo}</span>
         </div>

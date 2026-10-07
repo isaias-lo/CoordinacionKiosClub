@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bandaTablero, bandaSegundaVuelta, bandaFija, PASOS_DIA, type BandaTableroInput } from '../bandaEnrutador';
+import { bandaTablero, bandaCongelados, bandaSegundaVuelta, diaSemana, bandaFlota, listaPatentes, bandaPlan, PASOS_PLAN, bandaCalendario, PASOS_DIA, PASOS_CONGELADOS, type BandaTableroInput } from '../bandaEnrutador';
 import { FASES } from '../faseEnrutador';
 
 const base: BandaTableroInput = {
@@ -86,20 +86,148 @@ describe('bandaTablero (Congelados)', () => {
 });
 
 describe('bandaSegundaVuelta', () => {
+  const v = { pendientes: 5, dias: 2, dia: 'sábado', sinCamion: 0, camiones: 0 };
   it('sin pendientes', () => {
-    expect(bandaSegundaVuelta({ pendientes: 0, dias: 0 }).titular).toBe('Sin pendientes de 2ª vuelta');
+    expect(bandaSegundaVuelta({ ...v, pendientes: 0, dias: 0 })).toMatchObject({ titular: 'Sin pendientes de 2ª vuelta', accion: null });
   });
-  it('con pendientes de uno o varios días', () => {
-    expect(bandaSegundaVuelta({ pendientes: 3, dias: 1 }).titular).toBe('3 tiendas de un día anterior sin camión');
-    expect(bandaSegundaVuelta({ pendientes: 1, dias: 2 }).titular).toBe('1 tienda de 2 días anteriores sin camión');
+  it('tiendas del día elegido sin camión: lo dice, sin botón (no hay asignación automática)', () => {
+    const b = bandaSegundaVuelta({ ...v, sinCamion: 3, camiones: 1 });
+    expect(b.titular).toBe('3 tiendas del sábado sin camión');
+    expect(b.subtitulo).toBe('Al cerrar, cada camión se registra como 2ª vuelta de hoy, con su manifiesto, bajo la fecha del sábado');
+    expect(b.accion).toBeNull();
+    expect(bandaSegundaVuelta({ ...v, sinCamion: 1 }).titular).toBe('1 tienda del sábado sin camión');
+  });
+  it('todo asignado: lleva a cerrar', () => {
+    expect(bandaSegundaVuelta({ ...v, camiones: 2 })).toMatchObject({
+      titular: 'Todo lo del sábado va en camión: revisa y cierra los 2 camiones',
+      accion: { id: 'cerrar-camiones', texto: 'Cerrar los 2 camiones' },
+    });
+    expect(bandaSegundaVuelta({ ...v, camiones: 1 }).accion?.texto).toBe('Cerrar el camión');
+  });
+  it('no tiene pasos', () => {
+    expect(bandaSegundaVuelta({ ...v, sinCamion: 2 }).paso).toBeNull();
   });
 });
 
-describe('bandaFija y pasos', () => {
-  it('flota, plan y calendario no tienen pasos ni botón', () => {
-    for (const s of ['flota', 'plan', 'cal'] as const) expect(bandaFija(s)).toMatchObject({ paso: null, accion: null });
+describe('diaSemana', () => {
+  it('nombra el día', () => {
+    expect(diaSemana('2026-10-03')).toBe('sábado');
+    expect(diaSemana('raro')).toBe('raro');
   });
+});
+
+describe('pasos', () => {
   it('los pasos del diseño son uno por fase', () => {
     expect(PASOS_DIA.length).toBe(FASES.length);
+  });
+});
+
+describe('bandaCongelados', () => {
+  const c = { ...base, bultosAsignados: 0 };
+  it('sin cajas de Bodega Congelados: espera, sin botón', () => {
+    expect(bandaCongelados(c)).toMatchObject({ paso: 1, titular: 'Esperando a Bodega Congelados', accion: null });
+  });
+  it('habla de furgones y usa sus propios pasos', () => {
+    const b = bandaCongelados({ ...c, poolCount: 9, asignadasCount: 9, camionesConAsig: 2, bultosAsignados: 31 });
+    expect(b.pasos).toBe(PASOS_CONGELADOS);
+    expect(b.titular).toBe('Todo asignado: revisa y cierra los 2 furgones');
+    expect(b.subtitulo).toBe('9 tiendas · 31 bultos');
+    expect(b.accion).toEqual({ id: 'cerrar-camiones', texto: 'Cerrar los 2 furgones' });
+  });
+  it('un solo furgón: singular', () => {
+    const b = bandaCongelados({ ...c, poolCount: 3, asignadasCount: 3, camionesConAsig: 1, bultosAsignados: 1 });
+    expect(b.titular).toBe('Todo asignado: revisa y cierra el furgón');
+    expect(b.subtitulo).toBe('3 tiendas · 1 bulto');
+    expect(b.accion?.texto).toBe('Cerrar el furgón');
+  });
+  it('tiendas sin furgón: no hay asignación automática, no ofrece botón', () => {
+    const b = bandaCongelados({ ...c, poolCount: 5, asignadasCount: 2, camionesConAsig: 1, listasSinAsignar: 3 });
+    expect(b).toMatchObject({ paso: 2, titular: 'Faltan 3 tiendas por asignar', accion: null });
+    expect(b.subtitulo).toBe('2 ya van en 1 furgón · arrástralas a un furgón');
+  });
+  it('cerrando: ofrece cerrar los que faltan', () => {
+    const b = bandaCongelados({ ...c, poolCount: 9, asignadasCount: 9, camionesConAsig: 4, cerradasCount: 1 });
+    expect(b).toMatchObject({ paso: 4, titular: 'Faltan 3 furgones por cerrar', subtitulo: '1 de 4 cerrados' });
+    expect(b.accion).toEqual({ id: 'cerrar-camiones', texto: 'Cerrar los 3 que faltan' });
+    expect(bandaCongelados({ ...c, poolCount: 9, asignadasCount: 9, camionesConAsig: 2, cerradasCount: 1 }).accion?.texto).toBe('Cerrar el que falta');
+  });
+  it('todos cerrados: no termina el día (eso es de Despacho)', () => {
+    const b = bandaCongelados({ ...c, poolCount: 9, asignadasCount: 9, camionesConAsig: 2, cerradasCount: 2, bultosAsignados: 31 });
+    expect(b).toMatchObject({ paso: 5, titular: 'Todos los furgones cerrados', accion: null });
+    expect(b.subtitulo).toBe('2 furgones · 31 bultos · el día lo termina Despacho');
+  });
+  it('ignora un diaCerrado que le llegue: terminar el día no ocurre en este tablero', () => {
+    expect(bandaCongelados({ ...c, poolCount: 3, listasSinAsignar: 3, diaCerrado: true }).paso).toBe(1);
+  });
+});
+
+describe('bandaFlota', () => {
+  const f = { sub: 'gestionar' as const, rutas: 4, sinConductor: [] as string[], encendidos: 5, vehiculos: 6 };
+  it('rutas sin conductor: las nombra y lleva a la primera', () => {
+    const b = bandaFlota({ ...f, sinConductor: ['SPJP88', 'PTFZ21'] });
+    expect(b.titular).toBe('2 camiones todavía no tienen conductor');
+    expect(b.subtitulo).toBe('SPJP88 y PTFZ21 · asígnalos antes de que salgan');
+    expect(b.accion).toEqual({ id: 'ir-sin-conductor', texto: 'Ir al primero sin conductor' });
+    expect(bandaFlota({ ...f, sinConductor: ['SPJP88'] })).toMatchObject({
+      titular: '1 camión todavía no tiene conductor', subtitulo: 'SPJP88 · asígnalo antes de que salgan',
+    });
+  });
+  it('todos con conductor, sin rutas o cargando: sin botón', () => {
+    expect(bandaFlota(f)).toMatchObject({ titular: 'Todos los camiones tienen conductor', subtitulo: '4 rutas listas para salir', accion: null });
+    expect(bandaFlota({ ...f, rutas: 0 }).titular).toBe('Todavía no hay rutas registradas');
+    expect(bandaFlota({ ...f, rutas: null }).titular).toBe('Cargando las rutas del día');
+  });
+  it('las otras secciones dicen qué son', () => {
+    expect(bandaFlota({ ...f, sub: 'vehiculos' }).titular).toBe('5 de 6 vehículos encendidos');
+    expect(bandaFlota({ ...f, sub: 'personal' }).titular).toBe('Conductores y pionetas');
+    expect(bandaFlota({ ...f, sub: 'salidas' }).accion).toBeNull();
+  });
+});
+
+describe('listaPatentes', () => {
+  it('une con «y» y resume las que sobran', () => {
+    expect(listaPatentes([])).toBe('');
+    expect(listaPatentes(['A'])).toBe('A');
+    expect(listaPatentes(['A', 'B', 'C'])).toBe('A, B y C');
+    expect(listaPatentes(['A', 'B', 'C', 'D', 'E'])).toBe('A, B, C y 2 más');
+  });
+});
+
+describe('bandaPlan', () => {
+  const p = { rutas: 4, paradas: 19, activa: 'Ruta 1', orden: 'cercania' as const, conEtas: true, tarde: [] as { nombre: string; ventana: string; llega: string }[] };
+  const toros = { nombre: 'Los Toros', ventana: '08:30-09:30', llega: '09:45' };
+  it('sin rutas: paso 1', () => {
+    expect(bandaPlan({ ...p, rutas: 0, paradas: 0 })).toMatchObject({ paso: 1, pasos: PASOS_PLAN, accion: null });
+  });
+  it('sin horas de llegada todavía: lo dice, sin botón', () => {
+    expect(bandaPlan({ ...p, conEtas: false })).toMatchObject({ paso: 2, titular: '4 rutas · 19 paradas', accion: null });
+  });
+  it('llega tarde y no va por horarios: ofrece ordenar por horarios', () => {
+    const b = bandaPlan({ ...p, tarde: [toros] });
+    expect(b.titular).toBe('La Ruta 1 llega tarde a Los Toros');
+    expect(b.subtitulo).toBe('Recibe hasta las 09:30 y llega 09:45. Está ordenada por cercanía: por horarios puede entrar a tiempo');
+    expect(b.accion).toEqual({ id: 'ordenar-horarios', texto: 'Ordenar por horarios' });
+  });
+  it('llega tarde ya ordenada por horarios: no promete arreglarlo', () => {
+    const b = bandaPlan({ ...p, orden: 'ventanas', tarde: [toros, { ...toros, nombre: 'Maipú' }] });
+    expect(b.titular).toBe('La Ruta 1 llega tarde a 2 tiendas');
+    expect(b.accion).toBeNull();
+  });
+  it('todo a tiempo: compartir', () => {
+    expect(bandaPlan(p)).toMatchObject({ paso: 4, titular: 'La Ruta 1 llega a tiempo a todas', accion: { id: 'compartir', texto: 'Compartir las 4' } });
+    expect(bandaPlan({ ...p, rutas: 1 }).accion?.texto).toBe('Compartir la ruta');
+  });
+});
+
+describe('bandaCalendario', () => {
+  it('cuenta las tiendas del día y dónde van', () => {
+    const b = bandaCalendario({ fuente: 'despacho', dia: 'MA', grupos: { rm: 19, costa: 0, fal: 6 } });
+    expect(b).toMatchObject({ titular: 'Los martes de seco se reparten 25 tiendas', subtitulo: '19 en RM y 6 en regiones', accion: null, paso: null });
+    expect(bandaCalendario({ fuente: 'despacho', dia: 'LU', grupos: { rm: 17, costa: 5, fal: 9 } }).subtitulo).toBe('17 en RM, 5 en costa y 9 en regiones');
+  });
+  it('congelados, día vacío y cargando', () => {
+    expect(bandaCalendario({ fuente: 'congelados', dia: 'SA', grupos: { rm: 0, costa: 0, fal: 0 } }).titular).toBe('Los sábados de congelados no tienen tiendas');
+    expect(bandaCalendario({ fuente: 'congelados', dia: 'JU', grupos: { rm: 1, costa: 0, fal: 0 } }).titular).toBe('Los jueves de congelados se reparten 1 tienda');
+    expect(bandaCalendario({ fuente: 'despacho', dia: 'MI', grupos: null }).titular).toBe('Cargando el calendario');
   });
 });

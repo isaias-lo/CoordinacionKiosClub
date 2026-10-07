@@ -64,12 +64,16 @@ export default function CalendarioColumnas({
   readOnly = false,
   source   = 'despacho',
   forceGeneral = false,   // muestra solo la vista General y oculta el selector de grupos
+  onResumen,
 }: {
   readOnly?: boolean;
   source?:   'despacho' | 'armado' | 'congelados';
   forceGeneral?: boolean;
+  /** [Vista nueva del Enrutador] El calendario que se está mostrando (`null` mientras carga). */
+  onResumen?: (cal: CalRecord | null) => void;
 }) {
   const [cal, setCal]               = useState<CalRecord | null>(null);
+  useEffect(() => { onResumen?.(cal); }, [cal, onResumen]);
   const [local, setLocal]           = useState<CalRecord | null>(null);
   const [loading, setLoading]       = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');

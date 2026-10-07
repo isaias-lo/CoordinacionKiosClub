@@ -9,8 +9,10 @@ import type { ConfigZonas } from '../utils/zonasTransporte';
 import type { FaseInfo } from '../utils/faseEnrutador';
 import FlotaGrid      from './FlotaGrid';
 import FlotaInternaPanel from './FlotaInternaPanel';
+import VehiculosDeHoy from './VehiculosDeHoy';
+import type { SubFlota, ResumenPlan, FuenteCalendario } from '../utils/bandaEnrutador';
 import PlanificadorTab from './PlanificadorTab';
-import { ControlFlotaPanel, PersonalCatalogPanel } from '@/features/despacho/control-flota/ControlFlotaPanel';
+import { ControlFlotaPanel, PersonalCatalogPanel, type ResumenControlFlota } from '@/features/despacho/control-flota/ControlFlotaPanel';
 import CalendarioColumnas from '@/features/control-interno/CalendarioColumnas';
 import { useIsMobile } from '../utils/useIsMobile';
 import {
@@ -123,6 +125,16 @@ interface Props {
   /** [Vista nueva] Sin la fila de pestañas y botones: la dibuja `MarcoEnrutador` arriba, y la fase
    *  la muestra su banda (por eso tampoco va el indicador dentro del tablero). */
   sinBarra?: boolean;
+  /** [Vista nueva] La sección de Flota la elige la banda de arriba. Sin esto, InputSection la
+   *  maneja sola, como en la vista clásica. */
+  flotaSub?: SubFlota;
+  /** [Vista nueva] Lo que «Quién maneja» tiene cargado, para la banda. */
+  onResumenFlota?: (r: ResumenControlFlota) => void;
+  /** [Vista nueva] Lo que el Planificador tiene armado, para la banda. */
+  onResumenPlan?: (r: ResumenPlan) => void;
+  /** [Vista nueva] Seco o Congelados lo elige la banda; y el calendario cargado, para su texto. */
+  calFuente?: FuenteCalendario;
+  onResumenCal?: (cal: Record<string, { rm: string[]; costa: string[]; fal: string[] }> | null) => void;
 }
 
 /* ── Icon badge for mode tabs ────────────────────────────────────── */
@@ -171,13 +183,20 @@ export default function InputSection({
   mapPanel,
   terminadas,
   sinBarra = false,
+  flotaSub,
+  onResumenFlota,
+  onResumenPlan,
+  calFuente,
+  onResumenCal,
 }: Props) {
   // En la vista nueva el indicador de fase vive en la banda: no se repite dentro del tablero.
   const faseVista = sinBarra ? undefined : fase;
   const faseCongVista = sinBarra ? undefined : faseCong;
-  const [flotaSubTab, setFlotaSubTab] = useState<'personal' | 'gestionar' | 'vehiculos' | 'salidas'>('gestionar');
+  const [flotaSubTabPropio, setFlotaSubTab] = useState<SubFlota>('gestionar');
+  const flotaSubTab = flotaSub ?? flotaSubTabPropio;
   // Fuente del calendario del tab CALENDARIO: Central (Seco) por defecto, o Congelados.
-  const [calSource, setCalSource] = useState<'despacho' | 'congelados'>('despacho');
+  const [calSourcePropio, setCalSource] = useState<FuenteCalendario>('despacho');
+  const calSource = calFuente ?? calSourcePropio;
   const isMobile = useIsMobile();
 
   // Divisor arrastrable contenido ↔ mapa (desktop): % de ANCHO del mapa (a la derecha).
@@ -322,7 +341,7 @@ export default function InputSection({
   // render móvil y el desktop (mismo estado calSource).
   const calTabContent = (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex-shrink-0 flex gap-1 px-3 pt-3 pb-2 bg-white border-b border-black/[0.07]">
+      {!sinBarra && <div className="flex-shrink-0 flex gap-1 px-3 pt-3 pb-2 bg-white border-b border-black/[0.07]">
         <button onClick={() => setCalSource('despacho')}
           className={`h-[32px] px-4 rounded-[9px] text-[12px] font-bold transition-all ${
             calSource === 'despacho' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
@@ -334,9 +353,9 @@ export default function InputSection({
           style={calSource === 'congelados' ? { background: '#0891B2' } : undefined}>
           ❄ Congelados
         </button>
-      </div>
+      </div>}
       <div className="flex-1 overflow-y-auto p-3 bg-kbg">
-        <CalendarioColumnas readOnly forceGeneral source={calSource} />
+        <CalendarioColumnas readOnly forceGeneral source={calSource} onResumen={onResumenCal} />
       </div>
     </div>
   );
@@ -344,7 +363,7 @@ export default function InputSection({
   const flotaTabContent = (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Sub-tab bar */}
-      <div className="flex-shrink-0 flex gap-1 px-3 pt-3 pb-2 bg-white border-b border-black/[0.07]">
+      {!sinBarra && <div className="flex-shrink-0 flex gap-1 px-3 pt-3 pb-2 bg-white border-b border-black/[0.07]">
         <button onClick={() => setFlotaSubTab('vehiculos')}
           className={`h-[34px] px-4 rounded-[9px] text-[12px] font-bold transition-all flex items-center gap-1.5
             ${flotaSubTab === 'vehiculos' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
@@ -365,14 +384,22 @@ export default function InputSection({
             ${flotaSubTab === 'salidas' ? 'bg-knavy text-white' : 'bg-kbg text-kmuted hover:bg-black/[0.07]'}`}>
           <Send size={13} strokeWidth={2} /><span>Salidas</span>
         </button>
-      </div>
+      </div>}
       <div className="flex-1 overflow-y-auto">
         {flotaSubTab === 'salidas' ? (
           <FlotaInternaPanel tiendas={tiendas} />
         ) : flotaSubTab === 'personal' ? (
           <PersonalCatalogPanel />
+        ) : flotaSubTab === 'gestionar' && sinBarra ? (
+          // Vista nueva: quién maneja cada ruta y, al lado, qué vehículos están encendidos hoy.
+          <div className={`p-3 md:p-4 bg-kbg min-h-full grid gap-4 items-start ${isMobile ? 'grid-cols-1' : 'grid-cols-[300px_minmax(0,1fr)]'}`}>
+            {!isMobile && <VehiculosDeHoy flota={flota} onToggle={onToggleFlota} />}
+            <div className="rounded-[16px] overflow-hidden border border-black/[0.09] bg-white min-w-0 flex flex-col">
+              <ControlFlotaPanel onResumen={onResumenFlota} />
+            </div>
+          </div>
         ) : flotaSubTab === 'gestionar' ? (
-          <ControlFlotaPanel />
+          <ControlFlotaPanel onResumen={onResumenFlota} />
         ) : (
           <div className="px-3 py-3">
             <FlotaGrid
@@ -433,11 +460,11 @@ export default function InputSection({
         ) : modo === 'cal' ? (
           calTabContent
         ) : modo === 'plan' ? (
-          <div className="flex-1 overflow-hidden bg-white"><PlanificadorTab gps={gps} tiendas={tiendas} fecha={fecha} userId={userId} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} /></div>
+          <div className="flex-1 overflow-hidden bg-white"><PlanificadorTab gps={gps} tiendas={tiendas} fecha={fecha} userId={userId} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} onResumen={onResumenPlan} /></div>
         ) : modo === 'cong' ? (
           <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
             <div className="p-3">
-              <ManualDispatch fase={faseCongVista} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+              <ManualDispatch vistaA={sinBarra} frio fase={faseCongVista} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
                 asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
                 seleccion={seleccionCong} onToggleSeleccion={onToggleSeleccionCong}
                 onCalcular={() => {}} hideCalcular
@@ -569,12 +596,12 @@ export default function InputSection({
         calTabContent
       ) : modo === 'plan' ? (
         <div className="flex-1 overflow-hidden bg-white">
-          <PlanificadorTab gps={gps} tiendas={tiendas} fecha={fecha} userId={userId} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} />
+          <PlanificadorTab gps={gps} tiendas={tiendas} fecha={fecha} userId={userId} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} onResumen={onResumenPlan} />
         </div>
       ) : modo === 'cong' ? (
         <div ref={dragScrollRef} className="flex-1 overflow-y-auto">
           <div className="p-4">
-            <ManualDispatch fase={faseCongVista} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
+            <ManualDispatch vistaA={sinBarra} frio fase={faseCongVista} ordenManual={ordenManual} onOrdenManual={onOrdenManual} calT={calTCong} flota={flota} gps={gps} tiendas={tiendas} cd={cd}
               asignaciones={asignacionesCong} onAsignaciones={onAsignacionesCong}
                 seleccion={seleccionCong} onToggleSeleccion={onToggleSeleccionCong}
               onCalcular={() => {}} hideCalcular
