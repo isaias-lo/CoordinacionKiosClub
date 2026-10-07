@@ -136,3 +136,34 @@ export function categoriasDeSlotsManual(slots: Pick<PalletSlot, 'section' | 'con
   }
   return [...labels];
 }
+
+// ── LA ETIQUETA DESCRIBE UN PALLET, NO UNA PESTAÑA ────────────────────────────────────────────
+//
+// 07/10/2026, tienda 41ANA: Cristian Morales hizo DOS operaciones de Odoo en el mismo batch
+// —una de Aseo y una de Hogar— y armó UN solo pallet, el slot #1533. La base lo guardó bien:
+// `contenido = 'aseo-hogar'` y las dos referencias.
+//
+// Pero la etiqueta impresa desde la pestaña HOGAR decía solo «Hogar». Los chips salían de
+// `group.operations`, que viene RECORTADO por el filtro de sección, mientras que el `contenido`
+// que se escribe en la base ya usaba las operaciones del grupo completo (está comentado en
+// `PickingScreen`). O sea: el mismo pallet imprimía distinto según en qué pestaña estuvieras.
+//
+// Una etiqueta describe lo que lleva el pallet. Eso no cambia porque alguien mire otra columna.
+
+/** Lo mínimo de una operación de Odoo para saber qué lleva. */
+export interface OperacionConCategorias { categories: string[] }
+
+/**
+ * Las categorías que se imprimen en la etiqueta de un grupo. PURA.
+ *
+ * `opsCompletas` son las del grupo SIN recortar por sección — las recortadas harían que la
+ * etiqueta dependa de la pestaña. Sin operaciones (encargado manual) cae a los pallets, que es
+ * de donde ya salían.
+ */
+export function categoriasDelGrupo(
+  opsCompletas: readonly OperacionConCategorias[],
+  slots: Pick<PalletSlot, 'section' | 'contenido'>[],
+): string[] {
+  if (opsCompletas.length === 0) return categoriasDeSlotsManual(slots);
+  return [...new Set(opsCompletas.flatMap(o => o.categories))];
+}
