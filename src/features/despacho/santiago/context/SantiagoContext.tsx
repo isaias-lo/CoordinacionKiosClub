@@ -17,6 +17,8 @@ import { serializarBaseSantiago } from '../../shared/syncBase';
 import { fechaChile, fechaChileDe } from '@/lib/fechaChile';
 import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, type RegistroPorFecha } from '@/features/despacho/shared/registroPorFecha';
 import { fechaDespachoBodega } from '../../shared/fechaLocal';
+import { soltarTiendasAjenas } from '../../shared/itemsDelEspejo';
+import { isRegionesCod } from '../../regiones/data/tiendas';
 
 // Se eliminó el paso de selección de Régimen: se entra directo a la bodega (lista de
 // tiendas) con régimen 'Seco' por defecto (es el que se escribe en Sheets/despacho_rm).
@@ -66,6 +68,13 @@ function loadState(): SantiagoState {
   } catch {
     return defaultState;
   }
+}
+
+/** El mapa de items sin las tiendas que le pertenecen a Nacional. Ver `itemsDelEspejo.ts`. */
+function itemsPropios(items: Record<string, SantiagoItem[]>): Record<string, SantiagoItem[]> {
+  const { items: limpio, ajenas } = soltarTiendasAjenas(items, isRegionesCod);
+  if (ajenas.length) console.warn('[bodega] RM/Costa suelta tiendas de Nacional:', ajenas.join(', '));
+  return limpio as Record<string, SantiagoItem[]>;
 }
 
 type SantiagoAction =
@@ -138,7 +147,11 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
         ...state,
         // step is intentionally not synced — each device controls its own navigation
         regimen:       action.payload.regimen       ?? state.regimen,
-        items:         action.payload.items         ?? state.items,
+        // Las tiendas de Nacional se SUELTAN al cargar. El #681 cerró la puerta por donde
+        // entraban; las que ya estaban se quedaban huérfanas —sin tarjeta que dibujar, porque la
+        // lista filtra Regiones— inflando el Resumen y listas para que REGISTRAR les escribiera
+        // una foto vieja. Ver `itemsDelEspejo.ts`: no toca `picking_pallets`.
+        items:         itemsPropios(action.payload.items ?? state.items),
         fechaDespacho: fechaTrasCarga,
         registros:     registrosTrasCarga,
         // `registrado` pasa a ser DERIVADO del mapa: los componentes lo siguen leyendo igual.
