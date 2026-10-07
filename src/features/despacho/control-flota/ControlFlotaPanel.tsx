@@ -522,6 +522,97 @@ function RutaCard({
   );
 }
 
+// ── [Vista nueva · Flota] «Quién maneja» como tabla (diseño A) ──────────────────────────────
+// Mismo estado, mismos selects y el mismo Guardar que RutaCard; solo cambia el dibujo. Un select
+// vacío se marca con borde punteado: naranja si es el conductor (falta), gris si es pioneta.
+const COLS_TABLA = 'md:grid-cols-[110px_120px_repeat(3,minmax(0,1fr))_130px]';
+
+function estiloSelectA(lleno: boolean, obligatorio: boolean): React.CSSProperties {
+  if (lleno) return { border: '1px solid #D5D9E3', background: '#FFFFFF', color: '#1C1C1E' };
+  if (obligatorio) return { border: '1.5px dashed #E0A458', background: '#FFF7EC', color: '#8A4B08', fontWeight: 600 };
+  return { border: '1px dashed #C5CAD6', background: '#FFFFFF', color: '#5B6170' };
+}
+
+function SelectA({ value, onChange, opciones, vacio, obligatorio, etiqueta }: {
+  value: string; onChange: (v: string) => void; opciones: string[]; vacio: string; obligatorio?: boolean; etiqueta: string;
+}) {
+  // Un nombre guardado que ya no está en el catálogo se sigue mostrando (como en RutaCard, donde
+  // el <select> lo perdería): se agrega como opción para no borrarlo sin querer.
+  const lista = value && !opciones.includes(value) ? [value, ...opciones] : opciones;
+  return (
+    <label className="flex flex-col gap-1 min-w-0">
+      <span className="md:hidden text-rotulo font-bold uppercase text-kmuted">{etiqueta}</span>
+      <select value={value} onChange={e => onChange(e.target.value)} aria-label={etiqueta}
+        className="w-full min-w-0 rounded-[8px] px-2.5 py-2 text-apoyo min-h-[40px] truncate"
+        style={estiloSelectA(!!value, !!obligatorio)}>
+        <option value="">{vacio}</option>
+        {lista.map(n => <option key={n} value={n}>{n}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function FilaQuienManeja({
+  ruta, edit, pionetas, conductores, onChange, onSave, onReset,
+}: {
+  ruta:       Ruta;
+  edit:       EditState;
+  pionetas:   Pioneta[];
+  conductores: Conductor[];
+  onChange:   (field: keyof EditState, value: string) => void;
+  onSave:     () => void;
+  onReset:    () => void;
+}) {
+  const dirty = isDirty(ruta, edit);
+  const nombresP = pionetas.map(p => p.nombre);
+  return (
+    <div className="px-4 py-3 border-b border-black/[0.05]" data-sin-conductor={ruta.chofer ? undefined : ''}
+      style={ruta.flota_modificada ? { boxShadow: 'inset 3px 0 0 #F97316' } : undefined}>
+      <div className={`grid grid-cols-2 ${COLS_TABLA} gap-3 items-center`}>
+        <span className="font-mono text-cuerpo text-ktext">{ruta.patente}</span>
+        <span className="flex flex-col min-w-0">
+          <span className="text-apoyo text-ktext2 truncate">{ruta.codigo_ruta}</span>
+          <span className="text-rotulo tracking-normal text-kmuted">
+            {ruta.ruta_tiendas.length} {ruta.ruta_tiendas.length === 1 ? 'tienda' : 'tiendas'} · {totalUnidades(ruta.ruta_tiendas)}
+          </span>
+        </span>
+        <span className="col-span-2 md:col-span-1 min-w-0">
+          <SelectA value={edit.chofer} onChange={v => onChange('chofer', v)} opciones={conductores.map(c => c.nombre)}
+            vacio="Elegir conductor" obligatorio etiqueta="Conductor" />
+        </span>
+        <SelectA value={edit.pioneta_1} onChange={v => onChange('pioneta_1', v)} opciones={nombresP} vacio="Opcional" etiqueta="Pioneta 1" />
+        <SelectA value={edit.pioneta_2} onChange={v => onChange('pioneta_2', v)} opciones={nombresP} vacio="Opcional" etiqueta="Pioneta 2" />
+        <span className="col-span-2 md:col-span-1 flex items-center gap-1.5">
+          {dirty ? (
+            <>
+              <button type="button" onClick={onSave} disabled={edit.saving}
+                className="h-9 px-3 rounded-[8px] bg-knavy text-white text-apoyo font-bold flex items-center gap-1.5 disabled:opacity-50">
+                <Save size={13} /> {edit.saving ? 'Guardando…' : 'Guardar'}
+              </button>
+              <button type="button" onClick={onReset} disabled={edit.saving} aria-label="Deshacer cambios"
+                className="w-9 h-9 rounded-[8px] border border-black/[0.12] text-kmuted flex items-center justify-center">
+                <X size={14} />
+              </button>
+            </>
+          ) : ruta.chofer ? (
+            <span className="text-apoyo font-bold" style={{ color: '#11622F' }}>✓ Listo</span>
+          ) : (
+            <span className="text-apoyo font-bold" style={{ color: '#8A4B08' }}>Falta conductor</span>
+          )}
+        </span>
+      </div>
+      {ruta.flota_modificada && ruta.chofer_original && ruta.chofer_original !== edit.chofer && (
+        <div className="mt-1.5 text-rotulo tracking-normal text-kmuted">Conductor original: {ruta.chofer_original}</div>
+      )}
+      {edit.error && (
+        <div className="mt-1.5 text-apoyo flex gap-1.5 items-center" style={{ color: '#B42318' }}>
+          <AlertCircle size={13} /> {edit.error}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 12px', borderRadius: 10, fontSize: 13, color: '#111827',
@@ -580,7 +671,11 @@ function DensityToggle({ value, onChange }: { value: Density; onChange: (d: Dens
 /** Lo que la vista nueva del Enrutador dice en su banda. `rutas: null` mientras cargan. */
 export interface ResumenControlFlota { rutas: number | null; sinConductor: string[] }
 
-export function ControlFlotaPanel({ onResumen }: { onResumen?: (r: ResumenControlFlota) => void } = {}) {
+export function ControlFlotaPanel({ onResumen, vistaA = false }: {
+  onResumen?: (r: ResumenControlFlota) => void;
+  /** [Vista nueva del Enrutador] «Quién maneja» como tabla (diseño A). Mismo guardado. */
+  vistaA?: boolean;
+} = {}) {
   const [fecha,        setFecha]       = useState(() => fechaChile());
   const [rutas,        setRutas]       = useState<Ruta[]>([]);
   const [pionetas,     setPionetas]    = useState<Pioneta[]>([]);
@@ -675,6 +770,45 @@ export function ControlFlotaPanel({ onResumen }: { onResumen?: (r: ResumenContro
     : density === 3
     ? 'repeat(3, minmax(0,1fr))'
     : 'repeat(4, minmax(0,1fr))';
+
+  if (vistaA) {
+    return (
+      <div className="flex-1 overflow-y-auto bg-white">
+        <div className="px-4 py-3 border-b border-black/[0.07] flex items-center gap-3 flex-wrap">
+          <span className="text-cuerpo font-bold text-ktext flex-1 whitespace-nowrap">Quién maneja</span>
+          {modifiedCount > 0 && (
+            <span className="text-apoyo font-bold" style={{ color: '#EA580C' }}>{modifiedCount} {modifiedCount === 1 ? 'modificada' : 'modificadas'}</span>
+          )}
+          <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} aria-label="Fecha"
+            className="h-9 rounded-[8px] border border-black/[0.12] px-2.5 text-apoyo text-ktext" />
+        </div>
+        <div className={`hidden md:grid ${COLS_TABLA} gap-3 px-4 py-3 text-rotulo font-bold text-black/60 bg-[#F7F8FA] border-b border-black/[0.07]`}>
+          <span>CAMIÓN</span><span>RUTA</span><span>CONDUCTOR</span><span>PIONETA 1</span><span>PIONETA 2</span><span>LISTO</span>
+        </div>
+        {loading ? (
+          <div className="py-12 text-center text-apoyo text-kmuted">Cargando rutas…</div>
+        ) : rutas.length === 0 ? (
+          <div className="py-12 px-6 text-center">
+            <div className="text-cuerpo font-bold text-ktext">Sin rutas para esta fecha</div>
+            <div className="text-apoyo text-kmuted mt-1">No hay rutas armadas para el {fecha.split('-').reverse().join('/')}</div>
+          </div>
+        ) : rutas.map(ruta => (
+          <FilaQuienManeja key={ruta.id}
+            ruta={ruta}
+            edit={edits[ruta.id] ?? emptyEdit(ruta)}
+            pionetas={pionetas}
+            conductores={conductores}
+            onChange={(f, v) => handleChange(ruta.id, f, v)}
+            onSave={() => handleSave(ruta)}
+            onReset={() => handleReset(ruta)}
+          />
+        ))}
+        <div className="px-4 py-3.5 text-apoyo text-kmuted">
+          Las personas se eligen del catálogo de Personal. Un nombre que falta se agrega allí una vez y queda para siempre.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-y-auto" style={{ background: 'white', padding: '16px 16px 32px' }}>

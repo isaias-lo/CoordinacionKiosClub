@@ -19,6 +19,7 @@ import { catalogoParaCarga, origenDeVentana, type OrigenVentana } from '../utils
 import { diagnosticarDia, resumenCuello } from '../utils/factibilidadDia';
 import { useReordenarTactil } from '../utils/useReordenarTactil';
 import { ladoDeLinea } from '../utils/reordenarTactil';
+import { estadoParadaPlan, resumenRutaPlan } from '../utils/filaPlan';
 
 /** Misma velocidad urbana que usa el motor (OPCIONES_DEFAULT.velocidadKmH): si las dos pantallas
  *  estimaran distinto, la ruta del Planificador y la del Enrutador no coincidirían. */
@@ -66,6 +67,9 @@ interface Props {
   kmByRoute?: Record<number, number>;
   /** [Vista nueva] Lo que la banda de arriba dice: rutas, paradas y dónde llega tarde la ruta abierta. */
   onResumen?: (r: ResumenPlan) => void;
+  /** [Vista nueva] Diseño A: rutas a la izquierda y la ruta abierta como tabla (recibe / llega /
+   *  estado). Mismo estado y mismas acciones que la vista clásica; solo cambia el dibujo. */
+  vistaA?: boolean;
 }
 
 type StartMode = 'cd' | 'tienda' | 'custom';
@@ -190,7 +194,7 @@ function etiquetaZonas(zonas: ZonaRuteo[]): string {
   return orden.length === 1 ? orden[0] : `${orden.slice(0, -1).join(', ')} y ${orden[orden.length - 1]}`;
 }
 
-export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRoute, kmByRoute, fecha, userId, onResumen }: Props) {
+export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRoute, kmByRoute, fecha, userId, onResumen, vistaA = false }: Props) {
   // Punto de partida — COMPARTIDO por todas las rutas (el mapa dibuja todas desde un mismo origen).
   const [startMode,   setStartMode]   = useState<StartMode>(() => loadPlan().startMode);
   const [startTienda, setStartTienda] = useState(() => loadPlan().startTienda);
@@ -773,20 +777,18 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     return () => window.removeEventListener('plan-accion', h);
   }, []);
 
-  return (
-    <div className="h-full overflow-y-auto p-4 flex flex-col gap-4">
-      <div className="flex items-center gap-2 text-ktext font-bold text-[15px]">
-        <MapPin size={16} className="text-knavy" /> Planificador de rutas
-        <span className="font-medium text-[11px] text-kmuted/80 hidden sm:inline">· armá y compará rutas en el mapa</span>
-      </div>
-
+  const avisoPlaces = (
+    <>
       {placesOff && (
         <div className="flex items-start gap-2 text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[10px] px-3 py-2 leading-relaxed">
           <span aria-hidden="true">⚠</span>
           <span>Las <strong>sugerencias de direcciones</strong> no están disponibles (falta habilitar la <strong>Places API</strong> en la key de Google Maps). Igual podés escribir la dirección y tocar <strong>Buscar</strong> o Enter para ubicarla.</span>
         </div>
       )}
-
+    </>
+  );
+  const bloqueCalendario = (
+    <>
       {/* Armar rutas desde el calendario (seco/congelados · día · N rutas) — colapsable */}
       <div className="flex flex-col gap-2.5 rounded-[12px] border border-knavy/20 bg-knavy/[0.03] p-3">
         <button onClick={() => setCalOpen(o => !o)}
@@ -874,6 +876,412 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
           : <div className="text-[10px] text-kmuted/80">Trae las tiendas de ese día en las zonas elegidas y las reparte por cercanía. Reemplaza las rutas actuales.</div>}
         </>)}
       </div>
+    </>
+  );
+  const bloquePartida = (
+    <>
+      {/* Partida + llegada lado a lado en desktop (ahorra alto) */}
+      <div className="grid gap-x-4 gap-y-3 items-start [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]">
+      {/* Punto de partida (compartido por todas las rutas) */}
+      <div className="flex flex-col gap-2">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Punto de partida <span className="normal-case font-semibold text-kmuted/70">· común a todas</span></div>
+        <div className="flex flex-wrap gap-1 bg-kbg rounded-[10px] p-1">
+          <button onClick={() => setStartMode('cd')}     className={`${seg} ${startMode === 'cd' ? 'bg-knavy text-white' : 'text-kmuted'}`}>CD</button>
+          <button onClick={() => setStartMode('tienda')} className={`${seg} ${startMode === 'tienda' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Tienda</button>
+          <button onClick={() => setStartMode('custom')} className={`${seg} ${startMode === 'custom' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Dirección</button>
+        </div>
+        {startMode === 'tienda' && (
+          <select value={startTienda} onChange={e => setStartTienda(e.target.value)}
+            className="w-full border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none">
+            <option value="">— Elegir tienda —</option>
+            {startTiendaOpts.map(t => <option key={t.cod} value={t.cod}>{t.cod} · {t.nombre}</option>)}
+          </select>
+        )}
+        {startMode === 'custom' && (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex gap-1.5">
+              <AddressAutocomplete
+                value={customAddr}
+                onChange={v => { setCustomAddr(v); setGeoStatus('idle'); }}
+                onSelect={({ address, lat, lng }) => { setCustomAddr(address); setCustomCoord({ lat, lng }); setStartMode('custom'); setGeoStatus('idle'); }}
+                onEnter={geocodeAddr}
+                onUnavailable={() => setPlacesOff(true)}
+                placeholder="Dirección (ej: Av. Vitacura 2909)"
+                className="flex-1 border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none" />
+              <button onClick={geocodeAddr} className="px-3 rounded-[8px] bg-knavy text-white text-[12px] font-semibold cursor-pointer">Buscar</button>
+            </div>
+            <div className="text-[11px] text-kmuted">{geoStatus === 'loading' ? 'Buscando…' : geoStatus === 'error' ? '⚠ No se encontró la dirección' : 'Escribí y elegí una sugerencia (o tocá Buscar).'}</div>
+          </div>
+        )}
+        <div className="flex items-center gap-1.5 text-[12px] text-ktext bg-kbg rounded-[8px] px-2.5 py-1.5 min-w-0">
+          <Navigation size={13} className="text-[#D42B2B] flex-shrink-0" /> <span className="font-semibold truncate">{startLabel}</span>
+        </div>
+      </div>
+
+      {/* Punto de llegada (compartido) — al terminar la ruta */}
+      <div className="flex flex-col gap-2">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Punto de llegada <span className="normal-case font-semibold text-kmuted/70">· al terminar</span></div>
+        <div className="flex flex-wrap gap-1 bg-kbg rounded-[10px] p-1">
+          <button onClick={() => setEndMode('none')}   className={`${seg} ${endMode === 'none' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Ninguno</button>
+          <button onClick={() => setEndMode('cd')}     className={`${seg} ${endMode === 'cd' ? 'bg-knavy text-white' : 'text-kmuted'}`}>CD</button>
+          <button onClick={() => setEndMode('start')}  className={`${seg} ${endMode === 'start' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Partida</button>
+          <button onClick={() => setEndMode('custom')} className={`${seg} ${endMode === 'custom' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Dirección</button>
+        </div>
+        {endMode === 'custom' && (
+          <AddressAutocomplete
+            value={endAddr}
+            onChange={v => setEndAddr(v)}
+            onSelect={({ address, lat, lng }) => { setEndAddr(address); setEndCoord({ lat, lng }); setEndMode('custom'); }}
+            onEnter={geocodeEndAddr}
+            onUnavailable={() => setPlacesOff(true)}
+            placeholder="Dirección de llegada (ej: bodega, CD, punto final)"
+            className="w-full border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none" />
+        )}
+        {endMode !== 'none' && (
+          <div className="flex items-center gap-1.5 text-[12px] text-ktext bg-kbg rounded-[8px] px-2.5 py-1.5 min-w-0">
+            <Flag size={13} className="text-[#0E7C6B] flex-shrink-0" /> <span className="font-semibold truncate">{endLabel}</span>
+          </div>
+        )}
+      </div>
+      </div>{/* fin partida + llegada */}
+    </>
+  );
+  const bloqueAgregar = (
+    <>
+      {/* Buscar tiendas + agregar dirección (misma fila, arriba de los filtros) */}
+      <div className="flex flex-col gap-2">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Agregar a <span style={{ color: activeColor }}>{activeRoute.nombre}</span></div>
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-stretch">
+          {/* Buscar tienda del catálogo — más angosto (~⅓) */}
+          <div className="flex items-center gap-2 border border-black/[0.12] rounded-[8px] px-2.5 py-2 bg-white flex-1 sm:flex-[1] min-w-0">
+            <Search size={14} className="text-kmuted flex-shrink-0" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar tienda…"
+              className="flex-1 text-[13px] outline-none bg-transparent text-ktext min-w-0" />
+          </div>
+          {/* Separador */}
+          <div className="hidden sm:block w-px self-stretch bg-black/10" aria-hidden="true" />
+          {/* Agregar una dirección libre como parada (se suma a la ruta activa y al mapa) — más ancho (~⅔) */}
+          <div className="flex items-center gap-1.5 flex-1 sm:flex-[2] min-w-0">
+            <AddressAutocomplete
+              value={paradaAddr}
+              onChange={v => { setParadaAddr(v); setParadaGeo('idle'); }}
+              onSelect={({ address, lat, lng }) => agregarParadaConCoord(address, lat, lng)}
+              onEnter={agregarParadaDireccion}
+              onUnavailable={() => setPlacesOff(true)}
+              placeholder="Agregar dirección (ej: Av. Vitacura 2909, Las Condes)"
+              className="flex-1 border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none min-w-0" />
+            <button onClick={agregarParadaDireccion} disabled={!paradaAddr.trim() || paradaGeo === 'loading'}
+              className="px-2.5 py-1.5 rounded-[8px] bg-knavy text-white text-[11px] font-semibold cursor-pointer disabled:opacity-40 flex items-center gap-1 flex-shrink-0 whitespace-nowrap">
+              <MapPin size={12} /> Agregar
+            </button>
+          </div>
+        </div>
+        {paradaGeo !== 'idle' && (
+          <div className="text-[11px] text-kmuted">{paradaGeo === 'loading' ? 'Buscando dirección…' : '⚠ No se encontró la dirección'}</div>
+        )}
+        {/* Filtro por región */}
+        <div className="flex flex-wrap gap-1.5">
+          <button className={`${fseg} ${regionFilter === 'all' ? fon : foff}`} onClick={() => setRegionFilter('all')}>Todas</button>
+          <button className={`${fseg} ${regionFilter === 'rm' ? fon : foff}`} onClick={() => setRegionFilter('rm')}>RM</button>
+          <button className={`${fseg} ${regionFilter === 'costa' ? fon : foff}`} onClick={() => setRegionFilter('costa')}>Costa</button>
+          <button className={`${fseg} ${regionFilter === 'fal' ? fon : foff}`} onClick={() => setRegionFilter('fal')}>Nacional</button>
+        </div>
+        {/* Filtro por tipo de tienda */}
+        <div className="flex flex-wrap gap-1.5">
+          <button className={`${fseg} ${tipoFilter === 'all' ? fon : foff}`} onClick={() => setTipoFilter('all')}>Todos</button>
+          <button className={`${fseg} ${tipoFilter === 'mall' ? fon : foff}`} onClick={() => setTipoFilter('mall')}>Mall</button>
+          <button className={`${fseg} ${tipoFilter === 'strip' ? fon : foff}`} onClick={() => setTipoFilter('strip')}>Strip</button>
+          <button className={`${fseg} ${tipoFilter === 'street' ? fon : foff}`} onClick={() => setTipoFilter('street')}>Street</button>
+        </div>
+        <div className="max-h-[240px] overflow-y-auto flex flex-col gap-0.5">
+          {resultadosFiltrados.map(t => {
+            const on = selected.includes(t.cod);
+            return (
+              <button key={t.cod} onClick={() => toggle(t.cod)}
+                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-[7px] text-left cursor-pointer transition-colors ${on ? 'bg-knavy/10' : 'hover:bg-kbg'}`}>
+                <span className={`w-4 h-4 rounded-[4px] flex items-center justify-center flex-shrink-0 border ${on ? 'bg-knavy border-knavy' : 'border-black/20'}`}>
+                  {on && <span className="text-white text-[10px] font-bold leading-none">✓</span>}
+                </span>
+                <Building2 size={13} className="text-kmuted flex-shrink-0" />
+                <span className="flex-1 min-w-0">
+                  <span className="text-[13px] font-semibold text-ktext">{t.cod}</span>
+                  <span className="text-[12px] text-kmuted"> · {t.nombre}</span>
+                  {t.comuna && <span className="block text-[11px] text-kmuted truncate">{t.comuna}</span>}
+                  <MetaTienda tienda={tiendasVista[t.cod]} origen={origenDeVentana(tiendas[t.cod], cargaActiva)} />
+                </span>
+              </button>
+            );
+          })}
+          {resultadosFiltrados.length === 0 && <div className="text-[12px] text-kmuted text-center py-3">Sin resultados.</div>}
+        </div>
+      </div>
+    </>
+  );
+  const modalCompartir = (
+      shareText && createPortal(
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" onClick={() => setShareText('')} />
+          <div className="relative w-full max-w-[460px] max-h-[86vh] flex flex-col bg-white rounded-[16px] overflow-hidden shadow-[0_12px_48px_rgba(0,0,0,0.28)]">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-black/[0.08] flex-shrink-0">
+              <div className="flex items-center gap-2 font-bold text-ktext text-[15px]">
+                <Share2 size={16} className="text-knavy" /> Compartir {visibles.length > 1 ? `${visibles.length} rutas` : 'ruta'}
+              </div>
+              <button onClick={() => setShareText('')} aria-label="Cerrar"
+                className="w-8 h-8 rounded-full bg-kbg flex items-center justify-center text-kmuted hover:text-ktext cursor-pointer"><X size={16} /></button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              {/* Las dos formas del mismo compartir. Los botones de abajo actúan sobre la que
+                  esté a la vista, así que no hace falta duplicarlos. */}
+              <div className="flex gap-1 mb-2 p-0.5 bg-kbg rounded-[9px]">
+                {([['completo', 'Completo'], ['lista', 'Solo la lista']] as const).map(([modo, etiqueta]) => (
+                  <button key={modo} type="button" onClick={() => { setShareModo(modo); setCopied(false); }}
+                    aria-pressed={shareModo === modo}
+                    className={`flex-1 py-1.5 rounded-[7px] text-[12px] font-bold cursor-pointer border-none transition-colors ${
+                      shareModo === modo ? 'bg-white text-knavy shadow-[0_1px_3px_rgba(0,0,0,0.10)]' : 'bg-transparent text-kmuted'}`}>
+                    {etiqueta}
+                  </button>
+                ))}
+              </div>
+              <textarea readOnly value={textoAComparir} onFocus={e => e.currentTarget.select()}
+                className="w-full h-[240px] resize-none border border-black/[0.12] rounded-[10px] p-3 text-[12px] font-mono leading-relaxed text-ktext bg-kbg outline-none focus:border-knavy" />
+              <div className="text-[11px] text-kmuted mt-1.5">
+                {shareModo === 'lista'
+                  ? 'Solo el nombre de la ruta y sus paradas, sin direcciones ni horarios.'
+                  : 'Tocá el texto para seleccionarlo, o usá los botones de abajo.'}
+              </div>
+            </div>
+            <div className="flex gap-2 px-4 py-3 border-t border-black/[0.08] flex-shrink-0">
+              <button onClick={copiarTexto}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[10px] bg-knavy text-white text-[13px] font-bold cursor-pointer">
+                {copied ? <><Check size={15} /> Copiado</> : <><Copy size={15} /> Copiar</>}
+              </button>
+              <a href={`https://wa.me/?text=${encodeURIComponent(textoAComparir)}`} target="_blank" rel="noopener noreferrer"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[10px] bg-[#25D366] text-white text-[13px] font-bold cursor-pointer no-underline">
+                WhatsApp
+              </a>
+              {puedeCompartirNativo && (
+                <button onClick={compartirNativo} title="Menú de compartir del sistema"
+                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-[10px] bg-white border-[1.5px] border-knavy text-knavy text-[13px] font-bold cursor-pointer">
+                  <Share2 size={15} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )
+  );
+
+  // [Vista nueva · Plan] Cuántas paradas llegan tarde en CADA ruta (la lista de la izquierda del
+  // diseño A). Mismo cálculo que `etasActive` + `tardeActiva`, ruta por ruta; una ruta sin tiempos
+  // del mapa (oculta, o recalculando) queda en `null` y no muestra estado.
+  const tardePorRuta = useMemo<(number | null)[]>(() => {
+    if (!vistaA) return [];
+    return routesComputed.map((rc, i) => {
+      const legs = legDataByRoute?.[i];
+      const n = rc.ordered.length;
+      if (!legs || n === 0 || salidaMin == null || legs.length !== n + (endArr ? 1 : 0)) return null;
+      const etas = calcularETAs(legs.slice(0, n).map(l => l.durSec ?? 0), salidaMin, servicioMin,
+        rc.ordered.map(c => (esParadaDireccion(c) ? undefined : tiendas[c]?.v)));
+      const cat = catalogoDe(rc.carga);
+      return rc.ordered.filter((c, j) => !esParadaDireccion(c) && etas[j] != null && estadoVentana(etas[j]!, cat[c]?.v) === 'tarde').length;
+    });
+  }, [vistaA, routesComputed, legDataByRoute, salidaMin, servicioMin, endArr, tiendas, catalogoDe]);
+
+  if (vistaA) {
+    const ORDEN_A: ['ventanas' | 'cercania' | 'manual', string][] = [['ventanas', 'Horarios'], ['cercania', 'Cercanía'], ['manual', 'A mano']];
+    const colsTabla = 'grid-cols-[48px_minmax(0,1fr)_116px] md:grid-cols-[52px_minmax(0,1fr)_110px_64px_150px]';
+    return (
+      <div className="h-full overflow-y-auto p-3 md:p-4 bg-kbg flex flex-col gap-4">
+        {avisoPlaces}
+        <div className="bg-white rounded-[16px]">{bloqueCalendario}</div>
+
+        <div className="grid gap-4 items-start grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
+          {/* Izquierda: las rutas, con su resumen y si alguna parada llega tarde */}
+          <aside className="bg-white border border-black/[0.09] rounded-[16px] overflow-hidden flex flex-col">
+            <div className="px-4 py-3.5 border-b border-black/[0.07] text-cuerpo font-bold text-ktext">
+              {totales.nRutas} {totales.nRutas === 1 ? 'ruta' : 'rutas'} · {totales.paradas} {totales.paradas === 1 ? 'tienda' : 'tiendas'}
+            </div>
+            {routes.map((r, i) => {
+              const sel = i === activeIdx;
+              const vis = visibleIds.includes(r.id);
+              const st = routeStats[i];
+              const tarde = tardePorRuta[i];
+              return (
+                <div key={r.id} className="flex items-center gap-3 px-4 py-3 border-b border-black/[0.05]"
+                  style={sel ? { background: '#EEF7F6', boxShadow: 'inset 4px 0 0 #0F766E' } : undefined}>
+                  <button type="button" onClick={() => toggleVerRuta(r.id)}
+                    aria-label={vis ? `Ocultar ${r.nombre} del mapa` : `Mostrar ${r.nombre} en el mapa`}
+                    title={vis ? 'Se ve en el mapa · tocá para ocultar' : 'Oculta · tocá para ver'}
+                    className="w-6 h-6 -m-1.5 flex items-center justify-center flex-shrink-0">
+                    <span className="w-3 h-3 rounded-full" style={{ background: vis ? colorRuta(i) : 'transparent', border: `2px solid ${colorRuta(i)}` }} />
+                  </button>
+                  <button type="button" onClick={() => (vis ? setEditId(r.id) : toggleVerRuta(r.id))}
+                    className="flex-1 min-w-0 flex flex-col text-left">
+                    <span className={`text-cuerpo font-bold truncate ${vis ? 'text-ktext' : 'text-kmuted'}`}>{r.nombre}</span>
+                    <span className="text-apoyo text-kmuted">{resumenRutaPlan(st?.paradas ?? 0, st?.km ?? '')}</span>
+                  </button>
+                  {tarde != null && (
+                    <span className="text-rotulo tracking-normal font-bold rounded-full px-2 py-0.5 flex-shrink-0"
+                      style={tarde > 0 ? { background: '#FDECEA', color: '#B42318' } : { background: '#E7F5EC', color: '#11622F' }}>
+                      {tarde > 0 ? `${tarde} tarde` : 'OK'}
+                    </span>
+                  )}
+                  {routes.length > 1 && (
+                    <button type="button" onClick={() => eliminarRuta(r.id)} aria-label={`Eliminar ${r.nombre}`}
+                      className="text-black/25 hover:text-[#D42B2B] flex-shrink-0"><X size={14} /></button>
+                  )}
+                </div>
+              );
+            })}
+            <button type="button" onClick={nuevaRuta}
+              className="mx-4 mt-3 flex items-center justify-center gap-1 rounded-[10px] border-[1.5px] border-dashed border-black/20 text-black/60 py-2 text-apoyo font-bold">
+              <Plus size={14} /> Nueva ruta
+            </button>
+            <button type="button" onClick={compartir} disabled={totales.paradas === 0}
+              className="m-4 rounded-[10px] border border-black/[0.14] bg-white py-2.5 text-apoyo font-bold text-ktext2 flex items-center justify-center gap-2 disabled:opacity-40">
+              <Share2 size={15} /> {visibles.length > 1 ? `Compartir las ${visibles.length} por WhatsApp` : 'Compartir por WhatsApp'}
+            </button>
+          </aside>
+
+          {/* Centro: la ruta abierta, parada por parada, con a qué hora recibe y a qué hora llega */}
+          <section className="bg-white border border-black/[0.09] rounded-[16px] overflow-hidden min-w-0">
+            <div className="px-4 py-3 border-b border-black/[0.07] flex items-center gap-3 flex-wrap">
+              <span className="text-cuerpo font-bold flex-1 min-w-0 truncate" style={{ color: activeColor }}>{activeRoute.nombre}</span>
+              <span className="text-apoyo text-kmuted">Ordenar por</span>
+              <div className="flex rounded-[10px] p-[3px] gap-[3px]" style={{ background: '#EEF0F5' }}>
+                {ORDEN_A.map(([id, txt]) => (
+                  <button key={id} type="button" onClick={() => setOrderMode(id)} aria-pressed={orderMode === id}
+                    className={`rounded-[8px] px-3 py-1.5 text-apoyo ${orderMode === id ? 'bg-white font-bold text-ktext shadow-[0_1px_2px_rgba(20,30,60,.12)]' : 'font-semibold text-kmuted'}`}>
+                    {txt}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {selected.length > 0 && orderMode === 'ventanas' && (
+              <div className="px-4 py-2 border-b border-black/[0.05] flex items-center gap-2 flex-wrap text-apoyo text-kmuted">
+                <span>Horarios de</span>
+                <div className="flex gap-1 rounded-[8px] p-0.5 bg-kbg">
+                  <button type="button" onClick={() => setCarga('seco')}
+                    className={`px-2.5 py-0.5 rounded-[6px] font-bold ${cargaActiva === 'seco' ? 'bg-white text-ktext shadow-[0_1px_2px_rgba(20,30,60,.12)]' : 'text-kmuted'}`}>Seco</button>
+                  <button type="button" onClick={() => setCarga('congelados')}
+                    className={`px-2.5 py-0.5 rounded-[6px] font-bold ${cargaActiva === 'congelados' ? 'bg-white text-[#0E7490] shadow-[0_1px_2px_rgba(20,30,60,.12)]' : 'text-kmuted'}`}>❄ Congelados</button>
+                </div>
+                {cargaActiva === 'congelados' && sinVentanaCong.length > 0 && (
+                  <span style={{ color: '#A16207' }}>
+                    {sinVentanaCong.length} sin horario de congelados (usan el de seco): {sinVentanaCong.slice(0, 4).join(', ')}{sinVentanaCong.length > 4 ? '…' : ''}
+                  </span>
+                )}
+              </div>
+            )}
+            {!diagnostico.factible && (
+              <div className="mx-4 my-3 rounded-[10px] border p-3 text-apoyo" style={{ background: 'rgba(217,119,6,0.07)', borderColor: 'rgba(217,119,6,0.35)', color: '#7C4A03' }}>
+                <b>Este día no cabe en un camión.</b> Ningún orden lo arregla. {resumenCuello(diagnostico)}
+                <ul className="pl-5 mt-1 flex flex-col gap-0.5">
+                  {diagnostico.sugerencias.map(s => <li key={s.tipo} className="list-disc">{s.texto}</li>)}
+                </ul>
+              </div>
+            )}
+            <div className={`grid ${colsTabla} gap-3 px-4 py-2.5 text-rotulo font-bold text-black/60 bg-[#F7F8FA] border-b border-black/[0.07]`}>
+              <span>#</span><span>TIENDA</span><span className="hidden md:block">RECIBE</span><span className="hidden md:block">LLEGA</span><span>ESTADO</span>
+            </div>
+            <div ref={tactilRef}>
+              {orderedCods.map((cod, i) => {
+                const esDir = esParadaDireccion(cod);
+                const eta = etasActive?.[i];
+                const ventana = esDir ? '' : String(tiendasVista[cod]?.v ?? '');
+                const est = esDir ? { texto: eta == null ? '—' : 'Dirección', tono: 'neutro' as const } : estadoParadaPlan(eta, ventana);
+                const tarde = est.tono === 'tarde';
+                const ladoLinea = destinoIdx === i ? ladoDeLinea(arrastrandoIdx, i) : null;
+                const colorEst = tarde ? '#B42318' : est.tono === 'ok' ? '#11622F' : est.tono === 'espera' ? '#B45309' : '#8E8E93';
+                return (
+                  <div key={cod} draggable data-idx={i}
+                    onDragStart={() => setDragIdx(i)}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={() => { if (dragIdx !== null) reordenar(dragIdx, i); setDragIdx(null); }}
+                    className={`relative grid ${colsTabla} gap-3 items-center px-4 py-2.5 border-b border-black/[0.05]`}
+                    style={{ background: tarde ? '#FFF6F5' : '#FFFFFF', opacity: arrastrandoIdx === i ? 0.35 : undefined }}>
+                    {ladoLinea && (
+                      <span aria-hidden="true" className="absolute left-1 right-1 h-[3px] rounded-full pointer-events-none"
+                        style={{ background: '#1B2A6B', top: ladoLinea === 'arriba' ? -2 : undefined, bottom: ladoLinea === 'abajo' ? -2 : undefined }} />
+                    )}
+                    <span className="flex items-center gap-0.5">
+                      <span onTouchStart={e => iniciarTactil(e, i)} style={{ touchAction: 'none' }}
+                        title={`Arrastrar ${cod} para cambiarla de parada`}
+                        className="flex items-center justify-center -ml-1.5 py-1.5 cursor-grab text-black/25 active:text-black/50">
+                        <GripVertical size={15} />
+                      </span>
+                      <span className="w-[26px] h-[26px] rounded-full text-white text-rotulo tracking-normal font-extrabold flex items-center justify-center flex-shrink-0"
+                        style={{ background: tarde ? '#B42318' : '#0F766E' }}>{i + 1}</span>
+                    </span>
+                    <span className="flex flex-col min-w-0">
+                      <span className="text-cuerpo font-semibold text-ktext truncate" style={tarde ? { color: '#B42318' } : undefined}>{nombre(cod)}</span>
+                      <span className="text-rotulo tracking-normal text-kmuted truncate">
+                        {esDir ? 'Dirección' : [cod, comuna(cod)].filter(Boolean).join(' · ')}
+                        {ventana && <span className="md:hidden"> · recibe {ventana}</span>}
+                      </span>
+                    </span>
+                    <span className="hidden md:block font-mono text-apoyo text-ktext2 truncate" title={ventana}>{ventana || '—'}</span>
+                    <span className="hidden md:block font-mono text-apoyo text-ktext">{eta != null ? minAHHMM(eta) : '—'}</span>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="flex-1 min-w-0 flex flex-col">
+                        {eta != null && <span className="md:hidden font-mono text-apoyo text-ktext">{minAHHMM(eta)}</span>}
+                        <span className="text-apoyo font-bold leading-tight" style={{ color: colorEst }}>{est.texto}</span>
+                      </span>
+                      <button type="button" onClick={() => quitar(cod)} aria-label={`Quitar ${nombre(cod)} de la ruta`}
+                        className="text-black/25 hover:text-[#D42B2B] flex-shrink-0"><X size={14} /></button>
+                    </span>
+                  </div>
+                );
+              })}
+              {selected.length === 0 && (
+                <div className="px-4 py-8 text-center text-apoyo text-kmuted">Agrega tiendas o direcciones abajo para armar la ruta.</div>
+              )}
+            </div>
+            <div className="px-4 py-3 flex items-center gap-x-2 gap-y-2 flex-wrap text-apoyo text-kmuted">
+              <span>Sale de {startLabel} a las</span>
+              <input type="time" value={horaSalida} onChange={e => setHoraSalida(e.target.value)} aria-label="Hora de salida"
+                className="border border-black/[0.12] rounded-[7px] px-2 py-0.5 text-apoyo bg-white text-ktext" />
+              <span>· atiende</span>
+              <input type="number" min={0} max={120} value={servicioMin} aria-label="Minutos por parada"
+                onChange={e => setServicioMin(Math.max(0, Math.min(120, parseInt(e.target.value) || 0)))}
+                className="w-[56px] border border-black/[0.12] rounded-[7px] px-2 py-0.5 text-apoyo bg-white text-ktext tabular-nums" />
+              <span>min por parada{selected.length > 0 ? ` · ${kmLabel}${totalMin ? ` · ${totalMin}` : ''}` : ''}</span>
+              {selected.length > 0 && !legsOk && <span className="w-full">La hora de llegada aparece cuando el mapa calcula los tiempos de esta ruta.</span>}
+            </div>
+            {selected.length > 0 && (
+              <div className="px-4 pb-4 flex gap-2 flex-wrap">
+                <a href={googleMapsDeepLink(startCoord, orderedCods, gpsAll, endPoint)} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-[10px] bg-[#1B2A6B] text-white text-apoyo font-bold no-underline">
+                  <Navigation size={14} /> Abrir en Google Maps
+                </a>
+                <button type="button" onClick={limpiar} className="px-3 py-2 rounded-[10px] text-apoyo font-semibold text-[#B42318] flex items-center gap-1.5">
+                  <Trash2 size={13} /> Vaciar esta ruta
+                </button>
+              </div>
+            )}
+          </section>
+        </div>
+
+        {/* Lo que se usa menos: de dónde sale, dónde termina y agregar tiendas a mano */}
+        <div className="bg-white border border-black/[0.09] rounded-[16px] p-4 grid gap-5 items-start [grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]">
+          {bloquePartida}
+          {bloqueAgregar}
+        </div>
+        {modalCompartir}
+      </div>
+    );
+  }
+  return (
+    <div className="h-full overflow-y-auto p-4 flex flex-col gap-4">
+      <div className="flex items-center gap-2 text-ktext font-bold text-[15px]">
+        <MapPin size={16} className="text-knavy" /> Planificador de rutas
+        <span className="font-medium text-[11px] text-kmuted/80 hidden sm:inline">· armá y compará rutas en el mapa</span>
+      </div>
+
+      {avisoPlaces}
+
+      {bloqueCalendario}
 
       {/* Rutas — tarjetas con resumen (paradas · km · tiempo); tocá para ver/comparar en el mapa */}
       <div className="flex flex-col gap-2">
@@ -961,138 +1369,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
       <div className="grid gap-4 items-start [grid-template-columns:repeat(auto-fit,minmax(340px,1fr))]">
         <div className="flex flex-col gap-4 min-w-0">
 
-      {/* Partida + llegada lado a lado en desktop (ahorra alto) */}
-      <div className="grid gap-x-4 gap-y-3 items-start [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]">
-      {/* Punto de partida (compartido por todas las rutas) */}
-      <div className="flex flex-col gap-2">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Punto de partida <span className="normal-case font-semibold text-kmuted/70">· común a todas</span></div>
-        <div className="flex flex-wrap gap-1 bg-kbg rounded-[10px] p-1">
-          <button onClick={() => setStartMode('cd')}     className={`${seg} ${startMode === 'cd' ? 'bg-knavy text-white' : 'text-kmuted'}`}>CD</button>
-          <button onClick={() => setStartMode('tienda')} className={`${seg} ${startMode === 'tienda' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Tienda</button>
-          <button onClick={() => setStartMode('custom')} className={`${seg} ${startMode === 'custom' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Dirección</button>
-        </div>
-        {startMode === 'tienda' && (
-          <select value={startTienda} onChange={e => setStartTienda(e.target.value)}
-            className="w-full border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none">
-            <option value="">— Elegir tienda —</option>
-            {startTiendaOpts.map(t => <option key={t.cod} value={t.cod}>{t.cod} · {t.nombre}</option>)}
-          </select>
-        )}
-        {startMode === 'custom' && (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex gap-1.5">
-              <AddressAutocomplete
-                value={customAddr}
-                onChange={v => { setCustomAddr(v); setGeoStatus('idle'); }}
-                onSelect={({ address, lat, lng }) => { setCustomAddr(address); setCustomCoord({ lat, lng }); setStartMode('custom'); setGeoStatus('idle'); }}
-                onEnter={geocodeAddr}
-                onUnavailable={() => setPlacesOff(true)}
-                placeholder="Dirección (ej: Av. Vitacura 2909)"
-                className="flex-1 border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none" />
-              <button onClick={geocodeAddr} className="px-3 rounded-[8px] bg-knavy text-white text-[12px] font-semibold cursor-pointer">Buscar</button>
-            </div>
-            <div className="text-[11px] text-kmuted">{geoStatus === 'loading' ? 'Buscando…' : geoStatus === 'error' ? '⚠ No se encontró la dirección' : 'Escribí y elegí una sugerencia (o tocá Buscar).'}</div>
-          </div>
-        )}
-        <div className="flex items-center gap-1.5 text-[12px] text-ktext bg-kbg rounded-[8px] px-2.5 py-1.5 min-w-0">
-          <Navigation size={13} className="text-[#D42B2B] flex-shrink-0" /> <span className="font-semibold truncate">{startLabel}</span>
-        </div>
-      </div>
+      {bloquePartida}
 
-      {/* Punto de llegada (compartido) — al terminar la ruta */}
-      <div className="flex flex-col gap-2">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Punto de llegada <span className="normal-case font-semibold text-kmuted/70">· al terminar</span></div>
-        <div className="flex flex-wrap gap-1 bg-kbg rounded-[10px] p-1">
-          <button onClick={() => setEndMode('none')}   className={`${seg} ${endMode === 'none' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Ninguno</button>
-          <button onClick={() => setEndMode('cd')}     className={`${seg} ${endMode === 'cd' ? 'bg-knavy text-white' : 'text-kmuted'}`}>CD</button>
-          <button onClick={() => setEndMode('start')}  className={`${seg} ${endMode === 'start' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Partida</button>
-          <button onClick={() => setEndMode('custom')} className={`${seg} ${endMode === 'custom' ? 'bg-knavy text-white' : 'text-kmuted'}`}>Dirección</button>
-        </div>
-        {endMode === 'custom' && (
-          <AddressAutocomplete
-            value={endAddr}
-            onChange={v => setEndAddr(v)}
-            onSelect={({ address, lat, lng }) => { setEndAddr(address); setEndCoord({ lat, lng }); setEndMode('custom'); }}
-            onEnter={geocodeEndAddr}
-            onUnavailable={() => setPlacesOff(true)}
-            placeholder="Dirección de llegada (ej: bodega, CD, punto final)"
-            className="w-full border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none" />
-        )}
-        {endMode !== 'none' && (
-          <div className="flex items-center gap-1.5 text-[12px] text-ktext bg-kbg rounded-[8px] px-2.5 py-1.5 min-w-0">
-            <Flag size={13} className="text-[#0E7C6B] flex-shrink-0" /> <span className="font-semibold truncate">{endLabel}</span>
-          </div>
-        )}
-      </div>
-      </div>{/* fin partida + llegada */}
-
-      {/* Buscar tiendas + agregar dirección (misma fila, arriba de los filtros) */}
-      <div className="flex flex-col gap-2">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-kmuted">Agregar a <span style={{ color: activeColor }}>{activeRoute.nombre}</span></div>
-        <div className="flex flex-col sm:flex-row gap-2 sm:items-stretch">
-          {/* Buscar tienda del catálogo — más angosto (~⅓) */}
-          <div className="flex items-center gap-2 border border-black/[0.12] rounded-[8px] px-2.5 py-2 bg-white flex-1 sm:flex-[1] min-w-0">
-            <Search size={14} className="text-kmuted flex-shrink-0" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar tienda…"
-              className="flex-1 text-[13px] outline-none bg-transparent text-ktext min-w-0" />
-          </div>
-          {/* Separador */}
-          <div className="hidden sm:block w-px self-stretch bg-black/10" aria-hidden="true" />
-          {/* Agregar una dirección libre como parada (se suma a la ruta activa y al mapa) — más ancho (~⅔) */}
-          <div className="flex items-center gap-1.5 flex-1 sm:flex-[2] min-w-0">
-            <AddressAutocomplete
-              value={paradaAddr}
-              onChange={v => { setParadaAddr(v); setParadaGeo('idle'); }}
-              onSelect={({ address, lat, lng }) => agregarParadaConCoord(address, lat, lng)}
-              onEnter={agregarParadaDireccion}
-              onUnavailable={() => setPlacesOff(true)}
-              placeholder="Agregar dirección (ej: Av. Vitacura 2909, Las Condes)"
-              className="flex-1 border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none min-w-0" />
-            <button onClick={agregarParadaDireccion} disabled={!paradaAddr.trim() || paradaGeo === 'loading'}
-              className="px-2.5 py-1.5 rounded-[8px] bg-knavy text-white text-[11px] font-semibold cursor-pointer disabled:opacity-40 flex items-center gap-1 flex-shrink-0 whitespace-nowrap">
-              <MapPin size={12} /> Agregar
-            </button>
-          </div>
-        </div>
-        {paradaGeo !== 'idle' && (
-          <div className="text-[11px] text-kmuted">{paradaGeo === 'loading' ? 'Buscando dirección…' : '⚠ No se encontró la dirección'}</div>
-        )}
-        {/* Filtro por región */}
-        <div className="flex flex-wrap gap-1.5">
-          <button className={`${fseg} ${regionFilter === 'all' ? fon : foff}`} onClick={() => setRegionFilter('all')}>Todas</button>
-          <button className={`${fseg} ${regionFilter === 'rm' ? fon : foff}`} onClick={() => setRegionFilter('rm')}>RM</button>
-          <button className={`${fseg} ${regionFilter === 'costa' ? fon : foff}`} onClick={() => setRegionFilter('costa')}>Costa</button>
-          <button className={`${fseg} ${regionFilter === 'fal' ? fon : foff}`} onClick={() => setRegionFilter('fal')}>Nacional</button>
-        </div>
-        {/* Filtro por tipo de tienda */}
-        <div className="flex flex-wrap gap-1.5">
-          <button className={`${fseg} ${tipoFilter === 'all' ? fon : foff}`} onClick={() => setTipoFilter('all')}>Todos</button>
-          <button className={`${fseg} ${tipoFilter === 'mall' ? fon : foff}`} onClick={() => setTipoFilter('mall')}>Mall</button>
-          <button className={`${fseg} ${tipoFilter === 'strip' ? fon : foff}`} onClick={() => setTipoFilter('strip')}>Strip</button>
-          <button className={`${fseg} ${tipoFilter === 'street' ? fon : foff}`} onClick={() => setTipoFilter('street')}>Street</button>
-        </div>
-        <div className="max-h-[240px] overflow-y-auto flex flex-col gap-0.5">
-          {resultadosFiltrados.map(t => {
-            const on = selected.includes(t.cod);
-            return (
-              <button key={t.cod} onClick={() => toggle(t.cod)}
-                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-[7px] text-left cursor-pointer transition-colors ${on ? 'bg-knavy/10' : 'hover:bg-kbg'}`}>
-                <span className={`w-4 h-4 rounded-[4px] flex items-center justify-center flex-shrink-0 border ${on ? 'bg-knavy border-knavy' : 'border-black/20'}`}>
-                  {on && <span className="text-white text-[10px] font-bold leading-none">✓</span>}
-                </span>
-                <Building2 size={13} className="text-kmuted flex-shrink-0" />
-                <span className="flex-1 min-w-0">
-                  <span className="text-[13px] font-semibold text-ktext">{t.cod}</span>
-                  <span className="text-[12px] text-kmuted"> · {t.nombre}</span>
-                  {t.comuna && <span className="block text-[11px] text-kmuted truncate">{t.comuna}</span>}
-                  <MetaTienda tienda={tiendasVista[t.cod]} origen={origenDeVentana(tiendas[t.cod], cargaActiva)} />
-                </span>
-              </button>
-            );
-          })}
-          {resultadosFiltrados.length === 0 && <div className="text-[12px] text-kmuted text-center py-3">Sin resultados.</div>}
-        </div>
-      </div>
+      {bloqueAgregar}
 
         </div>{/* ── fin columna izquierda ── */}
         <div className="flex flex-col gap-4 min-w-0">
@@ -1268,59 +1547,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         </div>{/* ── fin columna derecha ── */}
       </div>{/* ── fin grid 2 columnas ── */}
 
-      {/* Panel de Compartir — muestra el texto listo para copiar / mandar por WhatsApp */}
-      {shareText && createPortal(
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" onClick={() => setShareText('')} />
-          <div className="relative w-full max-w-[460px] max-h-[86vh] flex flex-col bg-white rounded-[16px] overflow-hidden shadow-[0_12px_48px_rgba(0,0,0,0.28)]">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-black/[0.08] flex-shrink-0">
-              <div className="flex items-center gap-2 font-bold text-ktext text-[15px]">
-                <Share2 size={16} className="text-knavy" /> Compartir {visibles.length > 1 ? `${visibles.length} rutas` : 'ruta'}
-              </div>
-              <button onClick={() => setShareText('')} aria-label="Cerrar"
-                className="w-8 h-8 rounded-full bg-kbg flex items-center justify-center text-kmuted hover:text-ktext cursor-pointer"><X size={16} /></button>
-            </div>
-            <div className="p-4 overflow-y-auto flex-1">
-              {/* Las dos formas del mismo compartir. Los botones de abajo actúan sobre la que
-                  esté a la vista, así que no hace falta duplicarlos. */}
-              <div className="flex gap-1 mb-2 p-0.5 bg-kbg rounded-[9px]">
-                {([['completo', 'Completo'], ['lista', 'Solo la lista']] as const).map(([modo, etiqueta]) => (
-                  <button key={modo} type="button" onClick={() => { setShareModo(modo); setCopied(false); }}
-                    aria-pressed={shareModo === modo}
-                    className={`flex-1 py-1.5 rounded-[7px] text-[12px] font-bold cursor-pointer border-none transition-colors ${
-                      shareModo === modo ? 'bg-white text-knavy shadow-[0_1px_3px_rgba(0,0,0,0.10)]' : 'bg-transparent text-kmuted'}`}>
-                    {etiqueta}
-                  </button>
-                ))}
-              </div>
-              <textarea readOnly value={textoAComparir} onFocus={e => e.currentTarget.select()}
-                className="w-full h-[240px] resize-none border border-black/[0.12] rounded-[10px] p-3 text-[12px] font-mono leading-relaxed text-ktext bg-kbg outline-none focus:border-knavy" />
-              <div className="text-[11px] text-kmuted mt-1.5">
-                {shareModo === 'lista'
-                  ? 'Solo el nombre de la ruta y sus paradas, sin direcciones ni horarios.'
-                  : 'Tocá el texto para seleccionarlo, o usá los botones de abajo.'}
-              </div>
-            </div>
-            <div className="flex gap-2 px-4 py-3 border-t border-black/[0.08] flex-shrink-0">
-              <button onClick={copiarTexto}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[10px] bg-knavy text-white text-[13px] font-bold cursor-pointer">
-                {copied ? <><Check size={15} /> Copiado</> : <><Copy size={15} /> Copiar</>}
-              </button>
-              <a href={`https://wa.me/?text=${encodeURIComponent(textoAComparir)}`} target="_blank" rel="noopener noreferrer"
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[10px] bg-[#25D366] text-white text-[13px] font-bold cursor-pointer no-underline">
-                WhatsApp
-              </a>
-              {puedeCompartirNativo && (
-                <button onClick={compartirNativo} title="Menú de compartir del sistema"
-                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-[10px] bg-white border-[1.5px] border-knavy text-knavy text-[13px] font-bold cursor-pointer">
-                  <Share2 size={15} />
-                </button>
-              )}
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )}
+      {modalCompartir}
     </div>
   );
 }
