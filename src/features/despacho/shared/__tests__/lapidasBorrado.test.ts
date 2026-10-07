@@ -180,3 +180,29 @@ describe('la unidad volvió a existir — su lápida no vale', () => {
     expect(tieneLapida('slot:1')).toBe(true);
   });
 });
+
+// 07/10, 42ANP y 39PSB: Erick une P2 con P1. Las escrituras de la unión (peso y referencias de P1)
+// disparan la recarga de picking en el equipo de Isaías ANTES de que el borrado de P2 llegue. Esa
+// recarga ve a P2 vivo; dos segundos después llega su lápida y se rechazaba. P2 se quedaba para
+// siempre en ese equipo y había que borrarlo a mano.
+describe('ver viva una unidad antes de que llegue su lápida no la inmuniza', () => {
+  it('EL CASO: la recarga ve a P2 vivo, y DESPUÉS llega la lápida de la unión', () => {
+    levantarLapidasDeSlotsVivos([1534, 1532]);   // recarga en vuelo: P2 todavía en la base
+    absorberLapidas(['slot:1534']);              // llega el push de quien unió
+    expect(tieneLapida('slot:1534')).toBe(true);
+  });
+
+  it('la lápida absorbida se sigue empujando a los demás', () => {
+    levantarLapidasDeSlotsVivos([1538]);
+    absorberLapidas(['slot:1538']);
+    expect(lapidasComoLista()).toEqual(['slot:1538']);
+  });
+
+  it('el restaurar sigue funcionando: la que SÍ tenía lápida se levanta y no vuelve', () => {
+    absorberLapidas(['slot:484']);
+    levantarLapidasDeSlotsVivos([484]);
+    expect(tieneLapida('slot:484')).toBe(false);
+    absorberLapidas(['slot:484']);
+    expect(tieneLapida('slot:484')).toBe(false);
+  });
+});

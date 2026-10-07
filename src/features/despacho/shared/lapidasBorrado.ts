@@ -139,9 +139,31 @@ export function lapidasComoLista(): string[] {
  *
  * Es la red que hace que esto no dependa de acordarse: no importa por qué puerta haya vuelto la
  * unidad —restaurar, revertir, o una que todavía no existe— si está viva, la lápida muere.
+ *
+ * ── PERO VERLA VIVA ANTES DE QUE LLEGUE SU LÁPIDA NO LA INMUNIZA (07/10/2026) ──────────────────
+ *
+ * Antes esto levantaba TODO lo que la recarga devolvía, tuviera lápida o no, y lo anotaba en
+ * `levantadas`. Eso convertía una foto vieja en una inmunidad permanente. Al unificar P2 → P1, el
+ * equipo que une escribe primero el peso de P1, después las referencias, y recién ahí borra P2. Las
+ * dos primeras escrituras disparan la recarga de picking en TODOS los demás equipos, y esa recarga
+ * puede salir antes de que el borrado llegue: ve a P2 vivo y lo anota como «levantada». Dos
+ * segundos después llega la lápida de P2 y `absorberLapidas` la rechaza. Como la lápida es la única
+ * señal de borrado que respeta el merge, ese equipo se queda con P2 para siempre y lo vuelve a
+ * empujar.
+ *
+ * Pasó el 07/10, dos veces, con 10 minutos de diferencia:
+ *
+ *     42ANP  11:59:58  Erick une P2 con P1  →  12:11:57  a Isaías le sigue apareciendo P2 y lo borra
+ *     39PSB  12:09:05  Erick une P2 con P1  →  12:15:15  ídem
+ *
+ * Los slots de P2 se borraron bien en la base a la primera; lo que volvía era el ÍTEM.
+ *
+ * Levantar es deshacer una lápida que este equipo TIENE. Ver viva una unidad sin lápida no dice
+ * nada sobre un borrado que todavía no llegó, así que no se anota.
  */
 export function levantarLapidasDeSlotsVivos(ids: Iterable<number>): void {
-  for (const id of ids) levantarLapida(id);
+  // SOLO las que este equipo tiene puestas: ver la unión del 07/10, arriba.
+  for (const id of ids) if (lapidas.has(llaveDeSlot(id))) levantarLapida(id);
 }
 
 /** Incorpora las lápidas que trae un remoto. Solo llaves de slot: un id de slot no se reutiliza. */
