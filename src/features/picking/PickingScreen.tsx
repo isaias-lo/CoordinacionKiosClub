@@ -50,7 +50,7 @@ import {
   parseSavedNames, serializeSavedNames,
 } from './picking-utils';
 import type { PickingEvento } from './picking-utils';
-import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, categoriasDeSlotsManual, type Seccion } from './picking-secciones';
+import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, categoriasDeSlotsManual, categoriasDelGrupo, type Seccion } from './picking-secciones';
 import { pideSeccion, seccionYContenidoManual, normalizarBatch } from './encargadoManual';
 import { slotsYaImpresos } from './reimpresion';
 import { etiquetasDeLaSeleccion } from './seleccionImpresion';
@@ -1409,12 +1409,12 @@ export function PickingScreen() {
       for (const group of sortedGroups) {
         const groupSlots = storeSlots.filter(s => s.state_key === group.stateKey);
         if (!groupSlots.length) continue;
-        // Modo manual: sin operaciones de Odoo no hay `op.categories` de dónde sacar el tipo de
-        // carga — antes la etiqueta impresa salía siempre sin categoría para un encargado
-        // manual. Se deriva de la sección real de sus pallets (la elegida al crearlo).
-        const allCategories = group.operations.length > 0
-          ? [...new Set(group.operations.flatMap(o => o.categories))]
-          : categoriasDeSlotsManual(groupSlots);
+        // Las categorias salen del grupo COMPLETO, no del recortado por la seccion activa: la
+        // etiqueta describe el PALLET, y eso no cambia segun que pestana mire la persona. El
+        // `contenido` que se guarda en la base ya se calculaba asi. Ver `categoriasDelGrupo`.
+        const fullOps = (allGroupedByStore[cod] ?? []).find(g => g.stateKey === group.stateKey)?.operations
+          ?? group.operations;
+        const allCategories = categoriasDelGrupo(fullOps, groupSlots);
         const refs  = group.operations.map(o => o.name).join('+');
         const cats  = allCategories.join(',');
         // Prioridad: 1) nombre del supervisor en esta sesión, 2) canónico de Supabase, 3) label del slot (histórico), 4) clave Odoo
@@ -2031,9 +2031,7 @@ export function PickingScreen() {
                           // del grupo COMPLETO (no las recortadas por sección), para NO cambiar lo que Bodega
                           // ve/escribe respecto a antes. La sección va aparte, en la columna `section`.
                           const fullOps = (allGroupedByStore[group.storeCod] ?? []).find(g => g.stateKey === group.stateKey)?.operations ?? group.operations;
-                          const fullGroupCats = fullOps.length > 0
-                            ? [...new Set(fullOps.flatMap(o => o.categories))]
-                            : categoriasDeSlotsManual(allCardSlots);
+                          const fullGroupCats = categoriasDelGrupo(fullOps, allCardSlots);
                           const fullIsCongelados = fullOps.length > 0
                             ? fullOps.some(o => o.categories.includes('Congelados'))
                             : allCardSlots.some(s => seccionDeSlot(s) === 'congelados');
