@@ -1,10 +1,10 @@
 import { TIENDAS } from '../data/tiendas';
+import { canonicalDeSlot } from '@/lib/canonicalSlot';
+import { pkgCodeNacional } from '@/features/despacho/shared/tipoCode';
+import { etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
 import type { DispatchItem } from '../../../../types';
 import { desempatarOrdenNacional } from '../../shared/numeroCard';
 import { esSinPesar } from '../../shared/sinPesar';
-import {
-  etiquetaAgregado, esAdquisicion, esWebRetiro, PREFIJO_ADQUISICION, PREFIJO_WEB_RETIRO,
-} from '@/features/despacho/shared/adquisicion';
 
 const CARGA_LABEL: Record<string, string> = {
   comida:         'Comida',
@@ -32,26 +32,11 @@ function ordenSeq(orden: string): string {
   return m ? m[1] : orden;
 }
 
-// Construye el canonical ID siguiendo el formato estándar del sistema
-// (mismo que despacho-picking y santiago):
-//   pallet      → P{seq}{cod}{stamp}P
-//   bulto/box   → {seq}B{cod}{stamp}B
-//   chocolate   → CH{seq}{cod}{stamp}CH
-//   contenedor  → C{seq}{cod}{stamp}C
-//   adquisición → A{seq}{cod}{stamp}A
-//   web/retiro  → W{seq}{cod}{stamp}W
-//
-// Los dos últimos caían antes en el default y salían con la B del bulto: un web/retiro y un bulto
-// con el mismo número producían el MISMO id. Ahora cada clase tiene su letra, igual que en
-// RM/Costa (`sheetsSantiago`), que ya usaba A y W para el prefijo.
+// El canonical ID de una fila de la hoja. La traduccion de vocabulario vive aca —la pantalla habla
+// de `pkg` y `orden`, `picking_pallets` habla de letra y `seq`— pero el FORMATO sale de
+// `canonicalSlot.ts`, que es la unica fuente. Era la septima copia de la misma funcion.
 function canonicalId(pkg: string, orden: string, cod: string, stamp: string): string {
-  const seq = ordenSeq(orden);
-  if (pkg === 'pallet')     return `P${seq}${cod}${stamp}P`;
-  if (pkg === 'contenedor') return `C${seq}${cod}${stamp}C`;
-  if (pkg === 'chocolate')  return `CH${seq}${cod}${stamp}CH`;
-  if (esAdquisicion(pkg))   return `${PREFIJO_ADQUISICION}${seq}${cod}${stamp}${PREFIJO_ADQUISICION}`;
-  if (esWebRetiro(pkg))     return `${PREFIJO_WEB_RETIRO}${seq}${cod}${stamp}${PREFIJO_WEB_RETIRO}`;
-  return `${seq}B${cod}${stamp}B`; // bulto / box (default)
+  return canonicalDeSlot(pkgCodeNacional(pkg), ordenSeq(orden), cod, stamp);
 }
 
 export function buildRows(
