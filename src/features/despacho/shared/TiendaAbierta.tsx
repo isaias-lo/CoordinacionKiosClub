@@ -14,10 +14,14 @@
 //   3. FALTAN: el resto por pesar, como fichas. Tocar una la abre; escanear también.
 //   4. PESADOS: una línea por unidad. El ✎ despliega editar, duplicar, sumar, unificar y borrar.
 //
+// Agregar una unidad a mano (+ Pallet, + Bulto, …, + Web / retiro) vive en el «+» de la cabecera,
+// junto al ⋯. Antes eran dos filas de seis botones al final de la tienda, que en una tienda larga
+// quedaban a varios desplazamientos y se confundían con el contenido.
+//
 // Nacional y RM/Costa usan estas mismas piezas: si cambian, cambian juntas.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { MoreHorizontal, Pencil, ChevronLeft, Lock } from 'lucide-react';
+import { MoreHorizontal, Pencil, ChevronLeft, Lock, Plus } from 'lucide-react';
 import { ESTILO_UNIDAD, LETRA_UNIDAD, type AvanceTienda, type ClaseUnidad } from './unidadVisual';
 
 /** «P1», «B3»: la etiqueta de la unidad, en el color de su tipo. */
@@ -57,6 +61,71 @@ export function BarraAvance({ pesadas, total }: { pesadas: number; total: number
   );
 }
 
+export interface OpcionAgregar {
+  /** «Pallet», «Bulto», «Cont.», «Choc.», «Adquisición», «Web / retiro». */
+  texto: string;
+  /** El color sale del tipo; las que no se pesan van en gris. */
+  clase: ClaseUnidad;
+  /** Una línea debajo, para las que no son obvias («no se pesa»). */
+  detalle?: string;
+  onClick: () => void;
+}
+
+/**
+ * El «+» de la cabecera: abre las unidades que se pueden agregar a mano. Primero las que se pesan
+ * (en el color de su tipo), después las que no (adquisición y web/retiro, en gris).
+ */
+export function MenuAgregar({ opciones, bloqueado }: { opciones: OpcionAgregar[]; bloqueado?: boolean }) {
+  const [abierto, setAbierto] = useState(false);
+  const caja = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!abierto) return;
+    const fuera = (e: PointerEvent) => { if (!caja.current?.contains(e.target as Node)) setAbierto(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setAbierto(false); };
+    document.addEventListener('pointerdown', fuera);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', fuera); document.removeEventListener('keydown', esc); };
+  }, [abierto]);
+  useEffect(() => { if (bloqueado) setAbierto(false); }, [bloqueado]);
+
+  const pesables = opciones.filter(o => o.clase !== 'agregado');
+  const otras = opciones.filter(o => o.clase === 'agregado');
+  const boton = (o: OpcionAgregar) => {
+    const e = ESTILO_UNIDAD[o.clase];
+    return (
+      <button key={o.texto} type="button" onClick={() => { setAbierto(false); o.onClick(); }}
+        className={`min-h-[48px] rounded-btn border-[1.5px] px-2 py-1.5 flex flex-col items-start justify-center text-left cursor-pointer active:opacity-80 ${e.borde} ${e.suave}`}>
+        <span className={`flex items-center gap-1 text-cuerpo font-bold ${e.texto}`}>
+          <Plus size={16} aria-hidden="true" />{o.texto}
+        </span>
+        {o.detalle && <span className="text-rotulo text-text-sub">{o.detalle}</span>}
+      </button>
+    );
+  };
+  return (
+    <div ref={caja} className="relative touch-auto flex-shrink-0">
+      <button type="button" onClick={() => setAbierto(a => !a)} disabled={bloqueado}
+        aria-expanded={abierto} aria-label="Agregar a esta tienda"
+        title={bloqueado ? 'Tienda terminada: reábrela para agregar' : 'Agregar pallet, bulto, contenedor, chocolate…'}
+        className="w-10 h-10 flex items-center justify-center rounded-btn bg-navy text-white active:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">
+        <Plus size={22} aria-hidden="true" />
+      </button>
+      {abierto && (
+        <div className="absolute right-0 top-12 z-30 w-72 max-w-[calc(100vw-2rem)] bg-card border border-border rounded-card shadow-card2 p-2 flex flex-col gap-2">
+          <span className="px-1 text-rotulo font-bold uppercase text-text-sub">Agregar</span>
+          <div className="grid grid-cols-2 gap-1.5">{pesables.map(boton)}</div>
+          {otras.length > 0 && (
+            <>
+              <span className="px-1 text-rotulo font-bold uppercase text-text-sub">Sin pesar</span>
+              <div className="grid grid-cols-2 gap-1.5">{otras.map(boton)}</div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * La cabecera de la tienda abierta.
  *
@@ -64,7 +133,7 @@ export function BarraAvance({ pesadas, total }: { pesadas: number; total: number
  * terminada viven en el menú ⋯ para que no compitan con el pesaje; "Marcar terminada" vuelve a
  * aparecer grande al pie cuando ya no falta nada (eso lo decide la pantalla).
  */
-export function CabeceraTienda({ nombre, subtitulo, avance, indicador, estado, acciones, onVolver, arrastre }: {
+export function CabeceraTienda({ nombre, subtitulo, avance, indicador, estado, acciones, agregar, onVolver, arrastre }: {
   nombre: string;
   subtitulo: string;
   avance: AvanceTienda;
@@ -74,6 +143,8 @@ export function CabeceraTienda({ nombre, subtitulo, avance, indicador, estado, a
   estado?: ReactNode;
   /** Lo que va dentro del menú ⋯. */
   acciones?: ReactNode;
+  /** Las unidades que se pueden agregar a mano: van en el «+», a la izquierda del ⋯. */
+  agregar?: { opciones: OpcionAgregar[]; bloqueado?: boolean };
   onVolver?: () => void;
   /** En el teléfono, la cabecera es el asa para arrastrar la hoja hacia abajo. */
   arrastre?: { onTouchStart: (e: React.TouchEvent) => void; onTouchMove: (e: React.TouchEvent) => void; onTouchEnd: () => void };
@@ -106,6 +177,7 @@ export function CabeceraTienda({ nombre, subtitulo, avance, indicador, estado, a
           <div className="font-mono text-apoyo text-text-sub truncate">{subtitulo}</div>
         </div>
         {estado}
+        {agregar && agregar.opciones.length > 0 && <MenuAgregar {...agregar} />}
         {acciones && (
           <div ref={caja} className="relative touch-auto flex-shrink-0">
             <button type="button" onClick={() => setMenu(m => !m)} aria-expanded={menu} aria-label="Acciones de la tienda"
@@ -136,8 +208,30 @@ export function CabeceraTienda({ nombre, subtitulo, avance, indicador, estado, a
   );
 }
 
-/** Encima de una tienda terminada, que no se puede editar. */
-export function AvisoTiendaTerminada() {
+/**
+ * Encima de una tienda terminada, que no se puede editar. Si Picking imprimió algo DESPUÉS de
+ * terminarla, el aviso pasa a ámbar y ofrece reabrirla ahí mismo: la unidad nueva está adentro,
+ * bloqueada, y sin reabrir no hay cómo pesarla.
+ */
+export function AvisoTiendaTerminada({ nuevas = 0, onReabrir }: { nuevas?: number; onReabrir?: () => void }) {
+  if (nuevas > 0) {
+    return (
+      <div role="alert" className="mx-1 mt-1 mb-2 rounded-card border border-est-aviso bg-est-aviso-suave px-3 py-2.5 flex items-center gap-3">
+        <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+          <span className="font-barlow-condensed text-cuerpo font-extrabold uppercase text-est-aviso">
+            {nuevas} {nuevas === 1 ? 'unidad nueva' : 'unidades nuevas'} de Picking
+          </span>
+          <span className="text-apoyo text-text">Llegó después de marcarla terminada. Reábrela para pesarla.</span>
+        </div>
+        {onReabrir && (
+          <button type="button" onClick={onReabrir}
+            className="flex-shrink-0 min-h-[44px] px-3 rounded-btn bg-est-aviso text-white text-apoyo font-bold cursor-pointer active:opacity-80">
+            Reabrir
+          </button>
+        )}
+      </div>
+    );
+  }
   return (
     <div role="status" className="mx-1 mt-1 mb-2 rounded-card border border-est-ok bg-est-ok-suave px-3 py-2.5 flex flex-col gap-0.5">
       <span className="font-barlow-condensed text-cuerpo font-extrabold uppercase text-est-ok">✓ Tienda terminada</span>

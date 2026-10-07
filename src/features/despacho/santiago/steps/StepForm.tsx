@@ -33,7 +33,7 @@ import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { avanceTienda, claseUnidad, type AvanceTienda } from '../../shared/unidadVisual';
 import { useTarjetaActiva } from '../../shared/useTarjetaActiva';
-import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada } from '../../shared/TiendaAbierta';
+import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, type OpcionAgregar } from '../../shared/TiendaAbierta';
 import { confirmarCambioGuardado, confirmarEliminarVarios } from '../../shared/confirmarGuardado';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { mismaCargaEscrita } from '../../shared/adoptarItemRemoto';
@@ -46,7 +46,7 @@ import { registrarTiendasSantiagoBD } from '../data/tiendasSantiago';
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import { FilaTienda, BarraDelDia, UnidadesDelDia, FechasBodega, RotuloLista, PieLista, BaldosaAgregar, GRILLA_MOSAICO } from '@/features/despacho/shared/ListaTiendasUI';
 import { usePlegarCabecera } from '@/features/despacho/shared/usePlegarCabecera';
-import { avanceFila, estadoLista, resumenDia, filtroVigente, pasaFiltro, type FiltroLista } from '@/features/despacho/shared/listaTiendas';
+import { avanceFila, estadoLista, nuevasTrasTerminar, resumenDia, filtroVigente, pasaFiltro, type FiltroLista } from '@/features/despacho/shared/listaTiendas';
 import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
 import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';
 import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
@@ -81,8 +81,10 @@ import { actualizarSlotPicking, AVISO_SLOT_BORRADO } from '../../shared/actualiz
 import { sincronizarYCruzar } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
-import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo, pesoPalletConCajas,
+import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
+import { pesoNetoPallet } from '../../shared/pesoDelPallet';
+import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
 import { itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
 import { avisoDeUnidad, avisoEnTerminada } from '../../shared/avisoUnidadEscaneada';
 import { useEscaneoBodega } from '../../shared/useEscaneoBodega';
@@ -149,9 +151,9 @@ interface FormRow {
   alto: string;
   largo: string;
   ancho: string;
-  /** Solo pallets: cuántas cajas negras estuvieron EN LA BALANZA junto con el pallet. Se les
-   *  descuenta la tara. Vacío = ninguna, que es el caso normal. Ver `pesoPalletConCajas`. */
-  cajasNegras?: string;
+  /** Solo pallets: lo que pesa el pallet mismo, en kg. Se le resta al peso. Vacío = nada, que es
+   *  el caso normal. Ver `pesoNetoPallet`. */
+  pesoPallet?: string;
   saved?: boolean;
   /** La tarjeta se reabrió porque se le SUMÓ algo: el guardado que viene no es trabajo rehecho.
    *  Ver `esReingresoDeVerdad`. Se limpia al guardar. */
@@ -200,7 +202,7 @@ function TiendaGridCard({
   t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
   bultoCount, adquisicionCount = 0, webRetiroCount = 0,
   despachoP, despachoB, despachoC, despachoCH, hasGuide, storeDoneOps = 0, storeTotalOps = 0,
-  tipoCat, terminada, viendo, sinPesarCount,
+  tipoCat, terminada, viendo, sinPesarCount, nuevas = 0,
   onSelect, onAddToday, onRemoveFromToday, forma,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
@@ -217,6 +219,8 @@ function TiendaGridCard({
   /** Unidades guardadas sin pesar. Se veía solo DENTRO de la tienda; ahora también desde la
    *  lista, que es donde se decide a cuál entrar. Ver `chipFila`. */
   sinPesarCount?: number;
+  /** Lo que Picking imprimió después de marcarla terminada. Ver `nuevasTrasTerminar`. */
+  nuevas?: number;
   onSelect: () => void;
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
@@ -237,8 +241,8 @@ function TiendaGridCard({
     : onAddToday ? { tipo: 'agregar' as const, onClick: onAddToday } : undefined;
   return (
     <FilaTienda cod={formatCod(t.cod)} nombre={t.tienda} tipo={tipoBadge(tipoCat)}
-      estado={estadoLista({ cargadas: itemCount, terminada: !!terminada })}
-      activa={isActive} conGuia={!!hasGuide}
+      estado={estadoLista({ cargadas: itemCount, terminada: !!terminada, nuevas })}
+      activa={isActive} conGuia={!!hasGuide} nuevas={nuevas}
       avance={avanceFila(cargadas, faltan)}
       agregados={{ adquisicion: adquisicionCount, webRetiro: webRetiroCount }}
       sinPesar={sinPesarCount ?? 0}
@@ -299,8 +303,10 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
  * lo primero que se lee es cuánto falta, y Registrar / Marcar terminada viven en el menú ⋯ para
  * que no compitan con el pesaje. Los contadores por tipo ahora van en la barra de avance.
  */
-function TiendaFormHeader({ tienda, avance, onBack, swipe, terminadaInfo, onToggleTerminada, itemCount, sinPesarCount, sinGuardar, viendo, canalSano, botonRegistrar }: {
+function TiendaFormHeader({ tienda, avance, onBack, swipe, terminadaInfo, onToggleTerminada, itemCount, sinPesarCount, sinGuardar, viendo, canalSano, botonRegistrar, agregar }: {
   tienda: TiendaSantiago;
+  /** El «+» junto al ⋯: pallet, bulto, contenedor, chocolate, adquisición y web/retiro. */
+  agregar?: { opciones: OpcionAgregar[]; bloqueado?: boolean };
   avance: AvanceTienda;
   itemCount: number;
   onBack: () => void;
@@ -318,6 +324,7 @@ function TiendaFormHeader({ tienda, avance, onBack, swipe, terminadaInfo, onTogg
       subtitulo={`${formatCod(tienda.cod)} · ${tienda.ventanaHoraria}`}
       avance={avance}
       onVolver={onBack}
+      agregar={agregar}
       arrastre={swipe ? { onTouchStart: swipe.start, onTouchMove: swipe.move, onTouchEnd: swipe.end } : undefined}
       indicador={
         <>
@@ -956,8 +963,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const rmProg    = sectionProgress(todayTiendas.filter(t => t.region !== 'VR'), t => isTiendaTerminada(t.cod));
   const costaProg = sectionProgress(todayTiendas.filter(t => t.region === 'VR'), t => isTiendaTerminada(t.cod));
   // La barra del día cuenta las tiendas de hoy de los grupos elegidos (RM / Costa), sin mirar la búsqueda.
+  // Picking imprimió algo después de marcarla terminada: la tienda deja de contar como lista.
+  const nuevasDe = (cod: string) => nuevasTrasTerminar(
+    terminadas.get(cod)?.terminada === true,
+    unidadesSinGuardar(pickingSlotsFull[cod] ?? [], items[cod] || []).total,
+  );
   const estadoDe = (t: TiendaSantiago) => estadoLista({
     cargadas: (items[t.cod] || []).length, terminada: terminadas.get(t.cod)?.terminada === true,
+    nuevas: nuevasDe(t.cod),
   });
   const tiendasBarra = todayTiendas
     .filter(t => !isRegionesCod(t.cod) && (t.region === 'VR' ? selectedGrps.has('costa') : selectedGrps.has('rm')));
@@ -1405,10 +1418,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
         p = neto.neto;
       } else if (row.tipo === 'Pallet') {
-        // Las cajas negras que se pesaron ENCIMA del pallet son retornables: no son mercadería.
-        // Si el chocolate se pesó aparte y se sumó con el botón, su peso ya vino neto y acá no se
-        // declara ninguna — declararla restaría la tara dos veces.
-        const neto = pesoPalletConCajas(row.peso, parseInt(row.cajasNegras ?? '', 10) || 0);
+        // «Peso del pallet»: la tarima no es mercadería, se resta de lo que marcó la balanza.
+        // Vacío = nada. Espejo de TiendasPage.
+        const neto = pesoNetoPallet(row.peso, row.pesoPallet);
         if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
         p = neto.neto;
       } else {
@@ -2295,7 +2307,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
                   hasGuide={!!guides[guideKey(t.cod)]} storeStatus={prog?.status ?? 'none'} storeDoneOps={storeDoneOpsSeco} storeTotalOps={storeTotalOpsSeco}
-                  terminada={terminadas.get(t.cod)?.terminada === true}
+                  terminada={terminadas.get(t.cod)?.terminada === true} nuevas={nuevasDe(t.cod)}
                   viendo={viendoPorTienda.get(t.cod)}
                   onSelect={() => selectTienda(t)}
                   onRemoveFromToday={editarHoy ? () => setConfirmRemove(t.tienda) : undefined}
@@ -2338,7 +2350,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
                   hasGuide={!!guides[guideKey(t.cod)]} storeStatus="none" storeDoneOps={0} storeTotalOps={0}
-                  terminada={terminadas.get(t.cod)?.terminada === true}
+                  terminada={terminadas.get(t.cod)?.terminada === true} nuevas={nuevasDe(t.cod)}
                   viendo={viendoPorTienda.get(t.cod)}
                   onSelect={() => selectTienda(t)}
                   onAddToday={() => setConfirmAdd(t.tienda)} />
@@ -2912,7 +2924,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     </div>
                   </div>
                   )}
-                  <div className="grid grid-cols-2 gap-1 mb-1.5">
+                  <div className={`grid ${row.tipo === 'Pallet' ? 'grid-cols-3' : 'grid-cols-2'} gap-1 mb-1.5`}>
                     <div>
                       <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">
                         peso{cajaDeFila === 'negra' && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(TARA_CAJA_NEGRA).replace('.', ',')} kg de caja</span>}
@@ -2934,6 +2946,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                         )}
                       </div>
                     )}
+                    {row.tipo === 'Pallet' && (
+                      <CampoPesoPallet peso={row.peso} valor={row.pesoPallet ?? ''} claseCampo={CAMPO_GRANDE}
+                        onChange={v => updateRow(row.id, 'pesoPallet', v)} onFocus={marcarEnFoco} onBlur={quitarFoco} />
+                    )}
                   </div>
                   {row.tipo === 'Bulto' && !isChocRow && (
                     <div className="grid grid-cols-2 gap-1 mb-1.5">
@@ -2949,26 +2965,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     </div>
                   )}
                   {row.tipo === 'Pallet' && (
-                    <>
-                      <div className="mb-1.5 text-[11px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">120×100 cm</div>
-                      {/* Se pregunta por lo que estuvo EN LA BALANZA, no por lo que hay en el pallet:
-                          un chocolate sumado con el botón ya vino neto y declararlo acá restaría la
-                          tara dos veces. Por eso dice "pesadas con el pallet". */}
-                      <div className="mb-1.5">
-                        <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">
-                          cajas negras pesadas con el pallet
-                        </label>
-                        <input type="number" value={row.cajasNegras ?? ''} onChange={e => updateRow(row.id, 'cajasNegras', e.target.value)}
-                          onFocus={marcarEnFoco} onBlur={quitarFoco}
-                          placeholder="0" inputMode="numeric" min={0}
-                          className={CAMPO} />
-                        {(parseInt(row.cajasNegras ?? '', 10) || 0) > 0 && (
-                          <div className="text-[10px] font-bold mt-0.5" style={{ color: '#C2410C' }}>
-                            se descuentan {String(Math.round((parseInt(row.cajasNegras!, 10) * TARA_CAJA_NEGRA) * 10) / 10).replace('.', ',')} kg de cajas
-                          </div>
-                        )}
-                      </div>
-                    </>
+                    <div className="mb-1.5 text-[11px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">120×100 cm</div>
                   )}
                   {isChocRow && (
                     <div className="mb-1.5 text-[11px] text-navy/60 bg-bg border border-border rounded px-1.5 py-1">
@@ -3082,6 +3079,15 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[currentTienda.cod] ?? [], tiendaItems))}
           viendo={viendoPorTienda.get(currentTienda.cod)}
           canalSano={canalSano}
+          agregar={{ bloqueado: bloqueada, opciones: [
+            { texto: 'Pallet',      clase: 'pallet',     onClick: () => setDialogTipo('Pallet') },
+            { texto: 'Bulto',       clase: 'bulto',      onClick: () => setDialogTipo('Bulto') },
+            { texto: 'Cont.',       clase: 'contenedor', onClick: () => setDialogTipo('Contenedor') },
+            { texto: 'Choc.',       clase: 'chocolate',  onClick: () => setDialogTipo('Chocolate') },
+            // No piden medidas ni peso: se crean de un toque, sin diálogo. Ver shared/adquisicion.
+            { texto: 'Adquisición', clase: 'agregado', detalle: 'no se pesa', onClick: () => void addFormRow('Adquisicion') },
+            { texto: 'Web / retiro', clase: 'agregado', detalle: 'no se pesa', onClick: () => void addFormRow('WebRetiro') },
+          ] }}
           botonRegistrar={
             <RegistrarTiendaButton rol={profile?.role} terminada={tiendaTerminada(currentTienda.cod)} variante="claro"
               unidades={tiendaItems.length} yaRegistrada={registroTiendas.registrada(currentTienda.cod)}
@@ -3098,7 +3104,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         )}
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
-          {bloqueada && <AvisoTiendaTerminada />}
+          {bloqueada && (
+            <AvisoTiendaTerminada nuevas={nuevasDe(currentTienda.cod)}
+              onReabrir={() => { if (window.confirm('¿Reabrir esta tienda para pesar lo nuevo? Ya no se mostrará como lista para despachar.')) marcarTerminada(currentTienda.cod, false); }} />
+          )}
           {/* Terminada: todo lo de adentro queda deshabilitado de una vez (inputs y botones). */}
           <fieldset disabled={bloqueada} className="contents">
           {/* ── AHORA · FALTAN · PESADOS — la misma lectura que Nacional. Ver `TiendaAbierta`. */}
@@ -3239,19 +3248,6 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               </div>
             );
           })()}
-          <div className="flex gap-2 pb-2">
-            <button onClick={() => setDialogTipo('Pallet')}     className="flex-1 py-2.5 border-2 border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Pallet</button>
-            <button onClick={() => setDialogTipo('Bulto')}      className="flex-1 py-2.5 border-2 border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Bulto</button>
-            <button onClick={() => setDialogTipo('Contenedor')} className="flex-1 py-2.5 border-2 border-dashed border-[#6B21A8]/50 text-[#6B21A8] rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Cont.</button>
-            <button onClick={() => setDialogTipo('Chocolate')}  className="flex-1 py-2.5 border-2 border-dashed rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer" style={{ borderColor: 'rgba(146,64,14,0.50)', color: '#92400E' }}>+ Choc.</button>
-          </div>
-          {/* [Agregados] Segunda fila: no piden medidas ni peso, se crean de un toque. Van aparte y
-              no comparten fila con los otros cuatro porque son otra cosa — los de arriba se miden,
-              estos no. Ver shared/adquisicion. */}
-          <div className="flex gap-2 pb-2">
-            <button onClick={() => void addFormRow('Adquisicion')} className="flex-1 py-2.5 border-2 border-dashed rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer" style={{ borderColor: 'rgba(15,118,110,0.50)', color: '#0F766E' }}>+ Adquisición</button>
-            <button onClick={() => void addFormRow('WebRetiro')}   className="flex-1 py-2.5 border-2 border-dashed rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer" style={{ borderColor: 'rgba(109,40,217,0.50)', color: '#6D28D9' }}>+ Web / retiro</button>
-          </div>
           </fieldset>
           {dialogTipo && currentTienda && !bloqueada && (
             <AgregarPalletDialog
