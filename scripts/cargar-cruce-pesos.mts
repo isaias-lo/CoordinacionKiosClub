@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import { armarCruce, type MovimientoOdoo } from '../src/features/despacho/shared/cruceDePesos';
 import { valoresDeFila } from '../src/features/despacho/shared/hojaCrucePesos';
 import { sumarPesosPorTienda, conflictosDePeso, pesoCreible, type FilaDePeso } from '../src/features/despacho/shared/sumaPesosBodega';
+import { dominioDespachosDelDia } from '../src/features/despacho/shared/dominioOdoo';
 
 const env = Object.fromEntries(
   fs.readFileSync(new URL('../.env.local', import.meta.url), 'utf8').split('\n').map(l => {
@@ -49,9 +50,7 @@ async function movimientosDelDia(): Promise<MovimientoOdoo[]> {
   const rows = await rpc({
     service: 'object', method: 'execute_kw',
     args: [DB, uid, KEY, 'stock.picking', 'search_read',
-      [[['origin', 'like', 'Abastecimiento'],
-        ['date_done', '>=', `${fecha} 00:00:00`], ['date_done', '<=', `${fecha} 23:59:59`],
-        ['state', '=', 'done']]],
+      [dominioDespachosDelDia(fecha)],
       { fields: ['name', 'origin', 'total_weight', 'location_dest_id'], limit: 2000 }],
   }) as Array<{ name: string; origin: string | false; total_weight: number | false; location_dest_id: [number, string] | false }>;
   return rows.map(p => ({
