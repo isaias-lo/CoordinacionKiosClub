@@ -248,6 +248,8 @@ export default function RutasScreen() {
   // la pestaña le dice a la banda cuántas tiendas reparte el día que sale.
   const [calFuente, setCalFuente] = useState<FuenteCalendario>('despacho');
   const [calResumen, setCalResumen] = useState<CalRecord | null>(null);
+  // [Vista nueva · Calendario] El día elegido en la lista; sin elegir, el que sale en la cabecera.
+  const [calDiaElegido, setCalDiaElegido] = useState<string | null>(null);
   // [Vista nueva · Plan] Lo que el Planificador tiene armado; hasta que monta, «sin rutas».
   const [resumenPlan, setResumenPlan] = useState<ResumenPlan>({ rutas: 0, paradas: 0, activa: 'Ruta 1', orden: 'ventanas', conEtas: false, tarde: [] });
   const [resumenFlota, setResumenFlota] = useState<{ rutas: number | null; sinConductor: string[] }>({ rutas: null, sinConductor: [] });
@@ -2517,7 +2519,7 @@ export default function RutasScreen() {
   // que la fase (ver utils/bandaEnrutador); solo agrega cuántas de las tiendas sin camión ya las
   // terminó Bodega, que es lo que «Asignar» puede mover.
   // El día que sale, como lo guarda el calendario ('LU' … 'SA'): el de la cabecera.
-  const diaSaleCal = getDia(despachoDe(fecha));
+  const diaSaleCal = calDiaElegido ?? getDia(despachoDe(fecha));
   const banda: Banda = useMemo(() => {
     if (modo === 'drag' || modo === 'man') {
       const enPoolHoy = codsEnPool(calT);
@@ -3501,6 +3503,8 @@ export default function RutasScreen() {
             onResumenPlan={vista === 'nueva' ? setResumenPlan : undefined}
             calFuente={vista === 'nueva' ? calFuente : undefined}
             onResumenCal={vista === 'nueva' ? setCalResumen : undefined}
+            calDia={vista === 'nueva' ? diaSaleCal : undefined}
+            onCalDia={vista === 'nueva' ? setCalDiaElegido : undefined}
             rightPanelContent={
               results ? (
                 <div className="h-full overflow-y-auto">

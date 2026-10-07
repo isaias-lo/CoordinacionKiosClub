@@ -14,6 +14,7 @@ import {
 } from '@/lib/calendarioCongeladosSync';
 import { TIENDAS_INICIAL, GPS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { tipoTienda } from '@/features/despacho/rutas/utils/tipoTienda';
+import CalendarioSemanaA from '@/features/despacho/rutas/components/CalendarioSemanaA';
 import { esRegionNorte } from '@/lib/sectores';
 import CalendarioNotificaciones from '@/components/CalendarioNotificaciones';
 import {
@@ -65,12 +66,16 @@ export default function CalendarioColumnas({
   source   = 'despacho',
   forceGeneral = false,   // muestra solo la vista General y oculta el selector de grupos
   onResumen,
+  vistaA,
 }: {
   readOnly?: boolean;
   source?:   'despacho' | 'armado' | 'congelados';
   forceGeneral?: boolean;
   /** [Vista nueva del Enrutador] El calendario que se está mostrando (`null` mientras carga). */
   onResumen?: (cal: CalRecord | null) => void;
+  /** [Vista nueva del Enrutador] Dibuja el diseño A (días, tiendas del día, semana en barras) con
+   *  el día elegido afuera. Solo lectura. */
+  vistaA?: { dia: string; onDia: (dia: string) => void };
 }) {
   const [cal, setCal]               = useState<CalRecord | null>(null);
   useEffect(() => { onResumen?.(cal); }, [cal, onResumen]);
@@ -516,17 +521,28 @@ export default function CalendarioColumnas({
     );
   }
 
+  const notificaciones = source === 'despacho' && (
+    <CalendarioNotificaciones
+      localCal={local as CalRecordType}
+      onApplyToLocal={newCal => setLocal(newCal as CalRecord)}
+      onMarkPendingResolve={id => { pendingResolveRef.current.push(id); }}
+    />
+  );
+
+  if (vistaA) {
+    return (
+      <>
+        {notificaciones}
+        <CalendarioSemanaA cal={local} dia={vistaA.dia} onDia={vistaA.onDia} fuente={source} nombre={getNombre} />
+      </>
+    );
+  }
+
   const grpInfo = GRUPOS.find(g => g[0] === grp);
 
   return (
     <>
-    {source === 'despacho' && (
-      <CalendarioNotificaciones
-        localCal={local as CalRecordType}
-        onApplyToLocal={newCal => setLocal(newCal as CalRecord)}
-        onMarkPendingResolve={id => { pendingResolveRef.current.push(id); }}
-      />
-    )}
+    {notificaciones}
     <div style={{ background: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0', padding: '16px 16px 20px' }}>
 
       {/* ── Toolbar ── */}

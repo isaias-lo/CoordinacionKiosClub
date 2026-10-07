@@ -135,6 +135,9 @@ interface Props {
   /** [Vista nueva] Seco o Congelados lo elige la banda; y el calendario cargado, para su texto. */
   calFuente?: FuenteCalendario;
   onResumenCal?: (cal: Record<string, { rm: string[]; costa: string[]; fal: string[] }> | null) => void;
+  /** [Vista nueva] El día que muestra el calendario (diseño A); lo elige el usuario en la lista. */
+  calDia?: string;
+  onCalDia?: (dia: string) => void;
 }
 
 /* ── Icon badge for mode tabs ────────────────────────────────────── */
@@ -188,6 +191,8 @@ export default function InputSection({
   onResumenPlan,
   calFuente,
   onResumenCal,
+  calDia,
+  onCalDia,
 }: Props) {
   // En la vista nueva el indicador de fase vive en la banda: no se repite dentro del tablero.
   const faseVista = sinBarra ? undefined : fase;
@@ -355,7 +360,8 @@ export default function InputSection({
         </button>
       </div>}
       <div className="flex-1 overflow-y-auto p-3 bg-kbg">
-        <CalendarioColumnas readOnly forceGeneral source={calSource} onResumen={onResumenCal} />
+        <CalendarioColumnas readOnly forceGeneral source={calSource} onResumen={onResumenCal}
+          vistaA={sinBarra && calDia && onCalDia ? { dia: calDia, onDia: onCalDia } : undefined} />
       </div>
     </div>
   );
@@ -395,7 +401,7 @@ export default function InputSection({
           <div className={`p-3 md:p-4 bg-kbg min-h-full grid gap-4 items-start ${isMobile ? 'grid-cols-1' : 'grid-cols-[300px_minmax(0,1fr)]'}`}>
             {!isMobile && <VehiculosDeHoy flota={flota} onToggle={onToggleFlota} />}
             <div className="rounded-[16px] overflow-hidden border border-black/[0.09] bg-white min-w-0 flex flex-col">
-              <ControlFlotaPanel onResumen={onResumenFlota} />
+              <ControlFlotaPanel onResumen={onResumenFlota} vistaA />
             </div>
           </div>
         ) : flotaSubTab === 'gestionar' ? (
@@ -460,7 +466,7 @@ export default function InputSection({
         ) : modo === 'cal' ? (
           calTabContent
         ) : modo === 'plan' ? (
-          <div className="flex-1 overflow-hidden bg-white"><PlanificadorTab gps={gps} tiendas={tiendas} fecha={fecha} userId={userId} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} onResumen={onResumenPlan} /></div>
+          <div className="flex-1 overflow-hidden bg-white"><PlanificadorTab gps={gps} tiendas={tiendas} fecha={fecha} userId={userId} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} onResumen={onResumenPlan} vistaA={sinBarra} /></div>
         ) : modo === 'cong' ? (
           <div ref={dragScrollRef} className="flex-1 overflow-y-auto bg-kbg">
             <div className="p-3">
@@ -596,7 +602,7 @@ export default function InputSection({
         calTabContent
       ) : modo === 'plan' ? (
         <div className="flex-1 overflow-hidden bg-white">
-          <PlanificadorTab gps={gps} tiendas={tiendas} fecha={fecha} userId={userId} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} onResumen={onResumenPlan} />
+          <PlanificadorTab gps={gps} tiendas={tiendas} fecha={fecha} userId={userId} onPlanRutas={onPlanRutas} legDataByRoute={planLegsByRoute} kmByRoute={planKmByRoute} onResumen={onResumenPlan} vistaA={sinBarra} />
         </div>
       ) : modo === 'cong' ? (
         <div ref={dragScrollRef} className="flex-1 overflow-y-auto">
