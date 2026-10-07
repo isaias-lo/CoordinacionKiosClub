@@ -51,6 +51,7 @@ import {
 } from './picking-utils';
 import type { PickingEvento } from './picking-utils';
 import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, categoriasDeSlotsManual, categoriasDelGrupo, type Seccion } from './picking-secciones';
+import { palletsDeOtraSeccion, textoDelAviso, destinoDelAviso, textoDelBoton } from './palletEnOtraSeccion';
 import { pideSeccion, seccionYContenidoManual, normalizarBatch } from './encargadoManual';
 import { slotsYaImpresos } from './reimpresion';
 import { etiquetasDeLaSeleccion } from './seleccionImpresion';
@@ -2039,6 +2040,16 @@ export function PickingScreen() {
                           // ve/escribe respecto a antes. La sección va aparte, en la columna `section`.
                           const fullOps = (allGroupedByStore[group.storeCod] ?? []).find(g => g.stateKey === group.stateKey)?.operations ?? group.operations;
                           const fullGroupCats = categoriasDelGrupo(fullOps, allCardSlots);
+                          // Un pallet MIXTO de este picker que lleva carga de esta pestaña pero se
+                          // cuenta en otra (o en ninguna). Sin aviso, acá se ve «0» y alguien lo
+                          // arma de nuevo: dos slots para una unidad. Ver `palletEnOtraSeccion.ts`.
+                          const ajenos = seccionActiva == null ? [] : palletsDeOtraSeccion(allCardSlots, seccionActiva);
+                          const destinoAviso = destinoDelAviso(ajenos);
+                          const textoAviso = textoDelAviso(ajenos);
+                          const botonAviso = textoDelBoton(destinoAviso);
+                          const avisoOtraSeccion = textoAviso && botonAviso && destinoAviso
+                            ? { texto: textoAviso, boton: botonAviso, onIr: () => setSectionFilter(destinoAviso) }
+                            : null;
                           const fullIsCongelados = fullOps.length > 0
                             ? fullOps.some(o => o.categories.includes('Congelados'))
                             : allCardSlots.some(s => seccionDeSlot(s) === 'congelados');
@@ -2048,6 +2059,7 @@ export function PickingScreen() {
                               group={group}
                               displayName={pickerDisplayNames[group.stateKey] || getCanonicalName(group.key)}
                               palletsByTipo={cardPalletsByTipo}
+                              avisoOtraSeccion={avisoOtraSeccion}
                               sectionFilter={sectionFilter}
                               isCongelados={isCongelados}
                               adelanto={adelantoByCod[group.storeCod]}
