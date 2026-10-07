@@ -1476,6 +1476,13 @@ export function PickingScreen() {
       // body>* oculta todo; el selector de ID tiene mayor especificidad y gana.
       'body>*{display:none!important}' +
       '#picking-print-root{display:block!important;width:100%;height:auto}' +
+      // LOS FONDOS TIENEN QUE IMPRIMIRSE.
+      // El navegador los descarta por defecto, y eso dejaba el rotulo del TIPO de tienda —texto
+      // BLANCO sobre fondo negro— casi invisible en el papel: se veia una sombra gris clarita.
+      // Lo enseño una etiqueta impresa de 41ANA el 07/10/2026; la ZONA se salvo porque usa borde.
+      // Los chips de contenido («Hogar») tambien perdian su recuadro, aunque ahi el texto es
+      // oscuro y se leia igual. Esta propiedad ya se usaba en el calendario, por lo mismo.
+      '.picking-label,.picking-label *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}' +
       '.picking-label{display:flex!important;flex-direction:column!important;' +
       'width:100vw!important;height:100vh!important;max-width:100vw!important;' +
       'border-radius:0!important;margin:0!important;border:none!important;' +
