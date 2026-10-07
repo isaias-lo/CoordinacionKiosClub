@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy, CalendarDays, Flag, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
+import { MapPin, Search, X, Navigation, GripVertical, Sparkles, Trash2, Building2, Clock, Share2, Check, Plus, Copy, CalendarDays, Flag, ChevronDown, ChevronRight, AlertTriangle, Star } from 'lucide-react';
 import { CD_INICIAL, COLS, type TiendaInfo } from '../data/tiendas';
 import type { Vehiculo } from '../data/flota';
 import { nn, type Ruta } from '../utils/routing';
@@ -28,6 +28,10 @@ import { cargarGMaps } from '../utils/maps';
 import { tipoTienda, grupoTienda, type TipoTiendaKey } from '../utils/tipoTienda';
 import AddressAutocomplete from './AddressAutocomplete';
 import { SegmentadoA, ChipA, RotuloA, TarjetaA, ACENTO_PLAN } from './PlanControlesA';
+import {
+  normalizarFavoritas, crearFavorita, agregarFavorita, quitarFavorita, paradasDesdeFavorita, resumenFavorita,
+  FECHA_FAVORITAS, LS_FAVORITAS, NOMBRE_FAVORITA_MAX, type RutaFavorita,
+} from '../utils/planFavoritas';
 import { fetchSessionState, subscribeToSessionState, pushSessionStateResult } from '@/lib/userSessionState';
 import { mergeRutasPlan, conAlMenosUna, type RutaPlan } from '../utils/planSync';
 import { fetchCalendarioCompleto } from '@/features/despacho/utils/useCalendario';
@@ -254,6 +258,14 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const [calOpenA,    setCalOpenA]    = useState(() => !loadPlan().routes.some(r => r.selected.length > 0));
   // [Vista nueva] Buscar y agregar tiendas vive dentro de la tarjeta de la ruta, plegado.
   const [agregarOpenA, setAgregarOpenA] = useState(false);
+  // [Vista nueva] Rutas favoritas: una ruta guardada con su orden para repetirla otro día. Se
+  // comparten entre equipos (fila fija en shared_session_state) y se cachean en este equipo.
+  const [favoritas,   setFavoritas]   = useState<RutaFavorita[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try { return normalizarFavoritas(JSON.parse(localStorage.getItem(LS_FAVORITAS) || '[]')); } catch { return []; }
+  });
+  const [nombreFav,   setNombreFav]   = useState<string | null>(null); // null = formulario cerrado
+  const [avisoFav,    setAvisoFav]    = useState('');
 
   // GMaps se carga para el geocoder de "Dirección" (el mapa lo dibuja el MapSection fijo).
   useEffect(() => { cargarGMaps(); }, []);
@@ -288,6 +300,22 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   // Se guarda por fecha, como el resto del Enrutador, con los mismos resguardos del tablero: no se
   // escribe una fecha que no se leyó, y lo remoto se FUSIONA por ruta en vez de reemplazar el plan
   // entero — si no, dos personas armando rutas distintas se borrarían entre sí.
+  // Favoritas: se traen al abrir y se escuchan, así una guardada en otro equipo aparece sola.
+  useEffect(() => {
+    if (!vistaA) return;
+    let vivo = true;
+    const aplicar = (raw: unknown) => {
+      const lista = normalizarFavoritas(raw);
+      setFavoritas(lista);
+      try { localStorage.setItem(LS_FAVORITAS, JSON.stringify(lista)); } catch { /* noop */ }
+    };
+    fetchSessionState('plan_favoritas', FECHA_FAVORITAS)
+      .then(remote => { if (vivo && remote != null) aplicar(remote); })
+      .catch(() => { /* sin red: quedan las de este equipo */ });
+    const off = subscribeToSessionState('plan_favoritas', userId ?? '', state => aplicar(state), undefined, FECHA_FAVORITAS);
+    return () => { vivo = false; off(); };
+  }, [vistaA, userId]);
+
   useEffect(() => {
     if (!fecha) return;
     fechaCargadaRef.current = null;
@@ -584,6 +612,43 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     setRoutes(rs => [...rs, { id, nombre: `Ruta ${rs.length + 1}`, selected: [], orderMode: 'ventanas', customStops: [] }]);
     setVisibleIds(prev => [...prev, id]);
     setEditId(id);
+  }
+  function guardarFavoritas(lista: RutaFavorita[]) {
+    setFavoritas(lista);
+    try { localStorage.setItem(LS_FAVORITAS, JSON.stringify(lista)); } catch { /* noop */ }
+    pushSessionStateResult('plan_favoritas', { favoritas: lista }, userId, FECHA_FAVORITAS)
+      .then(({ ok }) => setAvisoFav(ok ? '' : 'Quedó guardada en este equipo, pero no se pudo compartir. Revisa la conexión.'))
+      .catch(() => setAvisoFav('Quedó guardada en este equipo, pero no se pudo compartir. Revisa la conexión.'));
+  }
+  // Guarda la ruta abierta con el orden en que se ve ahora, que es el que se quiere repetir.
+  function guardarComoFavorita() {
+    const fav = crearFavorita({
+      id: `f${Date.now()}`, nombre: nombreFav ?? activeRoute.nombre, orden: orderedCods,
+      direcciones: customStops, carga: activeRoute.carga, ahora: Date.now(),
+    });
+    if (!fav) return;
+    guardarFavoritas(agregarFavorita(favoritas, fav));
+    setNombreFav(null);
+  }
+  // Usarla llena la ruta abierta si está vacía; si no, abre una ruta nueva. Vuelve en orden «A mano»
+  // para que el orden guardado no se reordene solo.
+  function usarFavorita(fav: RutaFavorita) {
+    const vacia = routes.find(r => r.id === editId && r.selected.length === 0);
+    const enUso = routes.filter(r => r.id !== vacia?.id).flatMap(r => r.customStops.map(d => d.id));
+    const { selected: sel, customStops: dirs } = paradasDesdeFavorita(fav, enUso);
+    const datos = { nombre: fav.nombre, selected: sel, customStops: dirs, orderMode: 'manual' as const, carga: fav.carga };
+    if (vacia) {
+      setRoutes(rs => rs.map(r => (r.id === vacia.id ? { ...r, ...datos } : r)));
+      return;
+    }
+    const id = `r${Date.now()}`;
+    setRoutes(rs => [...rs, { id, ...datos }]);
+    setVisibleIds(prev => [...prev, id]);
+    setEditId(id);
+  }
+  function borrarFavorita(fav: RutaFavorita) {
+    if (!window.confirm(`¿Borrar la favorita «${fav.nombre}»? Las rutas ya armadas no cambian.`)) return;
+    guardarFavoritas(quitarFavorita(favoritas, fav.id));
   }
   function eliminarRuta(id: string) {
     if (routes.length <= 1) return;
@@ -1377,6 +1442,31 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
               className="m-4 rounded-[10px] border border-black/[0.14] bg-white py-2.5 text-apoyo font-bold text-ktext2 flex items-center justify-center gap-2 disabled:opacity-40">
               <Share2 size={15} /> {visibles.length > 1 ? `Compartir las ${visibles.length} por WhatsApp` : 'Compartir por WhatsApp'}
             </button>
+            {/* Favoritas: rutas guardadas con su orden, para repetirlas otro día */}
+            <div className="border-t border-black/[0.07] flex flex-col">
+              <div className="px-4 pt-3.5 pb-2 flex items-center gap-2">
+                <Star size={15} style={{ color: '#B45309' }} fill="#F59E0B" />
+                <span className="text-cuerpo font-bold text-ktext">Favoritas</span>
+              </div>
+              {favoritas.length === 0 && (
+                <p className="px-4 pb-4 text-apoyo text-kmuted">Guarda una ruta con «Guardar como favorita» para repetir su orden otro día.</p>
+              )}
+              {favoritas.map(f => (
+                <div key={f.id} className="flex items-center gap-2 px-4 py-2.5 border-t border-black/[0.05]">
+                  <span className="flex-1 min-w-0 flex flex-col">
+                    <span className="text-apoyo font-bold text-ktext truncate">{f.nombre}</span>
+                    <span className="text-rotulo tracking-normal text-kmuted">{resumenFavorita(f)}{f.carga === 'congelados' ? ' · ❄' : ''}</span>
+                  </span>
+                  <button type="button" onClick={() => usarFavorita(f)}
+                    className="rounded-[8px] px-3 py-1.5 text-apoyo font-bold text-white flex-shrink-0" style={{ background: ACENTO_PLAN }}>
+                    Usar
+                  </button>
+                  <button type="button" onClick={() => borrarFavorita(f)} aria-label={`Borrar la favorita ${f.nombre}`}
+                    className="text-black/25 hover:text-[#D42B2B] flex-shrink-0"><X size={14} /></button>
+                </div>
+              ))}
+              {avisoFav && <p className="px-4 pb-3 text-apoyo" style={{ color: '#A16207' }}>{avisoFav}</p>}
+            </div>
           </aside>
 
           {/* Centro: la ruta abierta, parada por parada, con a qué hora recibe y a qué hora llega */}
@@ -1484,7 +1574,28 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
                 <button type="button" onClick={limpiar} className="px-3 py-2 rounded-[10px] text-apoyo font-semibold text-[#B42318] flex items-center gap-1.5">
                   <Trash2 size={13} /> Vaciar esta ruta
                 </button>
+                <button type="button" onClick={() => setNombreFav(n => (n == null ? activeRoute.nombre : null))}
+                  aria-expanded={nombreFav != null}
+                  className="px-3 py-2 rounded-[10px] text-apoyo font-semibold flex items-center gap-1.5" style={{ color: '#B45309' }}>
+                  <Star size={14} /> Guardar como favorita
+                </button>
                 <span className="text-apoyo text-kmuted">{kmLabel}{totalMin ? ` · ${totalMin}` : ''}</span>
+                {nombreFav != null && (
+                  <form className="w-full flex items-center gap-2 flex-wrap"
+                    onSubmit={e => { e.preventDefault(); guardarComoFavorita(); }}>
+                    <input autoFocus value={nombreFav} maxLength={NOMBRE_FAVORITA_MAX} onChange={e => setNombreFav(e.target.value)}
+                      aria-label="Nombre de la favorita" placeholder="Nombre (ej: Oriente martes)"
+                      className="flex-1 min-w-[180px] border border-black/[0.12] rounded-[10px] px-3 py-2 min-h-[40px] text-apoyo bg-white text-ktext outline-none focus:border-[#B45309]" />
+                    <button type="submit" disabled={!nombreFav.trim()}
+                      className="rounded-[10px] px-4 py-2 min-h-[40px] text-apoyo font-bold text-white disabled:opacity-40" style={{ background: '#B45309' }}>
+                      Guardar
+                    </button>
+                    <button type="button" onClick={() => setNombreFav(null)} className="px-3 py-2 text-apoyo font-semibold text-kmuted">Cancelar</button>
+                    {favoritas.some(f => f.nombre.toLocaleLowerCase('es') === nombreFav.trim().toLocaleLowerCase('es')) && (
+                      <span className="w-full text-apoyo text-kmuted">Ya hay una favorita con ese nombre: se reemplaza con este orden.</span>
+                    )}
+                  </form>
+                )}
                 {!legsOk && <span className="w-full text-apoyo text-kmuted">La hora de llegada aparece cuando el mapa calcula los tiempos de esta ruta.</span>}
               </div>
             )}
