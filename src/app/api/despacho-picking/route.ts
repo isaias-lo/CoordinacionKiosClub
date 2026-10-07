@@ -1,3 +1,4 @@
+import { canonicalDeSlot, stampDesdeISO } from '@/lib/canonicalSlot';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
@@ -18,25 +19,12 @@ const CARGA_LABEL: Record<string, string> = {
   congelados: 'Congelados',
 };
 
-function stampFromISO(isoDate: string): string {
-  const [yyyy, mm, dd] = isoDate.split('-');
-  return `${dd}${mm}${yyyy}`;
-}
 
 function fechaFromISO(isoDate: string): string {
   const [yyyy, mm, dd] = isoDate.split('-');
   return `${dd}/${mm}/${yyyy}`;
 }
 
-function canonicalId(tipo: string, seq: number, cod: string, stamp: string): string {
-  if (tipo === 'P')  return `P${seq}${cod}${stamp}P`;
-  if (tipo === 'B')  return `${seq}B${cod}${stamp}B`;
-  if (tipo === 'CH') return `CH${seq}${cod}${stamp}CH`;
-  if (tipo === 'C')  return `C${seq}${cod}${stamp}C`;
-  if (tipo === 'CC') return `CC${seq}${cod}${stamp}CC`;
-  if (tipo === 'CN') return `CN${seq}${cod}${stamp}CN`;
-  return `${seq}${cod}${stamp}`;
-}
 
 function tipoLabel(tipo: string): string {
   if (tipo === 'P')  return 'Pallet';
@@ -77,9 +65,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'slot_id not found for this store/tipo/date' }, { status: 404 });
     }
 
-    const stamp  = stampFromISO(date);
+    const stamp  = stampDesdeISO(date);
     const fecha  = fechaFromISO(date);
-    const id     = canonicalId(tipo, rank, store_cod, stamp);
+    const id     = canonicalDeSlot(tipo, rank, store_cod, stamp);
     const tienda = getTiendaSantiagoByCod(store_cod);
 
     const record = {

@@ -1,5 +1,7 @@
 'use client';
 
+import { canonicalDeSlot } from '@/lib/canonicalSlot';
+
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
@@ -49,13 +51,6 @@ interface CombinedGroup {
   reprints:      ReprintSlot[];
 }
 
-function buildCanonical(tipo: string, seq: number, cod: string, stamp: string): string {
-  if (tipo === 'P')  return `P${seq}${cod}${stamp}P`;
-  if (tipo === 'B')  return `${seq}B${cod}${stamp}B`;
-  if (tipo === 'CH') return `CH${seq}${cod}${stamp}CH`;
-  if (tipo === 'C')  return `C${seq}${cod}${stamp}C`;
-  return `${seq}${cod}${stamp}`;
-}
 
 export function CombineAlertsPanel() {
   const [groups,    setGroups]    = useState<CombinedGroup[]>([]);
@@ -121,7 +116,7 @@ export function CombineAlertsPanel() {
         .map(s => ({
           id:           s.id,
           seq:          s.seq!,
-          canonical_id: s.canonical_id ?? buildCanonical(tipo, s.seq!, storeCod, stamp),
+          canonical_id: s.canonical_id ?? canonicalDeSlot(tipo, s.seq!, storeCod, stamp),
           tipo,
           storeCod,
           pickerLabel:  s.picker_label ?? '—',
