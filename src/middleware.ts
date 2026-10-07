@@ -86,12 +86,22 @@ export async function middleware(request: NextRequest) {
 
   if (!user) {
     if (PUBLIC_ROUTES.some(p => pathname === p)) return response;
-    return redirigir('/login');
+    // Se recuerda a dónde iba, para volver ahí después de entrar (un enlace compartido, o la
+    // pantalla abierta cuando venció la sesión). `/` no: ahí cada rol tiene su propio inicio.
+    if (pathname === '/') return redirigir('/login');
+    const destino = pathname + request.nextUrl.search;
+    return redirigir(`/login?next=${encodeURIComponent(destino)}`);
   }
 
   const role       = (user.user_metadata?.role          as string   | undefined) ?? 'auditor';
   const metaPaths  = user.user_metadata?.allowed_paths  as string[] | undefined;
   const metaHome   = user.user_metadata?.home_path      as string   | undefined;
+
+  // /login se abre aunque haya sesión. Antes mandaba de vuelta al inicio de quien estuviera
+  // dentro, y en una handheld compartida eso era el "rebote": no había forma de llegar al
+  // formulario para poner otra cuenta sin encontrar antes el botón de cerrar sesión. La página
+  // muestra quién está dentro y deja seguir o cambiar de cuenta.
+  if (pathname === '/login') return response;
 
   if (PUBLIC_ROUTES.some(p => pathname === p)) {
     return redirigir(roleHome(role, metaHome, metaPaths));
@@ -104,13 +114,9 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  if (pathname === '/login') {
-    return redirigir(roleHome(role, metaHome, metaPaths));
-  }
-
   // Custom role with no paths in JWT yet (user created before fix) → force re-login to refresh JWT
   const isCustomRole = !Object.keys(SYSTEM_ROLE_PATHS).includes(role) && role !== 'pending';
-  if (isCustomRole && !metaPaths?.length && pathname !== '/login') {
+  if (isCustomRole && !metaPaths?.length) {
     const cleanResp = NextResponse.redirect(new URL('/login', request.url));
     request.cookies.getAll()
       .filter(c => c.name.startsWith('sb-'))

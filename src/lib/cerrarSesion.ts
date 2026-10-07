@@ -38,7 +38,7 @@ export function cookiesDeSesion(cookie: string): string[] {
     .filter(nombre => nombre.startsWith('sb-'));
 }
 
-function borrarCookiesDeSesion(): void {
+export function borrarCookiesDeSesion(): void {
   for (const nombre of cookiesDeSesion(document.cookie)) {
     // Mismo path con el que las escribe @supabase/ssr (DEFAULT_COOKIE_OPTIONS.path = '/').
     document.cookie = `${nombre}=; Max-Age=0; Path=/; SameSite=Lax`;
