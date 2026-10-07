@@ -212,7 +212,14 @@ export function BarcodeCard({
   // El alto del renglón donde se escribe sale del tamaño del código, así que la banda crece y se
   // achica con la etiqueta en vez de quedar clavada. El ANCHO ya no se calcula: las dos casillas
   // se reparten la fila entera.
-  const altoRenglon  = Math.round(cfg.storeFontSize * 0.46);
+  // EL FACTOR DEL RENGLON. Medido sobre la hoja apaisada (carta: 756 px utiles de alto):
+  //   0,46  69 px = 18,3 mm   <- como salio la primera impresion
+  //   0,70 105 px = 27,8 mm   <- hoy, +51%
+  //   0,90 135 px = 35,7 mm   <- deja solo 35 px de margen
+  // No se gasta todo el papel que sobra a proposito: cuando el nombre de la tienda envuelve a dos
+  // lineas —las 13 de REGION NORTE con nombre largo, medidas sobre el catalogo— eso ya se come
+  // unos 50 px. Con 0,70 quedan 65 px, o sea que esa segunda linea entra sin que nada se salga.
+  const altoRenglon  = Math.round(cfg.storeFontSize * 0.70);
 
   const s = compact ? {
     // innerMinH: 0 → la tarjeta abraza su contenido (no se estira hacia abajo);
