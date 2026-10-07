@@ -236,7 +236,12 @@ export function BarcodeCard({
     palletSize: cfg.palletNumSize, deSize: 13,
     catSize: cfg.catFontSize, catPad: '4px 14px', catGap: 8, catRadius: 8,
     centerPad: '12px 0',
-    storeCodeSize: `clamp(${Math.round(cfg.storeFontSize * 0.6)}px, 28vw, ${cfg.storeFontSize}px)`, storeCodeLS: '6px',
+    // `cqw` y no `vw`: el codigo se mide contra la TARJETA, no contra la pantalla. Desde que los
+    // recuadros de KG y CM comparten su fila, la columna del codigo bajo de ~676 a ~382 px, y con
+    // `vw` el tope mandaba siempre — 5 letras a 150 px ocupan ~350 y entraban por un 8%. Subiendo
+    // `storeFontSize` en Config (llega a 240) se desbordaba. Con `cqw` el ancho de la tarjeta pone
+    // el techo y no hay configuracion que lo rompa. La `compact` ya se media asi.
+    storeCodeSize: `clamp(${Math.round(cfg.storeFontSize * 0.6)}px, 20cqw, ${cfg.storeFontSize}px)`, storeCodeLS: '6px',
     storeNameSize: cfg.storeNameFontSize, storeNameMT: 10,
     barMT: 8, barW: `${cfg.barcodeContainerWidth}%`, barH: cfg.barcodeHeight, barBW: cfg.barcodeBarWidth,
     footerFS: 9, footerDateFS: cfg.dateFontSize,
