@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { Navigation, GripVertical, ClipboardList, User, Store, FileUp, ChevronLeft, AlertTriangle, Pencil } from 'lucide-react';
+import { Navigation, ClipboardList, User, Store, FileUp, ChevronLeft, AlertTriangle, Pencil } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
 import { IndicadorCanalSano } from '../../shared/IndicadorCanalSano';
@@ -33,6 +33,8 @@ import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { avanceTienda, claseUnidad, type AvanceTienda } from '../../shared/unidadVisual';
 import { useTarjetaActiva } from '../../shared/useTarjetaActiva';
+import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTienda, ResumenVacio, UnidadResumen } from '../../shared/ResumenDia';
+import { formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
 import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, type OpcionAgregar } from '../../shared/TiendaAbierta';
 import { confirmarCambioGuardado, confirmarEliminarVarios } from '../../shared/confirmarGuardado';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
@@ -186,6 +188,8 @@ const CAMPO_GRANDE = 'w-full bg-card border-[1.5px] border-border rounded-btn px
 interface ResumenEditState {
   cod: string;
   idx: number;
+  /** Se guarda por id: la posición cambia si otro equipo agrega o borra mientras se edita. */
+  id?: string;
   tipo: TipoCargamento;
   contenido: ContenidoSantiago;
   estado: EstadoItem;
@@ -950,10 +954,6 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     selectTienda(tiendaDelPallet);
   };
 
-  const allItems           = Object.values(items).flat();
-  const statP              = allItems.filter(i => i.tipo === 'Pallet').length;
-  const statB              = bultosSantiago(allItems);
-  const statCH             = allItems.filter(i => i.tipo === 'Chocolate').length;
   const activeTiendasCount = Object.keys(items).filter(k => items[k].length > 0).length;
   // Contador "terminadas/total del día" por sección (desde todayTiendas = todas las del día,
   // sin importar el filtro RM/Costa activo). Costa = region 'VR'. Terminada = tienda con carga.
@@ -2228,15 +2228,26 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const rStartEdit = (cod: string, idx: number) => {
     const item = (items[cod] || [])[idx];
     if (!item) return;
-    setResumenEditing({ cod, idx, tipo: item.tipo, contenido: item.contenido, estado: item.estado,
+    setResumenEditing({ cod, idx, id: item.id, tipo: item.tipo, contenido: item.contenido, estado: item.estado,
       peso: String(item.peso), alto: String(item.alto), largo: String(item.largo), ancho: String(item.ancho) });
     setResumenExpanded(prev => { const next = new Set(prev); next.add(cod); return next; });
   };
   const rCancelEdit = () => setResumenEditing(null);
   const rSaveEdit = () => {
     if (!resumenEditing) return;
-    const { cod, idx, tipo: rTipo, contenido: rContenido, estado: rEstado } = resumenEditing;
+    const { cod, idx: idxAntes, id, tipo: rTipo, contenido: rContenido, estado: rEstado } = resumenEditing;
+    const idx = posicionDeUnidad(items[cod] || [], id, idxAntes);
+    if (idx < 0) {
+      showToast('⚠ Esa unidad ya no está (la cambió otro equipo). No se guardó nada.', '#D32F2F');
+      setResumenEditing(null);
+      return;
+    }
     const item = (items[cod] || [])[idx];
+    // Las mismas guardias que la tarjeta: sin peso no se guarda y un peso imposible se ataja acá.
+    const pesoR = esAgregado(item.tipo) ? (leerPeso(resumenEditing.peso) ?? 0) : leerPeso(resumenEditing.peso);
+    if (pesoR == null) { showToast('Ingresa el peso', '#D97706'); return; }
+    const duroR = excedeTopeDuro(pesoR, claseSantiago(rTipo));
+    if (duroR) { showToast(`⚠ ${duroR}`, '#D32F2F'); return; }
     const isChoc       = rTipo === 'Bulto'      && rContenido === 'Chocolate';
     const isContenedor = rTipo === 'Contenedor';
     const alto  = isContenedor ? CONTENEDOR_ALTO  : isChoc ? CHOCOLATE_DIMS.alto  : (parseInt(resumenEditing.alto)  || 0);
@@ -2245,7 +2256,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     dispatch({
       type: 'EDIT_ITEM', tiendaCod: cod, idx,
       item: { ...item, tipo: rTipo, contenido: rContenido, estado: rEstado,
-        peso: (leerPeso(resumenEditing.peso) ?? 0), alto, largo, ancho,
+        peso: pesoR, alto, largo, ancho,
         pesoVolumetrico: (alto * largo * ancho) / 6000 },
     });
     setResumenEditing(null);
@@ -2385,119 +2396,60 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   /* ════════════════════════════════════
      RESUMEN PANEL (mobile + desktop right)
   ════════════════════════════════════ */
-  const renderResumenPanel = () => {
-    const doneTiendas    = todayTiendas.filter(t => (items[t.cod] || []).length > 0);
-    const pendingTiendas = todayTiendas.filter(t => !(items[t.cod] || []).length);
-
-    const INPUT_CLS = 'w-full border border-border rounded-btn px-2 py-2 text-[13px] font-mono text-navy bg-white';
-    const LABEL_CLS = 'text-[9px] text-text-3 mb-0.5 uppercase tracking-wide';
+  const renderResumenPanel = (movil = false) => {
+    const INPUT_CLS = 'w-full min-h-[44px] bg-card border-[1.5px] border-border rounded-btn px-2 text-cuerpo font-barlow tabular-nums text-text outline-none focus:border-navy';
+    const LABEL_CLS = 'text-rotulo font-bold text-text-sub uppercase mb-1';
+    // La misma cuenta que la lista de tiendas (`contarPorClase`).
+    const totalesDia = totalesResumen(activeTiendas.flatMap(([, it]) => it), i => claseSantiago(i.tipo));
 
     return (
-      <div className="flex-1 flex flex-col overflow-hidden">
-
-        {/* Desktop header (stats + progress) */}
-        <div className="hidden lg:block bg-navy px-4 py-3 flex-shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-barlow-condensed text-[11px] uppercase tracking-widest text-white/40">Resumen en tiempo real</span>
-            <div className="flex items-center gap-2">
-              {todayTiendas.length > 0 && pendingTiendas.length === 0 && (
-                <span className="font-barlow-condensed text-[12px] font-bold text-[#86EFAC] bg-[rgba(134,239,172,0.15)] px-2 py-0.5 rounded">✓ Hoy completo</span>
-              )}
+      <div className="flex-1 flex flex-col overflow-hidden bg-bg">
+        <CabeceraResumen totales={totalesDia} tiendas={activeTiendasCount}
+          avance={{ listas: resumenHoy.lista, total: resumenHoy.total }}
+          volver={movil ? (
+            <button type="button" onClick={() => setView('list')} aria-label="Volver a las tiendas"
+              className="w-10 h-10 -ml-1 flex items-center justify-center rounded-btn text-text-2 bg-bg-2 active:bg-bg-3 flex-shrink-0">
+              <ChevronLeft size={22} aria-hidden="true" />
+            </button>
+          ) : undefined}
+          herramientas={
+            <>
               {/* El lado de Odoo no depende de Bodega: existe desde temprano y se puede traer sin
                   esperar al registro. Solo admin. Ver `TraerOdooButton`. */}
               <TraerOdooButton rol={profile?.role} fechaISO={fechaChile()} showToast={showToast} />
-            </div>
-          </div>
-          <div className="flex gap-5 mb-2">
-            {[{ v: statP, l: 'Pallets', color: '#93C5FD' }, { v: statB, l: 'Bultos', color: '#FCD34D' }, ...(statCH > 0 ? [{ v: statCH, l: 'Choc.', color: '#FBB6A0' }] : []), { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' }].map(({ v, l, color }) => (
-              <div key={l} className="text-center">
-                <div className="font-barlow-condensed text-[24px] font-extrabold leading-none" style={{ color }}>{v}</div>
-                <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
-              </div>
-            ))}
-          </div>
-          {todayTiendas.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between text-[10px] text-white/40 mb-1">
-                <span>{doneTiendas.length}/{todayTiendas.length} tiendas HOY</span>
-                <span>{pendingTiendas.length > 0 ? `${pendingTiendas.length} pendiente${pendingTiendas.length > 1 ? 's' : ''}` : 'Todo registrado'}</span>
-              </div>
-              <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                <div className="h-full bg-[#86EFAC] rounded-full transition-all duration-500"
-                  style={{ width: `${todayTiendas.length > 0 ? (doneTiendas.length / todayTiendas.length) * 100 : 0}%` }} />
-              </div>
-            </div>
-          )}
-        </div>
+              {movil && (
+                <button type="button" onClick={enrutar}
+                  className="min-h-[36px] px-2.5 rounded-btn bg-navy text-white text-apoyo font-bold flex items-center gap-1.5 active:opacity-80">
+                  <Navigation size={14} aria-hidden="true" /> Enrutador
+                </button>
+              )}
+            </>
+          } />
 
-        {/* Mobile stats strip */}
-        <div className="lg:hidden bg-navy flex-shrink-0">
-          <div className="flex items-center">
-            {[{ v: statP, l: 'Pallets', color: '#93C5FD' }, { v: statB, l: 'Bultos', color: '#FCD34D' }, ...(statCH > 0 ? [{ v: statCH, l: 'Choc.', color: '#FBB6A0' }] : []), { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' }].map(({ v, l, color }, i, arr) => (
-              <div key={l} className={`flex-1 py-3 text-center ${i < arr.length - 1 ? 'border-r border-white/10' : ''}`}>
-                <div className="font-barlow-condensed text-[26px] font-bold leading-none" style={{ color }}>{v}</div>
-                <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-
-        {/* Ver todo / Colapsar — always visible on all screen sizes */}
         {activeTiendasCount > 1 && (
-          <div className="flex justify-end px-3 py-1.5 bg-bg border-b border-border flex-shrink-0">
-            <button
-              onClick={() => {
-                const allCods = activeTiendas.map(([c]) => c);
-                setResumenExpanded(resumenExpanded.size === allCods.length ? new Set() : new Set(allCods));
-              }}
-              className="font-barlow-condensed text-[12px] font-bold text-text-3 hover:text-navy active:text-navy cursor-pointer transition-colors border-none bg-transparent">
-              {resumenExpanded.size === activeTiendasCount ? '▲ Colapsar' : '▼ Ver todo'}
-            </button>
+          <div className="flex justify-end px-3 py-2 bg-bg border-b border-border flex-shrink-0">
+            <BotonHerramienta onClick={() => {
+              const allCods = activeTiendas.map(([c]) => c);
+              setResumenExpanded(resumenExpanded.size === allCods.length ? new Set() : new Set(allCods));
+            }}>
+              {resumenExpanded.size === activeTiendasCount ? 'Plegar todo' : 'Desplegar todo'}
+            </BotonHerramienta>
           </div>
         )}
         {/* Accordion */}
         <div className="flex-1 overflow-y-auto">
-          {activeTiendas.length === 0 ? (
-            <div className="py-16 text-center text-text-3">
-              <div className="text-4xl mb-3 opacity-20">📋</div>
-              <p className="text-[13px] opacity-50">Sin items registrados aún</p>
-            </div>
-          ) : (
+          {activeTiendas.length === 0 ? <ResumenVacio /> : (
             activeTiendas.map(([cod, it]) => {
               const t           = getTiendaSantiagoByCod(cod);
-              const pallets     = it.filter(i => i.tipo === 'Pallet').length;
-              const bultos      = bultosSantiago(it);
-              const contenedores = it.filter(i => i.tipo === 'Contenedor').length;
               const isOpen      = resumenExpanded.has(cod);
-              const totalPeso = it.reduce((s, i) => s + i.peso, 0);
+              const cerrada     = tiendaTerminada(cod);
 
               return (
-                <div key={cod} className={`border-b border-border ${isOpen ? 'bg-white' : ''}`}>
-                  <div
-                    onClick={() => { rCancelEdit(); toggleResumenExpanded(cod); }}
-                    className={`flex items-center gap-2.5 px-3 py-3 cursor-pointer transition-all active:bg-bg ${isOpen ? 'bg-[#F0F2F7] border-b border-border' : 'bg-white'}`}>
-                    <div className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border-2 px-1.5 py-0.5 rounded min-w-[42px] text-center flex-shrink-0">{formatCod(cod)}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[15px] font-bold text-navy truncate leading-tight">{t?.tienda || cod}</div>
-                      <div className="text-[11px] text-text-3 truncate">{t?.comuna} · {t?.ventanaHoraria}</div>
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      {pallets     > 0 && <span className="font-barlow-condensed text-[13px] font-bold text-info bg-[rgba(37,99,235,0.10)] border border-[rgba(37,99,235,0.20)] px-2 py-0.5 rounded">{pallets}P</span>}
-                      {bultos      > 0 && <span className="font-barlow-condensed text-[13px] font-bold text-warn bg-[rgba(217,119,6,0.10)] border border-[rgba(217,119,6,0.20)] px-2 py-0.5 rounded">{bultos}B</span>}
-                      {contenedores > 0 && <span className="font-barlow-condensed text-[13px] font-bold px-2 py-0.5 rounded border" style={{ color:'#6B21A8', background:'rgba(107,33,168,0.10)', borderColor:'rgba(107,33,168,0.20)' }}>{contenedores}C</span>}
-                      <span className="text-text-3 text-[12px] ml-0.5">{isOpen ? '▲' : '▼'}</span>
-                    </div>
-                  </div>
-
-                  {isOpen && (
-                    <div>
-                      <div className="flex items-center gap-2 px-3 py-2 bg-bg border-b border-border">
-                        <div className="font-mono text-[11px] text-text-3 flex-1">
-                          {it.length} item{it.length > 1 ? 's' : ''} · {totalPeso.toLocaleString('es-CL')} kg
-                        </div>
-                      </div>
-
+                <FilaResumenTienda key={cod} cod={formatCod(cod)} nombre={t?.tienda || cod}
+                  sub={[t?.comuna, t?.ventanaHoraria].filter(Boolean).join(' · ')}
+                  totales={totalesResumen(it, i => claseSantiago(i.tipo))} terminada={cerrada} abierta={isOpen}
+                  onToggle={() => { rCancelEdit(); toggleResumenExpanded(cod); }}>
+                      {cerrada && <AvisoResumenTerminada />}
                       {it.map((item, idx) => {
                         const isEditing = resumenEditing?.cod === cod && resumenEditing?.idx === idx;
                         const re = resumenEditing;
@@ -2606,97 +2558,87 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
 
                         const isRDrop    = rDragIdx !== null && rDragCod === cod && rDropIdx === idx && (items[cod]?.[rDragIdx])?.tipo === item.tipo;
                         const isRDragging = rDragCod === cod && rDragIdx === idx;
+                        const claseR = claseUnidad(item.tipo);
+                        const esChocR = item.tipo === 'Chocolate' || (item.tipo === 'Bulto' && item.contenido === 'Chocolate');
+                        const sinPesoR = etiquetaDeUnidad(item);
+                        const detalleR = sinPesoR ? '' : [
+                          item.contenido === 'Chocolate' ? 'Chocolate' : item.contenido,
+                          esChocR ? formatoMedidas(CHOCOLATE_DIMS.alto, CHOCOLATE_DIMS.largo, CHOCOLATE_DIMS.ancho)
+                            : item.tipo === 'Pallet' ? `${formatoMedidas(item.alto)} · 120 × 100`
+                            : formatoMedidas(item.alto, item.largo, item.ancho),
+                          item.estado,
+                        ].filter(Boolean).join(' · ');
+                        // Arrastrar una unidad sobre otra del mismo tipo las combina. En una tienda terminada no.
+                        const arrastreR = cerrada ? {} : {
+                          draggable: true,
+                          onDragStart: () => { setRDragIdx(idx); setRDragCod(cod); },
+                          onDragOver: (e: React.DragEvent) => {
+                            if (rDragIdx !== null && rDragCod === cod && rDragIdx !== idx && (items[cod]?.[rDragIdx])?.tipo === item.tipo)
+                              { e.preventDefault(); setRDropIdx(idx); }
+                          },
+                          onDragLeave: () => setRDropIdx(prev => prev === idx ? null : prev),
+                          onDrop: (e: React.DragEvent) => {
+                            e.preventDefault();
+                            if (rDragIdx !== null && rDragCod === cod && rDragIdx !== idx && (items[cod]?.[rDragIdx])?.tipo === item.tipo)
+                              setCombineModal({ srcIdx: rDragIdx, tgtIdx: idx, cod });
+                            setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
+                          },
+                          onDragEnd: () => { setRDragIdx(null); setRDropIdx(null); setRDragCod(null); },
+                          onTouchStart: (e: React.TouchEvent) => {
+                            const t = e.touches[0];
+                            (e.currentTarget as HTMLElement).dataset.txS = String(t.clientX);
+                            (e.currentTarget as HTMLElement).dataset.tyS = String(t.clientY);
+                            rLongPressRef.current = setTimeout(() => { setRDragIdx(idx); setRDragCod(cod); navigator.vibrate?.(25); }, 220);
+                          },
+                          onTouchMove: (e: React.TouchEvent) => {
+                            const t = e.touches[0];
+                            const el = e.currentTarget as HTMLElement;
+                            if (rLongPressRef.current && (Math.abs(t.clientX - parseFloat(el.dataset.txS ?? '0')) > 8 || Math.abs(t.clientY - parseFloat(el.dataset.tyS ?? '0')) > 8))
+                              { clearTimeout(rLongPressRef.current); rLongPressRef.current = null; }
+                            if (rDragIdx === null) return;
+                            e.preventDefault();
+                            const under = document.elementFromPoint(t.clientX, t.clientY);
+                            const itemEl = under?.closest('[data-r-item-idx]') as HTMLElement | null;
+                            const tgt = itemEl ? parseInt(itemEl.dataset.rItemIdx ?? '-1') : -1;
+                            const tgtCod = itemEl?.dataset.rItemCod;
+                            setRDropIdx(tgt !== -1 && tgt !== rDragIdx && tgtCod === cod ? tgt : null);
+                          },
+                          onTouchEnd: (e: React.TouchEvent) => {
+                            if (rLongPressRef.current) { clearTimeout(rLongPressRef.current); rLongPressRef.current = null; }
+                            if (rDragIdx === null) return;
+                            e.preventDefault();
+                            const t = e.changedTouches[0];
+                            const under = document.elementFromPoint(t.clientX, t.clientY);
+                            const itemEl = under?.closest('[data-r-item-idx]') as HTMLElement | null;
+                            const tgt = itemEl ? parseInt(itemEl.dataset.rItemIdx ?? '-1') : -1;
+                            const tgtCod = itemEl?.dataset.rItemCod;
+                            if (tgt !== -1 && tgt !== rDragIdx && tgtCod === cod && (items[cod]?.[rDragIdx])?.tipo === (items[cod]?.[tgt])?.tipo)
+                              setCombineModal({ srcIdx: rDragIdx, tgtIdx: tgt, cod });
+                            setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
+                          },
+                        };
                         return (
-                          <div
-                            key={item.id}
-                            data-r-item-idx={idx}
-                            data-r-item-cod={cod}
-                            draggable
-                            onDragStart={() => { setRDragIdx(idx); setRDragCod(cod); }}
-                            onDragOver={(e) => {
-                              if (rDragIdx !== null && rDragCod === cod && rDragIdx !== idx && (items[cod]?.[rDragIdx])?.tipo === item.tipo)
-                                { e.preventDefault(); setRDropIdx(idx); }
-                            }}
-                            onDragLeave={() => setRDropIdx(prev => prev === idx ? null : prev)}
-                            onDrop={(e) => {
-                              e.preventDefault();
-                              if (rDragIdx !== null && rDragCod === cod && rDragIdx !== idx && (items[cod]?.[rDragIdx])?.tipo === item.tipo)
-                                setCombineModal({ srcIdx: rDragIdx, tgtIdx: idx, cod });
-                              setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
-                            }}
-                            onDragEnd={() => { setRDragIdx(null); setRDropIdx(null); setRDragCod(null); }}
-                            onTouchStart={(e) => {
-                              const t = e.touches[0];
-                              (e.currentTarget as HTMLElement).dataset.txS = String(t.clientX);
-                              (e.currentTarget as HTMLElement).dataset.tyS = String(t.clientY);
-                              rLongPressRef.current = setTimeout(() => { setRDragIdx(idx); setRDragCod(cod); navigator.vibrate?.(25); }, 220);
-                            }}
-                            onTouchMove={(e) => {
-                              const t = e.touches[0];
-                              const el = e.currentTarget as HTMLElement;
-                              if (rLongPressRef.current && (Math.abs(t.clientX - parseFloat(el.dataset.txS ?? '0')) > 8 || Math.abs(t.clientY - parseFloat(el.dataset.tyS ?? '0')) > 8))
-                                { clearTimeout(rLongPressRef.current); rLongPressRef.current = null; }
-                              if (rDragIdx === null) return;
-                              e.preventDefault();
-                              const under = document.elementFromPoint(t.clientX, t.clientY);
-                              const itemEl = under?.closest('[data-r-item-idx]') as HTMLElement | null;
-                              const tgt = itemEl ? parseInt(itemEl.dataset.rItemIdx ?? '-1') : -1;
-                              const tgtCod = itemEl?.dataset.rItemCod;
-                              setRDropIdx(tgt !== -1 && tgt !== rDragIdx && tgtCod === cod ? tgt : null);
-                            }}
-                            onTouchEnd={(e) => {
-                              if (rLongPressRef.current) { clearTimeout(rLongPressRef.current); rLongPressRef.current = null; }
-                              if (rDragIdx === null) return;
-                              e.preventDefault();
-                              const t = e.changedTouches[0];
-                              const under = document.elementFromPoint(t.clientX, t.clientY);
-                              const itemEl = under?.closest('[data-r-item-idx]') as HTMLElement | null;
-                              const tgt = itemEl ? parseInt(itemEl.dataset.rItemIdx ?? '-1') : -1;
-                              const tgtCod = itemEl?.dataset.rItemCod;
-                              if (tgt !== -1 && tgt !== rDragIdx && tgtCod === cod && (items[cod]?.[rDragIdx])?.tipo === (items[cod]?.[tgt])?.tipo)
-                                setCombineModal({ srcIdx: rDragIdx, tgtIdx: tgt, cod });
-                              setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
-                            }}
-                            className={[
-                              'flex items-center gap-2.5 px-3 py-2.5 border-b border-border/40 last:border-b-0 transition-all select-none',
-                              isRDragging ? 'opacity-40 bg-bg' : isRDrop ? 'bg-emerald-50 border-l-4 border-l-emerald-500' : 'bg-white',
-                              rDragIdx !== null && rDragCod === cod ? 'cursor-grabbing' : 'cursor-grab',
-                            ].join(' ')}
-                          >
-                            <GripVertical size={12} color="#CBD5E1" className="flex-shrink-0" />
-                            <span className={`font-barlow-condensed text-[13px] font-bold min-w-[32px] ${item.tipo === 'Pallet' ? 'text-info' : 'text-warn'}`}>{item.orden}</span>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded font-barlow-condensed ${item.tipo === 'Pallet' ? 'text-info bg-[rgba(37,99,235,0.10)]' : 'text-warn bg-[rgba(217,119,6,0.10)]'}`}>
-                                  {item.tipo}
-                                </span>
-                                <span className="text-[12px] font-semibold text-text-2">{item.contenido === 'Chocolate' ? 'CH' : item.contenido}</span>
-                                <span className="text-[12px] font-bold text-navy">
-                                  {etiquetaDeUnidad(item) ?? `${item.peso}kg`}
-                                </span>
-                              </div>
-                              <div className="text-[11px] text-text-3 mt-0.5 truncate">
-                                {item.tipo === 'Bulto' && item.contenido === 'Chocolate'
-                                  ? `${CHOCOLATE_DIMS.alto}×${CHOCOLATE_DIMS.largo}×${CHOCOLATE_DIMS.ancho} cm`
-                                  : `${item.alto}cm${item.tipo === 'Bulto' ? ` · ${item.largo}×${item.ancho}cm` : ' · 120×100cm'}`
-                                }
-                                {' · '}{item.estado.split(' ').slice(0, 2).join(' ')}
-                              </div>
-                            </div>
-                            <button onClick={() => rStartEdit(cod, idx)}
-                              className="border border-border text-text-3 bg-bg-2 cursor-pointer px-2 py-1.5 rounded-lg text-[15px] active:text-info flex-shrink-0">
-                              ✎
-                            </button>
-                            <button onClick={() => { deletePickingSlot(item.pickingSlotId, { label: item.orden, codArg: cod }); dispatch({ type: 'DELETE_ITEM', tiendaCod: cod, idx }); armarUndo(`${item.orden} eliminado`, () => reAgregarItem(item)); }}
-                              className="border-none text-text-3 cursor-pointer px-2 py-1.5 rounded-lg text-[15px] bg-bg-2 active:text-red flex-shrink-0">
-                              ✕
-                            </button>
-                          </div>
+                          <UnidadResumen key={item.id}
+                            data-r-item-idx={idx} data-r-item-cod={cod}
+                            {...arrastreR}
+                            className={cerrada ? '' : rDragIdx !== null && rDragCod === cod ? 'cursor-grabbing' : 'cursor-grab'}
+                            clase={claseR} etiqueta={item.orden || item.tipo}
+                            peso={sinPesoR ?? `${item.peso.toLocaleString('es-CL')} kg`}
+                            detalle={detalleR}
+                            bloqueada={cerrada} resaltada={isRDrop} apagada={isRDragging}
+                            onEditar={() => { if (confirmarCambioGuardado('editar', item.orden)) rStartEdit(cod, idx); }}
+                            onEliminar={() => {
+                              if (!confirmarCambioGuardado('eliminar', item.orden)) return;
+                              // Por id: si otro equipo cambió la lista en el medio, se borraba otra unidad.
+                              const pos = posicionDeUnidad(items[cod] || [], item.id, idx);
+                              if (pos < 0) { showToast('⚠ Esa unidad ya no está', '#D32F2F'); return; }
+                              deletePickingSlot(item.pickingSlotId, { label: item.orden, codArg: cod });
+                              dispatch({ type: 'DELETE_ITEM', tiendaCod: cod, idx: pos });
+                              armarUndo(`${item.orden} eliminado`, () => reAgregarItem(item));
+                            }} />
                         );
                       })}
-                    </div>
-                  )}
-                </div>
+                </FilaResumenTienda>
               );
             })
           )}
@@ -3453,37 +3395,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       {/* ─── MOBILE: resumen view ─── */}
       {view === 'resumen' && (
         <div className="flex lg:hidden flex-1 flex-col overflow-hidden">
-          {/* Cabecera con VOLVER. En el teléfono, el Resumen ocupa la pantalla entera: la columna
-              de las tarjetas queda `hidden` y la barra de abajo —donde viven Resumen, Enrutador y
-              Manual— se va con ella. Sin esta cabecera no quedaba ninguna salida dentro de la
-              aplicación: había que usar el botón del navegador. Bodega Nacional ya la tenía (su
-              Resumen es un overlay con su propio encabezado); acá faltaba, porque el panel que se
-              reutiliza es el de ESCRITORIO, y su encabezado es `hidden lg:block`.
-              Va en la vista y no dentro de `renderResumenPanel`, que también es la columna derecha
-              del escritorio — ahí un "volver" no significa nada. */}
-          <div className="bg-navy px-3 py-3 flex items-center gap-3 flex-shrink-0"
-               style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
-            <button
-              onClick={() => setView('list')}
-              aria-label="Volver a las tiendas"
-              className="flex items-center justify-center rounded-full flex-shrink-0 cursor-pointer transition-all active:scale-95 border-none"
-              style={{
-                width: 36, height: 36,
-                background: 'rgba(255,255,255,0.10)',
-                border: '1px solid rgba(255,255,255,0.15)',
-              }}>
-              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-            </button>
-            <span className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-wide flex-1">Resumen</span>
-            <button
-              onClick={enrutar}
-              className="flex items-center gap-2 py-2 px-3 rounded cursor-pointer transition-all active:opacity-70"
-              style={{ background: 'rgba(30,64,175,0.25)', border: '1px solid rgba(30,64,175,0.60)' }}>
-              <Navigation size={13} color="#93C5FD" strokeWidth={2} />
-              <span className="font-barlow-condensed text-[13px] font-bold tracking-wide" style={{ color: '#93C5FD' }}>Enrutador</span>
-            </button>
-          </div>
-          {renderResumenPanel()}
+          {/* En el teléfono el Resumen ocupa la pantalla entera y la barra de abajo se va con la
+              columna de tarjetas: el «volver» y el Enrutador van en su cabecera. */}
+          {renderResumenPanel(true)}
         </div>
       )}
 
@@ -3541,7 +3455,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         const tgtLabel = `${tgt.orden || tgt.tipo} · ${tgt.peso}kg · ${tgt.contenido}`;
         return (
           <CombineItemsModal
-            pkgLabel={src.tipo === 'Pallet' ? 'Pallets' : 'Bultos'}
+            pkgLabel={src.tipo === 'Pallet' ? 'Pallets' : src.tipo === 'Contenedor' ? 'Contenedores' : src.tipo === 'Chocolate' ? 'Chocolates' : 'Bultos'}
             srcLabel={srcLabel}
             tgtLabel={tgtLabel}
             onConfirm={(peso, alto) => handleSantiagoCombineConfirm(peso, alto, activeCod)}

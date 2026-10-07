@@ -973,6 +973,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   });
   const tiendasBarra = all.filter(t => allTodayCods.includes(t.cod));
   const resumenHoy = resumenDia(tiendasBarra.map(estadoDe));
+  const avanceResumen = { listas: resumenHoy.lista, total: resumenHoy.total };
   // Las unidades de la barra salen de las MISMAS tiendas que su «X/Y listas» (ver StepForm).
   const itemsBarra = tiendasBarra.flatMap(t => dispatchData[t.name] || []);
   const barraP  = itemsBarra.filter(i => i.pkg === 'pallet').length;
@@ -2943,35 +2944,26 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       {/* RIGHT PANEL — resumen (right column on desktop only) */}
       <div className="hidden lg:flex lg:flex-col overflow-hidden flex-shrink-0"
            style={isDesktop ? { width: rightWidth } : undefined}>
-        <ResumenPage panel onRegistrar={onRegistrar} />
+        <ResumenPage panel onRegistrar={onRegistrar} terminada={tiendaTerminada} avance={avanceResumen} />
       </div>
 
       {/* Mobile Resumen Overlay */}
       {showMobileResumen && (
         <div className="fixed inset-0 z-50 flex flex-col lg:hidden bg-bg">
-          <div className="bg-navy px-3 py-3 flex items-center gap-3 flex-shrink-0"
-               style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
-            <button
-              onClick={() => setShowMobileResumen(false)}
-              className="flex items-center justify-center rounded-full flex-shrink-0 cursor-pointer transition-all active:scale-95"
-              style={{
-                width: 36, height: 36,
-                background: 'rgba(255,255,255,0.10)',
-                border: '1px solid rgba(255,255,255,0.15)',
-              }}>
-              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-            </button>
-            <span className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-wide flex-1">Resumen</span>
-            <button
-              onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); flushPending(); router.push('/despacho'); }}
-              className="flex items-center gap-2 py-2 px-3 rounded cursor-pointer transition-all active:opacity-70"
-              style={{ background: 'rgba(30,64,175,0.25)', border: '1px solid rgba(30,64,175,0.60)' }}>
-              <Navigation size={13} color="#93C5FD" strokeWidth={2} />
-              <span className="font-barlow-condensed text-[13px] font-bold tracking-wide" style={{ color: '#93C5FD' }}>Enrutador</span>
-            </button>
-          </div>
           <div className="flex-1 overflow-hidden flex flex-col">
-            <ResumenPage panel onRegistrar={onRegistrar} />
+            <ResumenPage panel onRegistrar={onRegistrar} terminada={tiendaTerminada} avance={avanceResumen}
+              volver={
+                <button type="button" onClick={() => setShowMobileResumen(false)} aria-label="Volver a las tiendas"
+                  className="w-10 h-10 -ml-1 flex items-center justify-center rounded-btn text-text-2 bg-bg-2 active:bg-bg-3 flex-shrink-0">
+                  <ChevronLeft size={22} aria-hidden="true" />
+                </button>
+              }
+              extra={
+                <button type="button" onClick={() => { sessionStorage.setItem('despacho_from', '/despacho/regiones'); flushPending(); router.push('/despacho'); }}
+                  className="min-h-[36px] px-2.5 rounded-btn bg-navy text-white text-apoyo font-bold flex items-center gap-1.5 active:opacity-80">
+                  <Navigation size={14} aria-hidden="true" /> Enrutador
+                </button>
+              } />
           </div>
         </div>
       )}
@@ -2985,7 +2977,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         const mergedValor = (src.valor ?? 0) + (tgt.valor ?? 0);
         return (
           <CombineItemsModal
-            pkgLabel={src.pkg === 'pallet' ? 'Pallets' : 'Bultos'}
+            pkgLabel={src.pkg === 'pallet' ? 'Pallets' : src.pkg === 'contenedor' ? 'Contenedores' : src.pkg === 'chocolate' ? 'Chocolates' : 'Bultos'}
             srcLabel={srcLabel}
             tgtLabel={tgtLabel}
             mergedGuia={mergedGuia || undefined}
