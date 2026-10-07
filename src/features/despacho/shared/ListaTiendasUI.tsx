@@ -50,6 +50,8 @@ export interface FilaTiendaProps {
   /** Adquisiciones y web/retiro: no se pesan, pero existen y hay que verlas. */
   agregados?: { adquisicion: number; webRetiro: number };
   sinPesar: number;
+  /** Unidades que Picking imprimió después de marcar la tienda terminada. Ver `nuevasTrasTerminar`. */
+  nuevas?: number;
   /** Movimientos de Odoo (seco). Sin movimientos, no se dibuja. */
   odoo?: { done: number; total: number };
   viendo?: ViendoInfo[];
@@ -77,8 +79,8 @@ const CLASE_LETRA: Record<string, 'pallet' | 'bulto' | 'contenedor' | 'chocolate
 
 export function FilaTienda(props: FilaTiendaProps) {
   if (props.forma === 'baldosa') return <BaldosaTienda {...props} />;
-  const { cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, odoo, viendo, onSelect, onDragStart, accion } = props;
-  const chip = chipFila({ estado, sinPesar, conGuia });
+  const { cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, nuevas, odoo, viendo, onSelect, onDragStart, accion } = props;
+  const chip = chipFila({ estado, sinPesar, conGuia, nuevas });
   const otros = agregados ? [
     agregados.adquisicion > 0 && { letra: 'A', n: agregados.adquisicion, titulo: 'Adquisiciones: no se pesan' },
     agregados.webRetiro > 0 && { letra: 'W', n: agregados.webRetiro, titulo: 'Web / retiro: no se pesan' },
@@ -175,8 +177,8 @@ function Centro({ sigla, numero, chico = false }: { sigla: string; numero: strin
   );
 }
 
-export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, odoo, viendo, onSelect, onDragStart, accion }: FilaTiendaProps) {
-  const chip = chipFila({ estado, sinPesar, conGuia });
+export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, nuevas, odoo, viendo, onSelect, onDragStart, accion }: FilaTiendaProps) {
+  const chip = chipFila({ estado, sinPesar, conGuia, nuevas });
   const pct = pctAnillo(estado, avance);
   // `formatCod` deja «53 VAL»: las letras distinguen la tienda, el número va chico debajo.
   const [primero, ...resto] = cod.split(' ');

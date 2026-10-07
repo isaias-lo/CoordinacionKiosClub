@@ -87,8 +87,8 @@ describe('una tarjeta reabierta a propósito no se cierra sola', () => {
 });
 
 describe('tarjeta tocada que dice lo mismo que lo guardado por otro equipo', () => {
-  const tocada = (peso: string, alto = '', cajasNegras = '') =>
-    ({ ...fila({ tocada: true }), peso, alto, cajasNegras });
+  const tocada = (peso: string, alto = '', pesoPallet = '') =>
+    ({ ...fila({ tocada: true }), peso, alto, pesoPallet });
 
   it('adopta: la unidad está guardada y la tarjeta dice exactamente eso', () => {
     const f = tocada('83', '120');
@@ -127,7 +127,7 @@ describe('mismaCargaEscrita', () => {
     expect(mismaCargaEscrita({ peso: '83', alto: '' }, { peso: null })).toBe(false);
   });
 
-  it('con cajas negras no se compara: lo escrito es bruto y lo guardado neto', () => {
-    expect(mismaCargaEscrita({ peso: '83', alto: '', cajasNegras: '2' }, { peso: 83 })).toBe(false);
+  it('con peso del pallet no se compara: lo escrito es bruto y lo guardado neto', () => {
+    expect(mismaCargaEscrita({ peso: '83', alto: '', pesoPallet: '20' }, { peso: 83 })).toBe(false);
   });
 });

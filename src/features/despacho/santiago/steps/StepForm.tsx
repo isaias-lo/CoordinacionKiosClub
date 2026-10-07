@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { Navigation, GripVertical, ClipboardList, User, Store, FileUp, ChevronLeft, AlertTriangle, Pencil } from 'lucide-react';
+import { Navigation, ClipboardList, User, Store, FileUp, ChevronLeft, AlertTriangle, Pencil } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSantiago } from '../context/SantiagoContext';
 import { IndicadorCanalSano } from '../../shared/IndicadorCanalSano';
@@ -33,7 +33,10 @@ import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { avanceTienda, claseUnidad, type AvanceTienda } from '../../shared/unidadVisual';
 import { useTarjetaActiva } from '../../shared/useTarjetaActiva';
-import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada } from '../../shared/TiendaAbierta';
+import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTienda, ResumenVacio, UnidadResumen } from '../../shared/ResumenDia';
+import { useAvisoNuevasTrasTerminar } from '../../shared/avisoNuevasTrasTerminar';
+import { avisoAntesDeRegistrar, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
+import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, type OpcionAgregar } from '../../shared/TiendaAbierta';
 import { confirmarCambioGuardado, confirmarEliminarVarios } from '../../shared/confirmarGuardado';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { mismaCargaEscrita } from '../../shared/adoptarItemRemoto';
@@ -46,7 +49,7 @@ import { registrarTiendasSantiagoBD } from '../data/tiendasSantiago';
 import { sheetsSantiagoWrite } from '../utils/sheetsSantiago';
 import { FilaTienda, BarraDelDia, UnidadesDelDia, FechasBodega, RotuloLista, PieLista, BaldosaAgregar, GRILLA_MOSAICO } from '@/features/despacho/shared/ListaTiendasUI';
 import { usePlegarCabecera } from '@/features/despacho/shared/usePlegarCabecera';
-import { avanceFila, estadoLista, resumenDia, filtroVigente, pasaFiltro, type FiltroLista } from '@/features/despacho/shared/listaTiendas';
+import { avanceFila, estadoLista, nuevasTrasTerminar, resumenDia, filtroVigente, pasaFiltro, type FiltroLista } from '@/features/despacho/shared/listaTiendas';
 import { RegistrarTiendaButton } from '@/features/despacho/shared/RegistrarTiendaButton';
 import { useRegistroDeTiendas } from '@/features/despacho/shared/useRegistroDeTiendas';
 import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
@@ -81,8 +84,10 @@ import { actualizarSlotPicking, AVISO_SLOT_BORRADO } from '../../shared/actualiz
 import { sincronizarYCruzar } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
-import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo, pesoPalletConCajas,
+import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
+import { pesoEnTarjeta, pesoNetoPallet, taraEnTarjeta, taraParaGuardar, textoPesoConTara } from '../../shared/pesoDelPallet';
+import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
 import { itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
 import { avisoDeUnidad, avisoEnTerminada } from '../../shared/avisoUnidadEscaneada';
 import { useEscaneoBodega } from '../../shared/useEscaneoBodega';
@@ -149,9 +154,9 @@ interface FormRow {
   alto: string;
   largo: string;
   ancho: string;
-  /** Solo pallets: cuántas cajas negras estuvieron EN LA BALANZA junto con el pallet. Se les
-   *  descuenta la tara. Vacío = ninguna, que es el caso normal. Ver `pesoPalletConCajas`. */
-  cajasNegras?: string;
+  /** Solo pallets: lo que pesa el pallet mismo, en kg. Se le resta al peso. Vacío = nada, que es
+   *  el caso normal. Ver `pesoNetoPallet`. */
+  pesoPallet?: string;
   saved?: boolean;
   /** La tarjeta se reabrió porque se le SUMÓ algo: el guardado que viene no es trabajo rehecho.
    *  Ver `esReingresoDeVerdad`. Se limpia al guardar. */
@@ -184,6 +189,8 @@ const CAMPO_GRANDE = 'w-full bg-card border-[1.5px] border-border rounded-btn px
 interface ResumenEditState {
   cod: string;
   idx: number;
+  /** Se guarda por id: la posición cambia si otro equipo agrega o borra mientras se edita. */
+  id?: string;
   tipo: TipoCargamento;
   contenido: ContenidoSantiago;
   estado: EstadoItem;
@@ -200,7 +207,7 @@ function TiendaGridCard({
   t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
   bultoCount, adquisicionCount = 0, webRetiroCount = 0,
   despachoP, despachoB, despachoC, despachoCH, hasGuide, storeDoneOps = 0, storeTotalOps = 0,
-  tipoCat, terminada, viendo, sinPesarCount,
+  tipoCat, terminada, viendo, sinPesarCount, nuevas = 0,
   onSelect, onAddToday, onRemoveFromToday, forma,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
@@ -217,6 +224,8 @@ function TiendaGridCard({
   /** Unidades guardadas sin pesar. Se veía solo DENTRO de la tienda; ahora también desde la
    *  lista, que es donde se decide a cuál entrar. Ver `chipFila`. */
   sinPesarCount?: number;
+  /** Lo que Picking imprimió después de marcarla terminada. Ver `nuevasTrasTerminar`. */
+  nuevas?: number;
   onSelect: () => void;
   onAddToday?: () => void;
   onRemoveFromToday?: () => void;
@@ -237,8 +246,8 @@ function TiendaGridCard({
     : onAddToday ? { tipo: 'agregar' as const, onClick: onAddToday } : undefined;
   return (
     <FilaTienda cod={formatCod(t.cod)} nombre={t.tienda} tipo={tipoBadge(tipoCat)}
-      estado={estadoLista({ cargadas: itemCount, terminada: !!terminada })}
-      activa={isActive} conGuia={!!hasGuide}
+      estado={estadoLista({ cargadas: itemCount, terminada: !!terminada, nuevas })}
+      activa={isActive} conGuia={!!hasGuide} nuevas={nuevas}
       avance={avanceFila(cargadas, faltan)}
       agregados={{ adquisicion: adquisicionCount, webRetiro: webRetiroCount }}
       sinPesar={sinPesarCount ?? 0}
@@ -299,8 +308,10 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
  * lo primero que se lee es cuánto falta, y Registrar / Marcar terminada viven en el menú ⋯ para
  * que no compitan con el pesaje. Los contadores por tipo ahora van en la barra de avance.
  */
-function TiendaFormHeader({ tienda, avance, onBack, swipe, terminadaInfo, onToggleTerminada, itemCount, sinPesarCount, sinGuardar, viendo, canalSano, botonRegistrar }: {
+function TiendaFormHeader({ tienda, avance, onBack, swipe, terminadaInfo, onToggleTerminada, itemCount, sinPesarCount, sinGuardar, viendo, canalSano, botonRegistrar, agregar }: {
   tienda: TiendaSantiago;
+  /** El «+» junto al ⋯: pallet, bulto, contenedor, chocolate, adquisición y web/retiro. */
+  agregar?: { opciones: OpcionAgregar[]; bloqueado?: boolean };
   avance: AvanceTienda;
   itemCount: number;
   onBack: () => void;
@@ -318,6 +329,7 @@ function TiendaFormHeader({ tienda, avance, onBack, swipe, terminadaInfo, onTogg
       subtitulo={`${formatCod(tienda.cod)} · ${tienda.ventanaHoraria}`}
       avance={avance}
       onVolver={onBack}
+      agregar={agregar}
       arrastre={swipe ? { onTouchStart: swipe.start, onTouchMove: swipe.move, onTouchEnd: swipe.end } : undefined}
       indicador={
         <>
@@ -943,10 +955,6 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     selectTienda(tiendaDelPallet);
   };
 
-  const allItems           = Object.values(items).flat();
-  const statP              = allItems.filter(i => i.tipo === 'Pallet').length;
-  const statB              = bultosSantiago(allItems);
-  const statCH             = allItems.filter(i => i.tipo === 'Chocolate').length;
   const activeTiendasCount = Object.keys(items).filter(k => items[k].length > 0).length;
   // Contador "terminadas/total del día" por sección (desde todayTiendas = todas las del día,
   // sin importar el filtro RM/Costa activo). Costa = region 'VR'. Terminada = tienda con carga.
@@ -956,12 +964,23 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const rmProg    = sectionProgress(todayTiendas.filter(t => t.region !== 'VR'), t => isTiendaTerminada(t.cod));
   const costaProg = sectionProgress(todayTiendas.filter(t => t.region === 'VR'), t => isTiendaTerminada(t.cod));
   // La barra del día cuenta las tiendas de hoy de los grupos elegidos (RM / Costa), sin mirar la búsqueda.
+  // Picking imprimió algo después de marcarla terminada: la tienda deja de contar como lista.
+  const nuevasDe = (cod: string) => nuevasTrasTerminar(
+    terminadas.get(cod)?.terminada === true,
+    unidadesSinGuardar(pickingSlotsFull[cod] ?? [], items[cod] || []).total,
+  );
   const estadoDe = (t: TiendaSantiago) => estadoLista({
     cargadas: (items[t.cod] || []).length, terminada: terminadas.get(t.cod)?.terminada === true,
+    nuevas: nuevasDe(t.cod),
   });
   const tiendasBarra = todayTiendas
     .filter(t => !isRegionesCod(t.cod) && (t.region === 'VR' ? selectedGrps.has('costa') : selectedGrps.has('rm')));
   const resumenHoy = resumenDia(tiendasBarra.map(estadoDe));
+  // Picking imprime algo en una tienda de hoy ya terminada: toast, aunque se esté en otra tienda.
+  useAvisoNuevasTrasTerminar(
+    tiendasBarra.map(t => ({ cod: t.cod, nombre: t.tienda, nuevas: nuevasDe(t.cod) })),
+    showToast,
+  );
   // Las unidades de la barra salen de las MISMAS tiendas que su «X/Y listas». Antes sumaban todo
   // `items` —Costa con el filtro en RM, tiendas fuera del día— y no cuadraban con el contador.
   const itemsBarra = tiendasBarra.flatMap(t => items[t.cod] || []);
@@ -1175,7 +1194,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             const cajaGuardada = saved.tipo === 'Chocolate' ? subtipoDeCaja(s.subtipo) : null;
             rows.push({
               id: `saved-${sid || i}-${Date.now()}`, tipo: saved.tipo, contenido: saved.contenido,
-              peso: String(cajaGuardada ? pesoParaMostrar(Number(saved.peso ?? 0), cajaGuardada) : (saved.peso ?? '')),
+              peso: String(cajaGuardada ? pesoParaMostrar(Number(saved.peso ?? 0), cajaGuardada) : pesoEnTarjeta(saved.peso, saved.taraPallet)),
+              pesoPallet: taraEnTarjeta(saved.taraPallet),
               alto: String(saved.alto ?? ''),
               largo: String(saved.largo ?? ''), ancho: String(saved.ancho ?? ''),
               saved: true, savedItem: saved, pickingSlotId: sid || saved.pickingSlotId,
@@ -1199,7 +1219,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         for (const it of remaining) {
           rows.push({
             id: `savedm-${it.id}`, tipo: it.tipo, contenido: it.contenido,
-            peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
+            peso: pesoEnTarjeta(it.peso, it.taraPallet), pesoPallet: taraEnTarjeta(it.taraPallet), alto: String(it.alto ?? ''),
             largo: String(it.largo ?? ''), ancho: String(it.ancho ?? ''),
             saved: true, savedItem: it, pickingSlotId: it.pickingSlotId,
           });
@@ -1239,7 +1259,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           .map((item, i) => ({
             id: `saved-${i}-${item.tipo}-${Date.now()}`,
             tipo: item.tipo, contenido: item.contenido,
-            peso: String(item.peso ?? ''), alto: String(item.alto ?? ''),
+            peso: pesoEnTarjeta(item.peso, item.taraPallet), pesoPallet: taraEnTarjeta(item.taraPallet), alto: String(item.alto ?? ''),
             largo: String(item.largo ?? ''), ancho: String(item.ancho ?? ''),
             saved: true, savedItem: item, pickingSlotId: item.pickingSlotId,
           }));
@@ -1279,14 +1299,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       prev, currentItems, currentSlotsFull,
       (row, it) => ({
         ...row, tipo: it.tipo, contenido: it.contenido,
-        peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
+        peso: pesoEnTarjeta(it.peso, it.taraPallet), pesoPallet: taraEnTarjeta(it.taraPallet), alto: String(it.alto ?? ''),
         largo: String(it.largo ?? ''), ancho: String(it.ancho ?? ''),
         saved: true, savedItem: it,
       }),
       (s, saved) => saved
         ? {
             id: `bk-saved-${s.id}`, tipo: saved.tipo, contenido: saved.contenido,
-            peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
+            peso: pesoEnTarjeta(saved.peso, saved.taraPallet), pesoPallet: taraEnTarjeta(saved.taraPallet), alto: String(saved.alto ?? ''),
             largo: String(saved.largo ?? ''), ancho: String(saved.ancho ?? ''),
             saved: true, savedItem: saved, pickingSlotId: s.id,
           }
@@ -1393,6 +1413,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       : null;
     const medidasCaja = caja ? medidasDeCaja(caja) : null;
     let p: number, a: number, fL: number, fA: number, pesoV: number;
+    let tara: number | undefined;
     if (sinPesar) {
       // "Agregar sin pesar": se guarda con dimensiones en 0 (marca "sin pesar"), sin pedir peso/alto/largo/ancho.
       p = DIMS_SIN_PESAR.peso; a = DIMS_SIN_PESAR.alto; fL = DIMS_SIN_PESAR.largo; fA = DIMS_SIN_PESAR.ancho;
@@ -1405,12 +1426,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
         p = neto.neto;
       } else if (row.tipo === 'Pallet') {
-        // Las cajas negras que se pesaron ENCIMA del pallet son retornables: no son mercadería.
-        // Si el chocolate se pesó aparte y se sumó con el botón, su peso ya vino neto y acá no se
-        // declara ninguna — declararla restaría la tara dos veces.
-        const neto = pesoPalletConCajas(row.peso, parseInt(row.cajasNegras ?? '', 10) || 0);
+        // «Peso del pallet»: la tarima no es mercadería, se resta de lo que marcó la balanza.
+        // Vacío = nada. Espejo de TiendasPage.
+        const neto = pesoNetoPallet(row.peso, row.pesoPallet);
         if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
         p = neto.neto;
+        tara = taraParaGuardar(neto.tara);
       } else {
         p = (leerPeso(row.peso) ?? 0); if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
       }
@@ -1463,7 +1484,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       .map(i => seqDeSlot(cod, i.pickingSlotId));
     const candidato: SantiagoItem = {
       id: `${cod}-${Date.now()}`, tiendaCod: cod, tipo: row.tipo, contenido: row.contenido,
-      peso: p, alto: a, largo: fL, ancho: fA,
+      peso: p, alto: a, largo: fL, ancho: fA, taraPallet: tara,
       pesoVolumetrico: pesoV, regimen,
       // El número impreso del slot, no su posición entre los que hay ahora.
       orden: ordenDeItem(row.tipo, numeroParaUnidadNueva(seqsHermanas, pickingSlot?.seq)),
@@ -1809,7 +1830,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => prev
       .filter(r => r.id !== bultoRowId)
       .map(r => r.id === palletRowId
-        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: String(nuevoPeso),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, r.savedItem?.taraPallet), pesoPallet: taraEnTarjeta(r.savedItem?.taraPallet),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
@@ -1878,7 +1899,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => prev
       .filter(r => !bultoRowIdSet.has(r.id))
       .map(r => r.id === palletRowId
-        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: String(nuevoPeso),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, r.savedItem?.taraPallet), pesoPallet: taraEnTarjeta(r.savedItem?.taraPallet),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
@@ -1965,7 +1986,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => prev
       .filter(r => r.id !== sourceRow.id)
       .map(r => r.id === targetRow.id
-        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: String(nuevoPeso),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, r.savedItem?.taraPallet), pesoPallet: taraEnTarjeta(r.savedItem?.taraPallet),
             alto: prevAlto ? String(prevAlto) : '', mergeReopened: true }
         : r));
     setFormMergeState(null);
@@ -2216,15 +2237,26 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const rStartEdit = (cod: string, idx: number) => {
     const item = (items[cod] || [])[idx];
     if (!item) return;
-    setResumenEditing({ cod, idx, tipo: item.tipo, contenido: item.contenido, estado: item.estado,
+    setResumenEditing({ cod, idx, id: item.id, tipo: item.tipo, contenido: item.contenido, estado: item.estado,
       peso: String(item.peso), alto: String(item.alto), largo: String(item.largo), ancho: String(item.ancho) });
     setResumenExpanded(prev => { const next = new Set(prev); next.add(cod); return next; });
   };
   const rCancelEdit = () => setResumenEditing(null);
   const rSaveEdit = () => {
     if (!resumenEditing) return;
-    const { cod, idx, tipo: rTipo, contenido: rContenido, estado: rEstado } = resumenEditing;
+    const { cod, idx: idxAntes, id, tipo: rTipo, contenido: rContenido, estado: rEstado } = resumenEditing;
+    const idx = posicionDeUnidad(items[cod] || [], id, idxAntes);
+    if (idx < 0) {
+      showToast('⚠ Esa unidad ya no está (la cambió otro equipo). No se guardó nada.', '#D32F2F');
+      setResumenEditing(null);
+      return;
+    }
     const item = (items[cod] || [])[idx];
+    // Las mismas guardias que la tarjeta: sin peso no se guarda y un peso imposible se ataja acá.
+    const pesoR = esAgregado(item.tipo) ? (leerPeso(resumenEditing.peso) ?? 0) : leerPeso(resumenEditing.peso);
+    if (pesoR == null) { showToast('Ingresa el peso', '#D97706'); return; }
+    const duroR = excedeTopeDuro(pesoR, claseSantiago(rTipo));
+    if (duroR) { showToast(`⚠ ${duroR}`, '#D32F2F'); return; }
     const isChoc       = rTipo === 'Bulto'      && rContenido === 'Chocolate';
     const isContenedor = rTipo === 'Contenedor';
     const alto  = isContenedor ? CONTENEDOR_ALTO  : isChoc ? CHOCOLATE_DIMS.alto  : (parseInt(resumenEditing.alto)  || 0);
@@ -2233,7 +2265,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     dispatch({
       type: 'EDIT_ITEM', tiendaCod: cod, idx,
       item: { ...item, tipo: rTipo, contenido: rContenido, estado: rEstado,
-        peso: (leerPeso(resumenEditing.peso) ?? 0), alto, largo, ancho,
+        peso: pesoR, alto, largo, ancho,
         pesoVolumetrico: (alto * largo * ancho) / 6000 },
     });
     setResumenEditing(null);
@@ -2295,7 +2327,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
                   hasGuide={!!guides[guideKey(t.cod)]} storeStatus={prog?.status ?? 'none'} storeDoneOps={storeDoneOpsSeco} storeTotalOps={storeTotalOpsSeco}
-                  terminada={terminadas.get(t.cod)?.terminada === true}
+                  terminada={terminadas.get(t.cod)?.terminada === true} nuevas={nuevasDe(t.cod)}
                   viendo={viendoPorTienda.get(t.cod)}
                   onSelect={() => selectTienda(t)}
                   onRemoveFromToday={editarHoy ? () => setConfirmRemove(t.tienda) : undefined}
@@ -2338,7 +2370,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
                   hasGuide={!!guides[guideKey(t.cod)]} storeStatus="none" storeDoneOps={0} storeTotalOps={0}
-                  terminada={terminadas.get(t.cod)?.terminada === true}
+                  terminada={terminadas.get(t.cod)?.terminada === true} nuevas={nuevasDe(t.cod)}
                   viendo={viendoPorTienda.get(t.cod)}
                   onSelect={() => selectTienda(t)}
                   onAddToday={() => setConfirmAdd(t.tienda)} />
@@ -2373,119 +2405,60 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   /* ════════════════════════════════════
      RESUMEN PANEL (mobile + desktop right)
   ════════════════════════════════════ */
-  const renderResumenPanel = () => {
-    const doneTiendas    = todayTiendas.filter(t => (items[t.cod] || []).length > 0);
-    const pendingTiendas = todayTiendas.filter(t => !(items[t.cod] || []).length);
-
-    const INPUT_CLS = 'w-full border border-border rounded-btn px-2 py-2 text-[13px] font-mono text-navy bg-white';
-    const LABEL_CLS = 'text-[9px] text-text-3 mb-0.5 uppercase tracking-wide';
+  const renderResumenPanel = (movil = false) => {
+    const INPUT_CLS = 'w-full min-h-[44px] bg-card border-[1.5px] border-border rounded-btn px-2 text-cuerpo font-barlow tabular-nums text-text outline-none focus:border-navy';
+    const LABEL_CLS = 'text-rotulo font-bold text-text-sub uppercase mb-1';
+    // La misma cuenta que la lista de tiendas (`contarPorClase`).
+    const totalesDia = totalesResumen(activeTiendas.flatMap(([, it]) => it), i => claseSantiago(i.tipo));
 
     return (
-      <div className="flex-1 flex flex-col overflow-hidden">
-
-        {/* Desktop header (stats + progress) */}
-        <div className="hidden lg:block bg-navy px-4 py-3 flex-shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-barlow-condensed text-[11px] uppercase tracking-widest text-white/40">Resumen en tiempo real</span>
-            <div className="flex items-center gap-2">
-              {todayTiendas.length > 0 && pendingTiendas.length === 0 && (
-                <span className="font-barlow-condensed text-[12px] font-bold text-[#86EFAC] bg-[rgba(134,239,172,0.15)] px-2 py-0.5 rounded">✓ Hoy completo</span>
-              )}
+      <div className="flex-1 flex flex-col overflow-hidden bg-bg">
+        <CabeceraResumen totales={totalesDia} tiendas={activeTiendasCount}
+          avance={{ listas: resumenHoy.lista, total: resumenHoy.total }}
+          volver={movil ? (
+            <button type="button" onClick={() => setView('list')} aria-label="Volver a las tiendas"
+              className="w-10 h-10 -ml-1 flex items-center justify-center rounded-btn text-text-2 bg-bg-2 active:bg-bg-3 flex-shrink-0">
+              <ChevronLeft size={22} aria-hidden="true" />
+            </button>
+          ) : undefined}
+          herramientas={
+            <>
               {/* El lado de Odoo no depende de Bodega: existe desde temprano y se puede traer sin
                   esperar al registro. Solo admin. Ver `TraerOdooButton`. */}
               <TraerOdooButton rol={profile?.role} fechaISO={fechaChile()} showToast={showToast} />
-            </div>
-          </div>
-          <div className="flex gap-5 mb-2">
-            {[{ v: statP, l: 'Pallets', color: '#93C5FD' }, { v: statB, l: 'Bultos', color: '#FCD34D' }, ...(statCH > 0 ? [{ v: statCH, l: 'Choc.', color: '#FBB6A0' }] : []), { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' }].map(({ v, l, color }) => (
-              <div key={l} className="text-center">
-                <div className="font-barlow-condensed text-[24px] font-extrabold leading-none" style={{ color }}>{v}</div>
-                <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
-              </div>
-            ))}
-          </div>
-          {todayTiendas.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between text-[10px] text-white/40 mb-1">
-                <span>{doneTiendas.length}/{todayTiendas.length} tiendas HOY</span>
-                <span>{pendingTiendas.length > 0 ? `${pendingTiendas.length} pendiente${pendingTiendas.length > 1 ? 's' : ''}` : 'Todo registrado'}</span>
-              </div>
-              <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                <div className="h-full bg-[#86EFAC] rounded-full transition-all duration-500"
-                  style={{ width: `${todayTiendas.length > 0 ? (doneTiendas.length / todayTiendas.length) * 100 : 0}%` }} />
-              </div>
-            </div>
-          )}
-        </div>
+              {movil && (
+                <button type="button" onClick={enrutar}
+                  className="min-h-[36px] px-2.5 rounded-btn bg-navy text-white text-apoyo font-bold flex items-center gap-1.5 active:opacity-80">
+                  <Navigation size={14} aria-hidden="true" /> Enrutador
+                </button>
+              )}
+            </>
+          } />
 
-        {/* Mobile stats strip */}
-        <div className="lg:hidden bg-navy flex-shrink-0">
-          <div className="flex items-center">
-            {[{ v: statP, l: 'Pallets', color: '#93C5FD' }, { v: statB, l: 'Bultos', color: '#FCD34D' }, ...(statCH > 0 ? [{ v: statCH, l: 'Choc.', color: '#FBB6A0' }] : []), { v: activeTiendasCount, l: 'Tiendas', color: '#86EFAC' }].map(({ v, l, color }, i, arr) => (
-              <div key={l} className={`flex-1 py-3 text-center ${i < arr.length - 1 ? 'border-r border-white/10' : ''}`}>
-                <div className="font-barlow-condensed text-[26px] font-bold leading-none" style={{ color }}>{v}</div>
-                <div className="text-[10px] text-white/50 uppercase tracking-widest mt-0.5">{l}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-
-        {/* Ver todo / Colapsar — always visible on all screen sizes */}
         {activeTiendasCount > 1 && (
-          <div className="flex justify-end px-3 py-1.5 bg-bg border-b border-border flex-shrink-0">
-            <button
-              onClick={() => {
-                const allCods = activeTiendas.map(([c]) => c);
-                setResumenExpanded(resumenExpanded.size === allCods.length ? new Set() : new Set(allCods));
-              }}
-              className="font-barlow-condensed text-[12px] font-bold text-text-3 hover:text-navy active:text-navy cursor-pointer transition-colors border-none bg-transparent">
-              {resumenExpanded.size === activeTiendasCount ? '▲ Colapsar' : '▼ Ver todo'}
-            </button>
+          <div className="flex justify-end px-3 py-2 bg-bg border-b border-border flex-shrink-0">
+            <BotonHerramienta onClick={() => {
+              const allCods = activeTiendas.map(([c]) => c);
+              setResumenExpanded(resumenExpanded.size === allCods.length ? new Set() : new Set(allCods));
+            }}>
+              {resumenExpanded.size === activeTiendasCount ? 'Plegar todo' : 'Desplegar todo'}
+            </BotonHerramienta>
           </div>
         )}
         {/* Accordion */}
         <div className="flex-1 overflow-y-auto">
-          {activeTiendas.length === 0 ? (
-            <div className="py-16 text-center text-text-3">
-              <div className="text-4xl mb-3 opacity-20">📋</div>
-              <p className="text-[13px] opacity-50">Sin items registrados aún</p>
-            </div>
-          ) : (
+          {activeTiendas.length === 0 ? <ResumenVacio /> : (
             activeTiendas.map(([cod, it]) => {
               const t           = getTiendaSantiagoByCod(cod);
-              const pallets     = it.filter(i => i.tipo === 'Pallet').length;
-              const bultos      = bultosSantiago(it);
-              const contenedores = it.filter(i => i.tipo === 'Contenedor').length;
               const isOpen      = resumenExpanded.has(cod);
-              const totalPeso = it.reduce((s, i) => s + i.peso, 0);
+              const cerrada     = tiendaTerminada(cod);
 
               return (
-                <div key={cod} className={`border-b border-border ${isOpen ? 'bg-white' : ''}`}>
-                  <div
-                    onClick={() => { rCancelEdit(); toggleResumenExpanded(cod); }}
-                    className={`flex items-center gap-2.5 px-3 py-3 cursor-pointer transition-all active:bg-bg ${isOpen ? 'bg-[#F0F2F7] border-b border-border' : 'bg-white'}`}>
-                    <div className="font-mono text-[11px] text-text-3 bg-bg-2 border border-border-2 px-1.5 py-0.5 rounded min-w-[42px] text-center flex-shrink-0">{formatCod(cod)}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[15px] font-bold text-navy truncate leading-tight">{t?.tienda || cod}</div>
-                      <div className="text-[11px] text-text-3 truncate">{t?.comuna} · {t?.ventanaHoraria}</div>
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      {pallets     > 0 && <span className="font-barlow-condensed text-[13px] font-bold text-info bg-[rgba(37,99,235,0.10)] border border-[rgba(37,99,235,0.20)] px-2 py-0.5 rounded">{pallets}P</span>}
-                      {bultos      > 0 && <span className="font-barlow-condensed text-[13px] font-bold text-warn bg-[rgba(217,119,6,0.10)] border border-[rgba(217,119,6,0.20)] px-2 py-0.5 rounded">{bultos}B</span>}
-                      {contenedores > 0 && <span className="font-barlow-condensed text-[13px] font-bold px-2 py-0.5 rounded border" style={{ color:'#6B21A8', background:'rgba(107,33,168,0.10)', borderColor:'rgba(107,33,168,0.20)' }}>{contenedores}C</span>}
-                      <span className="text-text-3 text-[12px] ml-0.5">{isOpen ? '▲' : '▼'}</span>
-                    </div>
-                  </div>
-
-                  {isOpen && (
-                    <div>
-                      <div className="flex items-center gap-2 px-3 py-2 bg-bg border-b border-border">
-                        <div className="font-mono text-[11px] text-text-3 flex-1">
-                          {it.length} item{it.length > 1 ? 's' : ''} · {totalPeso.toLocaleString('es-CL')} kg
-                        </div>
-                      </div>
-
+                <FilaResumenTienda key={cod} cod={formatCod(cod)} nombre={t?.tienda || cod}
+                  sub={[t?.comuna, t?.ventanaHoraria].filter(Boolean).join(' · ')}
+                  totales={totalesResumen(it, i => claseSantiago(i.tipo))} terminada={cerrada} abierta={isOpen}
+                  onToggle={() => { rCancelEdit(); toggleResumenExpanded(cod); }}>
+                      {cerrada && <AvisoResumenTerminada />}
                       {it.map((item, idx) => {
                         const isEditing = resumenEditing?.cod === cod && resumenEditing?.idx === idx;
                         const re = resumenEditing;
@@ -2594,97 +2567,87 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
 
                         const isRDrop    = rDragIdx !== null && rDragCod === cod && rDropIdx === idx && (items[cod]?.[rDragIdx])?.tipo === item.tipo;
                         const isRDragging = rDragCod === cod && rDragIdx === idx;
+                        const claseR = claseUnidad(item.tipo);
+                        const esChocR = item.tipo === 'Chocolate' || (item.tipo === 'Bulto' && item.contenido === 'Chocolate');
+                        const sinPesoR = etiquetaDeUnidad(item);
+                        const detalleR = sinPesoR ? '' : [
+                          item.contenido === 'Chocolate' ? 'Chocolate' : item.contenido,
+                          esChocR ? formatoMedidas(CHOCOLATE_DIMS.alto, CHOCOLATE_DIMS.largo, CHOCOLATE_DIMS.ancho)
+                            : item.tipo === 'Pallet' ? `${formatoMedidas(item.alto)} · 120 × 100`
+                            : formatoMedidas(item.alto, item.largo, item.ancho),
+                          item.estado,
+                        ].filter(Boolean).join(' · ');
+                        // Arrastrar una unidad sobre otra del mismo tipo las combina. En una tienda terminada no.
+                        const arrastreR = cerrada ? {} : {
+                          draggable: true,
+                          onDragStart: () => { setRDragIdx(idx); setRDragCod(cod); },
+                          onDragOver: (e: React.DragEvent) => {
+                            if (rDragIdx !== null && rDragCod === cod && rDragIdx !== idx && (items[cod]?.[rDragIdx])?.tipo === item.tipo)
+                              { e.preventDefault(); setRDropIdx(idx); }
+                          },
+                          onDragLeave: () => setRDropIdx(prev => prev === idx ? null : prev),
+                          onDrop: (e: React.DragEvent) => {
+                            e.preventDefault();
+                            if (rDragIdx !== null && rDragCod === cod && rDragIdx !== idx && (items[cod]?.[rDragIdx])?.tipo === item.tipo)
+                              setCombineModal({ srcIdx: rDragIdx, tgtIdx: idx, cod });
+                            setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
+                          },
+                          onDragEnd: () => { setRDragIdx(null); setRDropIdx(null); setRDragCod(null); },
+                          onTouchStart: (e: React.TouchEvent) => {
+                            const t = e.touches[0];
+                            (e.currentTarget as HTMLElement).dataset.txS = String(t.clientX);
+                            (e.currentTarget as HTMLElement).dataset.tyS = String(t.clientY);
+                            rLongPressRef.current = setTimeout(() => { setRDragIdx(idx); setRDragCod(cod); navigator.vibrate?.(25); }, 220);
+                          },
+                          onTouchMove: (e: React.TouchEvent) => {
+                            const t = e.touches[0];
+                            const el = e.currentTarget as HTMLElement;
+                            if (rLongPressRef.current && (Math.abs(t.clientX - parseFloat(el.dataset.txS ?? '0')) > 8 || Math.abs(t.clientY - parseFloat(el.dataset.tyS ?? '0')) > 8))
+                              { clearTimeout(rLongPressRef.current); rLongPressRef.current = null; }
+                            if (rDragIdx === null) return;
+                            e.preventDefault();
+                            const under = document.elementFromPoint(t.clientX, t.clientY);
+                            const itemEl = under?.closest('[data-r-item-idx]') as HTMLElement | null;
+                            const tgt = itemEl ? parseInt(itemEl.dataset.rItemIdx ?? '-1') : -1;
+                            const tgtCod = itemEl?.dataset.rItemCod;
+                            setRDropIdx(tgt !== -1 && tgt !== rDragIdx && tgtCod === cod ? tgt : null);
+                          },
+                          onTouchEnd: (e: React.TouchEvent) => {
+                            if (rLongPressRef.current) { clearTimeout(rLongPressRef.current); rLongPressRef.current = null; }
+                            if (rDragIdx === null) return;
+                            e.preventDefault();
+                            const t = e.changedTouches[0];
+                            const under = document.elementFromPoint(t.clientX, t.clientY);
+                            const itemEl = under?.closest('[data-r-item-idx]') as HTMLElement | null;
+                            const tgt = itemEl ? parseInt(itemEl.dataset.rItemIdx ?? '-1') : -1;
+                            const tgtCod = itemEl?.dataset.rItemCod;
+                            if (tgt !== -1 && tgt !== rDragIdx && tgtCod === cod && (items[cod]?.[rDragIdx])?.tipo === (items[cod]?.[tgt])?.tipo)
+                              setCombineModal({ srcIdx: rDragIdx, tgtIdx: tgt, cod });
+                            setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
+                          },
+                        };
                         return (
-                          <div
-                            key={item.id}
-                            data-r-item-idx={idx}
-                            data-r-item-cod={cod}
-                            draggable
-                            onDragStart={() => { setRDragIdx(idx); setRDragCod(cod); }}
-                            onDragOver={(e) => {
-                              if (rDragIdx !== null && rDragCod === cod && rDragIdx !== idx && (items[cod]?.[rDragIdx])?.tipo === item.tipo)
-                                { e.preventDefault(); setRDropIdx(idx); }
-                            }}
-                            onDragLeave={() => setRDropIdx(prev => prev === idx ? null : prev)}
-                            onDrop={(e) => {
-                              e.preventDefault();
-                              if (rDragIdx !== null && rDragCod === cod && rDragIdx !== idx && (items[cod]?.[rDragIdx])?.tipo === item.tipo)
-                                setCombineModal({ srcIdx: rDragIdx, tgtIdx: idx, cod });
-                              setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
-                            }}
-                            onDragEnd={() => { setRDragIdx(null); setRDropIdx(null); setRDragCod(null); }}
-                            onTouchStart={(e) => {
-                              const t = e.touches[0];
-                              (e.currentTarget as HTMLElement).dataset.txS = String(t.clientX);
-                              (e.currentTarget as HTMLElement).dataset.tyS = String(t.clientY);
-                              rLongPressRef.current = setTimeout(() => { setRDragIdx(idx); setRDragCod(cod); navigator.vibrate?.(25); }, 220);
-                            }}
-                            onTouchMove={(e) => {
-                              const t = e.touches[0];
-                              const el = e.currentTarget as HTMLElement;
-                              if (rLongPressRef.current && (Math.abs(t.clientX - parseFloat(el.dataset.txS ?? '0')) > 8 || Math.abs(t.clientY - parseFloat(el.dataset.tyS ?? '0')) > 8))
-                                { clearTimeout(rLongPressRef.current); rLongPressRef.current = null; }
-                              if (rDragIdx === null) return;
-                              e.preventDefault();
-                              const under = document.elementFromPoint(t.clientX, t.clientY);
-                              const itemEl = under?.closest('[data-r-item-idx]') as HTMLElement | null;
-                              const tgt = itemEl ? parseInt(itemEl.dataset.rItemIdx ?? '-1') : -1;
-                              const tgtCod = itemEl?.dataset.rItemCod;
-                              setRDropIdx(tgt !== -1 && tgt !== rDragIdx && tgtCod === cod ? tgt : null);
-                            }}
-                            onTouchEnd={(e) => {
-                              if (rLongPressRef.current) { clearTimeout(rLongPressRef.current); rLongPressRef.current = null; }
-                              if (rDragIdx === null) return;
-                              e.preventDefault();
-                              const t = e.changedTouches[0];
-                              const under = document.elementFromPoint(t.clientX, t.clientY);
-                              const itemEl = under?.closest('[data-r-item-idx]') as HTMLElement | null;
-                              const tgt = itemEl ? parseInt(itemEl.dataset.rItemIdx ?? '-1') : -1;
-                              const tgtCod = itemEl?.dataset.rItemCod;
-                              if (tgt !== -1 && tgt !== rDragIdx && tgtCod === cod && (items[cod]?.[rDragIdx])?.tipo === (items[cod]?.[tgt])?.tipo)
-                                setCombineModal({ srcIdx: rDragIdx, tgtIdx: tgt, cod });
-                              setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
-                            }}
-                            className={[
-                              'flex items-center gap-2.5 px-3 py-2.5 border-b border-border/40 last:border-b-0 transition-all select-none',
-                              isRDragging ? 'opacity-40 bg-bg' : isRDrop ? 'bg-emerald-50 border-l-4 border-l-emerald-500' : 'bg-white',
-                              rDragIdx !== null && rDragCod === cod ? 'cursor-grabbing' : 'cursor-grab',
-                            ].join(' ')}
-                          >
-                            <GripVertical size={12} color="#CBD5E1" className="flex-shrink-0" />
-                            <span className={`font-barlow-condensed text-[13px] font-bold min-w-[32px] ${item.tipo === 'Pallet' ? 'text-info' : 'text-warn'}`}>{item.orden}</span>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded font-barlow-condensed ${item.tipo === 'Pallet' ? 'text-info bg-[rgba(37,99,235,0.10)]' : 'text-warn bg-[rgba(217,119,6,0.10)]'}`}>
-                                  {item.tipo}
-                                </span>
-                                <span className="text-[12px] font-semibold text-text-2">{item.contenido === 'Chocolate' ? 'CH' : item.contenido}</span>
-                                <span className="text-[12px] font-bold text-navy">
-                                  {etiquetaDeUnidad(item) ?? `${item.peso}kg`}
-                                </span>
-                              </div>
-                              <div className="text-[11px] text-text-3 mt-0.5 truncate">
-                                {item.tipo === 'Bulto' && item.contenido === 'Chocolate'
-                                  ? `${CHOCOLATE_DIMS.alto}×${CHOCOLATE_DIMS.largo}×${CHOCOLATE_DIMS.ancho} cm`
-                                  : `${item.alto}cm${item.tipo === 'Bulto' ? ` · ${item.largo}×${item.ancho}cm` : ' · 120×100cm'}`
-                                }
-                                {' · '}{item.estado.split(' ').slice(0, 2).join(' ')}
-                              </div>
-                            </div>
-                            <button onClick={() => rStartEdit(cod, idx)}
-                              className="border border-border text-text-3 bg-bg-2 cursor-pointer px-2 py-1.5 rounded-lg text-[15px] active:text-info flex-shrink-0">
-                              ✎
-                            </button>
-                            <button onClick={() => { deletePickingSlot(item.pickingSlotId, { label: item.orden, codArg: cod }); dispatch({ type: 'DELETE_ITEM', tiendaCod: cod, idx }); armarUndo(`${item.orden} eliminado`, () => reAgregarItem(item)); }}
-                              className="border-none text-text-3 cursor-pointer px-2 py-1.5 rounded-lg text-[15px] bg-bg-2 active:text-red flex-shrink-0">
-                              ✕
-                            </button>
-                          </div>
+                          <UnidadResumen key={item.id}
+                            data-r-item-idx={idx} data-r-item-cod={cod}
+                            {...arrastreR}
+                            className={cerrada ? '' : rDragIdx !== null && rDragCod === cod ? 'cursor-grabbing' : 'cursor-grab'}
+                            clase={claseR} etiqueta={item.orden || item.tipo}
+                            peso={sinPesoR ?? textoPesoConTara(item.peso, item.taraPallet)}
+                            detalle={detalleR}
+                            bloqueada={cerrada} resaltada={isRDrop} apagada={isRDragging}
+                            onEditar={() => { if (confirmarCambioGuardado('editar', item.orden)) rStartEdit(cod, idx); }}
+                            onEliminar={() => {
+                              if (!confirmarCambioGuardado('eliminar', item.orden)) return;
+                              // Por id: si otro equipo cambió la lista en el medio, se borraba otra unidad.
+                              const pos = posicionDeUnidad(items[cod] || [], item.id, idx);
+                              if (pos < 0) { showToast('⚠ Esa unidad ya no está', '#D32F2F'); return; }
+                              deletePickingSlot(item.pickingSlotId, { label: item.orden, codArg: cod });
+                              dispatch({ type: 'DELETE_ITEM', tiendaCod: cod, idx: pos });
+                              armarUndo(`${item.orden} eliminado`, () => reAgregarItem(item));
+                            }} />
                         );
                       })}
-                    </div>
-                  )}
-                </div>
+                </FilaResumenTienda>
               );
             })
           )}
@@ -2708,7 +2671,16 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             </button>
           ) : (
             <button
-              onClick={() => onRegistrar?.()}
+              onClick={() => {
+                // Lo que todavía no está cerrado del día: se avisa, no se bloquea.
+                const aviso = avisoAntesDeRegistrar({
+                  sinTerminar: tiendasBarra.filter(t => !tiendaTerminada(t.cod)).map(t => t.tienda),
+                  sinPesar: Object.values(items).flat().filter(esSinPesar).length,
+                  sinGuardar: tiendasBarra.reduce((a, t) => a + unidadesSinGuardar(pickingSlotsFull[t.cod] ?? [], items[t.cod] || []).total, 0),
+                });
+                if (aviso && !window.confirm(`${aviso}\n\n¿Registrar igual?`)) return;
+                onRegistrar?.();
+              }}
               className="ml-auto py-2.5 px-5 bg-red text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
               style={{ boxShadow: '0 4px 16px rgba(211,47,47,0.30)' }}>
               Registrar
@@ -2735,9 +2707,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     resaltada={row.pickingSlotId != null && row.pickingSlotId === resaltado}
                     // Una adquisición no tiene peso ni medidas: escribir «0kg · 0cm» haría pasar la
                     // AUSENCIA de un dato por un dato. Dice qué es.
-                    resumen={etiquetaDeUnidad(row.savedItem) ?? `${row.savedItem.peso} kg · ${row.savedItem.alto} cm`}
+                    resumen={etiquetaDeUnidad(row.savedItem) ?? `${textoPesoConTara(row.savedItem.peso, row.savedItem.taraPallet)} · ${row.savedItem.alto} cm`}
                     campos={etiquetaDeUnidad(row.savedItem) ? undefined : [
-                      { rotulo: 'Peso', valor: `${row.savedItem.peso} kg` },
+                      { rotulo: 'Peso', valor: textoPesoConTara(row.savedItem.peso, row.savedItem.taraPallet) },
                       { rotulo: 'Alto', valor: `${row.savedItem.alto} cm` },
                       ...(contenido ? [{ rotulo: 'Contenido', valor: contenido }] : []),
                     ]}
@@ -2912,7 +2884,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     </div>
                   </div>
                   )}
-                  <div className="grid grid-cols-2 gap-1 mb-1.5">
+                  <div className={`grid ${row.tipo === 'Pallet' ? 'grid-cols-3' : 'grid-cols-2'} gap-1 mb-1.5`}>
                     <div>
                       <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">
                         peso{cajaDeFila === 'negra' && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(TARA_CAJA_NEGRA).replace('.', ',')} kg de caja</span>}
@@ -2934,6 +2906,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                         )}
                       </div>
                     )}
+                    {row.tipo === 'Pallet' && (
+                      <CampoPesoPallet peso={row.peso} valor={row.pesoPallet ?? ''} claseCampo={CAMPO_GRANDE}
+                        onChange={v => updateRow(row.id, 'pesoPallet', v)} onFocus={marcarEnFoco} onBlur={quitarFoco} />
+                    )}
                   </div>
                   {row.tipo === 'Bulto' && !isChocRow && (
                     <div className="grid grid-cols-2 gap-1 mb-1.5">
@@ -2949,26 +2925,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     </div>
                   )}
                   {row.tipo === 'Pallet' && (
-                    <>
-                      <div className="mb-1.5 text-[11px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">120×100 cm</div>
-                      {/* Se pregunta por lo que estuvo EN LA BALANZA, no por lo que hay en el pallet:
-                          un chocolate sumado con el botón ya vino neto y declararlo acá restaría la
-                          tara dos veces. Por eso dice "pesadas con el pallet". */}
-                      <div className="mb-1.5">
-                        <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">
-                          cajas negras pesadas con el pallet
-                        </label>
-                        <input type="number" value={row.cajasNegras ?? ''} onChange={e => updateRow(row.id, 'cajasNegras', e.target.value)}
-                          onFocus={marcarEnFoco} onBlur={quitarFoco}
-                          placeholder="0" inputMode="numeric" min={0}
-                          className={CAMPO} />
-                        {(parseInt(row.cajasNegras ?? '', 10) || 0) > 0 && (
-                          <div className="text-[10px] font-bold mt-0.5" style={{ color: '#C2410C' }}>
-                            se descuentan {String(Math.round((parseInt(row.cajasNegras!, 10) * TARA_CAJA_NEGRA) * 10) / 10).replace('.', ',')} kg de cajas
-                          </div>
-                        )}
-                      </div>
-                    </>
+                    <div className="mb-1.5 text-[11px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">120×100 cm</div>
                   )}
                   {isChocRow && (
                     <div className="mb-1.5 text-[11px] text-navy/60 bg-bg border border-border rounded px-1.5 py-1">
@@ -3082,6 +3039,15 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           sinGuardar={avisoSinGuardar(unidadesSinGuardar(pickingSlotsFull[currentTienda.cod] ?? [], tiendaItems))}
           viendo={viendoPorTienda.get(currentTienda.cod)}
           canalSano={canalSano}
+          agregar={{ bloqueado: bloqueada, opciones: [
+            { texto: 'Pallet',      clase: 'pallet',     onClick: () => setDialogTipo('Pallet') },
+            { texto: 'Bulto',       clase: 'bulto',      onClick: () => setDialogTipo('Bulto') },
+            { texto: 'Cont.',       clase: 'contenedor', onClick: () => setDialogTipo('Contenedor') },
+            { texto: 'Choc.',       clase: 'chocolate',  onClick: () => setDialogTipo('Chocolate') },
+            // No piden medidas ni peso: se crean de un toque, sin diálogo. Ver shared/adquisicion.
+            { texto: 'Adquisición', clase: 'agregado', detalle: 'no se pesa', onClick: () => void addFormRow('Adquisicion') },
+            { texto: 'Web / retiro', clase: 'agregado', detalle: 'no se pesa', onClick: () => void addFormRow('WebRetiro') },
+          ] }}
           botonRegistrar={
             <RegistrarTiendaButton rol={profile?.role} terminada={tiendaTerminada(currentTienda.cod)} variante="claro"
               unidades={tiendaItems.length} yaRegistrada={registroTiendas.registrada(currentTienda.cod)}
@@ -3098,7 +3064,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         )}
 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
-          {bloqueada && <AvisoTiendaTerminada />}
+          {bloqueada && (
+            <AvisoTiendaTerminada nuevas={nuevasDe(currentTienda.cod)}
+              onReabrir={() => { if (window.confirm('¿Reabrir esta tienda para pesar lo nuevo? Ya no se mostrará como lista para despachar.')) marcarTerminada(currentTienda.cod, false); }} />
+          )}
           {/* Terminada: todo lo de adentro queda deshabilitado de una vez (inputs y botones). */}
           <fieldset disabled={bloqueada} className="contents">
           {/* ── AHORA · FALTAN · PESADOS — la misma lectura que Nacional. Ver `TiendaAbierta`. */}
@@ -3239,19 +3208,6 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               </div>
             );
           })()}
-          <div className="flex gap-2 pb-2">
-            <button onClick={() => setDialogTipo('Pallet')}     className="flex-1 py-2.5 border-2 border-dashed border-info/50 text-info rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Pallet</button>
-            <button onClick={() => setDialogTipo('Bulto')}      className="flex-1 py-2.5 border-2 border-dashed border-warn/50 text-warn rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Bulto</button>
-            <button onClick={() => setDialogTipo('Contenedor')} className="flex-1 py-2.5 border-2 border-dashed border-[#6B21A8]/50 text-[#6B21A8] rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer">+ Cont.</button>
-            <button onClick={() => setDialogTipo('Chocolate')}  className="flex-1 py-2.5 border-2 border-dashed rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer" style={{ borderColor: 'rgba(146,64,14,0.50)', color: '#92400E' }}>+ Choc.</button>
-          </div>
-          {/* [Agregados] Segunda fila: no piden medidas ni peso, se crean de un toque. Van aparte y
-              no comparten fila con los otros cuatro porque son otra cosa — los de arriba se miden,
-              estos no. Ver shared/adquisicion. */}
-          <div className="flex gap-2 pb-2">
-            <button onClick={() => void addFormRow('Adquisicion')} className="flex-1 py-2.5 border-2 border-dashed rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer" style={{ borderColor: 'rgba(15,118,110,0.50)', color: '#0F766E' }}>+ Adquisición</button>
-            <button onClick={() => void addFormRow('WebRetiro')}   className="flex-1 py-2.5 border-2 border-dashed rounded-btn font-barlow-condensed text-[13px] font-bold cursor-pointer" style={{ borderColor: 'rgba(109,40,217,0.50)', color: '#6D28D9' }}>+ Web / retiro</button>
-          </div>
           </fieldset>
           {dialogTipo && currentTienda && !bloqueada && (
             <AgregarPalletDialog
@@ -3457,37 +3413,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       {/* ─── MOBILE: resumen view ─── */}
       {view === 'resumen' && (
         <div className="flex lg:hidden flex-1 flex-col overflow-hidden">
-          {/* Cabecera con VOLVER. En el teléfono, el Resumen ocupa la pantalla entera: la columna
-              de las tarjetas queda `hidden` y la barra de abajo —donde viven Resumen, Enrutador y
-              Manual— se va con ella. Sin esta cabecera no quedaba ninguna salida dentro de la
-              aplicación: había que usar el botón del navegador. Bodega Nacional ya la tenía (su
-              Resumen es un overlay con su propio encabezado); acá faltaba, porque el panel que se
-              reutiliza es el de ESCRITORIO, y su encabezado es `hidden lg:block`.
-              Va en la vista y no dentro de `renderResumenPanel`, que también es la columna derecha
-              del escritorio — ahí un "volver" no significa nada. */}
-          <div className="bg-navy px-3 py-3 flex items-center gap-3 flex-shrink-0"
-               style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
-            <button
-              onClick={() => setView('list')}
-              aria-label="Volver a las tiendas"
-              className="flex items-center justify-center rounded-full flex-shrink-0 cursor-pointer transition-all active:scale-95 border-none"
-              style={{
-                width: 36, height: 36,
-                background: 'rgba(255,255,255,0.10)',
-                border: '1px solid rgba(255,255,255,0.15)',
-              }}>
-              <ChevronLeft size={18} color="rgba(255,255,255,0.85)" strokeWidth={2} />
-            </button>
-            <span className="font-barlow-condensed text-[16px] font-bold text-white/90 tracking-wide flex-1">Resumen</span>
-            <button
-              onClick={enrutar}
-              className="flex items-center gap-2 py-2 px-3 rounded cursor-pointer transition-all active:opacity-70"
-              style={{ background: 'rgba(30,64,175,0.25)', border: '1px solid rgba(30,64,175,0.60)' }}>
-              <Navigation size={13} color="#93C5FD" strokeWidth={2} />
-              <span className="font-barlow-condensed text-[13px] font-bold tracking-wide" style={{ color: '#93C5FD' }}>Enrutador</span>
-            </button>
-          </div>
-          {renderResumenPanel()}
+          {/* En el teléfono el Resumen ocupa la pantalla entera y la barra de abajo se va con la
+              columna de tarjetas: el «volver» y el Enrutador van en su cabecera. */}
+          {renderResumenPanel(true)}
         </div>
       )}
 
@@ -3545,7 +3473,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         const tgtLabel = `${tgt.orden || tgt.tipo} · ${tgt.peso}kg · ${tgt.contenido}`;
         return (
           <CombineItemsModal
-            pkgLabel={src.tipo === 'Pallet' ? 'Pallets' : 'Bultos'}
+            pkgLabel={src.tipo === 'Pallet' ? 'Pallets' : src.tipo === 'Contenedor' ? 'Contenedores' : src.tipo === 'Chocolate' ? 'Chocolates' : 'Bultos'}
             srcLabel={srcLabel}
             tgtLabel={tgtLabel}
             onConfirm={(peso, alto) => handleSantiagoCombineConfirm(peso, alto, activeCod)}

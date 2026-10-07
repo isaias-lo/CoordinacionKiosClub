@@ -26,6 +26,8 @@
 // Acá se separa: una fila que la persona TOCÓ no se pisa nunca. Una que nadie tocó sí puede
 // adoptar lo que cargó el compañero.
 
+import { leerTaraPallet } from './pesoDelPallet';
+
 export interface FilaAdoptable {
   pickingSlotId?: number | null;
   /** true en cuanto la persona escribe algo en esta tarjeta. */
@@ -86,14 +88,14 @@ export function adopcionesPendientes<F extends FilaAdoptable, I extends ItemRemo
 }
 
 /**
- * ¿La tarjeta dice el mismo peso y alto que el ítem? Solo para tarjetas sin cajas negras
- * declaradas: ahí lo escrito es el bruto y lo guardado el neto, y no se pueden comparar.
+ * ¿La tarjeta dice el mismo peso y alto que el ítem? Solo para tarjetas sin «Peso del pallet»:
+ * ahí lo escrito es el bruto y lo guardado el neto, y no se pueden comparar.
  */
 export function mismaCargaEscrita(
-  fila: { peso: string; alto: string; cajasNegras?: string },
+  fila: { peso: string; alto: string; pesoPallet?: string },
   item: { peso?: number | null; alto?: number | null },
 ): boolean {
-  if ((parseInt(fila.cajasNegras ?? '', 10) || 0) > 0) return false;
+  if (leerTaraPallet(fila.pesoPallet) !== 0) return false;
   const peso = Number(String(fila.peso).trim().replace(',', '.'));
   const alto = Number(String(fila.alto).trim().replace(',', '.'));
   if (!Number.isFinite(peso) || peso <= 0 || item.peso == null) return false;
