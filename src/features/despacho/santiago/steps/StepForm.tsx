@@ -34,7 +34,8 @@ import { ordenarCardsPorTipo } from '../../shared/ordenCards';
 import { avanceTienda, claseUnidad, type AvanceTienda } from '../../shared/unidadVisual';
 import { useTarjetaActiva } from '../../shared/useTarjetaActiva';
 import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTienda, ResumenVacio, UnidadResumen } from '../../shared/ResumenDia';
-import { formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
+import { useAvisoNuevasTrasTerminar } from '../../shared/avisoNuevasTrasTerminar';
+import { avisoAntesDeRegistrar, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
 import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, type OpcionAgregar } from '../../shared/TiendaAbierta';
 import { confirmarCambioGuardado, confirmarEliminarVarios } from '../../shared/confirmarGuardado';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
@@ -85,7 +86,7 @@ import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
-import { pesoNetoPallet } from '../../shared/pesoDelPallet';
+import { pesoEnTarjeta, pesoNetoPallet, taraEnTarjeta, taraParaGuardar, textoPesoConTara } from '../../shared/pesoDelPallet';
 import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
 import { itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
 import { avisoDeUnidad, avisoEnTerminada } from '../../shared/avisoUnidadEscaneada';
@@ -975,6 +976,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const tiendasBarra = todayTiendas
     .filter(t => !isRegionesCod(t.cod) && (t.region === 'VR' ? selectedGrps.has('costa') : selectedGrps.has('rm')));
   const resumenHoy = resumenDia(tiendasBarra.map(estadoDe));
+  // Picking imprime algo en una tienda de hoy ya terminada: toast, aunque se esté en otra tienda.
+  useAvisoNuevasTrasTerminar(
+    tiendasBarra.map(t => ({ cod: t.cod, nombre: t.tienda, nuevas: nuevasDe(t.cod) })),
+    showToast,
+  );
   // Las unidades de la barra salen de las MISMAS tiendas que su «X/Y listas». Antes sumaban todo
   // `items` —Costa con el filtro en RM, tiendas fuera del día— y no cuadraban con el contador.
   const itemsBarra = tiendasBarra.flatMap(t => items[t.cod] || []);
@@ -1188,7 +1194,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             const cajaGuardada = saved.tipo === 'Chocolate' ? subtipoDeCaja(s.subtipo) : null;
             rows.push({
               id: `saved-${sid || i}-${Date.now()}`, tipo: saved.tipo, contenido: saved.contenido,
-              peso: String(cajaGuardada ? pesoParaMostrar(Number(saved.peso ?? 0), cajaGuardada) : (saved.peso ?? '')),
+              peso: String(cajaGuardada ? pesoParaMostrar(Number(saved.peso ?? 0), cajaGuardada) : pesoEnTarjeta(saved.peso, saved.taraPallet)),
+              pesoPallet: taraEnTarjeta(saved.taraPallet),
               alto: String(saved.alto ?? ''),
               largo: String(saved.largo ?? ''), ancho: String(saved.ancho ?? ''),
               saved: true, savedItem: saved, pickingSlotId: sid || saved.pickingSlotId,
@@ -1212,7 +1219,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         for (const it of remaining) {
           rows.push({
             id: `savedm-${it.id}`, tipo: it.tipo, contenido: it.contenido,
-            peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
+            peso: pesoEnTarjeta(it.peso, it.taraPallet), pesoPallet: taraEnTarjeta(it.taraPallet), alto: String(it.alto ?? ''),
             largo: String(it.largo ?? ''), ancho: String(it.ancho ?? ''),
             saved: true, savedItem: it, pickingSlotId: it.pickingSlotId,
           });
@@ -1252,7 +1259,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           .map((item, i) => ({
             id: `saved-${i}-${item.tipo}-${Date.now()}`,
             tipo: item.tipo, contenido: item.contenido,
-            peso: String(item.peso ?? ''), alto: String(item.alto ?? ''),
+            peso: pesoEnTarjeta(item.peso, item.taraPallet), pesoPallet: taraEnTarjeta(item.taraPallet), alto: String(item.alto ?? ''),
             largo: String(item.largo ?? ''), ancho: String(item.ancho ?? ''),
             saved: true, savedItem: item, pickingSlotId: item.pickingSlotId,
           }));
@@ -1292,14 +1299,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       prev, currentItems, currentSlotsFull,
       (row, it) => ({
         ...row, tipo: it.tipo, contenido: it.contenido,
-        peso: String(it.peso ?? ''), alto: String(it.alto ?? ''),
+        peso: pesoEnTarjeta(it.peso, it.taraPallet), pesoPallet: taraEnTarjeta(it.taraPallet), alto: String(it.alto ?? ''),
         largo: String(it.largo ?? ''), ancho: String(it.ancho ?? ''),
         saved: true, savedItem: it,
       }),
       (s, saved) => saved
         ? {
             id: `bk-saved-${s.id}`, tipo: saved.tipo, contenido: saved.contenido,
-            peso: String(saved.peso ?? ''), alto: String(saved.alto ?? ''),
+            peso: pesoEnTarjeta(saved.peso, saved.taraPallet), pesoPallet: taraEnTarjeta(saved.taraPallet), alto: String(saved.alto ?? ''),
             largo: String(saved.largo ?? ''), ancho: String(saved.ancho ?? ''),
             saved: true, savedItem: saved, pickingSlotId: s.id,
           }
@@ -1406,6 +1413,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       : null;
     const medidasCaja = caja ? medidasDeCaja(caja) : null;
     let p: number, a: number, fL: number, fA: number, pesoV: number;
+    let tara: number | undefined;
     if (sinPesar) {
       // "Agregar sin pesar": se guarda con dimensiones en 0 (marca "sin pesar"), sin pedir peso/alto/largo/ancho.
       p = DIMS_SIN_PESAR.peso; a = DIMS_SIN_PESAR.alto; fL = DIMS_SIN_PESAR.largo; fA = DIMS_SIN_PESAR.ancho;
@@ -1423,6 +1431,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         const neto = pesoNetoPallet(row.peso, row.pesoPallet);
         if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
         p = neto.neto;
+        tara = taraParaGuardar(neto.tara);
       } else {
         p = (leerPeso(row.peso) ?? 0); if (!p || p <= 0) { showToast('Ingresa el peso', '#D97706'); return; }
       }
@@ -1475,7 +1484,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       .map(i => seqDeSlot(cod, i.pickingSlotId));
     const candidato: SantiagoItem = {
       id: `${cod}-${Date.now()}`, tiendaCod: cod, tipo: row.tipo, contenido: row.contenido,
-      peso: p, alto: a, largo: fL, ancho: fA,
+      peso: p, alto: a, largo: fL, ancho: fA, taraPallet: tara,
       pesoVolumetrico: pesoV, regimen,
       // El número impreso del slot, no su posición entre los que hay ahora.
       orden: ordenDeItem(row.tipo, numeroParaUnidadNueva(seqsHermanas, pickingSlot?.seq)),
@@ -1821,7 +1830,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => prev
       .filter(r => r.id !== bultoRowId)
       .map(r => r.id === palletRowId
-        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: String(nuevoPeso),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, r.savedItem?.taraPallet), pesoPallet: taraEnTarjeta(r.savedItem?.taraPallet),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
@@ -1890,7 +1899,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => prev
       .filter(r => !bultoRowIdSet.has(r.id))
       .map(r => r.id === palletRowId
-        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: String(nuevoPeso),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, r.savedItem?.taraPallet), pesoPallet: taraEnTarjeta(r.savedItem?.taraPallet),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
@@ -1977,7 +1986,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => prev
       .filter(r => r.id !== sourceRow.id)
       .map(r => r.id === targetRow.id
-        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: String(nuevoPeso),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, r.savedItem?.taraPallet), pesoPallet: taraEnTarjeta(r.savedItem?.taraPallet),
             alto: prevAlto ? String(prevAlto) : '', mergeReopened: true }
         : r));
     setFormMergeState(null);
@@ -2623,7 +2632,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                             {...arrastreR}
                             className={cerrada ? '' : rDragIdx !== null && rDragCod === cod ? 'cursor-grabbing' : 'cursor-grab'}
                             clase={claseR} etiqueta={item.orden || item.tipo}
-                            peso={sinPesoR ?? `${item.peso.toLocaleString('es-CL')} kg`}
+                            peso={sinPesoR ?? textoPesoConTara(item.peso, item.taraPallet)}
                             detalle={detalleR}
                             bloqueada={cerrada} resaltada={isRDrop} apagada={isRDragging}
                             onEditar={() => { if (confirmarCambioGuardado('editar', item.orden)) rStartEdit(cod, idx); }}
@@ -2662,7 +2671,16 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             </button>
           ) : (
             <button
-              onClick={() => onRegistrar?.()}
+              onClick={() => {
+                // Lo que todavía no está cerrado del día: se avisa, no se bloquea.
+                const aviso = avisoAntesDeRegistrar({
+                  sinTerminar: tiendasBarra.filter(t => !tiendaTerminada(t.cod)).map(t => t.tienda),
+                  sinPesar: Object.values(items).flat().filter(esSinPesar).length,
+                  sinGuardar: tiendasBarra.reduce((a, t) => a + unidadesSinGuardar(pickingSlotsFull[t.cod] ?? [], items[t.cod] || []).total, 0),
+                });
+                if (aviso && !window.confirm(`${aviso}\n\n¿Registrar igual?`)) return;
+                onRegistrar?.();
+              }}
               className="ml-auto py-2.5 px-5 bg-red text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
               style={{ boxShadow: '0 4px 16px rgba(211,47,47,0.30)' }}>
               Registrar
@@ -2689,9 +2707,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     resaltada={row.pickingSlotId != null && row.pickingSlotId === resaltado}
                     // Una adquisición no tiene peso ni medidas: escribir «0kg · 0cm» haría pasar la
                     // AUSENCIA de un dato por un dato. Dice qué es.
-                    resumen={etiquetaDeUnidad(row.savedItem) ?? `${row.savedItem.peso} kg · ${row.savedItem.alto} cm`}
+                    resumen={etiquetaDeUnidad(row.savedItem) ?? `${textoPesoConTara(row.savedItem.peso, row.savedItem.taraPallet)} · ${row.savedItem.alto} cm`}
                     campos={etiquetaDeUnidad(row.savedItem) ? undefined : [
-                      { rotulo: 'Peso', valor: `${row.savedItem.peso} kg` },
+                      { rotulo: 'Peso', valor: textoPesoConTara(row.savedItem.peso, row.savedItem.taraPallet) },
                       { rotulo: 'Alto', valor: `${row.savedItem.alto} cm` },
                       ...(contenido ? [{ rotulo: 'Contenido', valor: contenido }] : []),
                     ]}

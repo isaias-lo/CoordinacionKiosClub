@@ -8,9 +8,9 @@
 //
 // Es opcional: vacío o 0 deja el peso tal cual, que era el caso normal antes también.
 //
-// La tarjeta guarda lo TECLEADO (bruto y tara) y el ítem guarda el neto. Editar con el ✎ conserva
-// lo tecleado, así que volver a guardar resta una sola vez. Al reconstruir desde el ítem la tarjeta
-// trae el neto y la tara vacía: tampoco resta dos veces.
+// El ítem guarda el NETO y, aparte, cuánto pesó el pallet (`taraPallet`). La tarjeta muestra lo que
+// se tecleó: al rearmarla desde el ítem vuelve como bruto (neto + tara) con la tara en su casillero,
+// así que volver a guardar resta una sola vez y nadie tiene que acordarse de cuánto pesaba.
 
 import { leerPeso } from './pesoIngresado';
 
@@ -56,4 +56,28 @@ export function avisoNetoPallet(bruto: unknown, taraTexto: unknown): string | nu
   const r = pesoNetoPallet(bruto, taraTexto);
   if (!r.ok) return leerPeso(bruto) == null ? `se restan ${coma(tara)} kg` : '⚠ el pallet pesa más que lo pesado';
   return `se guardan ${coma(r.neto)} kg`;
+}
+
+/** Lo que se guarda en el ítem: la tara, o nada si no hubo. */
+export function taraParaGuardar(tara: number): number | undefined {
+  return Number.isFinite(tara) && tara > 0 ? tara : undefined;
+}
+
+/** El Peso de la tarjeta rearmada desde el ítem: el bruto (neto + tara). `''` si no hay peso. */
+export function pesoEnTarjeta(neto: number | string | null | undefined, tara?: number | null): string {
+  if (neto == null || neto === '') return '';
+  const n = Number(neto);
+  if (!Number.isFinite(n)) return String(neto);
+  return tara && tara > 0 ? String(redondear(n + tara)) : String(neto);
+}
+
+/** El casillero «Peso del pallet» de la tarjeta rearmada desde el ítem. */
+export function taraEnTarjeta(tara?: number | null): string {
+  return tara && tara > 0 ? String(tara) : '';
+}
+
+/** «278 kg (300 − 22)»: el neto, y de dónde sale si se restó el pallet. */
+export function textoPesoConTara(neto: number, tara?: number | null): string {
+  const base = `${coma(neto)} kg`;
+  return tara && tara > 0 ? `${base} (${coma(redondear(neto + tara))} − ${coma(tara)})` : base;
 }

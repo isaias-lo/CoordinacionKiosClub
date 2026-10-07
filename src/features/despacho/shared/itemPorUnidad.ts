@@ -19,7 +19,7 @@ interface ItemConUnidad {
   orden?: string;
 }
 
-const MEDIDAS = ['peso', 'alto', 'largo', 'ancho', 'pesoVolumetrico'] as const;
+const MEDIDAS = ['peso', 'alto', 'largo', 'ancho', 'pesoVolumetrico', 'taraPallet'] as const;
 
 /**
  * Lo que queda al guardar `nuevo` sobre un ítem que ya existía para la misma unidad.

@@ -24,6 +24,7 @@ import { formatCLPCorto } from '../../shared/formatoCLP';
 import { excedeTopeDuro } from '../../shared/pesoIngresado';
 import { claseUnidad } from '../../shared/unidadVisual';
 import { confirmarCambioGuardado } from '../../shared/confirmarGuardado';
+import { textoPesoConTara } from '../../shared/pesoDelPallet';
 import { copiaParaOtraTienda, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
 import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTienda, ResumenVacio, UnidadResumen } from '../../shared/ResumenDia';
 
@@ -61,9 +62,11 @@ interface ResumenPageProps {
   /** En el teléfono: volver a la lista y lo que va a la derecha (Enrutador). */
   volver?: ReactNode;
   extra?: ReactNode;
+  /** Lo que falta cerrar del día (tiendas sin terminar, sin pesar). Se avisa antes de registrar. */
+  avisoRegistrar?: string | null;
 }
 
-export function ResumenPage({ panel = false, onRegistrar, terminada = () => false, avance, volver, extra }: ResumenPageProps) {
+export function ResumenPage({ panel = false, onRegistrar, terminada = () => false, avance, volver, extra, avisoRegistrar }: ResumenPageProps) {
   const { state, dispatch, showToast } = useApp();
   const { profile } = useAuth();
   const { dispatch: dispatchData, selection } = state;
@@ -287,7 +290,8 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
           <Check size={18} aria-hidden="true" /> Registrado
         </button>
       ) : (
-        <button type="button" onClick={() => onRegistrar?.()} disabled={names.length === 0}
+        <button type="button" disabled={names.length === 0}
+          onClick={() => { if (avisoRegistrar && !window.confirm(`${avisoRegistrar}\n\n¿Registrar igual?`)) return; onRegistrar?.(); }}
           className="min-h-[44px] px-5 bg-navy text-white rounded-btn text-cuerpo font-bold cursor-pointer active:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">
           Registrar despacho
         </button>
@@ -464,7 +468,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
                   {...arrastre}
                   className={cerrada ? '' : dragIdx !== null && dragTienda === name ? 'cursor-grabbing' : 'cursor-grab'}
                   clase={clase} etiqueta={item.orden || LABEL[item.pkg]}
-                  peso={sinPeso ? LABEL[item.pkg] : `${item.peso.toLocaleString('es-CL')} kg`}
+                  peso={sinPeso ? LABEL[item.pkg] : textoPesoConTara(item.peso, item.taraPallet)}
                   detalle={detalle}
                   seleccion={{ activa: isSel, onToggle: () => dispatch({ type: 'TOGGLE_SELECTION', tienda: name, idx }) }}
                   bloqueada={cerrada} resaltada={isDropTarget} apagada={isDragging}

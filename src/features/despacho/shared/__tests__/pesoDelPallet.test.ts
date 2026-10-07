@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { avisoNetoPallet, leerTaraPallet, pesoNetoPallet } from '../pesoDelPallet';
+import { avisoNetoPallet, leerTaraPallet, pesoEnTarjeta, pesoNetoPallet, taraEnTarjeta, taraParaGuardar, textoPesoConTara } from '../pesoDelPallet';
 
 describe('peso del pallet: se resta del peso', () => {
   it('vacío no toca nada: es el caso normal', () => {
@@ -44,5 +44,25 @@ describe('el aviso bajo los campos', () => {
   });
   it('avisa si el pallet pesa más', () => {
     expect(avisoNetoPallet('10', '22')).toMatch(/pesa más/);
+  });
+});
+
+describe('la tarjeta rearmada desde el ítem', () => {
+  it('vuelve como bruto con la tara en su casillero: guardar otra vez resta una sola vez', () => {
+    expect(pesoEnTarjeta(278, 22)).toBe('300');
+    expect(taraEnTarjeta(22)).toBe('22');
+    const otraVez = pesoNetoPallet(pesoEnTarjeta(278, 22), taraEnTarjeta(22));
+    expect(otraVez).toMatchObject({ ok: true, neto: 278 });
+  });
+  it('sin tara, igual que antes', () => {
+    expect(pesoEnTarjeta(300, undefined)).toBe('300');
+    expect(taraEnTarjeta(undefined)).toBe('');
+    expect(pesoEnTarjeta(undefined, 22)).toBe('');
+  });
+  it('lo que se guarda y lo que se lee', () => {
+    expect(taraParaGuardar(0)).toBeUndefined();
+    expect(taraParaGuardar(22)).toBe(22);
+    expect(textoPesoConTara(278, 22)).toBe('278 kg (300 − 22)');
+    expect(textoPesoConTara(278.5, undefined)).toBe('278,5 kg');
   });
 });

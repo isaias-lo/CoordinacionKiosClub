@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { copiaParaOtraTienda, formatoKg, formatoMedidas, posicionDeUnidad, textoAvanceTiendas, totalesResumen } from '../resumenDia';
+import { avisoAntesDeRegistrar, copiaParaOtraTienda, formatoKg, formatoMedidas, posicionDeUnidad, textoAvanceTiendas, totalesResumen } from '../resumenDia';
 import { claseNacional } from '../numeroCard';
 
 const it_ = (pkg: string, peso = 0, valor = 0) => ({ pkg, peso, valor });
@@ -55,5 +55,20 @@ describe('editar por id, no por posición', () => {
   it('sin id, usa la posición si sigue existiendo', () => {
     expect(posicionDeUnidad([{}, {}], undefined, 1)).toBe(1);
     expect(posicionDeUnidad([{}], undefined, 3)).toBe(-1);
+  });
+});
+
+describe('aviso antes de registrar', () => {
+  it('sin nada pendiente, no avisa', () => {
+    expect(avisoAntesDeRegistrar({ sinTerminar: [], sinPesar: 0, sinGuardar: 0 })).toBeNull();
+  });
+  it('dice qué falta, con los nombres', () => {
+    const a = avisoAntesDeRegistrar({ sinTerminar: ['Valparaíso', 'Coquimbo'], sinPesar: 1, sinGuardar: 3 })!;
+    expect(a).toContain('2 tiendas de hoy sin terminar: Valparaíso, Coquimbo.');
+    expect(a).toContain('1 unidad guardada sin pesar.');
+    expect(a).toContain('3 unidades de Picking sin guardar');
+  });
+  it('corta la lista larga', () => {
+    expect(avisoAntesDeRegistrar({ sinTerminar: ['a', 'b', 'c', 'd', 'e', 'f', 'g'], sinPesar: 0, sinGuardar: 0 })).toContain('y 2 más');
   });
 });

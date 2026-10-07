@@ -79,3 +79,26 @@ export function posicionDeUnidad(items: readonly { id?: string }[], id: string |
   if (id) return items.findIndex(i => i.id === id);
   return idxAntes >= 0 && idxAntes < items.length ? idxAntes : -1;
 }
+
+/**
+ * El aviso antes de registrar el día: lo que todavía no está cerrado. `null` si no falta nada.
+ * Registrar no se bloquea (puede haber motivos para registrar igual), pero no se hace a ciegas.
+ */
+export function avisoAntesDeRegistrar(t: {
+  /** Nombres de las tiendas de hoy que no están marcadas terminadas. */
+  sinTerminar: readonly string[];
+  /** Unidades guardadas sin pesar, en todo el día. */
+  sinPesar: number;
+  /** Unidades que Picking imprimió y Bodega no guardó, en tiendas de hoy. */
+  sinGuardar: number;
+}): string | null {
+  const lineas: string[] = [];
+  const n = t.sinTerminar.length;
+  if (n > 0) {
+    const nombres = t.sinTerminar.slice(0, 5).join(', ') + (n > 5 ? ` y ${n - 5} más` : '');
+    lineas.push(`• ${n} tienda${n === 1 ? '' : 's'} de hoy sin terminar: ${nombres}.`);
+  }
+  if (t.sinPesar > 0) lineas.push(`• ${t.sinPesar} unidad${t.sinPesar === 1 ? '' : 'es'} guardada${t.sinPesar === 1 ? '' : 's'} sin pesar.`);
+  if (t.sinGuardar > 0) lineas.push(`• ${t.sinGuardar} unidad${t.sinGuardar === 1 ? '' : 'es'} de Picking sin guardar en Bodega.`);
+  return lineas.length ? `Antes de registrar:\n\n${lineas.join('\n')}` : null;
+}
