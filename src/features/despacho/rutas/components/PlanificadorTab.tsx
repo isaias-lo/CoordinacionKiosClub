@@ -27,6 +27,7 @@ const VELOCIDAD_PLAN_KMH = 22;
 import { cargarGMaps } from '../utils/maps';
 import { tipoTienda, grupoTienda, type TipoTiendaKey } from '../utils/tipoTienda';
 import AddressAutocomplete from './AddressAutocomplete';
+import { SegmentadoA, ChipA, RotuloA, TarjetaA, ACENTO_PLAN } from './PlanControlesA';
 import { fetchSessionState, subscribeToSessionState, pushSessionStateResult } from '@/lib/userSessionState';
 import { mergeRutasPlan, conAlMenosUna, type RutaPlan } from '../utils/planSync';
 import { fetchCalendarioCompleto } from '@/features/despacho/utils/useCalendario';
@@ -1088,13 +1089,207 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
     });
   }, [vistaA, routesComputed, legDataByRoute, salidaMin, servicioMin, endArr, tiendas, catalogoDe]);
 
+  // [Vista nueva · Plan] Los mismos controles de arriba (calendario, partida/llegada, agregar)
+  // dibujados con el lenguaje del diseño A. Mismo estado y mismas acciones que los bloques de la
+  // clásica; solo cambia cómo se ven.
+  const inputA = 'border border-black/[0.12] rounded-[10px] px-3 py-2 min-h-[40px] text-apoyo bg-white text-ktext outline-none focus:border-[#0F766E]';
+  const calendarioA = (
+    <TarjetaA className="overflow-hidden flex-shrink-0">
+      <button type="button" onClick={() => setCalOpen(o => !o)} aria-expanded={calOpen}
+        className="w-full flex items-center gap-3 px-4 py-3.5 text-left flex-wrap">
+        <CalendarDays size={18} style={{ color: ACENTO_PLAN }} className="flex-shrink-0" />
+        <span className="text-cuerpo font-bold text-ktext">Armar desde el calendario</span>
+        {!calOpen && (
+          <span className="text-apoyo text-kmuted min-w-0">
+            {calFuente === 'seco' ? 'Seco' : 'Congelados'} · {DIA_LABEL[calDia]} · {etiquetaZonas(calZonas)} · {calN} {calN === 1 ? 'ruta' : 'rutas'}
+          </span>
+        )}
+        <span className="ml-auto text-kmuted flex-shrink-0">{calOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</span>
+      </button>
+      {calOpen && (
+        <div className="px-4 pb-4 pt-1 border-t border-black/[0.07] flex flex-col gap-4">
+          <div className="grid gap-x-6 gap-y-4 pt-3 items-end [grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr))]">
+            <div className="flex flex-col gap-1.5 min-w-0">
+              <RotuloA>Calendario</RotuloA>
+              <SegmentadoA etiqueta="Calendario" valor={calFuente} onCambio={setCalFuente}
+                opciones={[['seco', 'Seco'], ['congelados', '❄ Congelados']] as const} />
+            </div>
+            <div className="flex flex-col gap-1.5 min-w-0">
+              <RotuloA>Día</RotuloA>
+              <SegmentadoA etiqueta="Día" valor={calDia} onCambio={setCalDia} ancho
+                opciones={DIAS.map(d => [d, DIA_LABEL[d]] as const)} />
+            </div>
+            <div className="flex flex-col gap-1.5 min-w-0">
+              <RotuloA>Zonas{calZonas.length === 0 && <span className="normal-case font-semibold text-kmuted"> · todas</span>}</RotuloA>
+              <div className="flex gap-1.5 flex-wrap">
+                {ZONAS_PLAN.map(({ id, label }) => {
+                  const n = calConteo?.[id];
+                  return (
+                    <ChipA key={id} on={calZonas.includes(id)} apagado={n === 0}
+                      title={n === 0 ? `Sin tiendas de ${label} ese día` : undefined}
+                      onClick={() => setCalZonas(prev => prev.includes(id) ? prev.filter(z => z !== id) : [...prev, id])}>
+                      {label}{n != null && ` · ${n}`}
+                    </ChipA>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-apoyo text-kmuted">Armar</span>
+            <div className="flex items-stretch rounded-[10px] border border-black/[0.12] bg-white overflow-hidden">
+              <button type="button" onClick={() => setCalN(n => Math.max(1, n - 1))} aria-label="Una ruta menos"
+                className="w-10 min-h-[40px] text-cuerpo font-bold text-kmuted hover:text-ktext">−</button>
+              <input type="number" inputMode="numeric" min={1} max={99} value={calN}
+                onChange={e => {
+                  const v = parseInt(e.target.value, 10);
+                  setCalN(Number.isFinite(v) ? Math.min(99, Math.max(1, v)) : 1);
+                }}
+                aria-label="Cuántas rutas armar"
+                className="w-12 min-h-[40px] text-center text-cuerpo font-bold text-ktext border-x border-black/[0.08] outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+              <button type="button" onClick={() => setCalN(n => Math.min(99, n + 1))} aria-label="Una ruta más"
+                className="w-10 min-h-[40px] text-cuerpo font-bold text-kmuted hover:text-ktext">+</button>
+            </div>
+            <span className="text-apoyo text-kmuted">{calN === 1 ? 'ruta' : 'rutas'}</span>
+            <button type="button" onClick={armarDesdeCalendario} disabled={calStatus === 'loading'}
+              className="ml-auto w-full sm:w-auto flex items-center justify-center gap-2 rounded-[12px] px-5 py-2.5 min-h-[44px] text-cuerpo font-bold text-white disabled:opacity-50"
+              style={{ background: ACENTO_PLAN }}>
+              <Sparkles size={16} /> {calStatus === 'loading' ? 'Armando…' : 'Armar rutas'}
+            </button>
+          </div>
+          {calAviso
+            ? <div className={`text-apoyo ${calStatus === 'error' ? 'text-[#B42318] font-semibold' : 'text-kmuted'}`}>{calAviso}</div>
+            : <div className="text-apoyo text-kmuted">Trae las tiendas de ese día en las zonas elegidas y las reparte por cercanía. Reemplaza las rutas actuales.</div>}
+        </div>
+      )}
+    </TarjetaA>
+  );
+  const partidaA = (
+    <TarjetaA className="p-4 flex flex-col gap-4">
+      <span className="text-cuerpo font-bold text-ktext">Salida y llegada <span className="text-apoyo font-normal text-kmuted">· igual para todas las rutas</span></span>
+      <div className="flex flex-col gap-1.5">
+        <RotuloA>Sale de</RotuloA>
+        <SegmentadoA etiqueta="Punto de partida" valor={startMode} onCambio={setStartMode} ancho
+          opciones={[['cd', 'CD'], ['tienda', 'Tienda'], ['custom', 'Dirección']] as const} />
+        {startMode === 'tienda' && (
+          <select value={startTienda} onChange={e => setStartTienda(e.target.value)} className={`w-full ${inputA}`}>
+            <option value="">Elegir tienda</option>
+            {startTiendaOpts.map(t => <option key={t.cod} value={t.cod}>{t.cod} · {t.nombre}</option>)}
+          </select>
+        )}
+        {startMode === 'custom' && (
+          <>
+            <div className="flex gap-2">
+              <AddressAutocomplete
+                value={customAddr}
+                onChange={v => { setCustomAddr(v); setGeoStatus('idle'); }}
+                onSelect={({ address, lat, lng }) => { setCustomAddr(address); setCustomCoord({ lat, lng }); setStartMode('custom'); setGeoStatus('idle'); }}
+                onEnter={geocodeAddr}
+                onUnavailable={() => setPlacesOff(true)}
+                placeholder="Dirección (ej: Av. Vitacura 2909)"
+                className={`flex-1 min-w-0 ${inputA}`} />
+              <button type="button" onClick={geocodeAddr}
+                className="px-4 rounded-[10px] text-apoyo font-bold text-white" style={{ background: ACENTO_PLAN }}>Buscar</button>
+            </div>
+            <span className="text-apoyo text-kmuted">{geoStatus === 'loading' ? 'Buscando…' : geoStatus === 'error' ? 'No se encontró la dirección' : 'Escribe y elige una sugerencia, o toca Buscar.'}</span>
+          </>
+        )}
+        <span className="flex items-center gap-2 text-apoyo font-semibold text-ktext min-w-0">
+          <Navigation size={14} className="text-[#B42318] flex-shrink-0" /> <span className="truncate">{startLabel}</span>
+        </span>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <RotuloA>Al terminar</RotuloA>
+        <SegmentadoA etiqueta="Punto de llegada" valor={endMode} onCambio={setEndMode} ancho
+          opciones={[['none', 'Ninguno'], ['cd', 'CD'], ['start', 'Partida'], ['custom', 'Dirección']] as const} />
+        {endMode === 'custom' && (
+          <AddressAutocomplete
+            value={endAddr}
+            onChange={v => setEndAddr(v)}
+            onSelect={({ address, lat, lng }) => { setEndAddr(address); setEndCoord({ lat, lng }); setEndMode('custom'); }}
+            onEnter={geocodeEndAddr}
+            onUnavailable={() => setPlacesOff(true)}
+            placeholder="Dirección de llegada (ej: bodega, CD, punto final)"
+            className={`w-full ${inputA}`} />
+        )}
+        <span className="flex items-center gap-2 text-apoyo font-semibold text-ktext min-w-0">
+          <Flag size={14} className="flex-shrink-0" style={{ color: ACENTO_PLAN }} /> <span className="truncate">{endLabel}</span>
+        </span>
+      </div>
+    </TarjetaA>
+  );
+  const agregarA = (
+    <TarjetaA className="overflow-hidden flex flex-col min-w-0">
+      <div className="px-4 py-3.5 border-b border-black/[0.07] text-cuerpo font-bold text-ktext">
+        Agregar a <span style={{ color: activeColor }}>{activeRoute.nombre}</span>
+      </div>
+      <div className="p-4 flex flex-col gap-3">
+        <div className="flex flex-col md:flex-row gap-2">
+          <label className={`flex items-center gap-2 md:flex-1 min-w-0 ${inputA}`}>
+            <Search size={16} className="text-kmuted flex-shrink-0" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar tienda"
+              aria-label="Buscar tienda" className="flex-1 min-w-0 outline-none bg-transparent" />
+          </label>
+          <div className="flex gap-2 md:flex-[1.4] min-w-0">
+            <AddressAutocomplete
+              value={paradaAddr}
+              onChange={v => { setParadaAddr(v); setParadaGeo('idle'); }}
+              onSelect={({ address, lat, lng }) => agregarParadaConCoord(address, lat, lng)}
+              onEnter={agregarParadaDireccion}
+              onUnavailable={() => setPlacesOff(true)}
+              placeholder="O una dirección (ej: Av. Vitacura 2909, Las Condes)"
+              className={`flex-1 min-w-0 ${inputA}`} />
+            <button type="button" onClick={agregarParadaDireccion} disabled={!paradaAddr.trim() || paradaGeo === 'loading'}
+              className="px-4 rounded-[10px] text-apoyo font-bold text-white flex items-center gap-1.5 flex-shrink-0 disabled:opacity-40"
+              style={{ background: ACENTO_PLAN }}>
+              <MapPin size={14} /> Agregar
+            </button>
+          </div>
+        </div>
+        {paradaGeo !== 'idle' && (
+          <span className="text-apoyo text-kmuted">{paradaGeo === 'loading' ? 'Buscando dirección…' : 'No se encontró la dirección'}</span>
+        )}
+        <div className="flex flex-wrap gap-1.5">
+          {([['all', 'Todas'], ['rm', 'RM'], ['costa', 'Costa'], ['fal', 'Nacional']] as const).map(([id, txt]) => (
+            <ChipA key={id} on={regionFilter === id} onClick={() => setRegionFilter(id)}>{txt}</ChipA>
+          ))}
+          <span className="w-px self-stretch bg-black/10 mx-1" aria-hidden="true" />
+          {([['all', 'Todos los tipos'], ['mall', 'Mall'], ['strip', 'Strip'], ['street', 'Street']] as const).map(([id, txt]) => (
+            <ChipA key={id} on={tipoFilter === id} onClick={() => setTipoFilter(id)}>{txt}</ChipA>
+          ))}
+        </div>
+      </div>
+      <div className="max-h-[320px] overflow-y-auto border-t border-black/[0.07]">
+        {resultadosFiltrados.map(t => {
+          const on = selected.includes(t.cod);
+          return (
+            <button key={t.cod} type="button" onClick={() => toggle(t.cod)} aria-pressed={on}
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-black/[0.05]"
+              style={{ background: on ? '#EEF7F6' : '#FFFFFF' }}>
+              <span className="w-5 h-5 rounded-[6px] flex items-center justify-center flex-shrink-0"
+                style={on ? { background: ACENTO_PLAN } : { border: '1.5px solid #C5CAD6' }}>
+                {on && <Check size={13} className="text-white" strokeWidth={3} />}
+              </span>
+              <span className="flex-1 min-w-0 flex flex-col">
+                <span className="text-cuerpo font-semibold text-ktext truncate">{t.nombre}</span>
+                <span className="text-rotulo tracking-normal text-kmuted truncate">{[t.cod, t.comuna].filter(Boolean).join(' · ')}</span>
+                <MetaTienda tienda={tiendasVista[t.cod]} origen={origenDeVentana(tiendas[t.cod], cargaActiva)} />
+              </span>
+            </button>
+          );
+        })}
+        {resultadosFiltrados.length === 0 && <div className="px-4 py-6 text-center text-apoyo text-kmuted">Sin resultados.</div>}
+      </div>
+    </TarjetaA>
+  );
+
   if (vistaA) {
     const ORDEN_A: ['ventanas' | 'cercania' | 'manual', string][] = [['ventanas', 'Horarios'], ['cercania', 'Cercanía'], ['manual', 'A mano']];
     const colsTabla = 'grid-cols-[48px_minmax(0,1fr)_116px] md:grid-cols-[52px_minmax(0,1fr)_110px_64px_150px]';
     return (
       <div className="h-full overflow-y-auto p-3 md:p-4 bg-kbg flex flex-col gap-4">
         {avisoPlaces}
-        <div className="bg-white rounded-[16px]">{bloqueCalendario}</div>
+        {calendarioA}
 
         <div className="grid gap-4 items-start grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
           {/* Izquierda: las rutas, con su resumen y si alguna parada llega tarde */}
@@ -1147,7 +1342,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
           {/* Centro: la ruta abierta, parada por parada, con a qué hora recibe y a qué hora llega */}
           <section className="bg-white border border-black/[0.09] rounded-[16px] overflow-hidden min-w-0">
             <div className="px-4 py-3 border-b border-black/[0.07] flex items-center gap-3 flex-wrap">
-              <span className="text-cuerpo font-bold flex-1 min-w-0 truncate" style={{ color: activeColor }}>{activeRoute.nombre}</span>
+              <span className="text-cuerpo font-bold flex-1 basis-full sm:basis-0 min-w-0 truncate" style={{ color: activeColor }}>{activeRoute.nombre}</span>
               <span className="text-apoyo text-kmuted">Ordenar por</span>
               <div className="flex rounded-[10px] p-[3px] gap-[3px]" style={{ background: '#EEF0F5' }}>
                 {ORDEN_A.map(([id, txt]) => (
@@ -1264,9 +1459,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         </div>
 
         {/* Lo que se usa menos: de dónde sale, dónde termina y agregar tiendas a mano */}
-        <div className="bg-white border border-black/[0.09] rounded-[16px] p-4 grid gap-5 items-start [grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]">
-          {bloquePartida}
-          {bloqueAgregar}
+        <div className="grid gap-4 items-start grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
+          {partidaA}
+          {agregarA}
         </div>
         {modalCompartir}
       </div>
