@@ -209,10 +209,9 @@ export function BarcodeCard({
   // configuración de la etiqueta en vez de quedar clavados, y no suman tamaños sueltos al trinquete.
   const tamRotuloTienda = Math.round(cfg.storeNameFontSize * 0.77);
   const tamUnidadManual = Math.round(cfg.storeNameFontSize * 0.73);
-  // El recuadro de KG/CM sube a la altura del código de la tienda (lo pidió el coordinador: «los
-  // KG y CM más arriba, casi a la par del Código»). Su ancho y el alto del renglón donde se
-  // escribe salen del tamaño del código, así que la franja crece y se achica con la etiqueta.
-  const anchoCasilla = Math.round(cfg.storeFontSize * 0.78);
+  // El alto del renglón donde se escribe sale del tamaño del código, así que la banda crece y se
+  // achica con la etiqueta en vez de quedar clavada. El ANCHO ya no se calcula: las dos casillas
+  // se reparten la fila entera.
   const altoRenglon  = Math.round(cfg.storeFontSize * 0.46);
 
   const s = compact ? {
@@ -241,7 +240,7 @@ export function BarcodeCard({
     // `vw` el tope mandaba siempre — 5 letras a 150 px ocupan ~350 y entraban por un 8%. Subiendo
     // `storeFontSize` en Config (llega a 240) se desbordaba. Con `cqw` el ancho de la tarjeta pone
     // el techo y no hay configuracion que lo rompa. La `compact` ya se media asi.
-    storeCodeSize: `clamp(${Math.round(cfg.storeFontSize * 0.6)}px, 20cqw, ${cfg.storeFontSize}px)`, storeCodeLS: '6px',
+    storeCodeSize: `clamp(${Math.round(cfg.storeFontSize * 0.6)}px, 17cqw, ${cfg.storeFontSize}px)`, storeCodeLS: '6px',
     storeNameSize: cfg.storeNameFontSize, storeNameMT: 10,
     barMT: 8, barW: `${cfg.barcodeContainerWidth}%`, barH: cfg.barcodeHeight, barBW: cfg.barcodeBarWidth,
     footerFS: 9, footerDateFS: cfg.dateFontSize,
@@ -400,64 +399,36 @@ export function BarcodeCard({
           );
         })()}
 
-        {/* LA TIENDA, Y A SU LADO DONDE SE ESCRIBE.
-            El CODIGO manda: es lo que se lee a diez metros. El nombre y los dos rotulos lo
-            acompanan en la MISMA linea, sin gastar una fila entera y sin competirle.
-            Los recuadros de KG y CM suben hasta aca —antes flanqueaban el codigo de barras, muy
-            abajo— y los separa una raya vertical, porque "que tienda es" y "que hay que escribir"
-            son dos cosas distintas. El codigo de barras queda limpio debajo: un plumon encima lo
-            arruinaria, y por eso el espacio para escribir nunca va sobre el. */}
+        {/* LA TIENDA: el codigo, el nombre y los dos rotulos EN UNA SOLA LINEA, de lado a lado.
+            El codigo manda —es lo que se lee a diez metros— y los otros tres lo acompanan sin
+            gastar filas. Compartir la fila con los recuadros de KG/CM no servia: medido sobre la
+            etiqueta impresa, la linea del nombre se lleva ~360 de los 676 px utiles, asi que a las
+            casillas les quedaban 117 de ancho por 230 de alto. Un recuadro alargado donde no se
+            escribe comodo, y encima el codigo se le montaba. */}
         {!compact ? (
-          <div className="flex-1" style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', gap: 22, padding: s.centerPad }}>
-            <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <div className="font-barlow-condensed font-black text-gray-900 uppercase leading-none"
-                style={{ fontSize: s.storeCodeSize, letterSpacing: s.storeCodeLS }}>
-                {storeCod}
-              </div>
-              {(cfg.showStoreName || tipoTienda || zonaTienda) && (
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap', marginTop: s.storeNameMT }}>
-                  {cfg.showStoreName && (
-                    <span className="font-barlow-condensed font-semibold uppercase tracking-wide"
-                      style={{ fontSize: s.storeNameSize, color: GRIS, whiteSpace: 'nowrap' }}>
-                      {storeName}
-                    </span>
-                  )}
-                  {(tipoTienda || zonaTienda) && (
-                    <span style={{ display: 'flex', gap: 8 }}>
-                      {tipoTienda && (
-                        <span className="font-barlow-condensed" style={{
-                          fontSize: tamRotuloTienda, fontWeight: 900, letterSpacing: '2px', color: '#fff',
-                          background: TINTA, borderRadius: 6, padding: '1px 14px', lineHeight: 1.25, whiteSpace: 'nowrap',
-                        }}>{tipoTienda}</span>
-                      )}
-                      {zonaTienda && (
-                        <span className="font-barlow-condensed" style={{
-                          fontSize: tamRotuloTienda, fontWeight: 900, letterSpacing: '2px', color: TINTA,
-                          border: `2.5px solid ${TINTA}`, borderRadius: 6, padding: '0 14px', lineHeight: 1.25, whiteSpace: 'nowrap',
-                        }}>{zonaTienda}</span>
-                      )}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div style={{ flexShrink: 0, width: 2, background: RAYA }} />
-
-            <div style={{ flexShrink: 0, display: 'flex', gap: 14 }}>
-              {(['KG', 'CM'] as const).map(rotulo => (
-                <div key={rotulo} style={{
-                  width: anchoCasilla, border: `4px solid ${TINTA}`, borderRadius: 11,
-                  padding: '12px 14px 8px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
-                }}>
-                  <div style={{ flex: 1, minHeight: altoRenglon, borderBottom: `3px solid ${RAYA}` }} />
-                  <div className="font-barlow-condensed" style={{
-                    fontSize: tamUnidadManual, fontWeight: 900, letterSpacing: '4px', lineHeight: 1.05,
-                    marginTop: 5, color: TINTA, textAlign: rotulo === 'CM' ? 'right' : 'left',
-                  }}>{rotulo}</div>
-                </div>
-              ))}
-            </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap', padding: s.centerPad }}>
+            <span className="font-barlow-condensed font-black text-gray-900 uppercase leading-none"
+              style={{ fontSize: s.storeCodeSize, letterSpacing: s.storeCodeLS, whiteSpace: 'nowrap' }}>
+              {storeCod}
+            </span>
+            {cfg.showStoreName && (
+              <span className="font-barlow-condensed font-semibold uppercase tracking-wide"
+                style={{ fontSize: s.storeNameSize, color: GRIS, whiteSpace: 'nowrap' }}>
+                {storeName}
+              </span>
+            )}
+            {tipoTienda && (
+              <span className="font-barlow-condensed" style={{
+                fontSize: tamRotuloTienda, fontWeight: 900, letterSpacing: '2px', color: '#fff',
+                background: TINTA, borderRadius: 6, padding: '1px 14px', lineHeight: 1.25, whiteSpace: 'nowrap',
+              }}>{tipoTienda}</span>
+            )}
+            {zonaTienda && (
+              <span className="font-barlow-condensed" style={{
+                fontSize: tamRotuloTienda, fontWeight: 900, letterSpacing: '2px', color: TINTA,
+                border: `2.5px solid ${TINTA}`, borderRadius: 6, padding: '0 14px', lineHeight: 1.25, whiteSpace: 'nowrap',
+              }}>{zonaTienda}</span>
+            )}
           </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ padding: s.centerPad }}>
@@ -469,6 +440,29 @@ export function BarcodeCard({
               style={{ fontSize: s.storeNameSize, marginTop: s.storeNameMT }}>
               {storeName}
             </div>
+          </div>
+        )}
+
+        {/* DONDE SE ESCRIBE EL PESO Y LA ALTURA: su PROPIA banda, de lado a lado.
+            Sin competir con el nombre, cada casilla pasa de ~117 a ~330 px de ancho, y el renglon
+            se acuesta al lado del rotulo en vez de apilarse: el recuadro queda apaisado, que es
+            como se escribe «333,7» a mano. Cuesta ~100 px de alto, justo el blanco que sobraba
+            entre la tienda y el codigo de barras.
+            Sigue SIN ir encima del codigo de barras: un plumon ahi lo arruina. */}
+        {!compact && (
+          <div className="flex-1" style={{ display: 'flex', alignItems: 'center', gap: 14, paddingBottom: 10 }}>
+            {(['KG', 'CM'] as const).map(rotulo => (
+              <div key={rotulo} style={{
+                flex: 1, minWidth: 0, border: `4px solid ${TINTA}`, borderRadius: 11,
+                padding: '8px 16px 6px', boxSizing: 'border-box',
+                display: 'flex', alignItems: 'flex-end', gap: 12,
+              }}>
+                <div style={{ flex: 1, minWidth: 0, height: altoRenglon, borderBottom: `3px solid ${RAYA}` }} />
+                <div className="font-barlow-condensed" style={{
+                  fontSize: tamUnidadManual, fontWeight: 900, letterSpacing: '4px', lineHeight: 1, color: TINTA,
+                }}>{rotulo}</div>
+              </div>
+            ))}
           </div>
         )}
 
