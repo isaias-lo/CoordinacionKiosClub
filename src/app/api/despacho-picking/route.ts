@@ -3,12 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
 import { getTiendaSantiagoByCod } from '@/features/despacho/santiago/data/tiendasSantiago';
+import { destinoDeLaFila } from './destinoDeLaFila';
 
-const URBAN_COMMUNES = new Set([
-  'Santiago', 'Providencia', 'Las Condes', 'Vitacura', 'Ñuñoa',
-  'Maipú', 'La Florida', 'Quilicura', 'Huechuraba', 'La Reina',
-  'Lo Barnechea', 'Puente Alto',
-]);
 
 const CARGA_LABEL: Record<string, string> = {
   comida:     'Comida',
@@ -68,18 +64,26 @@ export async function POST(request: NextRequest) {
     const stamp  = stampDesdeISO(date);
     const fecha  = fechaFromISO(date);
     const id     = canonicalDeSlot(tipo, rank, store_cod, stamp);
-    const tienda = getTiendaSantiagoByCod(store_cod);
+    // La tienda sale de la BD, que es la unica que las conoce a todas; el catalogo estatico de
+    // Santiago queda de respaldo. Antes mandaba el estatico y una tienda de Region salia con el
+    // CODIGO por nombre y region 'RM' — y en la tabla de RM. Ver `destinoDeLaFila.ts`.
+    const { data: filaTienda } = await sb
+      .from('tiendas')
+      .select('nombre, region, sector_comuna')
+      .eq('codigo', store_cod)
+      .maybeSingle();
+    const destino = destinoDeLaFila(store_cod, filaTienda, getTiendaSantiagoByCod(store_cod));
 
     const record = {
       id,
       fecha,
       cod:             store_cod,
-      tienda:          tienda?.tienda ?? store_cod,
+      tienda:          destino.tienda,
       tipo:            tipoLabel(tipo),
       carga:           CARGA_LABEL[contenido] ?? contenido,
-      region:          tienda?.region ?? 'RM',
-      comuna:          tienda?.comuna ?? '',
-      tipo_comuna:     tienda ? (URBAN_COMMUNES.has(tienda.comuna) ? 'Urbano' : 'Extraurbano') : 'Urbano',
+      region:          destino.region,
+      comuna:          destino.comuna,
+      tipo_comuna:     destino.tipo_comuna,
       estado:          'En picking',
       n_pallet_bulto:  String(rank),
       seguimiento:     'Registrado',
@@ -89,7 +93,7 @@ export async function POST(request: NextRequest) {
 
     // Insert only if ID doesn't already exist — never overwrite Bodega/Enrutador data
     const { error } = await sb
-      .from('despacho_rm')
+      .from(destino.tabla)
       .upsert(record, { onConflict: 'id', ignoreDuplicates: true });
 
     if (error) {
