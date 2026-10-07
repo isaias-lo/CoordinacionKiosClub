@@ -212,7 +212,7 @@ export function BarcodeCard({
   // El recuadro de KG/CM sube a la altura del código de la tienda (lo pidió el coordinador: «los
   // KG y CM más arriba, casi a la par del Código»). Su ancho y el alto del renglón donde se
   // escribe salen del tamaño del código, así que la franja crece y se achica con la etiqueta.
-  const anchoCasilla = Math.round(cfg.storeFontSize * 0.78);
+  const anchoCasilla = Math.round(cfg.storeFontSize * 0.78);   // el PISO, no el ancho final
   const altoRenglon  = Math.round(cfg.storeFontSize * 0.46);
 
   const s = compact ? {
@@ -409,7 +409,7 @@ export function BarcodeCard({
             arruinaria, y por eso el espacio para escribir nunca va sobre el. */}
         {!compact ? (
           <div className="flex-1" style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', gap: 22, padding: s.centerPad }}>
-            <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div style={{ minWidth: 0, flex: '0 1 auto', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <div className="font-barlow-condensed font-black text-gray-900 uppercase leading-none"
                 style={{ fontSize: s.storeCodeSize, letterSpacing: s.storeCodeLS }}>
                 {storeCod}
@@ -444,11 +444,18 @@ export function BarcodeCard({
 
             <div style={{ flexShrink: 0, width: 2, background: RAYA }} />
 
-            <div style={{ flexShrink: 0, display: 'flex', gap: 14 }}>
+            {/* Las casillas se quedan con TODO el papel que sobra, no con un ancho fijo.
+                Impresa, la version de ancho fijo dejaba una franja en blanco entre el nombre de la
+                tienda y la primera casilla, y las casillas quedaban altas y angostas — y ahi se
+                escribe a mano un peso como «333,7», que necesita ancho, no alto.
+                `flex: 1` reparte el sobrante y el piso es el ancho de antes, asi que nunca quedan
+                mas angostas que hoy. Si el nombre de la tienda es largo, el que cede es el nombre
+                (envuelve), no la casilla: poder escribir es lo que no se negocia. */}
+            <div style={{ flex: '1 1 auto', display: 'flex', gap: 14, minWidth: anchoCasilla * 2 + 14 }}>
               {(['KG', 'CM'] as const).map(rotulo => (
                 <div key={rotulo} style={{
-                  width: anchoCasilla, border: `4px solid ${TINTA}`, borderRadius: 11,
-                  padding: '12px 14px 8px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
+                  flex: 1, minWidth: 0, border: `4px solid ${TINTA}`, borderRadius: 11,
+                  padding: '12px 10px 8px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
                 }}>
                   <div style={{ flex: 1, minHeight: altoRenglon, borderBottom: `3px solid ${RAYA}` }} />
                   <div className="font-barlow-condensed" style={{
