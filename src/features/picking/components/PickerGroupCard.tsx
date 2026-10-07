@@ -63,6 +63,10 @@ interface Props {
   // cuántas cajas. Reemplaza al "Peso por chocolate" de a una caja.
   pesoTotal?: Partial<Record<TipoCaja, { raw: string; guardado: PesoTotalGuardado | null }>>;
   onPesoTotalChange?: (tipo: TipoCaja, raw: string) => void;
+  /** Aviso de un pallet MIXTO de este picker que lleva carga de esta pestaña pero se cuenta en
+   *  otra (o en ninguna). Sin esto, acá se veía «0 pallets» y alguien lo armaba de nuevo.
+   *  Ver `palletEnOtraSeccion.ts`. */
+  avisoOtraSeccion?: { texto: string; boton: string; onIr: () => void } | null;
 }
 
 export const PickerGroupCard = React.memo(function PickerGroupCard({
@@ -70,7 +74,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
   onRefreshOp, onPrint, refreshingId, totalPickers, assignedNums,
   isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow,
   lastPrint, myName, sectionFilter, isCongelados, adelanto, otroDia,
-  batchValue, onBatchChange, pesoTotal, onPesoTotalChange,
+  batchValue, onBatchChange, pesoTotal, onPesoTotalChange, avisoOtraSeccion,
 }: Props) {
   // Dos cosas DISTINTAS que antes vivían en una sola variable (`allDone`):
   //  - odooConfirmado: para el badge verde "Realizado" — un grupo manual (sin operaciones de
@@ -422,6 +426,26 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                   </div>
                 );
               })}
+            </div>
+          ) : assignedNums.length === 0 && avisoOtraSeccion ? (
+            /* El cero de esta pestaña NO es un error: el pallet existe y se cuenta en otra. Se
+               dice dónde y se ofrece ir, en vez de dejar el recuadro vacío que invita a armarlo
+               de nuevo. El contador sigue en un solo lugar. Ver `palletEnOtraSeccion.ts`. */
+            <div className="h-full min-h-[180px] flex flex-col items-center justify-center gap-3 px-4 print:hidden">
+              <div className="rounded-xl px-4 py-3 w-full flex flex-col items-center gap-2.5 text-center"
+                style={{ background: 'rgba(37,99,235,0.07)', border: '1.5px solid rgba(37,99,235,0.35)' }}>
+                <div className="text-[13px] font-semibold leading-snug" style={{ color: '#1E3A8A' }}>
+                  {avisoOtraSeccion.texto}
+                </div>
+                <div className="text-[12px]" style={{ color: '#1E3A8A', opacity: 0.75 }}>
+                  Acá no se cuenta, para no sumarlo dos veces.
+                </div>
+                <button type="button" onClick={avisoOtraSeccion.onIr}
+                  className="text-[13px] font-bold px-3.5 py-1.5 rounded-lg cursor-pointer transition-all active:scale-95"
+                  style={{ background: '#2563EB', color: '#fff' }}>
+                  {avisoOtraSeccion.boton}
+                </button>
+              </div>
             </div>
           ) : assignedNums.length === 0 ? (
             <div className="h-full min-h-[180px] flex flex-col items-center justify-center gap-3 text-text-3">
