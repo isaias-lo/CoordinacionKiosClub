@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  clampMapPct, mapaColapsado, anchoCortina, alTocarCortina, ANCHO_TIENDAS_PX,
+  clampMapPct, mapaColapsado, anchoCortina, alTocarCortina, ANCHO_TIENDAS_PX, MANIJA_PX,
   MAP_PCT_DEFAULT, MAP_PCT_MIN, MAP_PCT_MAX, clampArrastre, MAP_PCT_DRAG_MAX,
 } from '../mapLayout';
 
@@ -95,7 +95,7 @@ describe('la cortina entera — lo que pedía el boceto', () => {
     // No es 100%: se deja la columna de tiendas a la vista para poder seguir arrastrando desde ahí
     // mientras se mira el mapa.
     expect(anchoCortina({ colapsada: false, completa: true, pct: 37 }))
-      .toBe(`calc(100% - ${ANCHO_TIENDAS_PX}px)`);
+      .toBe(`calc(100% - ${ANCHO_TIENDAS_PX + MANIJA_PX}px)`);
   });
 
   it('entera le gana al porcentaje arrastrado', () => {

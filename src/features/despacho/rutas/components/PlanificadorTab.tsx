@@ -249,6 +249,11 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const baseRutasRef     = useRef<PlanRoute[]>([]);
   const lastPushedPlanRef = useRef<string>('');
   const [calOpen,     setCalOpen]     = useState(true); // panel "Armar desde el calendario" colapsable
+  // [Vista nueva] El calendario arranca plegado si ya hay rutas armadas: armarlo de nuevo las
+  // reemplaza, así que con rutas en pantalla es lo que menos se usa. Vacío, es el primer paso.
+  const [calOpenA,    setCalOpenA]    = useState(() => !loadPlan().routes.some(r => r.selected.length > 0));
+  // [Vista nueva] Buscar y agregar tiendas vive dentro de la tarjeta de la ruta, plegado.
+  const [agregarOpenA, setAgregarOpenA] = useState(false);
 
   // GMaps se carga para el geocoder de "Dirección" (el mapa lo dibuja el MapSection fijo).
   useEffect(() => { cargarGMaps(); }, []);
@@ -1095,18 +1100,18 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
   const inputA = 'border border-black/[0.12] rounded-[10px] px-3 py-2 min-h-[40px] text-apoyo bg-white text-ktext outline-none focus:border-[#0F766E]';
   const calendarioA = (
     <TarjetaA className="overflow-hidden flex-shrink-0">
-      <button type="button" onClick={() => setCalOpen(o => !o)} aria-expanded={calOpen}
+      <button type="button" onClick={() => setCalOpenA(o => !o)} aria-expanded={calOpenA}
         className="w-full flex items-center gap-3 px-4 py-3.5 text-left flex-wrap">
         <CalendarDays size={18} style={{ color: ACENTO_PLAN }} className="flex-shrink-0" />
         <span className="text-cuerpo font-bold text-ktext">Armar desde el calendario</span>
-        {!calOpen && (
+        {!calOpenA && (
           <span className="text-apoyo text-kmuted min-w-0">
             {calFuente === 'seco' ? 'Seco' : 'Congelados'} · {DIA_LABEL[calDia]} · {etiquetaZonas(calZonas)} · {calN} {calN === 1 ? 'ruta' : 'rutas'}
           </span>
         )}
-        <span className="ml-auto text-kmuted flex-shrink-0">{calOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</span>
+        <span className="ml-auto text-kmuted flex-shrink-0">{calOpenA ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</span>
       </button>
-      {calOpen && (
+      {calOpenA && (
         <div className="px-4 pb-4 pt-1 border-t border-black/[0.07] flex flex-col gap-4">
           <div className="grid gap-x-6 gap-y-4 pt-3 items-end [grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr))]">
             <div className="flex flex-col gap-1.5 min-w-0">
@@ -1164,13 +1169,31 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
       )}
     </TarjetaA>
   );
-  const partidaA = (
-    <TarjetaA className="p-4 flex flex-col gap-4">
-      <span className="text-cuerpo font-bold text-ktext">Salida y llegada <span className="text-apoyo font-normal text-kmuted">· igual para todas las rutas</span></span>
+  // [Vista nueva · Plan] Todo lo que define el recorrido, junto: de dónde sale, a qué hora, cuánto
+  // atiende en cada parada y dónde termina. Antes la hora vivía bajo la tabla y la partida en una
+  // tarjeta aparte al fondo, aunque las tres cosas son las que calculan la columna LLEGA.
+  const recorridoA = (
+    <div className="px-4 py-4 border-t border-black/[0.07] flex flex-col gap-4">
+      <span className="text-cuerpo font-bold text-ktext">Recorrido <span className="text-apoyo font-normal text-kmuted">· igual para todas las rutas</span></span>
+      <div className="grid gap-x-6 gap-y-4 items-start [grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))]">
       <div className="flex flex-col gap-1.5">
         <RotuloA>Sale de</RotuloA>
-        <SegmentadoA etiqueta="Punto de partida" valor={startMode} onCambio={setStartMode} ancho
+        <SegmentadoA etiqueta="Punto de partida" valor={startMode} onCambio={setStartMode}
           opciones={[['cd', 'CD'], ['tienda', 'Tienda'], ['custom', 'Dirección']] as const} />
+        <div className="flex items-center gap-x-3 gap-y-2 flex-wrap">
+          <label className="flex items-center gap-2 text-apoyo text-kmuted">
+            a las
+            <input type="time" value={horaSalida} onChange={e => setHoraSalida(e.target.value)} aria-label="Hora de salida"
+              className={inputA} />
+          </label>
+          <label className="flex items-center gap-2 text-apoyo text-kmuted">
+            atiende
+            <input type="number" min={0} max={120} value={servicioMin} aria-label="Minutos por parada"
+              onChange={e => setServicioMin(Math.max(0, Math.min(120, parseInt(e.target.value) || 0)))}
+              className={`w-[64px] tabular-nums ${inputA}`} />
+            min por parada
+          </label>
+        </div>
         {startMode === 'tienda' && (
           <select value={startTienda} onChange={e => setStartTienda(e.target.value)} className={`w-full ${inputA}`}>
             <option value="">Elegir tienda</option>
@@ -1194,13 +1217,16 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
             <span className="text-apoyo text-kmuted">{geoStatus === 'loading' ? 'Buscando…' : geoStatus === 'error' ? 'No se encontró la dirección' : 'Escribe y elige una sugerencia, o toca Buscar.'}</span>
           </>
         )}
-        <span className="flex items-center gap-2 text-apoyo font-semibold text-ktext min-w-0">
-          <Navigation size={14} className="text-[#B42318] flex-shrink-0" /> <span className="truncate">{startLabel}</span>
-        </span>
+        {/* Con CD el rótulo repetiría el botón; con tienda o dirección confirma cuál quedó. */}
+        {startMode !== 'cd' && (
+          <span className="flex items-center gap-2 text-apoyo font-semibold text-ktext min-w-0">
+            <Navigation size={14} className="text-[#B42318] flex-shrink-0" /> <span className="truncate">{startLabel}</span>
+          </span>
+        )}
       </div>
       <div className="flex flex-col gap-1.5">
         <RotuloA>Al terminar</RotuloA>
-        <SegmentadoA etiqueta="Punto de llegada" valor={endMode} onCambio={setEndMode} ancho
+        <SegmentadoA etiqueta="Punto de llegada" valor={endMode} onCambio={setEndMode}
           opciones={[['none', 'Ninguno'], ['cd', 'CD'], ['start', 'Partida'], ['custom', 'Dirección']] as const} />
         {endMode === 'custom' && (
           <AddressAutocomplete
@@ -1212,18 +1238,31 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
             placeholder="Dirección de llegada (ej: bodega, CD, punto final)"
             className={`w-full ${inputA}`} />
         )}
-        <span className="flex items-center gap-2 text-apoyo font-semibold text-ktext min-w-0">
-          <Flag size={14} className="flex-shrink-0" style={{ color: ACENTO_PLAN }} /> <span className="truncate">{endLabel}</span>
-        </span>
+        {endMode !== 'cd' && (
+          <span className="flex items-center gap-2 text-apoyo font-semibold text-ktext min-w-0">
+            <Flag size={14} className="flex-shrink-0" style={{ color: ACENTO_PLAN }} /> <span className="truncate">{endLabel}</span>
+          </span>
+        )}
       </div>
-    </TarjetaA>
+      </div>
+    </div>
   );
+
+  // [Vista nueva · Plan] Agregar tiendas o direcciones, debajo de las paradas de la ruta a la que
+  // se suman. Plegado cuando la ruta ya tiene paradas; abierto mientras está vacía, que es justo
+  // cuando hace falta.
+  const agregarVisibleA = agregarOpenA || selected.length === 0;
   const agregarA = (
-    <TarjetaA className="overflow-hidden flex flex-col min-w-0">
-      <div className="px-4 py-3.5 border-b border-black/[0.07] text-cuerpo font-bold text-ktext">
-        Agregar a <span style={{ color: activeColor }}>{activeRoute.nombre}</span>
-      </div>
-      <div className="p-4 flex flex-col gap-3">
+    <div className="border-t border-black/[0.07] flex flex-col min-w-0">
+      <button type="button" onClick={() => setAgregarOpenA(o => !o)} aria-expanded={agregarVisibleA}
+        disabled={selected.length === 0}
+        className="flex items-center gap-2 px-4 py-3 text-left text-cuerpo font-bold"
+        style={{ color: ACENTO_PLAN }}>
+        <Plus size={16} /> Agregar tiendas o direcciones a {activeRoute.nombre}
+        {selected.length > 0 && <span className="ml-auto text-kmuted">{agregarVisibleA ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</span>}
+      </button>
+      {agregarVisibleA && (<>
+      <div className="px-4 pb-3 flex flex-col gap-3">
         <div className="flex flex-col md:flex-row gap-2">
           <label className={`flex items-center gap-2 md:flex-1 min-w-0 ${inputA}`}>
             <Search size={16} className="text-kmuted flex-shrink-0" />
@@ -1280,7 +1319,8 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
         })}
         {resultadosFiltrados.length === 0 && <div className="px-4 py-6 text-center text-apoyo text-kmuted">Sin resultados.</div>}
       </div>
-    </TarjetaA>
+      </>)}
+    </div>
   );
 
   if (vistaA) {
@@ -1430,22 +1470,13 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
                 );
               })}
               {selected.length === 0 && (
-                <div className="px-4 py-8 text-center text-apoyo text-kmuted">Agrega tiendas o direcciones abajo para armar la ruta.</div>
+                <div className="px-4 py-8 text-center text-apoyo text-kmuted">Esta ruta no tiene paradas. Agrégalas abajo o ármalas desde el calendario.</div>
               )}
             </div>
-            <div className="px-4 py-3 flex items-center gap-x-2 gap-y-2 flex-wrap text-apoyo text-kmuted">
-              <span>Sale de {startLabel} a las</span>
-              <input type="time" value={horaSalida} onChange={e => setHoraSalida(e.target.value)} aria-label="Hora de salida"
-                className="border border-black/[0.12] rounded-[7px] px-2 py-0.5 text-apoyo bg-white text-ktext" />
-              <span>· atiende</span>
-              <input type="number" min={0} max={120} value={servicioMin} aria-label="Minutos por parada"
-                onChange={e => setServicioMin(Math.max(0, Math.min(120, parseInt(e.target.value) || 0)))}
-                className="w-[56px] border border-black/[0.12] rounded-[7px] px-2 py-0.5 text-apoyo bg-white text-ktext tabular-nums" />
-              <span>min por parada{selected.length > 0 ? ` · ${kmLabel}${totalMin ? ` · ${totalMin}` : ''}` : ''}</span>
-              {selected.length > 0 && !legsOk && <span className="w-full">La hora de llegada aparece cuando el mapa calcula los tiempos de esta ruta.</span>}
-            </div>
+            {agregarA}
+            {recorridoA}
             {selected.length > 0 && (
-              <div className="px-4 pb-4 flex gap-2 flex-wrap">
+              <div className="px-4 pb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
                 <a href={googleMapsDeepLink(startCoord, orderedCods, gpsAll, endPoint)} target="_blank" rel="noopener noreferrer"
                   className="flex items-center justify-center gap-2 px-4 py-2 rounded-[10px] bg-[#1B2A6B] text-white text-apoyo font-bold no-underline">
                   <Navigation size={14} /> Abrir en Google Maps
@@ -1453,15 +1484,11 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
                 <button type="button" onClick={limpiar} className="px-3 py-2 rounded-[10px] text-apoyo font-semibold text-[#B42318] flex items-center gap-1.5">
                   <Trash2 size={13} /> Vaciar esta ruta
                 </button>
+                <span className="text-apoyo text-kmuted">{kmLabel}{totalMin ? ` · ${totalMin}` : ''}</span>
+                {!legsOk && <span className="w-full text-apoyo text-kmuted">La hora de llegada aparece cuando el mapa calcula los tiempos de esta ruta.</span>}
               </div>
             )}
           </section>
-        </div>
-
-        {/* Lo que se usa menos: de dónde sale, dónde termina y agregar tiendas a mano */}
-        <div className="grid gap-4 items-start grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
-          {partidaA}
-          {agregarA}
         </div>
         {modalCompartir}
       </div>

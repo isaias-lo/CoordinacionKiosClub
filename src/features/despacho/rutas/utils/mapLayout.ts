@@ -60,9 +60,8 @@ export function clampArrastre(pct: number): number {
 
 /**
  * Ancho de la columna de tiendas, en px. Es el MISMO número que usa la grilla del tablero
- * (`lg:grid-cols-[minmax(0,360px)_...]`). La cortina "entera" tapa todo menos esa columna: cubre la
- * flota, que es lo que estorba mirando el mapa, y deja las tiendas a la vista para poder seguir
- * arrastrando desde ahí.
+ * (`lg:grid-cols-[minmax(0,360px)_...]`). El mapa "entero" ocupa todo menos esa columna: deja las
+ * tiendas a la vista para poder seguir arrastrando desde ahí.
  */
 export const ANCHO_TIENDAS_PX = 360;
 
@@ -93,15 +92,14 @@ export function mapaColapsado(opts: { modo: string; oculto: boolean }): boolean 
 }
 
 /**
- * Ancho de la CORTINA del mapa, superpuesta sobre la columna de flota.
+ * Ancho del panel del mapa, a la derecha del contenido.
  *
- * El mapa dejó de ser una tercera columna que empuja el contenido: ahora lo TAPA. El pedido fue
- * explícito —"que sea una tipo cortina que ocupe toda la columna derecha"— y la razón es de uso:
- * empujando, abrir el mapa reacomodaba las tarjetas de camión y había que volver a buscar dónde
- * quedó cada una. Tapando, lo de abajo no se mueve; se corre la cortina y sigue todo en su lugar.
+ * Fue una cortina superpuesta que TAPABA la columna de flota (30 sep 2026), para que abrir el mapa
+ * no reacomodara las tarjetas. En la práctica tapaba media pantalla de botones y tablas que no se
+ * podían usar, así que el 7 oct 2026 volvió a ir lado a lado: abrir el mapa angosta el contenido,
+ * todo queda visible, y la manija entre los dos sigue arrastrándose igual.
  *
- * Devuelve un ancho en %, no un `flex`: la cortina se posiciona absoluta sobre la fila, así que su
- * tamaño ya no se negocia con nadie.
+ * Devuelve un ancho fijo (% o `calc`), no un `flex`: el contenido toma lo que queda.
  *
  * Colapsada mide `'0%'` y SIGUE MONTADA. Devuelve la cadena y NO `null`/`undefined` a propósito:
  * algo falsy es justo lo que lleva al `{cond && <panel/>}` y al desmontaje que este módulo
@@ -109,8 +107,9 @@ export function mapaColapsado(opts: { modo: string; oculto: boolean }): boolean 
  */
 export function anchoCortina(opts: { colapsada: boolean; completa: boolean; pct: number }): string {
   if (opts.colapsada) return '0%';
-  // Entera = todo menos la columna de tiendas. En % no se puede expresar: la columna mide px fijos.
-  if (opts.completa) return `calc(100% - ${ANCHO_TIENDAS_PX}px)`;
+  // Entera = todo menos la columna de tiendas (y la manija, que va entre los dos). En % no se puede
+  // expresar: la columna mide px fijos.
+  if (opts.completa) return `calc(100% - ${ANCHO_TIENDAS_PX + MANIJA_PX}px)`;
   return `${clampMapPct(opts.pct)}%`;
 }
 

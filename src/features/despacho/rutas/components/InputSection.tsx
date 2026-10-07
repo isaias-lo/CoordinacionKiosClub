@@ -588,11 +588,13 @@ export default function InputSection({
 
       {errorsBanner}
 
-      {/* Content area — el contenido ocupa TODO el ancho; el mapa es una cortina que lo tapa.
-          `relative` es lo que ancla la cortina a esta fila, y `getBoundingClientRect` de esta misma
-          fila es lo que usa el arrastre para calcular el %, así que el redimensionado no cambia. */}
-      <div ref={contentRowRef} className="flex-1 flex overflow-hidden min-h-0 relative">
-        <div className="flex flex-col overflow-hidden min-w-0" style={{ flex: '1 1 100%' }}>
+      {/* Content area — el contenido y el mapa van LADO A LADO, con la manija entre los dos.
+          Antes el mapa era una cortina superpuesta que tapaba la mitad derecha del Enrutador
+          (botones, tarjetas, la tabla del Plan): se veía y no se podía usar. Ahora abrir el mapa
+          angosta el contenido en vez de taparlo. `getBoundingClientRect` de esta fila sigue siendo
+          lo que usa el arrastre para calcular el %, así que el redimensionado no cambia. */}
+      <div ref={contentRowRef} className="flex-1 flex overflow-hidden min-h-0">
+        <div className="flex flex-col overflow-hidden min-w-0" style={{ flex: '1 1 0%' }}>
       {modo === 'flota' ? flotaTabContent
       : modo === 'v2' ? (
         <div className="flex-1 overflow-hidden">
@@ -684,36 +686,20 @@ export default function InputSection({
         </div>
       )}
         </div>
-        {/* LA CORTINA. Va superpuesta y anclada a la derecha, así que abrirla NO reacomoda las
-            tarjetas de camión de abajo: se corre encima y lo demás queda donde estaba.
+        {/* EL MAPA. Columna propia a la derecha, después de la manija: nunca tapa el contenido.
             SIN condicional de montaje: colapsar es poner el ancho en 0, no sacar el panel del
             árbol. Desmontarlo pierde el dedupe de Directions y cada vuelta se factura de nuevo.
+            La manija queda FUERA del panel para seguir visible y pulsable cuando el mapa mide 0.
             `aria-hidden` + `inert` lo sacan del foco y del lector de pantalla mientras mide 0. */}
         {mapPanel && (
           <>
-            {/* La manija viaja con el borde de la cortina. Queda FUERA de ella para seguir visible
-                y pulsable cuando la cortina mide 0 — si viviera adentro, cerrar el mapa se llevaría
-                también la forma de volver a abrirlo. */}
+            {mapDivider}
             <div
-              className="absolute top-0 bottom-0 flex z-20"
-              style={{
-                right: anchoCortina({ colapsada: hideMap, completa: mapCompleta, pct: mapPct }),
-                // La manija viaja CON el borde, así que se anima igual que la cortina o se
-                // despegaría de ella durante los 180 ms.
-                transition: mapArrastrando ? undefined : `right ${CORTINA_MS}ms ease`,
-              }}
-            >
-              {mapDivider}
-            </div>
-            <div
-              className="absolute top-0 right-0 bottom-0 overflow-hidden border-l border-black/[0.09] z-10"
+              className="flex-shrink-0 overflow-hidden border-l border-black/[0.09]"
               style={{
                 width: anchoCortina({ colapsada: hideMap, completa: mapCompleta, pct: mapPct }),
                 borderLeftWidth: hideMap ? 0 : undefined,
-                boxShadow: hideMap ? 'none' : '-8px 0 24px rgba(15,23,42,0.10)',
-                // SE CORRE, no salta. Sin esto el panel cambia de ancho de un cuadro al otro y no
-                // se lee como una cortina sino como un error de dibujo.
-                // Mientras se arrastra NO se anima: ahí el ancho tiene que seguir al dedo.
+                // SE CORRE, no salta. Mientras se arrastra NO se anima: el ancho sigue al dedo.
                 transition: mapArrastrando ? undefined : `width ${CORTINA_MS}ms ease`,
               }}
               aria-hidden={hideMap || undefined}
