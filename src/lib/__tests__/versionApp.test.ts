@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { hayVersionNueva, VERSION_DESCONOCIDA, debeMostrarAviso, POSPONER_MS } from '../versionApp';
+import { hayVersionNueva, VERSION_DESCONOCIDA, debeMostrarAviso, POSPONER_MS,
+  resumenDeVersiones, versionCorta } from '../versionApp';
 
 describe('hayVersionNueva', () => {
   it('avisa cuando el servidor publicó otro commit', () => {
@@ -53,5 +54,49 @@ describe('debeMostrarAviso — cerrar el aviso lo pospone, no lo silencia', () =
       expect(debeMostrarAviso(true, pospuesto, ahora)).toBe(true);   // vuelve cada vez
       pospuesto = ahora + POSPONER_MS;                                // y se vuelve a cerrar
     }
+  });
+});
+
+// ── EL AVISO QUE SE QUEDÓ PEGADO ──────────────────────────────────────────────────────────────
+//
+// 06/10/2026: el coordinador apretó Recargar y el aviso siguió ahí. La cadena está bien construida
+// —el service worker atiende `SKIP_WAITING`, las navegaciones van a la red— y no se pudo medir
+// contra producción. En vez de adivinar la causa, el aviso pasa a decir qué versión tiene la
+// pestaña y cuál está publicada: la próxima vez la respuesta se lee en pantalla.
+
+describe('resumenDeVersiones', () => {
+  it('dos distintas: dice cuál tiene y cuál hay', () => {
+    expect(resumenDeVersiones('a1b2c3d4e5', 'f6a7b8c9d0'))
+      .toBe('tienes a1b2c3d · publicada f6a7b8c');
+  });
+
+  it('IGUALES: lo levantó el service worker, no la comparación de versiones', () => {
+    // Este es el caso que explicaría un Recargar que no trae nada nuevo: no hay versión nueva
+    // que traer, el navegador solo dejó algo esperando.
+    expect(resumenDeVersiones('a1b2c3d4e5', 'a1b2c3d4e5'))
+      .toBe('misma versión (a1b2c3d) · la descargó el navegador');
+  });
+
+  it('sin la publicada todavía no se dibuja: media verdad no diagnostica nada', () => {
+    expect(resumenDeVersiones('a1b2c3d4e5', null)).toBeNull();
+    expect(resumenDeVersiones('a1b2c3d4e5', undefined)).toBeNull();
+    expect(resumenDeVersiones(null, 'f6a7b8c9d0')).toBeNull();
+    expect(resumenDeVersiones(undefined, undefined)).toBeNull();
+  });
+});
+
+describe('versionCorta', () => {
+  it('los primeros 7, como se nombra un commit en todos lados', () => {
+    expect(versionCorta('fb90108f65ddb43812a043a29dfbb0043c9d2eeb')).toBe('fb90108');
+  });
+
+  it('un valor corto se devuelve entero', () => {
+    expect(versionCorta('dev')).toBe('dev');
+  });
+
+  it('sin dato, una raya', () => {
+    expect(versionCorta('')).toBe('—');
+    expect(versionCorta(null)).toBe('—');
+    expect(versionCorta(undefined)).toBe('—');
   });
 });

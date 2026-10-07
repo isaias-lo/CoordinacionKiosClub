@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw, X } from 'lucide-react';
-import { hayVersionNueva, debeMostrarAviso, VERSION_DESCONOCIDA, POSPONER_MS } from '@/lib/versionApp';
+import { hayVersionNueva, debeMostrarAviso, resumenDeVersiones, VERSION_DESCONOCIDA, POSPONER_MS } from '@/lib/versionApp';
 import { registrarSW, activarVersionNueva } from '@/lib/sw/registrarSW';
 
 /** Cada cuánto se le pregunta al servidor qué versión está publicada. */
@@ -23,22 +23,31 @@ export function AvisoVersionNueva() {
   const local = process.env.NEXT_PUBLIC_APP_VERSION;
   const [hayNueva, setHayNueva] = useState(false);
   const [pospuestoHasta, setPospuestoHasta] = useState(0);
+  // La versión que responde el servidor. Se guarda SIEMPRE, coincida o no, para poder decir cuál
+  // es cuál en el aviso. Ver `resumenDeVersiones`.
+  const [remota, setRemota] = useState<string | null>(null);
   // Solo existe para volver a dibujar cuando vence el aplazamiento.
   const [tic, setTic] = useState(0);
   // Una vez detectada, no se vuelve a preguntar: la respuesta ya no puede cambiar sin recargar.
   const yaDetectada = useRef(false);
+  // El sondeo vive en su propio efecto; el service worker necesita poder dispararlo.
+  const revisarRef = useRef<((forzar?: boolean) => Promise<void>) | null>(null);
 
   useEffect(() => {
     if (!local || local === VERSION_DESCONOCIDA) return; // en desarrollo no hay con qué comparar
     let vivo = true;
 
-    const revisar = async () => {
-      if (yaDetectada.current || document.visibilityState === 'hidden') return;
+    // `forzar` lo usa el service worker: ya decidió que hay versión nueva, pero hace falta
+    // preguntar igual para saber CUÁL está publicada y poder nombrarla en el aviso.
+    const revisar = async (forzar = false) => {
+      if ((yaDetectada.current && !forzar) || document.visibilityState === 'hidden') return;
       try {
         const res = await fetch('/api/version', { cache: 'no-store' });
         if (!res.ok || !vivo) return;
         const { version } = await res.json() as { version?: string };
-        if (!vivo || !hayVersionNueva(local, version)) return;
+        if (!vivo || !version) return;
+        setRemota(version);
+        if (!hayVersionNueva(local, version)) return;
         yaDetectada.current = true;
         setHayNueva(true);
       } catch {
@@ -46,6 +55,7 @@ export function AvisoVersionNueva() {
       }
     };
 
+    revisarRef.current = revisar;
     const alVolver = () => { if (document.visibilityState === 'visible') void revisar(); };
     document.addEventListener('visibilitychange', alVolver);
     const id = setInterval(() => { void revisar(); }, CADA_MS);
@@ -59,7 +69,14 @@ export function AvisoVersionNueva() {
   // registrarse (Safari en privado, almacenamiento bloqueado, `NEXT_PUBLIC_SW_DISABLED`), el aviso
   // tiene que seguir apareciendo igual que hasta hoy. Con service worker hay además una señal
   // directa: el navegador ya descargó la versión nueva y la dejó esperando.
-  useEffect(() => registrarSW(() => { yaDetectada.current = true; setHayNueva(true); }), []);
+  // Esta rama NO compara versiones: avisa porque el navegador ya descargó algo y lo dejó
+  // esperando. Por eso pide la publicada aparte — si resulta ser la MISMA que la cargada, el aviso
+  // lo dice, y eso explica un botón Recargar que no trae nada nuevo.
+  useEffect(() => registrarSW(() => {
+    yaDetectada.current = true;
+    setHayNueva(true);
+    void revisarRef.current?.(true);
+  }), []);
 
   // Mientras está pospuesto, un temporizador lo trae de vuelta al vencer.
   useEffect(() => {
@@ -75,6 +92,7 @@ export function AvisoVersionNueva() {
   const posponer = useCallback(() => { setPospuestoHasta(Date.now() + POSPONER_MS); }, []);
 
   if (!debeMostrarAviso(hayNueva, pospuestoHasta, Date.now())) return null;
+  const resumen = resumenDeVersiones(local, remota);
   void tic;  // la dependencia real es el temporizador de abajo
 
   return (
@@ -88,6 +106,11 @@ export function AvisoVersionNueva() {
         <div className="text-[13px] leading-tight">
           <div className="font-bold">Hay una versión nueva del sistema</div>
           <div className="opacity-75">Recarga cuando termines lo que estás haciendo. Lo guardado no se pierde.</div>
+          {resumen && (
+            // Cuál tiene la pestaña y cuál está publicada. Es lo que permite saber, sin consola y
+            // sin reproducirlo, por qué un Recargar podría no estar trayendo nada. Ver `versionApp`.
+            <div className="opacity-60 font-mono" style={{ fontSize: 11, marginTop: 3 }}>{resumen}</div>
+          )}
         </div>
         <button onClick={recargar}
           className="text-[13px] font-bold px-3 py-1.5 rounded-lg cursor-pointer transition-all active:scale-95 flex items-center gap-1.5 flex-shrink-0"
