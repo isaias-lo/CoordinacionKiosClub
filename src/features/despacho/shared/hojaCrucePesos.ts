@@ -83,6 +83,18 @@ export const ENCABEZADO_CRUCE = [
   'KG DIF',
   '% DIF',
   'ACTUALIZADO',
+  // ── ¿ESTABA PLANIFICADA? ────────────────────────────────────────────────────────────────────
+  //
+  // El 07/10/2026 apareció 38SP2 en el cruce y la primera pregunta fue «si no estaba en el
+  // calendario de hoy, ¿por qué está acá?». El calendario NO filtra el cruce, y es a propósito:
+  // el calendario es el PLAN y Odoo es el HECHO, así que filtrar los hechos por el plan esconde
+  // en silencio justo lo que más importa ver — una tienda a la que el CD despachó SIN estar
+  // planificada. Lo que corresponde es marcarla, y que la fila diga por qué está ahí.
+  //
+  // «No» significa «no estaba en la rutina semanal ni entre los adelantos». NO significa «nadie
+  // la agregó nunca»: Bodega deja sumar tiendas a un día puntual desde el dispositivo, y eso el
+  // servidor no lo ve. Ver `calendarioDelDia.ts`.
+  'EN CALENDARIO',
 ] as const;
 
 /** El nombre de la pestaña. */
@@ -192,6 +204,8 @@ export interface DatosFila {
   kgPesado?: number | null;
   /** Momento de la escritura, ISO. */
   actualizado: string;
+  /** 'Sí' | 'No' | '' — si la tienda estaba en el calendario de ese día. Ver `ENCABEZADO_CRUCE`. */
+  enCalendario?: string;
 }
 
 const ETIQUETA: Record<string, string> = {
@@ -213,6 +227,9 @@ export function valoresDeFila(d: DatosFila): Record<string, string | number> {
     'TIENDA': d.nombre,
     'TOTAL ODOO': redondear(d.cruce.totalOdoo),
     'ACTUALIZADO': d.actualizado,
+    // Vacío cuando no se pudo leer el calendario: un «No» en todas las filas sería una
+    // afirmación que nadie verificó. Ver `calendarioDelDia.ts`.
+    'EN CALENDARIO': d.enCalendario ?? '',
   };
 
   for (const t of TIPOS_CRUCE) {

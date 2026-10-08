@@ -21,6 +21,9 @@
 // podría calcular distinto y nadie lo notaría hasta comparar dos filas a mano.
 
 import { supabaseServer } from '@/lib/supabaseServer';
+import { dominioDespachosDelDia } from '@/features/despacho/shared/dominioOdoo';
+import { TIPO_DESPACHO_A_TIENDAS } from '@/features/despacho/shared/dominioOdoo';
+import { tiendasPlanificadas, marcaDeCalendario, type CalendarioSemanal } from '@/features/despacho/shared/calendarioDelDia';
 import { armarCruce, type MovimientoOdoo } from '@/features/despacho/shared/cruceDePesos';
 import { valoresDeFila } from '@/features/despacho/shared/hojaCrucePesos';
 // La suma vive en un módulo PURO y se re-exporta: un solo lugar donde se decide cuánto pesó una
@@ -69,9 +72,7 @@ export async function movimientosDelDia(fechaISO: string): Promise<MovimientoOdo
   const rows = await rpc({
     service: 'object', method: 'execute_kw',
     args: [ODOO_DB, uid, ODOO_KEY, 'stock.picking', 'search_read',
-      [[['origin', 'like', 'Abastecimiento'],
-        ['date_done', '>=', `${fechaISO} 00:00:00`], ['date_done', '<=', `${fechaISO} 23:59:59`],
-        ['state', '=', 'done']]],
+      [dominioDespachosDelDia(fechaISO)],
       { fields: ['name', 'origin', 'total_weight', 'location_dest_id'], limit: 2000 }],
   }) as PickingCrudo[];
 
@@ -186,17 +187,53 @@ export function aDDMM(fechaISO: string): string {
 }
 
 /** Las filas del cruce de un día, listas para `escribirCruce`. */
+/**
+ * El calendario de la semana y los adelantos de ese día.
+ *
+ * Los dos son OPCIONALES para el cruce: si la consulta falla, la columna EN CALENDARIO queda en
+ * blanco y la hoja se escribe igual. Es una marca informativa — tumbar el cruce entero porque no
+ * se pudo leer el calendario sería cambiar un dato de más por ningún dato.
+ */
+async function calendarioDelDia(
+  fechaISO: string,
+): Promise<{ calendario: CalendarioSemanal | null; adelantos: string[] }> {
+  const sb = supabaseServer();
+  const [cal, ade] = await Promise.all([
+    sb.from('calendario_central').select('data').eq('id', 'current').maybeSingle(),
+    sb.from('tiendas_adelanto').select('store_cod').eq('fecha_despacho', fechaISO),
+  ]);
+  if (cal.error) console.error('[cruce] calendario:', cal.error.message);
+  if (ade.error) console.error('[cruce] adelantos:', ade.error.message);
+  return {
+    calendario: (cal.data?.data as CalendarioSemanal | undefined) ?? null,
+    adelantos: (ade.data ?? []).map(r => String((r as { store_cod?: unknown }).store_cod ?? '')),
+  };
+}
+
 export async function construirCruceDelDia(
   fechaISO: string,
 ): Promise<Record<string, string | number>[]> {
   const fechaDDMM = aDDMM(fechaISO);
-  const [movs, { codigos, nombres }, pesos, pesados] = await Promise.all([
+  const [movs, { codigos, nombres }, pesos, pesados, { calendario, adelantos }] = await Promise.all([
     movimientosDelDia(fechaISO),
     catalogoTiendas(),
     pesosDeBodega(fechaDDMM),
     pesadoEnBodega(fechaISO),
+    calendarioDelDia(fechaISO),
   ]);
 
+  // ODOO NO TRAJO NADA Y LA BALANZA SÍ: eso no es «el día todavía no empieza», es una
+  // contradicción. Pasa si alguien renombra el tipo de operación en Odoo (ver `dominioOdoo`), y
+  // sin este corte la hoja se escribiría VACÍA sin que nadie se entere. Mejor fallar fuerte.
+  if (movs.length === 0 && pesados.size > 0) {
+    throw new Error(
+      `Odoo no devolvió ningún despacho para el ${fechaDDMM}, pero la balanza tiene ` +
+      `${pesados.size} tienda(s) pesadas. Revisá que el tipo de operación «${TIPO_DESPACHO_A_TIENDAS}» ` +
+      'siga existiendo en Odoo con ese nombre. No se escribió nada en la hoja.',
+    );
+  }
+
+  const planificadas = tiendasPlanificadas(calendario, fechaISO, adelantos);
   const ahora = new Date().toISOString();
   return armarCruce(movs, codigos).map(cruce => valoresDeFila({
     fecha: fechaDDMM,
@@ -207,6 +244,7 @@ export async function construirCruceDelDia(
     kgBodega: pesos.has(cruce.codigo) ? (pesos.get(cruce.codigo) as number) : null,
     kgPesado: pesados.has(cruce.codigo) ? (pesados.get(cruce.codigo) as number) : null,
     actualizado: ahora,
+    enCalendario: marcaDeCalendario(planificadas, cruce.codigo),
   }));
 }
 
