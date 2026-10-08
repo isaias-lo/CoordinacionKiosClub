@@ -1,0 +1,100 @@
+/* Seco: encabezado de tienda, tabla de encargados y panel lateral.
+   Valores copiados de /mnt/project-files/disenos/picking/Main.dc.html y SecoDetalle.dc.html. */
+
+.pk-main{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column;flex:1;overflow:hidden;background:#F5F6F8}
+.pk-head{background:#FFFFFF;border-bottom:1px solid #E4E7EC;padding:14px 18px 0;display:flex;flex-direction:column;gap:12px;flex-shrink:0}
+.pk-hrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.pk-acciones{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto}
+.pk-h1{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.pk-code{font-family:'IBM Plex Mono',monospace;font-size:13px;color:#4B5160;background:#EEF0F4;border-radius:6px;padding:3px 7px}
+.pk-seg{display:inline-flex;background:#EEF0F4;border-radius:8px;padding:3px;gap:2px;flex-wrap:wrap}
+.pk-seg button{padding:5px 11px;border-radius:6px;font-size:13px;font-weight:600;color:#6B7280;background:transparent;border:0;cursor:pointer}
+.pk-seg button.on{background:#FFFFFF;color:#14161B;box-shadow:0 1px 2px rgba(16,24,40,.12)}
+.pk-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid #E4E7EC;border-radius:10px;overflow:hidden}
+.pk-kpi{padding:10px 14px;border-right:1px solid #E4E7EC;display:flex;flex-direction:column;gap:2px}
+.pk-kpi:last-child{border-right:0}
+.pk-kpi .l{font-size:12px;color:#6B7280;font-weight:500}
+.pk-kpi .v{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.pk-kpi .v small{font-size:13px;color:#6B7280;font-weight:500}
+.pk-tabs{display:flex;gap:2px;flex-wrap:wrap}
+.pk-tab{padding:10px 14px;font-weight:600;color:#6B7280;border:0;border-bottom:2px solid transparent;background:transparent;display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px}
+.pk-tab .sw{width:8px;height:8px;border-radius:2px}
+.pk-tab .k{font-size:12px;color:#8A91A1;font-weight:600}
+.pk-tab.on{color:#14161B;border-bottom-color:#2B4BC8}
+.pk-content{flex:1;min-height:0;padding:16px 18px;display:flex;flex-direction:column;gap:12px;overflow-y:auto}
+.pk-alert{display:flex;align-items:center;gap:12px;border:1px solid #F1C9C3;background:#FFF7F6;border-radius:10px;padding:10px 14px;font-size:13px;color:#5C1A12}
+.pk-alert b{color:#A3271A}
+.pk-alert.warn{border-color:#F3D9A9;background:#FFFAF0;color:#5C3A06}
+.pk-alert.warn b{color:#8A4A06}
+.pk-card{background:#FFFFFF;border:1px solid #E4E7EC;border-radius:10px;overflow:hidden}
+.pk-card.tabla{overflow-x:auto}
+.pk-tabla{border-collapse:collapse;width:100%}
+.pk-tabla th:first-child,.pk-tabla td:first-child{padding-left:14px}
+.pk-tabla th{font-size:11px;font-weight:700;letter-spacing:.06em;color:#6B7280;text-align:left;padding:9px 8px;background:#F8F9FB;border-bottom:1px solid #E4E7EC;vertical-align:bottom}
+.pk-tabla td{padding:10px 8px;border-bottom:1px solid #EEF0F3;vertical-align:middle;font-size:13px}
+.pk-tabla tr:last-child td{border-bottom:0}
+.pk-tabla tbody tr.fila{cursor:pointer}
+.pk-tabla tbody tr.fila:hover td{background:#FAFBFD}
+.pk-tabla tr.sel td{background:#F3F5FD}
+.pk-tabla tr.tot td{background:#F8F9FB;font-weight:700;border-bottom:0}
+.pk-tabla tr.conf td{background:#FFF7F6}
+.pk-mono{font-family:'IBM Plex Mono',monospace;font-size:12px}
+.pk-num{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:13px}
+.pk-sub{font-size:12px;color:#6B7280}
+.pk-trunc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+.pk-chip{display:inline-flex;align-items:center;gap:5px;border:1px solid #E4E7EC;border-radius:6px;padding:2px 7px;font-size:12px;font-weight:600;color:#3D4350;background:#FFFFFF;margin-right:4px;white-space:nowrap}
+.pk-chip i{width:7px;height:7px;border-radius:2px;display:inline-block}
+.pk-step{display:inline-grid;grid-template-columns:24px 26px 24px;align-items:center;border:1px solid #D7DBE3;border-radius:7px;overflow:hidden;background:#FFFFFF}
+.pk-step span{text-align:center;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700}
+.pk-step button{height:26px;display:flex;align-items:center;justify-content:center;color:#4B5160;background:#F5F6F8;font-weight:600;border:0;cursor:pointer;font-size:14px;padding:0}
+.pk-step button:hover{background:#E9ECF2}
+.pk-step.z span{color:#B8BECB}
+.pk-na{color:#C3C8D3;text-align:center;display:inline-block;min-width:40px}
+.pk-av{width:28px;height:28px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#FFFFFF;flex-shrink:0}
+.pk-pname{display:flex;align-items:center;gap:8px}
+.pk-pname b{font-weight:600;white-space:nowrap}
+.pk-pname .pk-sub{white-space:nowrap}
+.pk-tabla td.nw{white-space:nowrap}
+.pk-link{border:0;background:transparent;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left}
+.pk-link:hover b{text-decoration:underline}
+.pk-pie-nota{display:flex;gap:18px;font-size:12px;color:#6B7280;flex-wrap:wrap}
+.pk-btn:disabled{opacity:.45;cursor:not-allowed}
+.pk-btn.peligro{background:#A3271A;border-color:#A3271A;color:#FFFFFF}
+.pk-btn.copia{background:#8A4A06;border-color:#8A4A06;color:#FFFFFF;display:inline-flex;align-items:center;gap:6px}
+.pk-btn.armado{background:#8A4A06;border-color:#8A4A06;color:#FFFFFF}
+.pk-btn.ico{display:inline-flex;align-items:center;gap:6px}
+
+/* Panel lateral del encargado (SecoDetalle) */
+.pk-velo-main{position:absolute;inset:0;background:rgba(16,27,63,.18);border:0;z-index:30;cursor:default}
+.pk-panel{position:absolute;top:0;right:0;bottom:0;width:520px;max-width:100%;background:#FFFFFF;border-left:1px solid #E4E7EC;box-shadow:-12px 0 32px rgba(16,24,40,.10);display:flex;flex-direction:column;z-index:31}
+.pk-panel-h{padding:16px 20px;border-bottom:1px solid #E4E7EC;display:flex;align-items:center;gap:12px}
+.pk-ttl{font-size:15px;font-weight:700}
+.pk-pd-b{flex:1;min-height:0;padding:16px 20px;display:flex;flex-direction:column;gap:16px;overflow-y:auto}
+.pk-pd-pie{padding:14px 20px;border-top:1px solid #E4E7EC;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.pk-lbl,.pk-lbl2{font-size:12px;font-weight:600;color:#4B5160}
+.pk-col1{display:flex;flex-direction:column;flex:1;min-width:0}
+.pk-col5{display:flex;flex-direction:column;gap:5px}
+.pk-col6{display:flex;flex-direction:column;gap:6px}
+.pk-col8{display:flex;flex-direction:column;gap:8px}
+.pk-pd-campos{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:10px}
+.pk-field{border:1px solid #D7DBE3;border-radius:8px;padding:8px 10px;font-size:13px;background:#FFFFFF;color:#2B303B;display:flex;align-items:center;gap:8px;min-height:36px}
+.pk-field:focus-within{border-color:#3B5BDB}
+.pk-field input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;color:inherit;padding:0}
+.pk-field input::placeholder{color:#8A91A1}
+.pk-contador{border:1px solid #E4E7EC;border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px}
+.pk-contador button{width:44px;height:44px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;flex-shrink:0}
+.pk-contador .menos{border:1px solid #D7DBE3;color:#4B5160;background:#FFFFFF}
+.pk-contador .mas{border:0;background:#2B4BC8;color:#FFFFFF}
+.pk-contador .n{width:40px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:700}
+.pk-contador .n.z{color:#B8BECB}
+.pk-aviso{display:flex;align-items:center;gap:10px;border-radius:10px;padding:10px 12px;font-size:13px}
+.pk-aviso.warn{border:1px solid #F3D9A9;background:#FFFAF0;color:#5C3A06}
+.pk-aviso.bad{border:1px solid #F1C9C3;background:#FFF7F6;color:#5C1A12}
+.pk-vacio{border:1px dashed #D7DBE3;border-radius:10px;padding:18px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;font-size:13px;color:#4B5160}
+.pk-vacio.info{border-style:solid;border-color:#C9D6F5;background:#F3F6FD;color:#1C2E7A}
+.pk-preview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.pk-prev{border-radius:8px;cursor:pointer;outline:2px solid transparent;outline-offset:1px;min-width:0}
+.pk-prev.sel{outline-color:#3B5BDB}
+.pk-prev:focus-visible{outline-color:#3B5BDB}
+.pk-pie-hint{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk-pd-b .pk-trunc{max-width:190px}

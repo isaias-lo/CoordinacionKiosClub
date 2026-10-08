@@ -68,6 +68,9 @@ import { BarraSuperior }      from './marco/BarraSuperior';
 import { MenuLateral }        from './marco/MenuLateral';
 import { AyudaPanel }         from './marco/AyudaPanel';
 import { accionDeTecla, estaEscribiendo } from './marco/ayuda';
+import { VistaSeco }          from './seco/VistaSeco';
+import type { FilaSeco }      from './seco/TablaEncargados';
+import { seccionesDeFila, unidadesDeFila, notaUnidades, totalesPorTipo, sinImprimir, COLOR_SECCION } from './seco/filaEncargado';
 import { AgregarAdelantoDialog } from './components/AgregarAdelantoDialog';
 import { enqueuePickingItem, flushPickingQueue, migrarColaVieja, contarPendientesPicking } from './picking-offline-queue';
 import type { MedidasPallet } from '@/features/despacho/shared/medidasPallet';
@@ -158,6 +161,11 @@ export function PickingScreen() {
   // Al cambiar de pestaña vuelve al automático: haberlo abierto en Calendario no debería dejarlo
   // abierto para siempre en las demás.
   useEffect(() => { setSelectorAbiertoManual(false); }, [rightTab]);
+
+  // Seco en escritorio: la tienda que se ve (con varias elegidas se pasa de una a otra) y el
+  // encargado con el panel lateral abierto.
+  const [tiendaActiva, setTiendaActiva] = useState<string | null>(null);
+  const [encargadoAbierto, setEncargadoAbierto] = useState<string | null>(null);
 
   // «Ayuda y atajos» (menú lateral, «Más» en teléfono, o la tecla ?).
   const [ayudaAbierta, setAyudaAbierta] = useState(false);
@@ -1497,6 +1505,291 @@ export function PickingScreen() {
 
   const hasBarcodes = printableLabels.length > 0;
 
+  // Formulario «Encargado manual» de una tienda (lo abre el botón del encabezado de la tienda).
+  const renderFormManual = (cod: string) => addingManualCod !== cod ? null : (
+      <div className="px-3 py-2.5 flex items-center gap-2 print:hidden" style={{ borderBottom: '1px solid var(--color-border)', background: '#fff' }}>
+        <input
+          type="text"
+          autoFocus
+          list="picking-nombres-conocidos"
+          value={manualName}
+          onChange={e => setManualName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') crearEncargadoManual(cod); if (e.key === 'Escape') setAddingManualCod(null); }}
+          placeholder="Nombre del encargado (elige uno o escribe uno nuevo)"
+          className="flex-1 text-[13px] px-3 py-1.5 rounded border"
+          style={{ borderColor: 'var(--color-border)', maxWidth: 280 }}
+        />
+        {/* La sección solo se pregunta en "Todas". Dentro de una sección ya se sabe
+            cuál es, así que ese espacio lo ocupa el Batch — el dato que ahí sí falta. */}
+        {pideSeccion(sectionFilter, esTabCongelados) ? (
+          <select
+            value={manualSeccion}
+            onChange={e => {
+              const sec = e.target.value as SectionFilter;
+              setManualSeccion(sec);
+              // Si la unidad elegida no existe en la sección nueva, vuelve a su default.
+              setManualTipo(t => (tiposDeUnidad(false, sec).includes(t) ? t : primeraUnidadPorDefecto(sec)));
+            }}
+            aria-label="Sección del encargado"
+            className="text-[13px] px-2 py-1.5 rounded border cursor-pointer"
+            style={{ borderColor: 'var(--color-border)', color: '#374151', background: '#fff' }}>
+            <option value="all">Todas</option>
+            <option value="aseo-comida">Aseo y Comida</option>
+            <option value="hogar">Hogar</option>
+            <option value="chocolates">Chocolates</option>
+          </select>
+        ) : (
+          <input
+            type="text"
+            inputMode="numeric"
+            value={manualBatch}
+            onChange={e => setManualBatch(normalizarBatch(e.target.value))}
+            onKeyDown={e => { if (e.key === 'Enter') crearEncargadoManual(cod); if (e.key === 'Escape') setAddingManualCod(null); }}
+            placeholder="Batch (opcional)"
+            aria-label="Número de batch"
+            className="text-[13px] px-2 py-1.5 rounded border"
+            style={{ borderColor: 'var(--color-border)', width: 130 }}
+          />
+        )}
+        {/* Con qué unidad nace. Viene preseleccionada según la sección (Congelados →
+            Caja Cartón, Chocolates → CH, el resto → P) y se puede cambiar. */}
+        <div className="flex items-center gap-1" role="radiogroup" aria-label="Primera unidad del encargado">
+          <span className="text-[11px] text-slate-400 mr-0.5">Nace con</span>
+          {tiposDeUnidad(manualSeccion === 'congelados', manualSeccion).map(t => {
+            const nombre = NOMBRE_UNIDAD[t] ?? t;
+            const activo = manualTipo === t;
+            return (
+              <button key={t} type="button" role="radio" aria-checked={activo}
+                onClick={() => setManualTipo(t)} title={nombre}
+                className="text-[12px] font-bold px-2 py-1 rounded cursor-pointer transition-all border"
+                style={{
+                  background:  activo ? 'var(--color-info)' : '#fff',
+                  color:       activo ? '#fff' : '#64748B',
+                  borderColor: activo ? 'var(--color-info)' : 'var(--color-border)',
+                }}>
+                {t}
+              </button>
+            );
+          })}
+        </div>
+        <button onClick={() => crearEncargadoManual(cod)} disabled={!manualName.trim()}
+          className="text-[13px] font-bold px-3 py-1.5 rounded cursor-pointer transition-all disabled:opacity-40"
+          style={{ background: 'rgba(37,99,235,0.1)', color: '#2563EB', border: '1px solid rgba(37,99,235,0.3)' }}>
+          Agregar
+        </button>
+        <button onClick={() => setAddingManualCod(null)}
+          className="text-[13px] font-medium px-3 py-1.5 rounded cursor-pointer transition-all"
+          style={{ color: '#64748B', background: 'transparent', border: 'none' }}>
+          Cancelar
+        </button>
+      </div>
+  );
+
+  const abrirFormManual = (cod: string) => {
+    const sec: SectionFilter = esTabCongelados ? 'congelados' : sectionFilter;
+    setAddingManualCod(addingManualCod === cod ? null : cod);
+    setManualName(''); setManualBatch(''); setManualSeccion(sec); setManualTipo(primeraUnidadPorDefecto(sec));
+  };
+
+  // Imprimir las etiquetas de una tienda: el primer toque arma, el segundo imprime.
+  const tocarImprimirTienda = (cod: string) => {
+    if (armedPrintTimerRef.current) clearTimeout(armedPrintTimerRef.current);
+    if (armedPrintCod === cod) { setArmedPrintCod(null); printStoreLabels(cod); return; }
+    setArmedPrintCod(cod);
+    armedPrintTimerRef.current = setTimeout(() => setArmedPrintCod(null), 2500);
+  };
+
+  // Seco en escritorio (diseño empresarial): una tienda a la vez, en tabla. Arma los datos con lo
+  // mismo que usan las tarjetas (propsDeTarjeta), así la tabla y el panel escriben igual que ellas.
+  const renderVistaSeco = () => {
+    const cod = tiendaActiva && selectedCods.includes(tiendaActiva) ? tiendaActiva : selectedCods[0];
+    const allStore = allGroupedByStore[cod] ?? [];
+    const storeGroups = (groupedByStore[cod] ?? []).filter(g => !ocultarSinAsignar(g, slotsByStateKey[g.stateKey]));
+    const filas: FilaSeco[] = storeGroups.map(group => {
+      const tarjeta = propsDeTarjeta(group, cod, allStore);
+      const categorias = (group.operations.length > 0
+        ? [...new Set(group.operations.flatMap(o => o.categories))]
+        : categoriasDeSlotsManual(slotsByStateKey[group.stateKey] ?? [])).filter(c => c !== 'Congelados');
+      const secciones = seccionesDeFila(categorias);
+      const unidades = unidadesDeFila(secciones, sectionFilter, tarjeta.palletsByTipo);
+      const escrito = pickerDisplayNames[group.stateKey];
+      return {
+        group, tarjeta, categorias, secciones, unidades,
+        nota: notaUnidades(sectionFilter !== 'all' ? [sectionFilter] : secciones, unidades),
+        nombre: tarjeta.displayName || group.key,
+        subNombre: group.operations.length === 0 ? 'Encargado manual'
+          : escrito && escrito !== group.key ? `En Odoo: ${group.key}` : 'Nombre de Odoo',
+      };
+    });
+
+    // Operaciones de Seco de la tienda (las de Congelados tienen su pestaña).
+    const ops = opsMap[cod] ?? [];
+    const congeladas = new Set(filtrarOpsPorSeccion(ops, 'congelados'));
+    const opsSeco = ops.filter(o => !congeladas.has(o));
+    const pickeables = opsSeco.filter(o => isPickeableState(o.state));
+    const opsVista = filtrarOpsPorSeccion(opsSeco, sectionFilter);
+    const sinAsignarOps = filtrarOpsPorSeccion(
+      allStore.filter(g => g.key === 'Sin asignar').flatMap(g => g.operations).filter(o => !congeladas.has(o)), sectionFilter);
+
+    const tot = filas.reduce((a, f) => {
+      const t = totalesPorTipo(f.tarjeta.palletsByTipo);
+      return { P: a.P + t.P, B: a.B + t.B, CH: a.CH + t.CH, total: a.total + t.total, sin: a.sin + sinImprimir(f.tarjeta.slots) };
+    }, { P: 0, B: 0, CH: 0, total: 0, sin: 0 });
+    const detalle = [tot.P && `${tot.P} P`, tot.B && `${tot.B} B`, tot.CH && `${tot.CH} CH`].filter(Boolean).join(' · ');
+    const storeLabels = printableLabels.filter(l => l.storeCod === cod);
+    const etiquetaSeccion: Record<string, string> = { all: 'Todas', comida: 'Comida', aseo: 'Aseo', hogar: 'Hogar', chocolates: 'Chocolates' };
+    const hora = lastRefresh ? lastRefresh.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : null;
+
+    return (
+      <>
+        {/* Sugerencias del datalist "Encargado manual" — una sola vez, no por tienda */}
+        <datalist id="picking-nombres-conocidos">
+          {nombresConocidos.map(n => <option key={n} value={n} />)}
+        </datalist>
+        <VistaSeco
+          encabezado={{
+            cod, nombre: nameFor(cod), tipo: tipoFor(cod),
+            tiendas: selectedCods.map(c => ({ cod: c, nombre: nameFor(c) })),
+            onElegirTienda: c => { setTiendaActiva(c); setEncargadoAbierto(null); },
+            onManual: () => abrirFormManual(cod),
+            onActualizar: () => void fetchOpsForStore(cod),
+            actualizando: loadingCods.includes(cod),
+            actualizadoA: hora,
+            imprimir: storeLabels.length > 0 ? { n: storeLabels.length, armado: armedPrintCod === cod, onClick: () => tocarImprimirTienda(cod) } : null,
+            kpis: {
+              opsHechas: pickeables.filter(o => o.state === 'done').length, opsTotal: pickeables.length,
+              encargados: filas.length, unidades: tot.total, detalleUnidades: detalle, sinImprimir: tot.sin,
+            },
+            secciones: seccionesDeLaPestana(false).map(k => ({
+              key: k, label: etiquetaSeccion[k] ?? k, color: COLOR_SECCION[etiquetaSeccion[k]],
+              cuenta: filtrarOpsPorSeccion(opsSeco, k).length,
+            })),
+            seccion: sectionFilter,
+            onSeccion: k => setSectionFilter(k as SectionFilter),
+          }}
+          sinAsignar={sinAsignarOps.length === 0 ? null : {
+            texto: `${sinAsignarOps.length} operación${sinAsignarOps.length !== 1 ? 'es' : ''} sin responsable en Odoo.`,
+            detalle: `${sinAsignarOps.slice(0, 3).map(o => `${o.name} (${[o.categories.join(', '), o.lineCount ? `${o.lineCount} líneas` : ''].filter(Boolean).join(', ')})`).join(', ')}${sinAsignarOps.length > 3 ? ' y otras' : ''} no ${sinAsignarOps.length !== 1 ? 'generan' : 'genera'} etiqueta hasta que se asigne un picker en Odoo.`,
+            onActualizar: () => void fetchOpsForStore(cod),
+          }}
+          otroDia={filas.filter(f => f.tarjeta.otroDia).length}
+          formManual={renderFormManual(cod)}
+          cargando={loadingCods.includes(cod)}
+          filas={filas}
+          opsConEncargado={{ con: opsVista.length - sinAsignarOps.length, total: opsVista.length }}
+          abierta={encargadoAbierto}
+          onAbrir={setEncargadoAbierto}
+          imprimirTodas={selectedCods.length > 1 && printableLabels.length > 0
+            ? { tiendas: selectedCods.length, etiquetas: printableLabels.length, onClick: printAll } : null}
+          actualizadoA={hora}
+        />
+      </>
+    );
+  };
+
+  // Lo que necesita la tarjeta (o el panel) de un encargado: conteos y números recortados a la
+  // sección activa, y los manejadores que escriben en la base. Lo usan la tarjeta del teléfono,
+  // la de Congelados y la tabla de Seco con su panel lateral, para que las tres hagan lo mismo.
+  const propsDeTarjeta = (group: PickerGroup, cod: string, allStore: PickerGroup[], stickerBelow = false): React.ComponentProps<typeof PickerGroupCard> => {
+    // Slots/conteos/números RECORTADOS a la sección activa (o completos en "Todas"),
+    // para que contador, chips e impresión de la card sean independientes por sección.
+    const seccionActiva: Seccion | null = sectionFilter === 'all' ? null : (sectionFilter as Seccion);
+    const allCardSlots = slotsByStateKey[group.stateKey] ?? [];
+    const cardSlots = seccionActiva == null ? allCardSlots : allCardSlots.filter(s => seccionDeSlot(s) === seccionActiva);
+    const nums = seccionActiva == null
+      ? (assignedNumsByStateKey[group.stateKey] ?? [])
+      : cardSlots.map(s => palletNumsBySlotId[s.id]).filter((n): n is number => n !== undefined).sort((a, b) => a - b);
+    const cardPalletsByTipo = seccionActiva == null
+      ? (palletsByTipoAndStateKey[group.stateKey] ?? {})
+      : cardSlots.reduce<Record<string, number>>((acc, s) => { const t = claveUnidad(s.tipo || 'P', s.subtipo); acc[t] = (acc[t] ?? 0) + 1; return acc; }, {});
+    // Congelados se determina por las categorías del propio grupo (no por el
+    // filtro de página): en la vista "Todas" cada card debe mostrar SOLO Caja
+    // Cartón/Caja Negra si es de Congelados, sin importar en qué columna cae.
+    // Modo manual: sin operaciones de Odoo, cae a la sección real de sus pallets.
+    const isCongelados = group.operations.length > 0
+      ? group.operations.some(o => o.categories.includes('Congelados'))
+      : allCardSlots.some(s => seccionDeSlot(s) === 'congelados');
+    // Para el CONTENIDO/refs del pallet (que lee Bodega/Sheets) usamos las operaciones
+    // del grupo COMPLETO (no las recortadas por sección), para NO cambiar lo que Bodega
+    // ve/escribe respecto a antes. La sección va aparte, en la columna `section`.
+    const fullOps = (allGroupedByStore[group.storeCod] ?? []).find(g => g.stateKey === group.stateKey)?.operations ?? group.operations;
+    const fullGroupCats = categoriasDelGrupo(fullOps, allCardSlots);
+    // Un pallet MIXTO de este picker que lleva carga de esta pestaña pero se
+    // cuenta en otra (o en ninguna). Sin aviso, acá se ve «0» y alguien lo
+    // arma de nuevo: dos slots para una unidad. Ver `palletEnOtraSeccion.ts`.
+    const ajenos = seccionActiva == null ? [] : palletsDeOtraSeccion(allCardSlots, seccionActiva);
+    const destinoAviso = destinoDelAviso(ajenos);
+    const textoAviso = textoDelAviso(ajenos);
+    const botonAviso = textoDelBoton(destinoAviso);
+    const avisoOtraSeccion = textoAviso && botonAviso && destinoAviso
+      ? { texto: textoAviso, boton: botonAviso, onIr: () => setSectionFilter(destinoAviso) }
+      : null;
+    const fullIsCongelados = fullOps.length > 0
+      ? fullOps.some(o => o.categories.includes('Congelados'))
+      : allCardSlots.some(s => seccionDeSlot(s) === 'congelados');
+    return {
+      group: group,
+      displayName: pickerDisplayNames[group.stateKey] || getCanonicalName(group.key),
+      palletsByTipo: cardPalletsByTipo,
+      avisoOtraSeccion: avisoOtraSeccion,
+      sectionFilter: sectionFilter,
+      isCongelados: isCongelados,
+      adelanto: adelantoByCod[group.storeCod],
+      otroDia: otroDiaGroupKeys.has(group.stateKey),
+      batchValue: pickerBatch[group.stateKey] ?? '',
+      onBatchChange: raw => setPickerBatchValue(group.stateKey, raw),
+      pesoTotal: Object.fromEntries((['CH', 'CC', 'CN'] as TipoCaja[]).map(t => [t, {
+                                raw: pesoTotalRaw[`${group.stateKey}::${t}`] ?? '',
+                                guardado: pesoTotalGuardado[`${group.stateKey}::${t}`] ?? null,
+                              }])),
+      onPesoTotalChange: (t, raw) => setPesoTotalValue(group.stateKey, t, raw),
+      onNameChange: name => {
+                                setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }));
+                                upsertSessionState(group.stateKey, name, 'P');
+                                renamePickerSlots(group.stateKey, name);
+                              },
+      onTipoPalletsChange: (clave, n) => {
+                                // La interfaz cuenta por clave; la base guarda tipo y subtipo aparte.
+                                const { tipo, subtipo } = partirClave(clave);
+                                const current = cardPalletsByTipo[clave] ?? 0;
+                                const delta = n - current;
+                                const label = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
+                                // [Req 1] En la sección Chocolates el pallet ES de chocolate → forzar el
+                                // contenido (aunque las categorías del grupo digan otra cosa). El tipo (P)
+                                // no cambia; solo el contenido, que en la card de bodega se ve como "CH".
+                                // `contenido`/refs se derivan del grupo COMPLETO (fullGroupCats/fullOps) para
+                                // NO cambiar lo que Bodega/Sheets ve; la sección va aparte, en `section`.
+                                const contenido = sectionFilter === 'chocolates' ? 'chocolate'
+                                  : sectionFilter === 'congelados' || fullIsCongelados ? 'congelados'
+                                  : categoriesToContenido(fullGroupCats);
+                                // Sección a etiquetar en el pallet nuevo: la del filtro activo, o (en "Todas")
+                                // la del grupo (null si es mixto → solo suma en "Todas").
+                                const seccionSlot: string | null = seccionActiva ?? (fullIsCongelados ? 'congelados' : seccionDeGrupo(fullGroupCats));
+                                const groupRefs = fullOps.map(o => o.name).join('+');
+                                if (delta > 0) {
+                                  // Una caja nueva nace SIN peso: el total ya pesado era para las que
+                                  // había, y repartirlo entre más sería inventar. La tarjeta avisa que
+                                  // cambió la cantidad y pide volver a pesar (ver avisoCantidad).
+                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs, seccionSlot, undefined, subtipo);
+                                } else if (delta < 0) {
+                                  for (let i = 0; i < -delta; i++) void removePalletSlot(group.stateKey, tipo, seccionActiva, subtipo);
+                                }
+                              },
+      onRefreshOp: (op) => void refreshOp(op, cod),
+      onPrint: () => printGroupLabels(group),
+      refreshingId: refreshingId,
+      totalPickers: allStore.length,
+      assignedNums: nums,
+      isPrinted: printedKeys.has(group.stateKey),
+      colsPerRow: colsPerRow,
+      onPrintSelected: (slotIds) => printSelectedLabels(group.stateKey, slotIds),
+      slots: cardSlots,
+      stickerBelow: stickerBelow,
+      lastPrint: printRecordByKey.get(group.stateKey),
+      myName: profile?.full_name ?? '',
+    };
+  };
+
   // Atajos de teclado (ver marco/ayuda.ts). No actúan mientras se escribe ni con un diálogo abierto.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1785,7 +2078,8 @@ export function PickingScreen() {
           )}
 
           {/* ── Tab content: Monitoreo ── */}
-          {(rightTab === 'monitoreo' || rightTab === 'congelados') && (selectedCods.length === 0 ? (
+          {rightTab === 'monitoreo' && isDesktop && selectedCods.length > 0 && renderVistaSeco()}
+          {(rightTab === 'monitoreo' || rightTab === 'congelados') && !(rightTab === 'monitoreo' && isDesktop && selectedCods.length > 0) && (selectedCods.length === 0 ? (
             <div className="flex-1 overflow-y-auto min-h-0">
               <div className="flex flex-col items-center justify-center text-center px-8 py-12">
                 <div className="mb-4 text-slate-200"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
@@ -1938,7 +2232,7 @@ export function PickingScreen() {
                       )}
                       {/* Acciones de tienda: actualizar todo (batch, 1 solo request) + imprimir */}
                       <div className="ml-auto flex items-center gap-2 print:hidden">
-                        <button onClick={() => { const sec: SectionFilter = esTabCongelados ? 'congelados' : sectionFilter; setAddingManualCod(addingManualCod === cod ? null : cod); setManualName(''); setManualBatch(''); setManualSeccion(sec); setManualTipo(primeraUnidadPorDefecto(sec)); }}
+                        <button onClick={() => abrirFormManual(cod)}
                           className="text-[13px] font-medium px-3 py-1.5 max-lg:min-h-[40px] whitespace-nowrap rounded cursor-pointer transition-all flex items-center gap-1.5"
                           style={{ border: '1px solid var(--color-border)', color: '#64748B', background: '#fff' }}>
                           <UserPlus size={13} /> <span className="sm:hidden">Manual</span><span className="hidden sm:inline">Encargado manual</span>
@@ -1957,12 +2251,7 @@ export function PickingScreen() {
                           if (!storeLabels.length) return null;
                           const armado = armedPrintCod === cod;
                           return (
-                            <button onClick={() => {
-                              if (armedPrintTimerRef.current) clearTimeout(armedPrintTimerRef.current);
-                              if (armado) { setArmedPrintCod(null); printStoreLabels(cod); return; }
-                              setArmedPrintCod(cod);
-                              armedPrintTimerRef.current = setTimeout(() => setArmedPrintCod(null), 2500);
-                            }}
+                            <button onClick={() => tocarImprimirTienda(cod)}
                               className="text-[13px] font-bold px-3 py-1.5 max-lg:min-h-[40px] whitespace-nowrap rounded-xl cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
                               style={armado
                                 ? { background: '#D97706', color: '#fff', border: '1px solid #D97706' }
@@ -1974,84 +2263,7 @@ export function PickingScreen() {
                       </div>
                     </div>
 
-                    {addingManualCod === cod && (
-                      <div className="px-3 py-2.5 flex items-center gap-2 print:hidden" style={{ borderBottom: '1px solid var(--color-border)', background: '#fff' }}>
-                        <input
-                          type="text"
-                          autoFocus
-                          list="picking-nombres-conocidos"
-                          value={manualName}
-                          onChange={e => setManualName(e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') crearEncargadoManual(cod); if (e.key === 'Escape') setAddingManualCod(null); }}
-                          placeholder="Nombre del encargado (elige uno o escribe uno nuevo)"
-                          className="flex-1 text-[13px] px-3 py-1.5 rounded border"
-                          style={{ borderColor: 'var(--color-border)', maxWidth: 280 }}
-                        />
-                        {/* La sección solo se pregunta en "Todas". Dentro de una sección ya se sabe
-                            cuál es, así que ese espacio lo ocupa el Batch — el dato que ahí sí falta. */}
-                        {pideSeccion(sectionFilter, esTabCongelados) ? (
-                          <select
-                            value={manualSeccion}
-                            onChange={e => {
-                              const sec = e.target.value as SectionFilter;
-                              setManualSeccion(sec);
-                              // Si la unidad elegida no existe en la sección nueva, vuelve a su default.
-                              setManualTipo(t => (tiposDeUnidad(false, sec).includes(t) ? t : primeraUnidadPorDefecto(sec)));
-                            }}
-                            aria-label="Sección del encargado"
-                            className="text-[13px] px-2 py-1.5 rounded border cursor-pointer"
-                            style={{ borderColor: 'var(--color-border)', color: '#374151', background: '#fff' }}>
-                            <option value="all">Todas</option>
-                            <option value="aseo-comida">Aseo y Comida</option>
-                            <option value="hogar">Hogar</option>
-                            <option value="chocolates">Chocolates</option>
-                          </select>
-                        ) : (
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={manualBatch}
-                            onChange={e => setManualBatch(normalizarBatch(e.target.value))}
-                            onKeyDown={e => { if (e.key === 'Enter') crearEncargadoManual(cod); if (e.key === 'Escape') setAddingManualCod(null); }}
-                            placeholder="Batch (opcional)"
-                            aria-label="Número de batch"
-                            className="text-[13px] px-2 py-1.5 rounded border"
-                            style={{ borderColor: 'var(--color-border)', width: 130 }}
-                          />
-                        )}
-                        {/* Con qué unidad nace. Viene preseleccionada según la sección (Congelados →
-                            Caja Cartón, Chocolates → CH, el resto → P) y se puede cambiar. */}
-                        <div className="flex items-center gap-1" role="radiogroup" aria-label="Primera unidad del encargado">
-                          <span className="text-[11px] text-slate-400 mr-0.5">Nace con</span>
-                          {tiposDeUnidad(manualSeccion === 'congelados', manualSeccion).map(t => {
-                            const nombre = NOMBRE_UNIDAD[t] ?? t;
-                            const activo = manualTipo === t;
-                            return (
-                              <button key={t} type="button" role="radio" aria-checked={activo}
-                                onClick={() => setManualTipo(t)} title={nombre}
-                                className="text-[12px] font-bold px-2 py-1 rounded cursor-pointer transition-all border"
-                                style={{
-                                  background:  activo ? 'var(--color-info)' : '#fff',
-                                  color:       activo ? '#fff' : '#64748B',
-                                  borderColor: activo ? 'var(--color-info)' : 'var(--color-border)',
-                                }}>
-                                {t}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <button onClick={() => crearEncargadoManual(cod)} disabled={!manualName.trim()}
-                          className="text-[13px] font-bold px-3 py-1.5 rounded cursor-pointer transition-all disabled:opacity-40"
-                          style={{ background: 'rgba(37,99,235,0.1)', color: '#2563EB', border: '1px solid rgba(37,99,235,0.3)' }}>
-                          Agregar
-                        </button>
-                        <button onClick={() => setAddingManualCod(null)}
-                          className="text-[13px] font-medium px-3 py-1.5 rounded cursor-pointer transition-all"
-                          style={{ color: '#64748B', background: 'transparent', border: 'none' }}>
-                          Cancelar
-                        </button>
-                      </div>
-                    )}
+                    {renderFormManual(cod)}
 
                     <div className="px-3 pt-3 pb-4">
                     {/* Sin asignar warning */}
@@ -2078,108 +2290,9 @@ export function PickingScreen() {
                     {(() => {
                         const allStore = allGroupedByStore[cod] ?? [];
 
-                        const renderCard = (group: PickerGroup, stickerBelow = false) => {
-                          // Slots/conteos/números RECORTADOS a la sección activa (o completos en "Todas"),
-                          // para que contador, chips e impresión de la card sean independientes por sección.
-                          const seccionActiva: Seccion | null = sectionFilter === 'all' ? null : (sectionFilter as Seccion);
-                          const allCardSlots = slotsByStateKey[group.stateKey] ?? [];
-                          const cardSlots = seccionActiva == null ? allCardSlots : allCardSlots.filter(s => seccionDeSlot(s) === seccionActiva);
-                          const nums = seccionActiva == null
-                            ? (assignedNumsByStateKey[group.stateKey] ?? [])
-                            : cardSlots.map(s => palletNumsBySlotId[s.id]).filter((n): n is number => n !== undefined).sort((a, b) => a - b);
-                          const cardPalletsByTipo = seccionActiva == null
-                            ? (palletsByTipoAndStateKey[group.stateKey] ?? {})
-                            : cardSlots.reduce<Record<string, number>>((acc, s) => { const t = s.tipo || 'P'; acc[t] = (acc[t] ?? 0) + 1; return acc; }, {});
-                          // Congelados se determina por las categorías del propio grupo (no por el
-                          // filtro de página): en la vista "Todas" cada card debe mostrar SOLO Caja
-                          // Cartón/Caja Negra si es de Congelados, sin importar en qué columna cae.
-                          // Modo manual: sin operaciones de Odoo, cae a la sección real de sus pallets.
-                          const isCongelados = group.operations.length > 0
-                            ? group.operations.some(o => o.categories.includes('Congelados'))
-                            : allCardSlots.some(s => seccionDeSlot(s) === 'congelados');
-                          // Para el CONTENIDO/refs del pallet (que lee Bodega/Sheets) usamos las operaciones
-                          // del grupo COMPLETO (no las recortadas por sección), para NO cambiar lo que Bodega
-                          // ve/escribe respecto a antes. La sección va aparte, en la columna `section`.
-                          const fullOps = (allGroupedByStore[group.storeCod] ?? []).find(g => g.stateKey === group.stateKey)?.operations ?? group.operations;
-                          const fullGroupCats = categoriasDelGrupo(fullOps, allCardSlots);
-                          // Un pallet MIXTO de este picker que lleva carga de esta pestaña pero se
-                          // cuenta en otra (o en ninguna). Sin aviso, acá se ve «0» y alguien lo
-                          // arma de nuevo: dos slots para una unidad. Ver `palletEnOtraSeccion.ts`.
-                          const ajenos = seccionActiva == null ? [] : palletsDeOtraSeccion(allCardSlots, seccionActiva);
-                          const destinoAviso = destinoDelAviso(ajenos);
-                          const textoAviso = textoDelAviso(ajenos);
-                          const botonAviso = textoDelBoton(destinoAviso);
-                          const avisoOtraSeccion = textoAviso && botonAviso && destinoAviso
-                            ? { texto: textoAviso, boton: botonAviso, onIr: () => setSectionFilter(destinoAviso) }
-                            : null;
-                          const fullIsCongelados = fullOps.length > 0
-                            ? fullOps.some(o => o.categories.includes('Congelados'))
-                            : allCardSlots.some(s => seccionDeSlot(s) === 'congelados');
-                          return (
-                            <PickerGroupCard
-                              key={group.stateKey}
-                              group={group}
-                              displayName={pickerDisplayNames[group.stateKey] || getCanonicalName(group.key)}
-                              palletsByTipo={cardPalletsByTipo}
-                              avisoOtraSeccion={avisoOtraSeccion}
-                              sectionFilter={sectionFilter}
-                              isCongelados={isCongelados}
-                              adelanto={adelantoByCod[group.storeCod]}
-                              otroDia={otroDiaGroupKeys.has(group.stateKey)}
-                              batchValue={pickerBatch[group.stateKey] ?? ''}
-                              onBatchChange={raw => setPickerBatchValue(group.stateKey, raw)}
-                              pesoTotal={Object.fromEntries((['CH', 'CC', 'CN'] as TipoCaja[]).map(t => [t, {
-                                raw: pesoTotalRaw[`${group.stateKey}::${t}`] ?? '',
-                                guardado: pesoTotalGuardado[`${group.stateKey}::${t}`] ?? null,
-                              }]))}
-                              onPesoTotalChange={(t, raw) => setPesoTotalValue(group.stateKey, t, raw)}
-                              onNameChange={name => {
-                                setPickerDisplayNames(prev => ({ ...prev, [group.stateKey]: name }));
-                                upsertSessionState(group.stateKey, name, 'P');
-                                renamePickerSlots(group.stateKey, name);
-                              }}
-                              onTipoPalletsChange={(clave, n) => {
-                                // La interfaz cuenta por clave; la base guarda tipo y subtipo aparte.
-                                const { tipo, subtipo } = partirClave(clave);
-                                const current = cardPalletsByTipo[clave] ?? 0;
-                                const delta = n - current;
-                                const label = pickerDisplayNames[group.stateKey] || getCanonicalName(group.key) || group.key;
-                                // [Req 1] En la sección Chocolates el pallet ES de chocolate → forzar el
-                                // contenido (aunque las categorías del grupo digan otra cosa). El tipo (P)
-                                // no cambia; solo el contenido, que en la card de bodega se ve como "CH".
-                                // `contenido`/refs se derivan del grupo COMPLETO (fullGroupCats/fullOps) para
-                                // NO cambiar lo que Bodega/Sheets ve; la sección va aparte, en `section`.
-                                const contenido = sectionFilter === 'chocolates' ? 'chocolate'
-                                  : sectionFilter === 'congelados' || fullIsCongelados ? 'congelados'
-                                  : categoriesToContenido(fullGroupCats);
-                                // Sección a etiquetar en el pallet nuevo: la del filtro activo, o (en "Todas")
-                                // la del grupo (null si es mixto → solo suma en "Todas").
-                                const seccionSlot: string | null = seccionActiva ?? (fullIsCongelados ? 'congelados' : seccionDeGrupo(fullGroupCats));
-                                const groupRefs = fullOps.map(o => o.name).join('+');
-                                if (delta > 0) {
-                                  // Una caja nueva nace SIN peso: el total ya pesado era para las que
-                                  // había, y repartirlo entre más sería inventar. La tarjeta avisa que
-                                  // cambió la cantidad y pide volver a pesar (ver avisoCantidad).
-                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs, seccionSlot, undefined, subtipo);
-                                } else if (delta < 0) {
-                                  for (let i = 0; i < -delta; i++) void removePalletSlot(group.stateKey, tipo, seccionActiva, subtipo);
-                                }
-                              }}
-                              onRefreshOp={(op) => void refreshOp(op, cod)}
-                              onPrint={() => printGroupLabels(group)}
-                              refreshingId={refreshingId}
-                              totalPickers={allStore.length}
-                              assignedNums={nums}
-                              isPrinted={printedKeys.has(group.stateKey)}
-                              colsPerRow={colsPerRow}
-                              onPrintSelected={(slotIds) => printSelectedLabels(group.stateKey, slotIds)}
-                              slots={cardSlots}
-                              stickerBelow={stickerBelow}
-                              lastPrint={printRecordByKey.get(group.stateKey)}
-                              myName={profile?.full_name ?? ''}
-                            />
-                          );
-                        };
+                        const renderCard = (group: PickerGroup, stickerBelow = false) => (
+                          <PickerGroupCard key={group.stateKey} {...propsDeTarjeta(group, cod, allStore, stickerBelow)} />
+                        );
 
                         // Filtro activo (Hogar / Aseo y Comida), o la pestaña Congelados: render plano.
                         // Congelados no tiene secciones — antes caía en la grilla de Seco y mostraba
