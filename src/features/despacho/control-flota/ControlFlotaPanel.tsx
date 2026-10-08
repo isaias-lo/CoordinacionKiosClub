@@ -5,6 +5,9 @@ import { Truck, Users, Plus, Trash2, Save, X, AlertCircle, Edit2 } from 'lucide-
 import { useAnchoVentana } from '../rutas/utils/useIsMobile';
 import { columnasCatalogo, columnasCampos } from '../rutas/utils/gridPersonal';
 import { fechaChile } from '@/lib/fechaChile';
+import {
+  TarjetaA, CabeceraA, CampoA, BotonA, BotonIconoA, INPUT_A, ENCABEZADO_TABLA_A,
+} from '../rutas/components/ControlesA';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Pioneta { id: string; nombre: string; telefono?: string; empresa?: string; }
@@ -64,22 +67,49 @@ function timeAgo(iso: string): string {
   return `hace ${Math.floor(h / 24)}d`;
 }
 
-// ── Sub-component: Gestionar Pionetas ─────────────────────────────────────────
 function syncPersonal() {
   fetch('/api/personal/export-sheets', { method: 'POST' }).catch(() => {});
 }
 
-function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRefresh: () => void }) {
-  // Este panel era 100% inline-style sin un solo breakpoint, a diferencia del resto del Enrutador.
-  // El porqué del `minmax(0,…)` está en `gridPersonal.ts`.
-  const gridCampos = columnasCampos(useAnchoVentana());
+// ── Catálogos de personas: Conductores y Pionetas ─────────────────────────────
+// Eran dos componentes copiados línea por línea (GestionarConductores y GestionarPionetas) que
+// solo cambiaban la ruta de la API, los textos y el color. Ahora es uno solo con su configuración:
+// la lógica de agregar, editar y borrar vive en `useCatalogo`, y el dibujo clásico y el de la
+// vista nueva leen el mismo estado.
+type Persona = Pioneta | Conductor;
+
+interface ConfigCatalogo {
+  endpoint:   '/api/conductores' | '/api/pionetas';
+  titulo:     string;
+  tituloA:    string;
+  singular:   string;
+  vacio:      string;
+  confirmar:  (nombre: string) => string;
+  Icono:      typeof Users;
+  gradiente:  string;
+  /** Color del botón «Agregar …» de la vista clásica (así estaba). */
+  botonAgregar: 'azul' | 'verde';
+}
+
+const CATALOGO_CONDUCTORES: ConfigCatalogo = {
+  endpoint: '/api/conductores', titulo: 'Catálogo de Conductores', tituloA: 'Conductores', singular: 'Conductor',
+  vacio: 'Sin conductores en el catálogo', confirmar: n => `¿Eliminar a "${n}" del catálogo de conductores?`,
+  Icono: Truck, gradiente: 'linear-gradient(135deg,#064E3B,#065F46)', botonAgregar: 'verde',
+};
+const CATALOGO_PIONETAS: ConfigCatalogo = {
+  endpoint: '/api/pionetas', titulo: 'Catálogo de Pionetas', tituloA: 'Pionetas', singular: 'Pioneta',
+  vacio: 'Sin pionetas en el catálogo', confirmar: n => `¿Eliminar a "${n}" del catálogo?`,
+  Icono: Users, gradiente: 'linear-gradient(135deg,#1B2A6B,#2D3F8C)', botonAgregar: 'azul',
+};
+
+function useCatalogo(cfg: ConfigCatalogo, onRefresh: () => void) {
   const [nombre,   setNombre]   = useState('');
   const [telefono, setTelefono] = useState('');
   const [empresa,  setEmpresa]  = useState('');
   const [adding,   setAdding]   = useState(false);
   const [error,    setError]    = useState('');
   const [showAddForm,  setShowAddForm]  = useState(false);
-  const [editingId,    setEditingId]    = useState<string | null>(null);
+  const [editingId,    setEditingId]    = useState<Persona['id'] | null>(null);
   const [editNombre,   setEditNombre]   = useState('');
   const [editTelefono, setEditTelefono] = useState('');
   const [editEmpresa,  setEditEmpresa]  = useState('');
@@ -89,7 +119,7 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
     if (!nombre.trim()) { setError('El nombre es obligatorio'); return; }
     setAdding(true); setError('');
     try {
-      const res = await fetch('/api/pionetas', {
+      const res = await fetch(cfg.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nombre: nombre.trim(), telefono: telefono.trim() || undefined, empresa: empresa.trim() || undefined }),
@@ -104,13 +134,13 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
     } finally { setAdding(false); }
   }
 
-  async function handleDelete(id: string, nombre: string) {
-    if (!confirm(`¿Eliminar a "${nombre}" del catálogo?`)) return;
-    await fetch(`/api/pionetas?id=${id}`, { method: 'DELETE' });
+  async function handleDelete(id: Persona['id'], nombre: string) {
+    if (!confirm(cfg.confirmar(nombre))) return;
+    await fetch(`${cfg.endpoint}?id=${id}`, { method: 'DELETE' });
     onRefresh(); syncPersonal();
   }
 
-  function startEdit(p: Pioneta) {
+  function startEdit(p: Persona) {
     setEditingId(p.id);
     setEditNombre(p.nombre);
     setEditTelefono(p.telefono ?? '');
@@ -122,11 +152,11 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
     setEditNombre(''); setEditTelefono(''); setEditEmpresa('');
   }
 
-  async function handleSaveEdit(id: string) {
+  async function handleSaveEdit(id: Persona['id']) {
     if (!editNombre.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/pionetas', {
+      const res = await fetch(cfg.endpoint, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, nombre: editNombre.trim(), telefono: editTelefono || null, empresa: editEmpresa || null }),
@@ -140,47 +170,124 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
     } finally { setSaving(false); }
   }
 
+  return {
+    nombre, setNombre, telefono, setTelefono, empresa, setEmpresa, adding, error, setError, showAddForm, setShowAddForm,
+    editingId, editNombre, setEditNombre, editTelefono, setEditTelefono, editEmpresa, setEditEmpresa, saving,
+    handleAdd, handleDelete, startEdit, cancelEdit, handleSaveEdit,
+  };
+}
+
+// Columnas nombre / teléfono / empresa en la vista nueva: el nombre más ancho, y apiladas en
+// teléfonos. El porqué del `minmax(0,…)` está en `gridPersonal.ts`.
+const CAMPOS_PERSONA_A = 'grid gap-2.5 grid-cols-1 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)]';
+
+function CatalogoPersonas({ cfg, personas, onRefresh, vistaA = false }: {
+  cfg: ConfigCatalogo; personas: Persona[]; onRefresh: () => void; vistaA?: boolean;
+}) {
+  const gridCampos = columnasCampos(useAnchoVentana());
+  const c = useCatalogo(cfg, onRefresh);
+  const { Icono } = cfg;
+
+  if (vistaA) {
+    return (
+      <TarjetaA className="overflow-hidden flex-shrink-0 min-w-0">
+        <CabeceraA titulo={cfg.tituloA} detalle={`${personas.length} en el catálogo`}>
+          <BotonA variante={c.showAddForm ? 'secundario' : 'primario'} aria-expanded={c.showAddForm}
+            onClick={() => { c.setShowAddForm(v => !v); c.setError(''); }}>
+            {c.showAddForm ? <><X size={15} /> Cancelar</> : <><Plus size={15} /> Agregar</>}
+          </BotonA>
+        </CabeceraA>
+        {c.showAddForm && (
+          <form className="px-4 py-3.5 border-b border-black/[0.07] bg-[#FAFBFC] flex flex-col gap-3"
+            onSubmit={e => { e.preventDefault(); void c.handleAdd(); }}>
+            <div className={CAMPOS_PERSONA_A}>
+              <CampoA etiqueta="Nombre"><input value={c.nombre} onChange={e => c.setNombre(e.target.value)} autoFocus className={INPUT_A} /></CampoA>
+              <CampoA etiqueta="Teléfono"><input type="tel" value={c.telefono} onChange={e => c.setTelefono(e.target.value)} placeholder="Opcional" className={INPUT_A} /></CampoA>
+              <CampoA etiqueta="Empresa"><input value={c.empresa} onChange={e => c.setEmpresa(e.target.value)} placeholder="Opcional" className={INPUT_A} /></CampoA>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <BotonA type="submit" variante="primario" disabled={c.adding || !c.nombre.trim()}>
+                {c.adding ? 'Agregando…' : `Agregar ${cfg.singular.toLowerCase()}`}
+              </BotonA>
+              {c.error && <span role="alert" className="text-apoyo font-semibold" style={{ color: '#B42318' }}>{c.error}</span>}
+            </div>
+          </form>
+        )}
+        {personas.length === 0 && (
+          <p className="px-4 py-6 text-center text-apoyo text-kmuted">Todavía no hay {cfg.tituloA.toLowerCase()}. Agrega el primero con «Agregar».</p>
+        )}
+        {personas.map(p => c.editingId === p.id ? (
+          <form key={p.id} className="px-4 py-3 border-b border-black/[0.05] bg-[#FAFBFC] flex flex-col gap-2.5 last:border-b-0"
+            onSubmit={e => { e.preventDefault(); void c.handleSaveEdit(p.id); }}>
+            <div className={CAMPOS_PERSONA_A}>
+              <input value={c.editNombre} onChange={e => c.setEditNombre(e.target.value)} aria-label="Nombre" autoFocus className={INPUT_A} />
+              <input type="tel" value={c.editTelefono} onChange={e => c.setEditTelefono(e.target.value)} aria-label="Teléfono" placeholder="Teléfono" className={INPUT_A} />
+              <input value={c.editEmpresa} onChange={e => c.setEditEmpresa(e.target.value)} aria-label="Empresa" placeholder="Empresa" className={INPUT_A} />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <BotonA variante="suave" onClick={c.cancelEdit}>Cancelar</BotonA>
+              <BotonA type="submit" variante="primario" disabled={c.saving || !c.editNombre.trim()}>
+                <Save size={14} /> {c.saving ? 'Guardando…' : 'Guardar'}
+              </BotonA>
+            </div>
+          </form>
+        ) : (
+          <div key={p.id} className="px-4 py-2.5 border-b border-black/[0.05] last:border-b-0 flex items-center gap-2 min-h-[56px]">
+            <span className="flex-1 min-w-0 flex flex-col">
+              <span className="text-apoyo font-bold text-ktext truncate">{p.nombre}</span>
+              {(p.telefono || p.empresa) && (
+                <span className="text-rotulo tracking-normal text-kmuted truncate">{[p.telefono, p.empresa].filter(Boolean).join(' · ')}</span>
+              )}
+            </span>
+            <BotonIconoA aria-label={`Editar ${p.nombre}`} onClick={() => c.startEdit(p)}><Edit2 size={15} /></BotonIconoA>
+            <BotonIconoA aria-label={`Borrar ${p.nombre}`} peligro onClick={() => void c.handleDelete(p.id, p.nombre)}><Trash2 size={15} /></BotonIconoA>
+          </div>
+        ))}
+      </TarjetaA>
+    );
+  }
+
   return (
     <div style={{ background: 'white', borderRadius: 16, border: '1px solid rgba(0,0,0,0.09)', overflow: 'hidden', marginBottom: 20, boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
-      <div style={{ background: 'linear-gradient(135deg,#1B2A6B,#2D3F8C)', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <Users size={18} color="rgba(255,255,255,0.8)" />
+      <div style={{ background: cfg.gradiente, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Icono size={18} color="rgba(255,255,255,0.8)" />
         <span style={{ fontFamily: 'var(--font-barlow-condensed, sans-serif)', fontSize: 15, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-          Catálogo de Pionetas
+          {cfg.titulo}
         </span>
         <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.15)', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 700, color: '#fff' }}>
-          {pionetas.length}
+          {personas.length}
         </span>
         <button
-          onClick={() => { setShowAddForm(v => !v); setError(''); }}
-          style={{ background: showAddForm ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-          {showAddForm ? <X size={12} /> : <Plus size={12} />}
-          {showAddForm ? 'Cancelar' : 'Agregar'}
+          onClick={() => { c.setShowAddForm(v => !v); c.setError(''); }}
+          style={{ background: c.showAddForm ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+          {c.showAddForm ? <X size={12} /> : <Plus size={12} />}
+          {c.showAddForm ? 'Cancelar' : 'Agregar'}
         </button>
       </div>
 
       {/* List */}
       <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 260, overflowY: 'auto' }}>
-        {pionetas.length === 0 && (
+        {personas.length === 0 && (
           <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 13, padding: '16px 0' }}>
-            Sin pionetas en el catálogo
+            {cfg.vacio}
           </div>
         )}
-        {pionetas.map(p => (
+        {personas.map(p => (
           <div key={p.id}>
-            {editingId === p.id ? (
+            {c.editingId === p.id ? (
               <div style={{ background: '#F3F4F6', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: gridCampos, gap: 8 }}>
-                  <input value={editNombre}   onChange={e => setEditNombre(e.target.value)}   placeholder="Nombre *"  style={inputStyle} />
-                  <input value={editTelefono} onChange={e => setEditTelefono(e.target.value)} placeholder="Teléfono"  style={inputStyle} />
-                  <input value={editEmpresa}  onChange={e => setEditEmpresa(e.target.value)}  placeholder="Empresa"   style={inputStyle} />
+                  <input value={c.editNombre}   onChange={e => c.setEditNombre(e.target.value)}   placeholder="Nombre *"  style={inputStyle} />
+                  <input value={c.editTelefono} onChange={e => c.setEditTelefono(e.target.value)} placeholder="Teléfono"  style={inputStyle} />
+                  <input value={c.editEmpresa}  onChange={e => c.setEditEmpresa(e.target.value)}  placeholder="Empresa"   style={inputStyle} />
                 </div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button onClick={cancelEdit} style={{ ...btnGray, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <button onClick={c.cancelEdit} style={{ ...btnGray, display: 'flex', alignItems: 'center', gap: 5 }}>
                     <X size={12} /> Cancelar
                   </button>
-                  <button onClick={() => void handleSaveEdit(p.id)} disabled={saving || !editNombre.trim()}
-                    style={{ ...btnSuccess, opacity: saving || !editNombre.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <Save size={12} /> {saving ? 'Guardando…' : 'Guardar'}
+                  <button onClick={() => void c.handleSaveEdit(p.id)} disabled={c.saving || !c.editNombre.trim()}
+                    style={{ ...btnSuccess, opacity: c.saving || !c.editNombre.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <Save size={12} /> {c.saving ? 'Guardando…' : 'Guardar'}
                   </button>
                 </div>
               </div>
@@ -195,12 +302,12 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
                   )}
                 </div>
                 <button
-                  onClick={() => startEdit(p)}
+                  onClick={() => c.startEdit(p)}
                   style={{ background: 'rgba(59,130,246,0.15)', border: 'none', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', color: '#60A5FA', display: 'flex', alignItems: 'center' }}>
                   <Edit2 size={14} />
                 </button>
                 <button
-                  onClick={() => void handleDelete(p.id, p.nombre)}
+                  onClick={() => void c.handleDelete(p.id, p.nombre)}
                   style={{ background: 'rgba(239,68,68,0.15)', border: 'none', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', color: '#F87171', display: 'flex', alignItems: 'center' }}>
                   <Trash2 size={14} />
                 </button>
@@ -211,192 +318,25 @@ function GestionarPionetas({ pionetas, onRefresh }: { pionetas: Pioneta[]; onRef
       </div>
 
       {/* Add form - collapsible */}
-      {showAddForm && (
+      {c.showAddForm && (
         <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'grid', gridTemplateColumns: gridCampos, gap: 8 }}>
             <input
-              value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre *"
-              style={inputStyle} onKeyDown={e => e.key === 'Enter' && void handleAdd()} autoFocus />
+              value={c.nombre} onChange={e => c.setNombre(e.target.value)} placeholder="Nombre *"
+              style={inputStyle} onKeyDown={e => e.key === 'Enter' && void c.handleAdd()} autoFocus />
             <input
-              value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Teléfono"
+              value={c.telefono} onChange={e => c.setTelefono(e.target.value)} placeholder="Teléfono"
               style={inputStyle} />
             <input
-              value={empresa} onChange={e => setEmpresa(e.target.value)} placeholder="Empresa"
+              value={c.empresa} onChange={e => c.setEmpresa(e.target.value)} placeholder="Empresa"
               style={inputStyle} />
           </div>
-          {error && <div style={{ fontSize: 12, color: '#F87171' }}>{error}</div>}
+          {c.error && <div style={{ fontSize: 12, color: '#F87171' }}>{c.error}</div>}
           <button
-            onClick={() => void handleAdd()} disabled={adding || !nombre.trim()}
-            style={{ ...btnPrimary, opacity: adding || !nombre.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+            onClick={() => void c.handleAdd()} disabled={c.adding || !c.nombre.trim()}
+            style={{ ...(cfg.botonAgregar === 'verde' ? btnSuccess : btnPrimary), opacity: c.adding || !c.nombre.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
             <Plus size={14} />
-            {adding ? 'Agregando…' : 'Agregar Pioneta'}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Sub-component: Gestionar Conductores ──────────────────────────────────────
-function GestionarConductores({ conductores, onRefresh }: { conductores: Conductor[]; onRefresh: () => void }) {
-  const gridCampos = columnasCampos(useAnchoVentana());
-  const [nombre,    setNombre]    = useState('');
-  const [telefono,  setTelefono]  = useState('');
-  const [empresa,   setEmpresa]   = useState('');
-  const [adding,    setAdding]    = useState(false);
-  const [error,     setError]     = useState('');
-  const [showAddForm,  setShowAddForm]  = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editNombre,   setEditNombre]   = useState('');
-  const [editTelefono, setEditTelefono] = useState('');
-  const [editEmpresa,  setEditEmpresa]  = useState('');
-  const [saving,    setSaving]    = useState(false);
-
-  async function handleAdd() {
-    if (!nombre.trim()) { setError('El nombre es obligatorio'); return; }
-    setAdding(true); setError('');
-    try {
-      const res = await fetch('/api/conductores', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nombre: nombre.trim(), telefono: telefono.trim() || undefined, empresa: empresa.trim() || undefined }),
-      });
-      const json = await res.json() as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? 'Error al agregar');
-      setNombre(''); setTelefono(''); setEmpresa('');
-      setShowAddForm(false);
-      onRefresh(); syncPersonal();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error');
-    } finally { setAdding(false); }
-  }
-
-  async function handleDelete(id: number, nombre: string) {
-    if (!confirm(`¿Eliminar a "${nombre}" del catálogo de conductores?`)) return;
-    await fetch(`/api/conductores?id=${id}`, { method: 'DELETE' });
-    onRefresh(); syncPersonal();
-  }
-
-  function startEdit(c: Conductor) {
-    setEditingId(c.id);
-    setEditNombre(c.nombre);
-    setEditTelefono(c.telefono ?? '');
-    setEditEmpresa(c.empresa ?? '');
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
-    setEditNombre(''); setEditTelefono(''); setEditEmpresa('');
-  }
-
-  async function handleSaveEdit(id: number) {
-    if (!editNombre.trim()) return;
-    setSaving(true);
-    try {
-      const res = await fetch('/api/conductores', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, nombre: editNombre.trim(), telefono: editTelefono || null, empresa: editEmpresa || null }),
-      });
-      const json = await res.json() as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? 'Error al guardar');
-      cancelEdit();
-      onRefresh(); syncPersonal();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error al guardar');
-    } finally { setSaving(false); }
-  }
-
-  return (
-    <div style={{ background: 'white', borderRadius: 16, border: '1px solid rgba(0,0,0,0.09)', overflow: 'hidden', marginBottom: 20, boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
-      <div style={{ background: 'linear-gradient(135deg,#064E3B,#065F46)', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <Truck size={18} color="rgba(255,255,255,0.8)" />
-        <span style={{ fontFamily: 'var(--font-barlow-condensed, sans-serif)', fontSize: 15, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-          Catálogo de Conductores
-        </span>
-        <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.15)', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 700, color: '#fff' }}>
-          {conductores.length}
-        </span>
-        <button
-          onClick={() => { setShowAddForm(v => !v); setError(''); }}
-          style={{ background: showAddForm ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-          {showAddForm ? <X size={12} /> : <Plus size={12} />}
-          {showAddForm ? 'Cancelar' : 'Agregar'}
-        </button>
-      </div>
-
-      {/* List */}
-      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 260, overflowY: 'auto' }}>
-        {conductores.length === 0 && (
-          <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 13, padding: '16px 0' }}>
-            Sin conductores en el catálogo
-          </div>
-        )}
-        {conductores.map(c => (
-          <div key={c.id}>
-            {editingId === c.id ? (
-              <div style={{ background: '#F3F4F6', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: gridCampos, gap: 8 }}>
-                  <input value={editNombre} onChange={e => setEditNombre(e.target.value)} placeholder="Nombre *" style={inputStyle} />
-                  <input value={editTelefono} onChange={e => setEditTelefono(e.target.value)} placeholder="Teléfono" style={inputStyle} />
-                  <input value={editEmpresa} onChange={e => setEditEmpresa(e.target.value)} placeholder="Empresa" style={inputStyle} />
-                </div>
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button onClick={cancelEdit} style={{ ...btnGray, display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <X size={12} /> Cancelar
-                  </button>
-                  <button onClick={() => void handleSaveEdit(c.id)} disabled={saving || !editNombre.trim()}
-                    style={{ ...btnSuccess, opacity: saving || !editNombre.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <Save size={12} /> {saving ? 'Guardando…' : 'Guardar'}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F9FAFB', borderRadius: 10, padding: '8px 12px', border: '1px solid rgba(0,0,0,0.06)' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>{c.nombre}</div>
-                  {(c.telefono || c.empresa) && (
-                    <div style={{ fontSize: 11, color: '#6B7280', marginTop: 1 }}>
-                      {[c.telefono, c.empresa].filter(Boolean).join(' · ')}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => startEdit(c)}
-                  style={{ background: 'rgba(59,130,246,0.15)', border: 'none', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', color: '#60A5FA', display: 'flex', alignItems: 'center' }}>
-                  <Edit2 size={14} />
-                </button>
-                <button
-                  onClick={() => void handleDelete(c.id, c.nombre)}
-                  style={{ background: 'rgba(239,68,68,0.15)', border: 'none', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', color: '#F87171', display: 'flex', alignItems: 'center' }}>
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Add form - collapsible */}
-      {showAddForm && (
-        <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: gridCampos, gap: 8 }}>
-            <input
-              value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre *"
-              style={inputStyle} onKeyDown={e => e.key === 'Enter' && handleAdd()} autoFocus />
-            <input
-              value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Teléfono"
-              style={inputStyle} />
-            <input
-              value={empresa} onChange={e => setEmpresa(e.target.value)} placeholder="Empresa"
-              style={inputStyle} />
-          </div>
-          {error && <div style={{ fontSize: 12, color: '#F87171' }}>{error}</div>}
-          <button
-            onClick={handleAdd} disabled={adding || !nombre.trim()}
-            style={{ ...btnSuccess, opacity: adding || !nombre.trim() ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-            <Plus size={14} />
-            {adding ? 'Agregando…' : 'Agregar Conductor'}
+            {c.adding ? 'Agregando…' : `Agregar ${cfg.singular}`}
           </button>
         </div>
       )}
@@ -782,7 +722,7 @@ export function ControlFlotaPanel({ onResumen, vistaA = false }: {
           <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} aria-label="Fecha"
             className="h-9 rounded-[8px] border border-black/[0.12] px-2.5 text-apoyo text-ktext" />
         </div>
-        <div className={`hidden md:grid ${COLS_TABLA} gap-3 px-4 py-3 text-rotulo font-bold text-black/60 bg-[#F7F8FA] border-b border-black/[0.07]`}>
+        <div className={`hidden md:grid ${COLS_TABLA} gap-3 px-4 py-3 ${ENCABEZADO_TABLA_A}`}>
           <span>CAMIÓN</span><span>RUTA</span><span>CONDUCTOR</span><span>PIONETA 1</span><span>PIONETA 2</span><span>LISTO</span>
         </div>
         {loading ? (
@@ -879,7 +819,10 @@ export function ControlFlotaPanel({ onResumen, vistaA = false }: {
 }
 
 // ── Catálogo de Personal (conductores + pionetas) ─────────────────────────────
-export function PersonalCatalogPanel() {
+export function PersonalCatalogPanel({ vistaA = false }: {
+  /** [Vista nueva del Enrutador] Los dos catálogos como tarjetas del diseño A. Mismo guardado. */
+  vistaA?: boolean;
+} = {}) {
   // Los dos catálogos lado a lado necesitan más ancho del que tiene una tablet en vertical.
   const gridCatalogo = columnasCatalogo(useAnchoVentana());
   const [pionetas,    setPionetas]    = useState<Pioneta[]>([]);
@@ -901,9 +844,19 @@ export function PersonalCatalogPanel() {
   useEffect(() => { loadConductores(); }, [loadConductores]);
 
   return (
+    vistaA ? (
+      <div className="flex flex-col gap-3">
+        <div className="grid gap-4 items-start" style={{ gridTemplateColumns: gridCatalogo }}>
+          <CatalogoPersonas vistaA cfg={CATALOGO_CONDUCTORES} personas={conductores} onRefresh={loadConductores} />
+          <CatalogoPersonas vistaA cfg={CATALOGO_PIONETAS}    personas={pionetas}    onRefresh={loadPionetas}    />
+        </div>
+        <p className="px-1 text-apoyo text-kmuted">Estos nombres son los que se eligen en «Quién maneja». Un nombre que falta se agrega acá una vez y queda para siempre.</p>
+      </div>
+    ) : (
     <div style={{ background: 'white', padding: '16px', display: 'grid', gridTemplateColumns: gridCatalogo, gap: 16, alignItems: 'start' }}>
-      <GestionarConductores conductores={conductores} onRefresh={loadConductores} />
-      <GestionarPionetas    pionetas={pionetas}       onRefresh={loadPionetas}    />
+      <CatalogoPersonas cfg={CATALOGO_CONDUCTORES} personas={conductores} onRefresh={loadConductores} />
+      <CatalogoPersonas cfg={CATALOGO_PIONETAS}    personas={pionetas}    onRefresh={loadPionetas}    />
     </div>
+    )
   );
 }

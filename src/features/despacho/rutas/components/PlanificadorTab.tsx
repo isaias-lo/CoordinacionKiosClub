@@ -27,7 +27,7 @@ const VELOCIDAD_PLAN_KMH = 22;
 import { cargarGMaps } from '../utils/maps';
 import { tipoTienda, grupoTienda, type TipoTiendaKey } from '../utils/tipoTienda';
 import AddressAutocomplete from './AddressAutocomplete';
-import { SegmentadoA, ChipA, RotuloA, TarjetaA, ACENTO_PLAN } from './PlanControlesA';
+import { SegmentadoA, ChipA, RotuloA, TarjetaA, ACENTO_PLAN } from './ControlesA';
 import {
   normalizarFavoritas, crearFavorita, agregarFavorita, quitarFavorita, paradasDesdeFavorita, resumenFavorita,
   FECHA_FAVORITAS, LS_FAVORITAS, NOMBRE_FAVORITA_MAX, type RutaFavorita,
