@@ -76,6 +76,7 @@ import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { tipoTienda } from '@/features/despacho/rutas/utils/tipoTienda';
 import { avisoOdoo, motivoOdoo } from './avisoOdoo';
 import { textoSinConexion } from './avisoSinConexion';
+import { ocultarSinAsignar } from './sinAsignar';
 import { usaSelectorDeTiendas } from './selectorTiendas';
 
 
@@ -1823,7 +1824,11 @@ export function PickingScreen() {
                   <div className="text-[14px] font-semibold text-text-2">
                     {filteredGroups.length === 0
                       ? 'Sin operaciones de Abastecimiento hoy'
-                      : `${filteredGroups.length} picker${filteredGroups.length !== 1 ? 's' : ''} · ${selectedCods.length} tienda${selectedCods.length !== 1 ? 's' : ''}`}
+                      : (() => {
+                          // «Sin asignar» no es un encargado: no se cuenta (su aviso va en cada tienda).
+                          const n = filteredGroups.filter(g => !ocultarSinAsignar(g, slotsByStateKey[g.stateKey])).length;
+                          return `${n} encargado${n !== 1 ? 's' : ''} · ${selectedCods.length} tienda${selectedCods.length !== 1 ? 's' : ''}`;
+                        })()}
                   </div>
                   {otroDiaCount > 0 && (
                     <div className="text-[11px] text-amber-600 font-medium mt-0.5">
@@ -1852,7 +1857,7 @@ export function PickingScreen() {
               </datalist>
 
               {selectedCods.map(cod => {
-                const storeGroups = groupedByStore[cod] ?? [];
+                const storeGroups = (groupedByStore[cod] ?? []).filter(g => !ocultarSinAsignar(g, slotsByStateKey[g.stateKey]));
                 const isLoading   = loadingCods.includes(cod);
                 const ops         = opsMap[cod] ?? [];
                 // Solo pickeables (assigned/partially_available/done): un 'confirmed'/'waiting'
@@ -2210,6 +2215,18 @@ export function PickingScreen() {
 
                         return (
                           <div className="space-y-4">
+                            {/* Mixto (dos secciones en el mismo encargado, típicamente Comida + Aseo)
+                                — ancho completo ARRIBA. Abajo de las cuatro columnas quedaba fuera de
+                                la vista, y desde que Comida y Aseo se separaron es un caso frecuente. */}
+                            {mixtoGroups.length > 0 && (
+                              <div>
+                                {renderSectionHeader('mixto', mixtoTotal)}
+                                <div className="space-y-3">
+                                  {mixtoGroups.map(g => renderCard(g))}
+                                </div>
+                              </div>
+                            )}
+
                             {/* Grid de 4 columnas fijas — todas siempre visibles. En pantallas
                                 medianas van de a dos para que la tarjeta no quede ilegible. */}
                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start">
@@ -2240,15 +2257,6 @@ export function PickingScreen() {
                               })}
                             </div>
 
-                            {/* Mixto (Hogar + Aseo en el mismo picker) — ancho completo abajo */}
-                            {mixtoGroups.length > 0 && (
-                              <div>
-                                {renderSectionHeader('mixto', mixtoTotal)}
-                                <div className="space-y-3">
-                                  {mixtoGroups.map(g => renderCard(g))}
-                                </div>
-                              </div>
-                            )}
                           </div>
                         );
                       })()}
