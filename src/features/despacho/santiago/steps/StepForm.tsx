@@ -37,7 +37,7 @@ import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTi
 import { useAvisoNuevasTrasTerminar } from '../../shared/avisoNuevasTrasTerminar';
 import { avisoAntesDeRegistrar, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
 import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, type OpcionAgregar } from '../../shared/TiendaAbierta';
-import { confirmarCambioGuardado, confirmarEliminarVarios } from '../../shared/confirmarGuardado';
+import { confirmarCambioGuardado, confirmarEliminarVarios, confirmarQuitarSinGuardar } from '../../shared/confirmarGuardado';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { mismaCargaEscrita } from '../../shared/adoptarItemRemoto';
 import { buscarPallet } from '../../shared/buscarPallet';
@@ -80,13 +80,13 @@ import { combinarEnLista } from '../../shared/combinarEnLista';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
 import { levantarLapidasDeSlotsVivos } from '../../shared/lapidasBorrado';
-import { actualizarSlotPicking, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
+import { actualizarSlotPicking, camposDePeso, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
 import { sincronizarYCruzar } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
-import { pesoEnTarjeta, pesoNetoPallet, taraEnTarjeta, taraParaGuardar, textoPesoConTara } from '../../shared/pesoDelPallet';
+import { pesoEnTarjeta, pesoNetoDeTarjeta, pesoNetoPallet, taraDeTarjeta, taraEnTarjeta, taraParaGuardar, textoPesoConTara } from '../../shared/pesoDelPallet';
 import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
 import { itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
 import { avisoDeUnidad, avisoEnTerminada } from '../../shared/avisoUnidadEscaneada';
@@ -98,6 +98,8 @@ import { fechaChile } from '@/lib/fechaChile';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
 import { esAgregado, etiquetaAgregado, etiquetaDeUnidad } from '@/features/despacho/shared/adquisicion';
+import { avisoNoRegistrado } from '../../shared/escribirPlanilla';
+import { AVISO_ERROR } from '../../shared/colorAviso';
 
 /* ── Calendar localStorage ── */
 const todayKey = fechaChile();
@@ -406,8 +408,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       showToast(avisoCruce ?? `OK ${cod} registrada`, avisoCruce ? '#D97706' : '#16A34A');
       return true;
     } catch (e) {
+      // `sheets*Write` rechaza si la planilla no se escribió; antes nunca rechazaba y este
+      // catch no corría jamás: la tienda quedaba «registrada» sin estar en la hoja.
       console.error('[registrar-tienda]', e);
-      showToast('No se pudo registrar la tienda - reintenta', '#D32F2F');
+      showToast(avisoNoRegistrado(e), AVISO_ERROR);
       return false;
     }
   };
@@ -467,7 +471,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
 
   /* Combine items (drag-to-merge) — form view */
   const [showCalManual,   setShowCalManual]   = useState(false);
-  const [combineModal,    setCombineModal]     = useState<{ srcIdx: number; tgtIdx: number; cod?: string } | null>(null);
+  // Con los ids además de las posiciones, igual que Nacional: si otro equipo corre la lista con el
+  // modal abierto, por posición se unían (y borraban) otras unidades.
+  const [combineModal,    setCombineModal]     = useState<{ srcIdx: number; tgtIdx: number; cod?: string; srcId?: string; tgtId?: string } | null>(null);
   const [formMergeState, setFormMergeState] = useState<{ sourceId: string; targetId: string | null } | null>(null);
 
   /* [Sumar en masa] Selección múltiple de cards Bulto/Chocolate guardadas. El pallet destino se
@@ -1336,19 +1342,32 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const handleSantiagoCombineConfirm = (peso: number, alto: number, cod?: string) => {
     const tiendaCod = cod ?? currentTienda?.cod;
     if (!combineModal || !tiendaCod) return;
-    const { srcIdx, tgtIdx } = combineModal;
     const allItems = items[tiendaCod] || [];
+    const srcIdx = posicionDeUnidad(allItems, combineModal.srcId, combineModal.srcIdx);
+    const tgtIdx = posicionDeUnidad(allItems, combineModal.tgtId, combineModal.tgtIdx);
     const src = allItems[srcIdx];
     const tgt = allItems[tgtIdx];
-    if (!src || !tgt) return;
+    if (!src || !tgt) {
+      showToast('⚠ Una de las dos unidades ya no está (la cambió otro equipo). No se combinó nada.', AVISO_ERROR);
+      setCombineModal(null);
+      return;
+    }
+    const duro = excedeTopeDuro(peso, claseSantiago(src.tipo));
+    if (duro) { showToast(`⚠ ${duro}`, AVISO_ERROR); return; }
     const contenido: ContenidoSantiago = src.contenido === tgt.contenido ? src.contenido : 'Mixto';
-    const pesoVolumetrico = Math.round((alto * src.ancho * src.largo) / 5000);
+    // /6000, como en el resto del sistema (estaba en /5000 y sin decimales solo acá).
+    const pesoVolumetrico = (alto * src.ancho * src.largo) / 6000;
     const merged: SantiagoItem = { ...src, id: `${tiendaCod}-${Date.now()}`, peso, alto, contenido, pesoVolumetrico };
     // Misma regla que Nacional, en un solo sitio: el fusionado queda en la POSICIÓN del primero
     // de los dos, no al final. (Acá ya era así; se comparte para que no vuelvan a divergir.)
     const newList = combinarEnLista(allItems, srcIdx, tgtIdx, merged);
     const renumbered = renumerarOrden(newList, i => seqDeSlot(tiendaCod, i.pickingSlotId));
     dispatch({ type: 'SET_ITEMS', tiendaCod, items: renumbered });
+    // El slot que sobrevive se queda con el peso combinado: el cruce con Odoo lee el slot.
+    void actualizarSlotPicking(merged.pickingSlotId, camposDePeso(merged, esSinPesar(merged))).then(r => {
+      if (r.error) console.error('[picking_pallets update]', r.error);
+      if (r.yaNoExiste) showToast(AVISO_SLOT_BORRADO, AVISO_ERROR);
+    });
     // Dos ítems se volvieron uno: la unidad absorbida ya no existe físicamente y su slot tampoco
     // debe existir. Sin esto quedaba vivo, y todo lo que cuenta unidades —Seguimiento, Conteo de
     // Flota— veía una de más; además el backfill le rearmaba una tarjeta vacía al reabrir la
@@ -1623,6 +1642,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   // Quitar un form row sin guardar (✕) — también borra su slot.
   const removeUnsavedRow = (rowId: string) => {
     const row = formRows.find(r => r.id === rowId);
+    if (!confirmarQuitarSinGuardar(row ? labelDeFila(row, formRows) : 'esta unidad', row?.pickingSlotId != null)) return;
     // Sin pesar también se registra: esa unidad ya tiene una etiqueta IMPRESA de Picking, y si
     // desaparece sin rastro nadie puede saber si se unió a otra, se creó de más o alguien la sacó.
     deletePickingSlot(row?.pickingSlotId, { label: row ? labelDeFila(row, formRows) : undefined });
@@ -1796,8 +1816,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       showToast('No se pudo sumar: recarga la tienda e inténtalo otra vez', '#D97706');
       return;
     }
-    const bultoPeso  = bultoRow.savedItem?.peso  ?? ((leerPeso(bultoRow.peso) ?? 0));
-    const pesoActual = palletRow.savedItem?.peso ?? ((leerPeso(palletRow.peso) ?? 0));
+    const bultoPeso  = pesoNetoDeTarjeta(bultoRow);
+    const pesoActual = pesoNetoDeTarjeta(palletRow);
     const nuevoPeso  = sumPeso(pesoActual, bultoPeso);
 
     // El destino se reconfirma ANTES de borrar nada. Antes se borraba el slot del bulto y recién
@@ -1830,7 +1850,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => prev
       .filter(r => r.id !== bultoRowId)
       .map(r => r.id === palletRowId
-        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, r.savedItem?.taraPallet), pesoPallet: taraEnTarjeta(r.savedItem?.taraPallet),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
@@ -1861,8 +1881,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       showToast('No se pudo sumar: recarga la tienda e inténtalo otra vez', '#D97706');
       return;
     }
-    const pesosBultos = bultoRows.map(r => r.savedItem?.peso ?? ((leerPeso(r.peso) ?? 0)));
-    const pesoActual  = palletRow.savedItem?.peso ?? ((leerPeso(palletRow.peso) ?? 0));
+    const pesosBultos = bultoRows.map(r => pesoNetoDeTarjeta(r));
+    const pesoActual  = pesoNetoDeTarjeta(palletRow);
     const nuevoPeso   = sumarPesoMultiple(pesoActual, pesosBultos);
     const palletIdx   = formRows.slice(0, formRows.findIndex(r => r.id === palletRowId) + 1).filter(r => r.tipo === 'Pallet').length;
     const palletLabel = `P${palletIdx}`;
@@ -1899,7 +1919,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => prev
       .filter(r => !bultoRowIdSet.has(r.id))
       .map(r => r.id === palletRowId
-        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, r.savedItem?.taraPallet), pesoPallet: taraEnTarjeta(r.savedItem?.taraPallet),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
@@ -1928,8 +1948,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   const iniciarUnionInline = (sourceRow: FormRow, targetRow: FormRow, srcLabel?: string, tgtLabel?: string) => {
     if (!currentTienda) return;
     const cod       = currentTienda.cod;
-    const srcPeso   = sourceRow.savedItem?.peso ?? ((leerPeso(sourceRow.peso) ?? 0));
-    const tgtPeso   = targetRow.savedItem?.peso ?? ((leerPeso(targetRow.peso) ?? 0));
+    const srcPeso   = pesoNetoDeTarjeta(sourceRow);
+    const tgtPeso   = pesoNetoDeTarjeta(targetRow);
     const nuevoPeso = sumPeso(tgtPeso, srcPeso);
     const prevAlto  = targetRow.savedItem?.alto ?? (parseFloat(targetRow.alto) || 0);
     const srcSlot   = sourceRow.pickingSlotId ?? sourceRow.savedItem?.pickingSlotId;
@@ -1986,7 +2006,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setFormRows(prev => prev
       .filter(r => r.id !== sourceRow.id)
       .map(r => r.id === targetRow.id
-        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, r.savedItem?.taraPallet), pesoPallet: taraEnTarjeta(r.savedItem?.taraPallet),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
             alto: prevAlto ? String(prevAlto) : '', mergeReopened: true }
         : r));
     setFormMergeState(null);
@@ -2267,6 +2287,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       item: { ...item, tipo: rTipo, contenido: rContenido, estado: rEstado,
         peso: pesoR, alto, largo, ancho,
         pesoVolumetrico: (alto * largo * ancho) / 6000 },
+    });
+    // Y en el slot, como hace Guardar: si no, el cruce con Odoo seguía con el peso viejo.
+    void actualizarSlotPicking(item.pickingSlotId, camposDePeso({ peso: pesoR, alto, largo, ancho }, esSinPesar(item))).then(r => {
+      if (r.error) console.error('[picking_pallets update]', r.error);
+      if (r.yaNoExiste) showToast(AVISO_SLOT_BORRADO, AVISO_ERROR);
     });
     setResumenEditing(null);
     showToast('✓ Item actualizado', '#16A34A');
@@ -2589,7 +2614,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                           onDrop: (e: React.DragEvent) => {
                             e.preventDefault();
                             if (rDragIdx !== null && rDragCod === cod && rDragIdx !== idx && (items[cod]?.[rDragIdx])?.tipo === item.tipo)
-                              setCombineModal({ srcIdx: rDragIdx, tgtIdx: idx, cod });
+                              setCombineModal({ srcIdx: rDragIdx, tgtIdx: idx, cod, srcId: items[cod]?.[rDragIdx]?.id, tgtId: items[cod]?.[idx]?.id });
                             setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
                           },
                           onDragEnd: () => { setRDragIdx(null); setRDropIdx(null); setRDragCod(null); },
@@ -2622,7 +2647,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                             const tgt = itemEl ? parseInt(itemEl.dataset.rItemIdx ?? '-1') : -1;
                             const tgtCod = itemEl?.dataset.rItemCod;
                             if (tgt !== -1 && tgt !== rDragIdx && tgtCod === cod && (items[cod]?.[rDragIdx])?.tipo === (items[cod]?.[tgt])?.tipo)
-                              setCombineModal({ srcIdx: rDragIdx, tgtIdx: tgt, cod });
+                              setCombineModal({ srcIdx: rDragIdx, tgtIdx: tgt, cod, srcId: items[cod]?.[rDragIdx]?.id, tgtId: items[cod]?.[tgt]?.id });
                             setRDragIdx(null); setRDropIdx(null); setRDragCod(null);
                           },
                         };
@@ -3467,8 +3492,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       {combineModal && (() => {
         const activeCod = combineModal.cod ?? rDragCod ?? currentTienda?.cod;
         const allItems  = activeCod ? (items[activeCod] || []) : [];
-        const src = allItems[combineModal.srcIdx];
-        const tgt = allItems[combineModal.tgtIdx];
+        const src = allItems[posicionDeUnidad(allItems, combineModal.srcId, combineModal.srcIdx)];
+        const tgt = allItems[posicionDeUnidad(allItems, combineModal.tgtId, combineModal.tgtIdx)];
         if (!src || !tgt) return null;
         const srcLabel = `${src.orden || src.tipo} · ${src.peso}kg · ${src.contenido}`;
         const tgtLabel = `${tgt.orden || tgt.tipo} · ${tgt.peso}kg · ${tgt.contenido}`;

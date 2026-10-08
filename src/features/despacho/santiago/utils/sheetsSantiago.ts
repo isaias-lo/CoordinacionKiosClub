@@ -3,6 +3,7 @@ import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import { desempatarOrdenSantiago } from '../../shared/numeroCard';
 import { esSinPesar } from '../../shared/sinPesar';
 import { PREFIJO_ADQUISICION, PREFIJO_WEB_RETIRO, etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
+import { escribirPlanilla, type ResultadoPlanilla } from '../../shared/escribirPlanilla';
 
 const URBAN_COMMUNES = new Set([
   'Santiago', 'Providencia', 'Las Condes', 'Vitacura', 'Ñuñoa',
@@ -122,19 +123,16 @@ export function buildRows(
 
 // Devuelve la promesa del POST a Sheets para que el llamador pueda encadenar
 // acciones que dependan de que la escritura ya esté en la planilla (p. ej.
-// disparar la sincronización a la base de datos). La promesa nunca rechaza.
+// disparar la sincronización a la base de datos). RECHAZA si la planilla no se
+// escribió: antes nunca rechazaba y el día quedaba «registrado» igual. Ver `escribirPlanilla`.
 export function sheetsSantiagoWrite(
   items: Record<string, SantiagoItem[]>,
   regimen: string,
   fechaISO?: string,
   fechaArmadoISO?: string,
-): Promise<void> {
+): Promise<ResultadoPlanilla> {
   const rows = buildRows(items, regimen, fechaISO, fechaArmadoISO);
-  if (!rows.length) return Promise.resolve();
+  if (!rows.length) return Promise.resolve({ mirrorErrores: [] });
 
-  return fetch('/api/sheets-write', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ sheet: 'DESPACHO RM', rows, fuente: 'bodega_rm' }),
-  }).then(() => undefined).catch(err => { console.error('[sheetsSantiagoWrite]', err); });
+  return escribirPlanilla({ sheet: 'DESPACHO RM', rows, fuente: 'bodega_rm' });
 }

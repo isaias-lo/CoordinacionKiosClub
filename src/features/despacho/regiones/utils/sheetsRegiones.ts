@@ -5,6 +5,7 @@ import { etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
 import type { DispatchItem } from '../../../../types';
 import { desempatarOrdenNacional } from '../../shared/numeroCard';
 import { esSinPesar } from '../../shared/sinPesar';
+import { escribirPlanilla, type ResultadoPlanilla } from '../../shared/escribirPlanilla';
 
 const CARGA_LABEL: Record<string, string> = {
   comida:         'Comida',
@@ -37,6 +38,18 @@ function ordenSeq(orden: string): string {
 // `canonicalSlot.ts`, que es la unica fuente. Era la septima copia de la misma funcion.
 function canonicalId(pkg: string, orden: string, cod: string, stamp: string): string {
   return canonicalDeSlot(pkgCodeNacional(pkg), ordenSeq(orden), cod, stamp);
+}
+
+/**
+ * Tiendas con carga que el catálogo en memoria no conoce. `buildRows` las salta porque sin el
+ * código no puede armar el id de la fila, y antes eso pasaba EN SILENCIO: el modal las mostraba,
+ * se marcaba «✓ Registrado» y sus filas no llegaban a la hoja. RM/Costa perdió así 26ALC, 56PZA y
+ * 59EGN el 29/09. Pasa cuando el catálogo de la base todavía no volvió (`registrarTiendasBD`).
+ */
+export function tiendasSinCatalogo(dispatchData: Record<string, DispatchItem[]>): string[] {
+  return Object.entries(dispatchData)
+    .filter(([nombre, items]) => items.length > 0 && !TIENDAS[nombre])
+    .map(([nombre]) => nombre);
 }
 
 export function buildRows(
@@ -120,20 +133,25 @@ export function buildRows(
 
 // Devuelve la promesa del POST a Sheets para que el llamador pueda encadenar
 // acciones que dependan de que la escritura ya esté en la planilla (p. ej.
-// disparar la sincronización a la base de datos). La promesa nunca rechaza:
-// captura el error internamente para no romper el flujo de registro.
+// disparar la sincronización a la base de datos). RECHAZA si la planilla no se
+// escribió: antes nunca rechazaba y el día quedaba «registrado» igual. Ver `escribirPlanilla`.
 export function sheetsRegionesWrite(
   dispatchData: Record<string, DispatchItem[]>,
   transporteChoice = 'Luis Fica',
   fechaISO?: string,
   fechaArmadoISO?: string,
-): Promise<void> {
+): Promise<ResultadoPlanilla> {
   const rows = buildRows(dispatchData, transporteChoice, fechaISO, fechaArmadoISO);
-  if (!rows.length) return Promise.resolve();
+  const faltan = tiendasSinCatalogo(dispatchData);
+  if (!rows.length && !faltan.length) return Promise.resolve({ mirrorErrores: [] });
 
-  return fetch('/api/sheets-write', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ sheet: 'DESPACHO REGIONES', rows, fuente: 'bodega_regiones' }),
-  }).then(() => undefined).catch(err => { console.error('[sheetsRegionesWrite]', err); });
+  const escrito = rows.length
+    ? escribirPlanilla({ sheet: 'DESPACHO REGIONES', rows, fuente: 'bodega_regiones' })
+    : Promise.resolve({ mirrorErrores: [] });
+  // Lo que sí se conoce se escribe igual (volver a registrar no duplica: la hoja solo agrega ids
+  // nuevos), pero el registro NO se da por hecho: ver `tiendasSinCatalogo`.
+  return escrito.then(r => {
+    if (faltan.length) throw new Error(`faltan ${faltan.join(', ')}: recarga la página y registra de nuevo`);
+    return r;
+  });
 }

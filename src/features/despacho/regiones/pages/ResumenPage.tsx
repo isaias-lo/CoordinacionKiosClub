@@ -22,11 +22,14 @@ import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { eliminarSlotPicking } from '../../shared/eliminarSlotPicking';
 import { formatCLPCorto } from '../../shared/formatoCLP';
 import { excedeTopeDuro } from '../../shared/pesoIngresado';
+import { actualizarSlotPicking, camposDePeso, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
+import { esSinPesar } from '../../shared/sinPesar';
 import { claseUnidad } from '../../shared/unidadVisual';
 import { confirmarCambioGuardado } from '../../shared/confirmarGuardado';
 import { textoPesoConTara } from '../../shared/pesoDelPallet';
 import { copiaParaOtraTienda, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
 import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTienda, ResumenVacio, UnidadResumen } from '../../shared/ResumenDiaUI';
+import { AVISO_ERROR } from '../../shared/colorAviso';
 
 const NOMBRE_PLURAL: Partial<Record<TipoPaquete, string>> = {
   pallet: 'Pallets', box: 'Bultos', contenedor: 'Contenedores', chocolate: 'Chocolates',
@@ -92,7 +95,9 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
   const [dragIdx,      setDragIdx]      = useState<number | null>(null);
   const [dropIdx,      setDropIdx]      = useState<number | null>(null);
   const [dragTienda,   setDragTienda]   = useState<string | null>(null);
-  const [combineModal, setCombineModal] = useState<{ srcIdx: number; tgtIdx: number; tienda: string } | null>(null);
+  // Con los ids además de las posiciones: entre abrir el modal y confirmar, otro equipo puede borrar
+  // o agregar una unidad en la tienda y correr la lista. Por posición se unían (y borraban) otras.
+  const [combineModal, setCombineModal] = useState<{ srcIdx: number; tgtIdx: number; tienda: string; srcId?: string; tgtId?: string } | null>(null);
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editPkg,   setEditPkg]   = useState<TipoPaquete>('pallet');
   const [editTipo,  setEditTipo]  = useState<TipoContenido>('comida');
@@ -156,11 +161,19 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
 
   const handleCombineConfirm = (peso: number, alto: number) => {
     if (!combineModal) return;
-    const { srcIdx, tgtIdx, tienda } = combineModal;
+    const { tienda } = combineModal;
     const list = [...(dispatchData[tienda] || [])];
+    const srcIdx = posicionDeUnidad(list, combineModal.srcId, combineModal.srcIdx);
+    const tgtIdx = posicionDeUnidad(list, combineModal.tgtId, combineModal.tgtIdx);
     const src = list[srcIdx];
     const tgt = list[tgtIdx];
-    if (!src || !tgt) return;
+    if (!src || !tgt) {
+      showToast('⚠ Una de las dos unidades ya no está (la cambió otro equipo). No se combinó nada.', AVISO_ERROR);
+      setCombineModal(null);
+      return;
+    }
+    const duro = excedeTopeDuro(peso, claseNacional(src.pkg));
+    if (duro) { showToast(`⚠ ${duro}`, AVISO_ERROR); return; }
     const tipoMerge: TipoContenido = src.tipo === tgt.tipo ? src.tipo : 'comida-hogar';
     const guia  = [src.guia, tgt.guia].filter(Boolean).join(', ');
     const valor = (src.valor || 0) + (tgt.valor || 0);
@@ -168,6 +181,11 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
     // de los dos — la misma regla que usan los dos formularios, en un solo sitio.
     const merged: DispatchItem = { ...src, peso, alto, tipo: tipoMerge, guia, valor };
     dispatch({ type: 'UPDATE_ITEMS', tienda, items: renumber(combinarEnLista(list, srcIdx, tgtIdx, merged)) });
+    // El slot que sobrevive se queda con el peso combinado: el cruce con Odoo lee el slot.
+    void actualizarSlotPicking(merged.pickingSlotId, camposDePeso(merged, esSinPesar(merged))).then(r => {
+      if (r.error) console.error('[picking_pallets update]', r.error);
+      if (r.yaNoExiste) showToast(AVISO_SLOT_BORRADO, AVISO_ERROR);
+    });
     // La unidad absorbida deja de existir: su slot de picking también. Este flujo era el único de
     // los tres que no lo borraba, así que dejaba un slot huérfano que nadie volvía a mirar.
     if (src.pickingSlotId && tgt.pickingSlotId && src.pickingSlotId !== tgt.pickingSlotId) {
@@ -232,6 +250,13 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
       valor: parseInt(editValor)   || 0,
     };
     dispatch({ type: 'UPDATE_ITEMS', tienda, items: renumber(list) });
+    // Y en el slot, como hace Guardar: corregir un peso acá dejaba la planilla bien y el cruce con
+    // Odoo (que lee `picking_pallets`) con el peso equivocado.
+    const editado = list[idx];
+    void actualizarSlotPicking(editado.pickingSlotId, camposDePeso(editado, esSinPesar(editado))).then(r => {
+      if (r.error) console.error('[picking_pallets update]', r.error);
+      if (r.yaNoExiste) showToast(AVISO_SLOT_BORRADO, AVISO_ERROR);
+    });
     setEditingItem(null);
     showToast('✓ Item actualizado', '#16A34A');
   };
@@ -426,7 +451,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
                 onDrop: (e: React.DragEvent) => {
                   e.preventDefault();
                   if (dragIdx !== null && dragTienda === name && dragIdx !== idx && items[dragIdx]?.pkg === item.pkg)
-                    setCombineModal({ srcIdx: dragIdx, tgtIdx: idx, tienda: name });
+                    setCombineModal({ srcIdx: dragIdx, tgtIdx: idx, tienda: name, srcId: items[dragIdx]?.id, tgtId: items[idx]?.id });
                   setDragIdx(null); setDropIdx(null); setDragTienda(null);
                 },
                 onDragEnd: () => { setDragIdx(null); setDropIdx(null); setDragTienda(null); },
@@ -459,7 +484,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
                   const tgt = itemEl ? parseInt(itemEl.dataset.itemIdx ?? '-1') : -1;
                   const tgtTienda = itemEl?.dataset.itemTienda;
                   if (tgt !== -1 && tgt !== dragIdx && tgtTienda === name && items[dragIdx]?.pkg === items[tgt]?.pkg)
-                    setCombineModal({ srcIdx: dragIdx, tgtIdx: tgt, tienda: name });
+                    setCombineModal({ srcIdx: dragIdx, tgtIdx: tgt, tienda: name, srcId: items[dragIdx]?.id, tgtId: items[tgt]?.id });
                   setDragIdx(null); setDropIdx(null); setDragTienda(null);
                 },
               };
@@ -500,8 +525,8 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
 
   const combineModalEl = combineModal && (() => {
     const list = dispatchData[combineModal.tienda] || [];
-    const src = list[combineModal.srcIdx];
-    const tgt = list[combineModal.tgtIdx];
+    const src = list[posicionDeUnidad(list, combineModal.srcId, combineModal.srcIdx)];
+    const tgt = list[posicionDeUnidad(list, combineModal.tgtId, combineModal.tgtIdx)];
     if (!src || !tgt) return null;
     const srcLabel = `${src.orden} · ${src.peso}kg${src.guia ? ` · #${src.guia}` : ''}`;
     const tgtLabel = `${tgt.orden} · ${tgt.peso}kg${tgt.guia ? ` · #${tgt.guia}` : ''}`;
