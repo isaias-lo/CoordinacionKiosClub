@@ -21,6 +21,7 @@
 // podría calcular distinto y nadie lo notaría hasta comparar dos filas a mano.
 
 import { supabaseServer } from '@/lib/supabaseServer';
+import { dominioDespachosDelDia } from '@/features/despacho/shared/dominioOdoo';
 import { armarCruce, type MovimientoOdoo } from '@/features/despacho/shared/cruceDePesos';
 import { valoresDeFila } from '@/features/despacho/shared/hojaCrucePesos';
 // La suma vive en un módulo PURO y se re-exporta: un solo lugar donde se decide cuánto pesó una
@@ -69,9 +70,7 @@ export async function movimientosDelDia(fechaISO: string): Promise<MovimientoOdo
   const rows = await rpc({
     service: 'object', method: 'execute_kw',
     args: [ODOO_DB, uid, ODOO_KEY, 'stock.picking', 'search_read',
-      [[['origin', 'like', 'Abastecimiento'],
-        ['date_done', '>=', `${fechaISO} 00:00:00`], ['date_done', '<=', `${fechaISO} 23:59:59`],
-        ['state', '=', 'done']]],
+      [dominioDespachosDelDia(fechaISO)],
       { fields: ['name', 'origin', 'total_weight', 'location_dest_id'], limit: 2000 }],
   }) as PickingCrudo[];
 
