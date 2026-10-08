@@ -7,16 +7,14 @@
 import type { Vehiculo } from '../data/flota';
 import { agruparCamionesPorEmpresa } from '../utils/empresaFlota';
 import { etiquetaTipoVehiculo } from '../utils/tipoVehiculo';
+import { CabeceraA, InterruptorA } from './ControlesA';
 
 export default function VehiculosDeHoy({ flota, onToggle }: { flota: Vehiculo[]; onToggle: (idx: number) => void }) {
   const grupos = agruparCamionesPorEmpresa(flota.map((v, i) => ({ v, i })), x => x.v.empresa);
   const encendidos = flota.filter(v => v.on).length;
   return (
     <aside className="bg-white border border-black/[0.09] rounded-[16px] overflow-hidden">
-      <div className="px-4 pt-3.5 pb-3 border-b border-black/[0.07] flex items-baseline gap-2 flex-wrap">
-        <span className="text-cuerpo font-bold text-ktext">Vehículos de hoy</span>
-        <span className="text-apoyo text-kmuted">{encendidos} de {flota.length} encendidos</span>
-      </div>
+      <CabeceraA titulo="Vehículos de hoy" detalle={`${encendidos} de ${flota.length} encendidos`} />
       <div className="p-2.5 flex flex-col gap-3">
         {grupos.map(g => (
           <div key={g.empresa} className="flex flex-col gap-1">
@@ -31,11 +29,7 @@ export default function VehiculosDeHoy({ flota, onToggle }: { flota: Vehiculo[];
                     <span className={`font-mono font-bold text-apoyo ${v.on ? 'text-ktext' : 'text-kmuted'}`}>{v.p}</span>
                     <span className="text-rotulo tracking-normal text-kmuted truncate">{detalle}</span>
                   </span>
-                  <button type="button" role="switch" aria-checked={v.on} aria-label={`${v.on ? 'Apagar' : 'Encender'} ${v.p}`}
-                    onClick={() => onToggle(i)}
-                    className={`w-[42px] h-6 rounded-full p-[3px] flex flex-shrink-0 transition-colors ${v.on ? 'bg-knavy justify-end' : 'bg-black/[0.18] justify-start'}`}>
-                    <span className="w-[18px] h-[18px] rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.2)]" />
-                  </button>
+                  <InterruptorA on={v.on} onCambio={() => onToggle(i)} etiqueta={`${v.on ? 'Apagar' : 'Encender'} ${v.p}`} />
                 </div>
               );
             })}

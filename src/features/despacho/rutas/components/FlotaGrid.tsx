@@ -1,8 +1,12 @@
 'use client';
 import { useState } from 'react';
-import { Save, Check, AlertTriangle, Loader2, Lightbulb, Phone, Pencil, Trash2, LayoutGrid, Rows3 } from 'lucide-react';
+import { Save, Check, AlertTriangle, Loader2, Lightbulb, Phone, Pencil, Trash2, LayoutGrid, Rows3, Plus, Search, X } from 'lucide-react';
 import type { Vehiculo } from '../data/flota';
 import { empresaCanonica, empresaColor, filtrarVehiculosFlota, resumenEmpresasFlota } from '../utils/empresaFlota';
+import {
+  TarjetaA, CabeceraA, SegmentadoA, ChipA, CampoA, BotonA, BotonIconoA, InterruptorA, EtiquetaA,
+  INPUT_A, ENCABEZADO_TABLA_A,
+} from './ControlesA';
 
 // [Fase 3] Conductor y pionetas se asignan en FLOTA → Gestionar (por ruta, post-registro),
 // no en la tarjeta de Vehículos. Por eso esta tarjeta ya no recibe conductores ni sus handlers.
@@ -15,6 +19,8 @@ interface Props {
   onEliminarVehiculo: (idx: number) => void;
   onActualizarVehiculo?: (patente: string, updates: Partial<Vehiculo>) => void;
   onGuardarFlota?: () => void;
+  /** [Vista nueva del Enrutador] Mismo estado y mismas acciones, dibujado con el diseño A. */
+  vistaA?: boolean;
 }
 
 interface NuevoVehiculoState {
@@ -34,7 +40,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const inputCls = "w-full text-[14px] px-3 h-[38px] rounded-[8px] border border-black/[0.15] text-ktext focus:outline-none focus:border-knavy bg-white";
 
-export default function FlotaGrid({ flota, flotaStatus, onToggle, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota }: Props) {
+export default function FlotaGrid({ flota, flotaStatus, onToggle, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota, vistaA = false }: Props) {
   const [showAgregar, setShowAgregar] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -92,6 +98,128 @@ export default function FlotaGrid({ flota, flotaStatus, onToggle, onToggleTlbd, 
 
   const nv = nuevoVehiculo;
   const setNv = (patch: Partial<NuevoVehiculoState>) => setNuevoVehiculo(prev => ({ ...prev, ...patch }));
+
+  if (vistaA) {
+    const encendidos = flota.filter(v => v.on).length;
+    return (
+      <div className="flex flex-col gap-4">
+        <TarjetaA className="flex-shrink-0">
+          <CabeceraA titulo="Vehículos" detalle={`${encendidos} de ${flota.length} encendidos`}>
+            {onGuardarFlota && (
+              <BotonA onClick={onGuardarFlota} disabled={flotaStatus === 'saving'}
+                style={flotaStatus === 'success' ? { color: '#11622F' } : flotaStatus === 'error' ? { color: '#B42318' } : undefined}>
+                {flotaStatus === 'saving' ? <><Loader2 size={15} className="animate-spin" aria-hidden="true" /> Guardando…</>
+                  : flotaStatus === 'success' ? <><Check size={15} aria-hidden="true" /> Guardado</>
+                  : flotaStatus === 'error' ? <><AlertTriangle size={15} aria-hidden="true" /> No se guardó</>
+                  : <><Save size={15} aria-hidden="true" /> Guardar</>}
+              </BotonA>
+            )}
+            <BotonA variante={showAgregar ? 'secundario' : 'primario'} aria-expanded={showAgregar}
+              onClick={() => { setShowAgregar(!showAgregar); setError(''); }}>
+              {showAgregar ? <><X size={15} aria-hidden="true" /> Cancelar</> : <><Plus size={15} aria-hidden="true" /> Nuevo vehículo</>}
+            </BotonA>
+          </CabeceraA>
+
+          {showAgregar && (
+            <form className="px-4 py-4 border-b border-black/[0.07] flex flex-col gap-4 bg-[#FAFBFC]"
+              onSubmit={e => { e.preventDefault(); handleAgregarVehiculo(); }}>
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
+                <CampoA etiqueta="Patente">
+                  <input type="text" value={nv.p} onChange={e => setNv({ p: e.target.value.toUpperCase() })} autoFocus
+                    placeholder="Ej: TYKK42" maxLength={6} className={`${INPUT_A} font-mono uppercase`} />
+                </CampoA>
+                <CampoA etiqueta="Tipo de vehículo">
+                  <input type="text" value={nv.t} onChange={e => setNv({ t: e.target.value })} placeholder="Ej: Camión grande" className={INPUT_A} />
+                </CampoA>
+                <CampoA etiqueta="Empresa de transporte">
+                  <input type="text" value={nv.empresa} onChange={e => setNv({ empresa: e.target.value })} placeholder="Ej: Luis Fica" className={INPUT_A} />
+                </CampoA>
+                <CampoA etiqueta="Pallets">
+                  <input type="number" inputMode="numeric" value={nv.c} onChange={e => setNv({ c: e.target.value })} className={INPUT_A} />
+                </CampoA>
+                <CampoA etiqueta="Bultos">
+                  <input type="number" inputMode="numeric" value={nv.b} onChange={e => setNv({ b: e.target.value })} className={INPUT_A} />
+                </CampoA>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <ChipA tono="azul" on={nv.porton === true} onClick={() => setNv({ porton: nv.porton === true ? false : true })}>Portón hidráulico</ChipA>
+                <ChipA tono="azul" on={nv.refrigerado} onClick={() => setNv({ refrigerado: !nv.refrigerado })}>Refrigerado</ChipA>
+                <ChipA tono="morado" on={nv.tlbd} onClick={() => setNv({ tlbd: !nv.tlbd })}>2ª vuelta</ChipA>
+              </div>
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+                <CampoA etiqueta="Conductor habitual">
+                  <input type="text" value={nv.ch} onChange={e => setNv({ ch: e.target.value })} placeholder="Opcional" className={INPUT_A} />
+                </CampoA>
+                <CampoA etiqueta="Teléfono">
+                  <input type="tel" value={nv.tel} onChange={e => setNv({ tel: e.target.value })} placeholder="+56 9 …" className={INPUT_A} />
+                </CampoA>
+                <CampoA etiqueta="Pioneta 1">
+                  <input type="text" value={nv.p1} onChange={e => setNv({ p1: e.target.value })} placeholder="Opcional" className={INPUT_A} />
+                </CampoA>
+                <CampoA etiqueta="Pioneta 2">
+                  <input type="text" value={nv.p2} onChange={e => setNv({ p2: e.target.value })} placeholder="Opcional" className={INPUT_A} />
+                </CampoA>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap">
+                <BotonA type="submit" variante="primario" disabled={!nv.p.trim()}>Agregar vehículo</BotonA>
+                {error && <span role="alert" className="text-apoyo font-semibold" style={{ color: '#B42318' }}>{error}</span>}
+              </div>
+            </form>
+          )}
+
+          <div className="px-4 pt-3 pb-3.5 flex flex-col gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className="relative flex-1 min-w-[200px]">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-kmuted pointer-events-none" aria-hidden="true" />
+                <input type="search" value={search} onChange={e => setSearch(e.target.value)} aria-label="Buscar patente"
+                  placeholder="Buscar patente" className={`${INPUT_A} pl-9 uppercase placeholder:normal-case`} />
+              </label>
+              <SegmentadoA etiqueta="Vista" valor={vista} onCambio={setVista}
+                opciones={[['cards', <><LayoutGrid size={14} aria-hidden="true" /> Tarjetas</>], ['tabla', <><Rows3 size={14} aria-hidden="true" /> Tabla</>]]} />
+              <BotonA onClick={toggleTodosVisibles} disabled={visibles.length === 0}
+                title={q || empresaActiva !== 'all' ? 'Aplica a los vehículos filtrados' : 'Aplica a toda la flota'}>
+                {todosVisiblesOn ? 'Apagar todos' : 'Encender todos'}
+              </BotonA>
+            </div>
+            {empresas.length > 1 && (
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por empresa">
+                <ChipA tono="azul" on={empresaActiva === 'all'} onClick={() => setEmpresaFiltro('all')}>
+                  Todas <span className="font-semibold opacity-70">{flota.length}</span>
+                </ChipA>
+                {empresas.map(({ empresa, color, count }) => (
+                  <ChipA key={empresa} tono="azul" on={empresaActiva === empresa} onClick={() => setEmpresaFiltro(empresa)}>
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
+                    {empresa} <span className="font-semibold opacity-70">{count}</span>
+                  </ChipA>
+                ))}
+              </div>
+            )}
+            <p className="text-apoyo text-kmuted">
+              Un mismo vehículo puede hacer 1ª y 2ª vuelta: márcalo «2ª vuelta» cuando vuelva al CD para darle las tiendas pendientes.
+            </p>
+          </div>
+        </TarjetaA>
+
+        {visibles.length === 0 ? (
+          <TarjetaA className="flex-shrink-0 py-10 px-6 text-center text-apoyo text-kmuted">
+            Ningún vehículo coincide{search ? ` con «${search}»` : ''}{empresaActiva !== 'all' ? ` en ${empresaActiva}` : ''}.
+          </TarjetaA>
+        ) : vista === 'tabla' ? (
+          <FlotaTabla vistaA visibles={visibles}
+            onToggle={onToggle} onToggleTlbd={onToggleTlbd}
+            onEliminar={onEliminarVehiculo} onActualizar={onActualizarVehiculo} />
+        ) : (
+          <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(260px,1fr))]">
+            {visibles.map(({ v, i }) => (
+              <VehiculoTarjetaA key={v.p} v={v} idx={i}
+                onToggle={onToggle} onToggleTlbd={onToggleTlbd}
+                onEliminar={onEliminarVehiculo} onActualizar={onActualizarVehiculo} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -297,10 +425,11 @@ interface EditVehiculoState {
 }
 
 // Formulario de edición de vehículo, reutilizado por la tarjeta y la fila de la tabla.
-function EditVehiculoForm({ v, onSave, onCancel }: {
+function EditVehiculoForm({ v, onSave, onCancel, vistaA = false }: {
   v: Vehiculo;
   onSave: (updates: Partial<Vehiculo>) => void;
   onCancel: () => void;
+  vistaA?: boolean;
 }) {
   const [s, setS] = useState<EditVehiculoState>({
     t: v.t, c: String(v.c), b: String(v.b), empresa: v.empresa ?? '', porton: v.porton, refrigerado: v.refrigerado,
@@ -310,6 +439,26 @@ function EditVehiculoForm({ v, onSave, onCancel }: {
     t: s.t || v.t, c: parseInt(s.c) || v.c, b: parseInt(s.b) || v.b,
     empresa: s.empresa, porton: s.porton, refrigerado: s.refrigerado,
   });
+  if (vistaA) {
+    return (
+      <form className="flex flex-col gap-3" onSubmit={e => { e.preventDefault(); save(); }}>
+        <div className="grid grid-cols-2 gap-2.5">
+          <CampoA etiqueta="Tipo"><input type="text" value={s.t} onChange={e => setS(p => ({ ...p, t: e.target.value }))} className={INPUT_A} /></CampoA>
+          <CampoA etiqueta="Empresa"><input type="text" value={s.empresa} onChange={e => setS(p => ({ ...p, empresa: e.target.value }))} className={INPUT_A} /></CampoA>
+          <CampoA etiqueta="Pallets"><input type="number" inputMode="numeric" value={s.c} onChange={e => setS(p => ({ ...p, c: e.target.value }))} className={INPUT_A} /></CampoA>
+          <CampoA etiqueta="Bultos"><input type="number" inputMode="numeric" value={s.b} onChange={e => setS(p => ({ ...p, b: e.target.value }))} className={INPUT_A} /></CampoA>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <ChipA tono="azul" on={s.porton === true} onClick={() => setS(p => ({ ...p, porton: p.porton === true ? false : true }))}>Portón</ChipA>
+          <ChipA tono="azul" on={s.refrigerado} onClick={() => setS(p => ({ ...p, refrigerado: !p.refrigerado }))}>Refrigerado</ChipA>
+        </div>
+        <div className="flex gap-2">
+          <BotonA type="submit" variante="primario" className="flex-1">Guardar</BotonA>
+          <BotonA variante="suave" onClick={onCancel}>Cancelar</BotonA>
+        </div>
+      </form>
+    );
+  }
   return (
     <div className="bg-kbg border border-black/[0.10] rounded-[10px] p-3">
       <div className="text-[11px] font-semibold text-kmuted uppercase tracking-wide mb-2">Editar vehículo</div>
@@ -348,6 +497,77 @@ function EditVehiculoForm({ v, onSave, onCancel }: {
         <button onClick={onCancel} className="h-[32px] px-3 rounded-[7px] border border-black/[0.10] text-kmuted text-[12px]">Cancelar</button>
       </div>
     </div>
+  );
+}
+
+// [Vista nueva] Tarjeta de vehículo A: el interruptor enciende o apaga (como en «Vehículos de hoy»),
+// las características van como etiquetas y las acciones abajo. Mismos handlers que VehicleCard.
+function VehiculoTarjetaA({ v, idx, onToggle, onToggleTlbd, onEliminar, onActualizar }: {
+  v: Vehiculo; idx: number;
+  onToggle: (i: number) => void;
+  onToggleTlbd: (i: number) => void;
+  onEliminar: (i: number) => void;
+  onActualizar?: (patente: string, updates: Partial<Vehiculo>) => void;
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const empresa = empresaCanonica(v.empresa);
+  return (
+    <TarjetaA className={`flex flex-col overflow-hidden ${v.on ? '' : 'bg-[#FAFBFC]'}`}>
+      <div className="px-4 pt-3.5 pb-3 flex flex-col gap-2 flex-1">
+        <div className="flex items-center gap-3">
+          <span className={`flex-1 min-w-0 font-mono font-bold text-[18px] leading-6 ${v.on ? 'text-ktext' : 'text-kmuted'}`}>{v.p}</span>
+          <InterruptorA on={v.on} onCambio={() => onToggle(idx)} etiqueta={`${v.on ? 'Apagar' : 'Encender'} ${v.p}`} />
+        </div>
+        <div className="flex flex-col">
+          <span className="text-apoyo text-ktext2">{v.t} · {v.c} pallets · {v.b} bultos</span>
+          <span className="text-apoyo text-kmuted flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: empresaColor(empresa) }} />{empresa}
+          </span>
+          {v.tel && <a href={`tel:${v.tel.replace(/\s/g, '')}`} className="text-apoyo text-knavy font-semibold flex items-center gap-1.5"><Phone size={13} aria-hidden="true" />{v.tel}</a>}
+        </div>
+        {(v.porton !== null || v.refrigerado || v.tlbd) && (
+          <div className="flex flex-wrap gap-1.5">
+            {v.porton === true && <EtiquetaA color="#11622F" fondo="#E7F4EA">Portón</EtiquetaA>}
+            {v.porton === false && <EtiquetaA>Sin portón</EtiquetaA>}
+            {v.refrigerado && <EtiquetaA color="#3B38B5" fondo="#ECEAFF">Frío</EtiquetaA>}
+            {v.tlbd && <EtiquetaA color="#6B21A8" fondo="#F1E8FA">2ª vuelta</EtiquetaA>}
+          </div>
+        )}
+      </div>
+      {editOpen && onActualizar && (
+        <div className="px-4 py-3 border-t border-black/[0.06] bg-[#FAFBFC]">
+          <EditVehiculoForm vistaA v={v}
+            onSave={u => { onActualizar(v.p, u); setEditOpen(false); }}
+            onCancel={() => setEditOpen(false)} />
+        </div>
+      )}
+      <div className="px-4 py-2.5 border-t border-black/[0.06] flex items-center gap-2">
+        {confirmDelete ? (
+          <>
+            <span className="flex-1 text-apoyo font-semibold" style={{ color: '#B42318' }}>¿Quitar {v.p} de la flota?</span>
+            <BotonA variante="peligro" onClick={() => onEliminar(idx)}>Quitar</BotonA>
+            <BotonA variante="suave" onClick={() => setConfirmDelete(false)}>No</BotonA>
+          </>
+        ) : (
+          <>
+            <span className="flex-1">
+              <ChipA tono="morado" on={v.tlbd} onClick={() => onToggleTlbd(idx)}>
+                {v.tlbd && <Check size={14} aria-hidden="true" />} 2ª vuelta
+              </ChipA>
+            </span>
+            {onActualizar && (
+              <BotonIconoA aria-label={`Editar ${v.p}`} aria-expanded={editOpen} activo={editOpen} onClick={() => setEditOpen(o => !o)}>
+                <Pencil size={15} aria-hidden="true" />
+              </BotonIconoA>
+            )}
+            <BotonIconoA aria-label={`Quitar ${v.p}`} peligro onClick={() => setConfirmDelete(true)}>
+              <Trash2 size={15} aria-hidden="true" />
+            </BotonIconoA>
+          </>
+        )}
+      </div>
+    </TarjetaA>
   );
 }
 
@@ -468,20 +688,21 @@ function VehicleCard({ v, idx, onToggle, onToggleTlbd, onEliminar, onActualizar 
 }
 
 // ── Vista TABLA (filas/columnas) ──────────────────────────────────────────────
-function FlotaTabla({ visibles, onToggle, onToggleTlbd, onEliminar, onActualizar }: {
+function FlotaTabla({ visibles, onToggle, onToggleTlbd, onEliminar, onActualizar, vistaA = false }: {
+  vistaA?: boolean;
   visibles: { v: Vehiculo; i: number }[];
   onToggle: (i: number) => void;
   onToggleTlbd: (i: number) => void;
   onEliminar: (i: number) => void;
   onActualizar?: (patente: string, updates: Partial<Vehiculo>) => void;
 }) {
-  const th = "text-left font-semibold px-3 py-2 whitespace-nowrap";
+  const th = vistaA ? 'text-left px-3 py-3 whitespace-nowrap font-bold' : "text-left font-semibold px-3 py-2 whitespace-nowrap";
   return (
-    <div className="overflow-x-auto border border-black/[0.08] rounded-[12px]">
-      <table className="w-full text-[13px] border-collapse min-w-[720px]">
+    <div className={vistaA ? 'overflow-x-auto bg-white border border-black/[0.09] rounded-[16px] flex-shrink-0' : 'overflow-x-auto border border-black/[0.08] rounded-[12px]'}>
+      <table className={`w-full border-collapse min-w-[720px] ${vistaA ? 'text-apoyo' : 'text-[13px]'}`}>
         <thead>
-          <tr className="bg-kbg text-kmuted text-[11px] uppercase tracking-wide">
-            <th className={`${th} w-[56px]`}>Activo</th>
+          <tr className={vistaA ? ENCABEZADO_TABLA_A : 'bg-kbg text-kmuted text-[11px] uppercase tracking-wide'}>
+            <th className={`${th} w-[56px]`}>{vistaA ? 'Hoy' : 'Activo'}</th>
             <th className={th}>Patente</th>
             <th className={th}>Tipo</th>
             <th className={th}>Cap.</th>
@@ -492,7 +713,7 @@ function FlotaTabla({ visibles, onToggle, onToggleTlbd, onEliminar, onActualizar
         </thead>
         <tbody>
           {visibles.map(({ v, i }) => (
-            <VehicleRow key={v.p} v={v} idx={i}
+            <VehicleRow key={v.p} v={v} idx={i} vistaA={vistaA}
               onToggle={onToggle} onToggleTlbd={onToggleTlbd}
               onEliminar={onEliminar} onActualizar={onActualizar} />
           ))}
@@ -502,7 +723,8 @@ function FlotaTabla({ visibles, onToggle, onToggleTlbd, onEliminar, onActualizar
   );
 }
 
-function VehicleRow({ v, idx, onToggle, onToggleTlbd, onEliminar, onActualizar }: {
+function VehicleRow({ v, idx, onToggle, onToggleTlbd, onEliminar, onActualizar, vistaA = false }: {
+  vistaA?: boolean;
   v: Vehiculo; idx: number;
   onToggle: (i: number) => void;
   onToggleTlbd: (i: number) => void;
@@ -512,6 +734,69 @@ function VehicleRow({ v, idx, onToggle, onToggleTlbd, onEliminar, onActualizar }
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const td = "px-3 py-2 align-middle";
+
+  if (vistaA) {
+    const empresa = empresaCanonica(v.empresa);
+    return (
+      <>
+        <tr className="border-t border-black/[0.05]">
+          <td className={td}><InterruptorA on={v.on} onCambio={() => onToggle(idx)} etiqueta={`${v.on ? 'Apagar' : 'Encender'} ${v.p}`} /></td>
+          <td className={td}>
+            <div className={`font-mono font-bold text-cuerpo ${v.on ? 'text-ktext' : 'text-kmuted'}`}>{v.p}</div>
+            {v.tel && <div className="text-rotulo tracking-normal text-kmuted">{v.tel}</div>}
+          </td>
+          <td className={`${td} text-ktext2`}>{v.t}</td>
+          <td className={`${td} text-ktext2 whitespace-nowrap`}>{v.c} P · {v.b} B</td>
+          <td className={td}>
+            <span className="inline-flex items-center gap-1.5 text-ktext2">
+              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: empresaColor(empresa) }} />{empresa}
+            </span>
+          </td>
+          <td className={td}>
+            <div className="flex flex-wrap gap-1">
+              {v.porton === true && <EtiquetaA color="#11622F" fondo="#E7F4EA">Portón</EtiquetaA>}
+              {v.porton === false && <EtiquetaA>Sin portón</EtiquetaA>}
+              {v.refrigerado && <EtiquetaA color="#3B38B5" fondo="#ECEAFF">Frío</EtiquetaA>}
+            </div>
+          </td>
+          <td className={td}>
+            <div className="flex items-center justify-end gap-1.5">
+              {confirmDelete ? (
+                <>
+                  <span className="text-apoyo font-semibold" style={{ color: '#B42318' }}>¿Quitar?</span>
+                  <BotonA variante="peligro" onClick={() => onEliminar(idx)}>Sí</BotonA>
+                  <BotonA variante="suave" onClick={() => setConfirmDelete(false)}>No</BotonA>
+                </>
+              ) : (
+                <>
+                  <ChipA tono="morado" on={v.tlbd} onClick={() => onToggleTlbd(idx)}>{v.tlbd && <Check size={14} aria-hidden="true" />} 2ª vuelta</ChipA>
+                  {onActualizar && (
+                    <BotonIconoA aria-label={`Editar ${v.p}`} aria-expanded={editOpen} activo={editOpen} onClick={() => setEditOpen(o => !o)}>
+                      <Pencil size={15} aria-hidden="true" />
+                    </BotonIconoA>
+                  )}
+                  <BotonIconoA aria-label={`Quitar ${v.p}`} peligro onClick={() => setConfirmDelete(true)}>
+                    <Trash2 size={15} aria-hidden="true" />
+                  </BotonIconoA>
+                </>
+              )}
+            </div>
+          </td>
+        </tr>
+        {editOpen && onActualizar && (
+          <tr className="bg-[#FAFBFC]">
+            <td colSpan={7} className="px-3 py-3">
+              <div className="max-w-[520px]">
+                <EditVehiculoForm vistaA v={v}
+                  onSave={u => { onActualizar(v.p, u); setEditOpen(false); }}
+                  onCancel={() => setEditOpen(false)} />
+              </div>
+            </td>
+          </tr>
+        )}
+      </>
+    );
+  }
 
   return (
     <>

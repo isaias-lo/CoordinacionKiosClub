@@ -392,7 +392,22 @@ export default function InputSection({
         </button>
       </div>}
       <div className="flex-1 overflow-y-auto">
-        {flotaSubTab === 'salidas' ? (
+        {sinBarra && flotaSubTab !== 'gestionar' ? (
+          // Vista nueva: las otras tres subsecciones van sobre el mismo fondo gris y con el mismo
+          // margen que «Quién maneja», cada una con sus tarjetas del diseño A.
+          <div className="p-3 md:p-4 bg-kbg min-h-full flex flex-col">
+            {flotaSubTab === 'salidas' ? <FlotaInternaPanel vistaA tiendas={tiendas} />
+              : flotaSubTab === 'personal' ? <PersonalCatalogPanel vistaA />
+              : (
+                <FlotaGrid vistaA
+                  flota={flota} flotaStatus={flotaStatus}
+                  onToggle={onToggleFlota} onToggleTlbd={onToggleTlbd}
+                  onAgregarVehiculo={onAgregarVehiculo} onEliminarVehiculo={onEliminarVehiculo}
+                  onActualizarVehiculo={onActualizarVehiculo} onGuardarFlota={onGuardarFlota}
+                />
+              )}
+          </div>
+        ) : flotaSubTab === 'salidas' ? (
           <FlotaInternaPanel tiendas={tiendas} />
         ) : flotaSubTab === 'personal' ? (
           <PersonalCatalogPanel />
