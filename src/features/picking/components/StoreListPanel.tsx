@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Loader2, AlertTriangle, X, Trash2 } from 'lucide-react';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import type { PickingOperation, TodayStore, StoreGroupKey } from '../picking-types';
-import { getStoreGroup, GROUP_LABELS, isPickeableState } from '../picking-utils';
+import { getStoreGroup, GROUP_LABELS } from '../picking-utils';
+import { estadoTienda, pasaFiltro, FILTROS, type FiltroTiendas } from '../filtroTiendas';
 
 // Santiago arriba, como en el diseño: es el grupo con más tiendas cada día.
 const GROUP_ORDER: StoreGroupKey[] = ['santiago', 'region', 'costa'];
@@ -32,6 +33,17 @@ export const StoreListPanel = React.memo(function StoreListPanel({
   onOpenAdelanto, onDeleteAdelanto, onVerElegidas,
 }: Props) {
   const [q, setQ] = useState('');
+  const [filtro, setFiltro] = useState<FiltroTiendas>('todas');
+  const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
+  const filtrosRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!filtrosAbiertos) return;
+    const fuera = (e: MouseEvent) => { if (!filtrosRef.current?.contains(e.target as Node)) setFiltrosAbiertos(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setFiltrosAbiertos(false); };
+    document.addEventListener('mousedown', fuera);
+    window.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', fuera); window.removeEventListener('keydown', esc); };
+  }, [filtrosAbiertos]);
 
   const { grouped, isFallback } = useMemo(() => {
     const upper = q.trim().toUpperCase();
@@ -85,11 +97,31 @@ export const StoreListPanel = React.memo(function StoreListPanel({
             </button>
           )}
         </div>
-        {onOpenAdelanto && (
-          <button type="button" onClick={onOpenAdelanto} className="pk-btn" style={{ padding: 6 }}>
-            + Adelantar tienda
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {onOpenAdelanto && (
+            <button type="button" onClick={onOpenAdelanto} className="pk-btn" style={{ flex: 1, padding: 6 }}>
+              + Adelantar tienda
+            </button>
+          )}
+          <div ref={filtrosRef} style={{ position: 'relative', marginLeft: onOpenAdelanto ? undefined : 'auto' }}>
+            <button type="button" onClick={() => setFiltrosAbiertos(v => !v)}
+              aria-expanded={filtrosAbiertos} aria-haspopup="true"
+              className={`pk-btn${filtro !== 'todas' ? ' on' : ''}`} style={{ padding: '6px 10px' }}>
+              {filtro === 'todas' ? 'Filtros' : `Filtros · ${FILTROS.find(f => f.key === filtro)?.label}`}
+            </button>
+            {filtrosAbiertos && (
+              <div className="pk-pop" role="group" aria-label="Mostrar tiendas">
+                {FILTROS.map(f => (
+                  <label key={f.key} className={filtro === f.key ? 'on' : ''}>
+                    <input type="radio" name="pk-filtro-tiendas" checked={filtro === f.key}
+                      onChange={() => { setFiltro(f.key); setFiltrosAbiertos(false); }} />
+                    {f.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
         {isFallback && !storesLoading && (
           <div style={{ fontSize: 12, color: '#6B7280' }}>
             {todayStores.length === 0 ? 'Sin despachos hoy: mostrando todas' : 'Sin coincidencias hoy: buscando en todas'}
@@ -99,8 +131,15 @@ export const StoreListPanel = React.memo(function StoreListPanel({
 
       <div className="flex-1 overflow-y-auto">
         {storesLoading && <div className="px-4 py-6 text-center" style={{ fontSize: 13, color: '#6B7280' }}>Cargando despachos de hoy…</div>}
+        {!storesLoading && filtro !== 'todas' && GROUP_ORDER.every(g => !grouped[g].some(st => pasaFiltro(filtro, st, selectedCods.includes(st.cod), opsMap[st.cod] ?? []))) && (
+          <div className="px-4 py-6 text-center" style={{ fontSize: 13, color: '#6B7280' }}>
+            Ninguna tienda con este filtro.{' '}
+            <button type="button" className="border-none bg-transparent cursor-pointer underline" style={{ color: '#2B4BC8', font: 'inherit' }}
+              onClick={() => setFiltro('todas')}>Ver todas</button>
+          </div>
+        )}
         {!storesLoading && GROUP_ORDER.map(gKey => {
-          const stores = grouped[gKey];
+          const stores = grouped[gKey].filter(st => pasaFiltro(filtro, st, selectedCods.includes(st.cod), opsMap[st.cod] ?? []));
           if (stores.length === 0) return null;
           const cods = stores.map(s => s.cod);
           const elegidas = cods.filter(c => selectedCods.includes(c)).length;
@@ -130,12 +169,7 @@ export const StoreListPanel = React.memo(function StoreListPanel({
                 const isLoading   = loadingCods.includes(store.cod);
                 const hasError    = errorCods.includes(store.cod);
                 const ops         = opsMap[store.cod] ?? [];
-                // Solo pickeables (assigned/partially_available/done) cuentan para la fracción:
-                // un 'confirmed'/'waiting' sin stock (duplicado/backorder) no debe restar completitud.
-                const totalOps = ops.filter(o => isPickeableState(o.state)).length;
-                const doneOps = ops.filter(o => o.state === 'done').length;
-                const storeStatus: 'none' | 'partial' | 'complete' =
-                  totalOps === 0 ? 'none' : doneOps === totalOps ? 'complete' : 'partial';
+                const { estado: storeStatus, hechas: doneOps, total: totalOps } = estadoTienda(ops);
                 return (
                   <div key={store.cod} className="flex items-stretch">
                     <button type="button" onClick={() => onToggleStore(store.cod)} disabled={isLoading}

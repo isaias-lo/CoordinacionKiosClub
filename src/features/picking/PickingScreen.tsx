@@ -66,6 +66,8 @@ import { PickerGroupCard }    from './components/PickerGroupCard';
 import { StoreListPanel }     from './components/StoreListPanel';
 import { BarraSuperior }      from './marco/BarraSuperior';
 import { MenuLateral }        from './marco/MenuLateral';
+import { AyudaPanel }         from './marco/AyudaPanel';
+import { accionDeTecla, estaEscribiendo } from './marco/ayuda';
 import { AgregarAdelantoDialog } from './components/AgregarAdelantoDialog';
 import { enqueuePickingItem, flushPickingQueue, migrarColaVieja, contarPendientesPicking } from './picking-offline-queue';
 import type { MedidasPallet } from '@/features/despacho/shared/medidasPallet';
@@ -156,6 +158,9 @@ export function PickingScreen() {
   // Al cambiar de pestaña vuelve al automático: haberlo abierto en Calendario no debería dejarlo
   // abierto para siempre en las demás.
   useEffect(() => { setSelectorAbiertoManual(false); }, [rightTab]);
+
+  // «Ayuda y atajos» (menú lateral, «Más» en teléfono, o la tecla ?).
+  const [ayudaAbierta, setAyudaAbierta] = useState(false);
 
   // Online/offline detection + flush de cola offline al reconectar
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -1492,6 +1497,24 @@ export function PickingScreen() {
 
   const hasBarcodes = printableLabels.length > 0;
 
+  // Atajos de teclado (ver marco/ayuda.ts). No actúan mientras se escribe ni con un diálogo abierto.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (ayudaAbierta || adelantoDialogOpen) return;
+      const accion = accionDeTecla(e, estaEscribiendo(document.activeElement));
+      if (!accion) return;
+      e.preventDefault();
+      if (accion.tipo === 'ayuda') { setAyudaAbierta(true); return; }
+      if (accion.tipo === 'pestana') { setRightTab(accion.key); return; }
+      // Buscar: la lista de tiendas solo está en Seco y Congelados.
+      if (!usaSelectorDeTiendas(rightTab)) setRightTab('monitoreo');
+      setPanelView('stores');
+      setTimeout(() => document.getElementById('store-search')?.focus(), 0);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [ayudaAbierta, adelantoDialogOpen, rightTab, setRightTab]);
+
   return (
     <>
     <style dangerouslySetInnerHTML={{ __html:
@@ -1564,7 +1587,7 @@ export function PickingScreen() {
       <div className="flex-1 flex overflow-hidden">
 
         {/* Menú lateral: reemplaza la fila de pestañas en escritorio. */}
-        {isDesktop && <MenuLateral tab={rightTab} onTab={setRightTab} tiendasElegidas={selectedCods.length} />}
+        {isDesktop && <MenuLateral tab={rightTab} onTab={setRightTab} tiendasElegidas={selectedCods.length} onAyuda={() => setAyudaAbierta(true)} />}
 
         {/* LEFT PANEL */}
         <div
@@ -1592,6 +1615,8 @@ export function PickingScreen() {
             onVerElegidas={() => setPanelView('planilla')}
           />
         </div>
+
+        {ayudaAbierta && <AyudaPanel onClose={() => setAyudaAbierta(false)} />}
 
         {adelantoDialogOpen && (
           <AgregarAdelantoDialog
@@ -1692,10 +1717,14 @@ export function PickingScreen() {
                   }}>
                   <span aria-hidden="true">{activaEnMas ? activaEnMas.label : 'Más'} ▾</span>
                   <select value={activaEnMas?.key ?? ''} aria-label="Más secciones"
-                    onChange={e => { if (e.target.value) setRightTab(e.target.value as typeof rightTab); }}
+                    onChange={e => {
+                      if (e.target.value === 'ayuda') { setAyudaAbierta(true); return; }
+                      if (e.target.value) setRightTab(e.target.value as typeof rightTab);
+                    }}
                     className="absolute inset-0 opacity-0 cursor-pointer">
                     <option value="" disabled>Más</option>
                     {enMas.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                    <option value="ayuda">Ayuda</option>
                   </select>
                 </label>
               </div>

@@ -8,10 +8,11 @@ interface Props {
   onTab: (t: PestanaPicking) => void;
   /** Tiendas elegidas: se muestran junto a la pestaña de operación abierta. */
   tiendasElegidas: number;
+  onAyuda: () => void;
 }
 
 /** Menú lateral (escritorio): las siete pestañas agrupadas en Operación, Seguimiento y Ajustes. */
-export function MenuLateral({ tab, onTab, tiendasElegidas }: Props) {
+export function MenuLateral({ tab, onTab, tiendasElegidas, onAyuda }: Props) {
   return (
     <nav className="pk-nav print:hidden" aria-label="Secciones de Picking">
       {GRUPOS.map(g => (
@@ -32,6 +33,10 @@ export function MenuLateral({ tab, onTab, tiendasElegidas }: Props) {
           })}
         </React.Fragment>
       ))}
+      <span className="pk-sp" />
+      <button type="button" className="pk-navi ayuda" onClick={onAyuda} aria-keyshortcuts="?">
+        Ayuda y atajos
+      </button>
     </nav>
   );
 }

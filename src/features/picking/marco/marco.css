@@ -62,3 +62,30 @@ button.pk-sg:hover .acc{color:#2B4BC8}
 
 /* Teléfono y handheld: filas que se tocan con el dedo (la fase 6 rehace esta vista). */
 @media (max-width:1023px){.pk-sr{min-height:48px}}
+
+/* Ayuda y atajos */
+.pk-velo{position:fixed;inset:0;z-index:60;background:rgba(20,22,27,.28);display:flex;justify-content:flex-end}
+.pk-velo-fondo{position:absolute;inset:0;border:0;background:transparent;cursor:default}
+.pk-drawer{position:relative;width:440px;max-width:100%;height:100%;background:#FFFFFF;border-left:1px solid #E4E7EC;display:flex;flex-direction:column;color:#14161B;font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:14px}
+.pk-drawer-h{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid #E4E7EC}
+.pk-drawer-b{flex:1;min-height:0;overflow-y:auto;padding:6px 18px 24px}
+.pk-ttl{font-size:15px;font-weight:700}
+.pk-sub{font-size:12px;color:#6B7280}
+.pk-ayuda-tema{padding:14px 0;border-bottom:1px solid #EEF0F3}
+.pk-ayuda-tema:last-child{border-bottom:0}
+.pk-ayuda-tema h3{font-size:11px;font-weight:700;letter-spacing:.08em;color:#8A91A1;text-transform:uppercase;margin:0 0 8px}
+.pk-ayuda-tema ol{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:13px;color:#3D4350;line-height:1.45}
+.pk-atajos{border-collapse:collapse;width:100%;font-size:13px;margin-bottom:8px}
+.pk-atajos td{padding:6px 0;border-bottom:1px solid #EEF0F3;color:#3D4350}
+.pk-atajos td:first-child{width:72px}
+.pk-atajos kbd{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;border:1px solid #D7DBE3;border-bottom-width:2px;border-radius:5px;padding:1px 7px;background:#F8F9FB;color:#2B303B}
+.pk-navi.ayuda{color:#6B7280;font-size:13px}
+
+/* Filtros de la lista de tiendas */
+.pk-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:20;width:230px;background:#FFFFFF;border:1px solid #E4E7EC;border-radius:10px;box-shadow:0 8px 24px rgba(16,24,40,.12);padding:6px}
+.pk-pop label{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;font-size:13px;color:#3D4350;cursor:pointer}
+.pk-pop label:hover{background:#F5F6F8}
+.pk-pop label.on{background:#EEF1FB;color:#1C2E7A;font-weight:600}
+.pk-pop input{accent-color:#3B5BDB;margin:0}
+.pk-pop .k{margin-left:auto;font-size:12px;color:#8A91A1}
+.pk-btn.on{border-color:#3B5BDB;color:#1C2E7A;background:#EEF1FB}
