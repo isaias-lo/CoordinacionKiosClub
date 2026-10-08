@@ -5,14 +5,19 @@ import { Truck, Search, X, Plus, MapPin, Check } from 'lucide-react';
 import type { TiendaInfo } from '../data/tiendas';
 import type { ParadaSalida, SalidaVehiculo } from '../utils/flotaInterna';
 import { fechaChile } from '@/lib/fechaChile';
+import { TarjetaA, CabeceraA, CampoA, RotuloA, SegmentadoA, BotonA, INPUT_A, ENCABEZADO_TABLA_A } from './ControlesA';
 
-interface Props { tiendas: Record<string, TiendaInfo> }
+interface Props {
+  tiendas: Record<string, TiendaInfo>;
+  /** [Vista nueva del Enrutador] El mismo registro, dibujado con el diseño A. */
+  vistaA?: boolean;
+}
 
-const TIPOS = ['Entrega', 'Retiro', 'Mixto'];
+const TIPOS = ['Entrega', 'Retiro', 'Mixto'] as const;
 const CONTENIDOS = ['Congelados', 'Muebles', 'Merma', 'Maquila', 'Espejos', 'Clorox', 'Varios'];
 const hoyISO = fechaChile;  // día del CD — ver lib/fechaChile.ts
 
-export default function FlotaInternaPanel({ tiendas }: Props) {
+export default function FlotaInternaPanel({ tiendas, vistaA = false }: Props) {
   const [fecha,       setFecha]       = useState(hoyISO());
   const [conductor,   setConductor]   = useState('');
   const [vehiculo,    setVehiculo]    = useState('Furgón Frío');
@@ -83,6 +88,128 @@ export default function FlotaInternaPanel({ tiendas }: Props) {
   const inp = 'w-full border border-black/[0.12] rounded-[8px] px-2.5 py-2 text-[13px] bg-white text-ktext outline-none';
   const lbl = 'text-[11px] font-bold uppercase tracking-wider text-kmuted mb-1 block';
   const nombre = (cod: string) => tiendas[cod]?.n ?? cod;
+
+  const datalists = (
+    <>
+      <datalist id="fi-conductores">{conductores.map(c => <option key={c} value={c} />)}</datalist>
+      <datalist id="fi-vehiculos">{vehiculos.map(v => <option key={v} value={v} />)}</datalist>
+      <datalist id="fi-patentes">{patentes.map(p => <option key={p} value={p} />)}</datalist>
+      <datalist id="fi-contenidos">{CONTENIDOS.map(c => <option key={c} value={c} />)}</datalist>
+    </>
+  );
+
+  if (vistaA) {
+    const ok = msg.startsWith('✓');
+    return (
+      <div className="flex flex-col lg:flex-row gap-4 items-start">
+        {datalists}
+        <TarjetaA className="w-full lg:w-[460px] flex-shrink-0">
+          <CabeceraA titulo="Registrar una salida" detalle="vehículos propios" />
+          <form className="p-4 flex flex-col gap-4" onSubmit={e => { e.preventDefault(); void registrar(); }}>
+            <div className="flex flex-col gap-1">
+              <RotuloA>Tipo</RotuloA>
+              <SegmentadoA ancho etiqueta="Tipo de salida" valor={tipo as typeof TIPOS[number]} onCambio={setTipo}
+                opciones={TIPOS.map(t => [t, t] as const)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <CampoA etiqueta="Fecha"><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className={INPUT_A} /></CampoA>
+              <CampoA etiqueta="Conductor"><input list="fi-conductores" value={conductor} onChange={e => setConductor(e.target.value)} placeholder="Nombre" className={INPUT_A} /></CampoA>
+              <CampoA etiqueta="Vehículo"><input list="fi-vehiculos" value={vehiculo} onChange={e => setVehiculo(e.target.value)} placeholder="Furgón Frío" className={INPUT_A} /></CampoA>
+              <CampoA etiqueta="Patente"><input list="fi-patentes" value={patente} onChange={e => setPatente(e.target.value)} placeholder="PKZW-16" className={`${INPUT_A} font-mono uppercase`} /></CampoA>
+              <CampoA etiqueta="Sale a las"><input type="time" value={horaSalida} onChange={e => setHoraSalida(e.target.value)} className={INPUT_A} /></CampoA>
+              <CampoA etiqueta="Vuelve a las"><input type="time" value={horaRegreso} onChange={e => setHoraRegreso(e.target.value)} className={INPUT_A} /></CampoA>
+              <CampoA etiqueta="Qué lleva" className="col-span-2">
+                <input list="fi-contenidos" value={contenido} onChange={e => setContenido(e.target.value)} placeholder="Congelados, muebles, merma…" className={INPUT_A} />
+              </CampoA>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <RotuloA>Paradas · {paradas.length}</RotuloA>
+              {paradas.length > 0 && (
+                <ol className="flex flex-col rounded-[12px] border border-black/[0.09] overflow-hidden">
+                  {paradas.map((p, i) => {
+                    const esTienda = !!tiendas[p.ref];
+                    return (
+                      <li key={`${p.ref}-${i}`} className="flex items-center gap-2.5 px-3 py-2 border-b border-black/[0.05] last:border-b-0">
+                        <span className="w-6 h-6 rounded-full bg-knavy text-white text-rotulo tracking-normal font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                        <span className="flex flex-col min-w-0 w-[34%] flex-shrink-0">
+                          <span className="text-apoyo font-bold text-ktext truncate">{p.ref}</span>
+                          <span className="text-rotulo tracking-normal text-kmuted truncate">{esTienda ? nombre(p.ref) : 'Destino libre'}</span>
+                        </span>
+                        <input value={p.obs} onChange={e => setObs(i, e.target.value)} aria-label={`Qué lleva o retira en ${p.ref}`}
+                          placeholder="Qué lleva o retira" className="flex-1 min-w-0 text-apoyo bg-[#F4F5F8] rounded-[8px] px-2.5 py-1.5 min-h-[36px] outline-none text-ktext placeholder:text-kmuted" />
+                        <button type="button" onClick={() => quitar(i)} aria-label={`Quitar ${p.ref}`}
+                          className="w-8 h-8 rounded-[8px] text-kmuted hover:text-[#D42B2B] flex items-center justify-center flex-shrink-0"><X size={15} /></button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+              <label className="relative">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-kmuted pointer-events-none" aria-hidden="true" />
+                <input type="search" value={search} onChange={e => setSearch(e.target.value)} aria-label="Buscar tienda"
+                  placeholder="Agregar tienda: código, nombre o comuna" className={`${INPUT_A} pl-9`} />
+              </label>
+              {search.trim() && (
+                <div className="max-h-[200px] overflow-y-auto flex flex-col rounded-[12px] border border-black/[0.09]">
+                  {resultados.map(([cod, inf]) => (
+                    <button key={cod} type="button" onClick={() => { addParada(cod); setSearch(''); }}
+                      className="flex items-center gap-2 px-3 py-2 min-h-[40px] border-b border-black/[0.05] last:border-b-0 hover:bg-[#F4F5F8] text-left">
+                      <Plus size={14} className="text-knavy flex-shrink-0" aria-hidden="true" />
+                      <span className="text-apoyo font-bold text-ktext">{cod}</span>
+                      <span className="text-apoyo text-kmuted truncate">{inf.n}</span>
+                    </button>
+                  ))}
+                  {resultados.length === 0 && <div className="text-apoyo text-kmuted text-center py-3">Ninguna tienda coincide.</div>}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <input value={destinoLibre} onChange={e => setDestinoLibre(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDestino(); } }}
+                  aria-label="Destino libre" placeholder="Otro destino: oficina, Luniben, fundación…" className={`${INPUT_A} flex-1`} />
+                <BotonA onClick={addDestino} disabled={!destinoLibre.trim()}>Agregar</BotonA>
+              </div>
+            </div>
+
+            <CampoA etiqueta="Observación general">
+              <textarea value={obsGeneral} onChange={e => setObsGeneral(e.target.value)} rows={2} placeholder="Opcional" className={INPUT_A} />
+            </CampoA>
+
+            {msg && <p role="status" className="text-apoyo font-semibold" style={{ color: ok ? '#11622F' : '#B42318' }}>{msg.replace(/^[✓⚠]\s*/, '')}</p>}
+            <BotonA type="submit" variante="primario" disabled={saving} className="w-full min-h-[44px]">
+              <Check size={16} /> {saving ? 'Registrando…' : 'Registrar salida'}
+            </BotonA>
+          </form>
+        </TarjetaA>
+
+        <TarjetaA className="flex-1 min-w-0 w-full overflow-hidden">
+          <CabeceraA titulo="Últimas salidas" detalle={salidas.length ? `${salidas.length}` : undefined} />
+          <div className="overflow-x-auto">
+            <table className="w-full text-apoyo border-collapse min-w-[520px]">
+              <thead>
+                <tr className={ENCABEZADO_TABLA_A}>{['Fecha', 'Conductor', 'Patente', 'Tipo', 'Paradas', 'Tiendas y destinos'].map(h => (
+                  <th key={h} className={`text-left px-3 py-3 font-bold ${h === 'Tiendas y destinos' ? '' : 'whitespace-nowrap'}`}>{h}</th>
+                ))}</tr>
+              </thead>
+              <tbody>
+                {salidas.map((s, i) => (
+                  <tr key={i} className="border-b border-black/[0.05] last:border-b-0">
+                    <td className="px-3 py-2.5 whitespace-nowrap text-ktext2">{s['Fecha']}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-ktext">{s['Conductor']}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap font-mono text-ktext">{s['Patente']}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-ktext2">{s['Tipo']}</td>
+                    <td className="px-3 py-2.5 text-ktext2">{s['N° Puntos']}</td>
+                    <td className="px-3 py-2.5 min-w-[140px] text-ktext2">{s['Tiendas/Destinos']}</td>
+                  </tr>
+                ))}
+                {salidas.length === 0 && <tr><td colSpan={6} className="text-center text-kmuted py-10">Todavía no hay salidas registradas.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </TarjetaA>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto p-4 flex flex-col lg:flex-row gap-4">
