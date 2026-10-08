@@ -18,7 +18,7 @@ import { useIsMobile } from '../utils/useIsMobile';
 import {
   clampMapPct, mapaColapsado, anchoCortina, alTocarCortina,
   clampArrastre, CORTINA_MS, MANIJA_PX, MANIJA_LINEA_PX,
-  MAP_PCT_DEFAULT, LS_MAP_PCT, LS_MAP_OCULTO,
+  MAP_PCT_DEFAULT, LS_MAP_PCT, LS_MAP_OCULTO, mapaOcultoInicial,
 } from '../utils/mapLayout';
 import type { Vehiculo } from '../data/flota';
 import type { Ruta } from '../utils/routing';
@@ -213,7 +213,7 @@ export default function InputSection({
   // de este equipo, no un dato compartido.
   const [mapOculto, setMapOculto] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
-    try { return localStorage.getItem(LS_MAP_OCULTO) === '1'; } catch { return false; }
+    try { return mapaOcultoInicial(localStorage.getItem(LS_MAP_OCULTO), window.innerWidth); } catch { return false; }
   });
   useEffect(() => {
     try { localStorage.setItem(LS_MAP_OCULTO, mapOculto ? '1' : '0'); } catch {}
@@ -413,11 +413,15 @@ export default function InputSection({
           <PersonalCatalogPanel />
         ) : flotaSubTab === 'gestionar' && sinBarra ? (
           // Vista nueva: quién maneja cada ruta y, al lado, qué vehículos están encendidos hoy.
-          <div className={`p-3 md:p-4 bg-kbg min-h-full grid gap-4 items-start ${isMobile ? 'grid-cols-1' : 'grid-cols-[300px_minmax(0,1fr)]'}`}>
-            {!isMobile && <VehiculosDeHoy flota={flota} onToggle={onToggleFlota} />}
+          // Lado a lado solo si caben (`cq-xl`, el ancho real de la sección); en una tablet vertical
+          // «Vehículos de hoy» baja debajo de la tabla en vez de dejarla en 450 px.
+          <div className="contenedor bg-kbg min-h-full">
+          <div className="p-3 md:p-4 grid gap-4 items-start grid-cols-1 cq-xl:grid-cols-[300px_minmax(0,1fr)]">
+            {!isMobile && <div className="order-2 cq-xl:order-none min-w-0"><VehiculosDeHoy flota={flota} onToggle={onToggleFlota} /></div>}
             <div className="rounded-[16px] overflow-hidden border border-black/[0.09] bg-white min-w-0 flex flex-col">
               <ControlFlotaPanel onResumen={onResumenFlota} vistaA />
             </div>
+          </div>
           </div>
         ) : flotaSubTab === 'gestionar' ? (
           <ControlFlotaPanel onResumen={onResumenFlota} />

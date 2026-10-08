@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   clampMapPct, mapaColapsado, anchoCortina, alTocarCortina, ANCHO_TIENDAS_PX, MANIJA_PX,
-  MAP_PCT_DEFAULT, MAP_PCT_MIN, MAP_PCT_MAX, clampArrastre, MAP_PCT_DRAG_MAX,
+  MAP_PCT_DEFAULT, MAP_PCT_MIN, MAP_PCT_MAX, clampArrastre, MAP_PCT_DRAG_MAX, mapaOcultoInicial, ANCHO_MAPA_PLEGADO_PX,
 } from '../mapLayout';
 
 describe('anchoCortina — el test que protege la factura', () => {
@@ -156,5 +156,19 @@ describe('clampArrastre — el arrastre y el toque tienen alcances distintos', (
     // lado: dos límites que no conversaban y que nadie podía comparar sin abrir los dos archivos.
     expect(clampArrastre(60)).toBe(60);
     expect(clampArrastre(61)).toBe(60);
+  });
+});
+
+describe('mapaOcultoInicial', () => {
+  it('lo guardado manda, en cualquier ancho', () => {
+    expect(mapaOcultoInicial('1', 1440)).toBe(true);
+    expect(mapaOcultoInicial('0', 820)).toBe(false);
+  });
+
+  it('sin nada guardado, arranca plegado en tablet vertical y abierto en escritorio', () => {
+    expect(mapaOcultoInicial(null, 820)).toBe(true);
+    expect(mapaOcultoInicial(null, 1023)).toBe(true);
+    expect(mapaOcultoInicial(null, ANCHO_MAPA_PLEGADO_PX)).toBe(false);
+    expect(mapaOcultoInicial(null, 1180)).toBe(false);
   });
 });

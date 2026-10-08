@@ -66,6 +66,13 @@ export function clampArrastre(pct: number): number {
 export const ANCHO_TIENDAS_PX = 360;
 
 export const LS_MAP_PCT = 'enrutador_map_w_pct';
+
+/**
+ * Bajo este ancho de pantalla el mapa ARRANCA plegado la primera vez (tablet vertical: 768–1023).
+ * Con 820 px, el mapa al 37 % dejaba ~500 px para tablas pensadas para escritorio. Plegado sigue
+ * montado (ver arriba) y la manija lo abre de un toque; lo que el equipo elija después se recuerda.
+ */
+export const ANCHO_MAPA_PLEGADO_PX = 1024;
 export const LS_MAP_OCULTO = 'enrutador_map_oculto';
 
 /**
@@ -78,6 +85,16 @@ export function clampMapPct(v: unknown): number {
   if (!Number.isFinite(n)) return MAP_PCT_DEFAULT;
   if (n < MAP_PCT_MIN || n > MAP_PCT_MAX) return MAP_PCT_DEFAULT;
   return n;
+}
+
+/**
+ * ¿El mapa arranca escondido? Lo guardado manda (`'1'` / `'0'`, la elección de este equipo); sin
+ * nada guardado, depende del ancho: en tablet vertical arranca plegado.
+ */
+export function mapaOcultoInicial(guardado: string | null, anchoPantalla: number): boolean {
+  if (guardado === '1') return true;
+  if (guardado === '0') return false;
+  return anchoPantalla < ANCHO_MAPA_PLEGADO_PX;
 }
 
 /**
