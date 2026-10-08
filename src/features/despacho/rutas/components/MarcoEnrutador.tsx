@@ -134,14 +134,14 @@ export default function MarcoEnrutador({
 
       {/* 3. La banda */}
       <section aria-live="polite"
-        className="bg-white border-b border-black/[0.09] px-3 md:px-5 py-3 flex flex-col md:flex-row md:items-center gap-3 md:gap-7">
+        className="bg-white border-b border-black/[0.09] px-3 md:px-5 py-3 flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 md:gap-x-7">
         {banda.paso !== null && (
           esMovil ? (
             <span className="text-rotulo font-bold uppercase text-kmuted">
               Paso {banda.paso} de {pasos.length} · {pasos[banda.paso - 1]}
             </span>
           ) : (
-            <ol className="flex items-center gap-2.5 list-none m-0 p-0 flex-shrink-0" aria-label={`Paso ${banda.paso} de ${pasos.length}`}>
+            <ol className="flex items-center gap-2.5 list-none m-0 p-0 flex-shrink-0 max-w-full overflow-x-auto [scrollbar-width:none]" aria-label={`Paso ${banda.paso} de ${pasos.length}`}>
               {pasos.map((nombre, i) => {
                 const n = i + 1;
                 const hecho = n < banda.paso!;
@@ -165,17 +165,22 @@ export default function MarcoEnrutador({
           )
         )}
         {bandaInicio}
-        <div className={`flex-1 min-w-0 flex flex-col gap-0.5 ${(banda.paso !== null || bandaInicio) && !esMovil ? 'pl-5 border-l border-black/[0.09]' : ''}`}>
-          <span className="text-titulo font-bold text-ktext">{banda.titular}</span>
-          <span className="text-apoyo text-kmuted">{banda.subtitulo}</span>
+        {/* Titular y botón van juntos y no bajan de 420 px: si no caben al lado de los pasos (tablet
+            vertical), pasan ENTEROS a la línea de abajo. Antes se encogían hasta una palabra por
+            renglón y el botón quedaba cortado contra el borde. */}
+        <div className="flex-1 min-w-0 md:min-w-[420px] flex flex-col md:flex-row md:items-center gap-3 md:gap-7">
+          <div className={`flex-1 min-w-0 flex flex-col gap-0.5 ${(banda.paso !== null || bandaInicio) && !esMovil ? 'xl:pl-5 xl:border-l xl:border-black/[0.09]' : ''}`}>
+            <span className="text-titulo font-bold text-ktext">{banda.titular}</span>
+            <span className="text-apoyo text-kmuted">{banda.subtitulo}</span>
+          </div>
+          {banda.accion && (
+            <button type="button" onClick={() => onAccion(banda.accion!.id)}
+              className="flex-shrink-0 rounded-[12px] px-5 min-h-[44px] text-cuerpo font-bold text-white active:scale-[0.98] transition-transform"
+              style={{ background: color }}>
+              {banda.accion.texto}
+            </button>
+          )}
         </div>
-        {banda.accion && (
-          <button type="button" onClick={() => onAccion(banda.accion!.id)}
-            className="flex-shrink-0 rounded-[12px] px-5 min-h-[44px] text-cuerpo font-bold text-white active:scale-[0.98] transition-transform"
-            style={{ background: color }}>
-            {banda.accion.texto}
-          </button>
-        )}
       </section>
 
       {/* El menú ···: panel bajo la cabecera en escritorio, cajón lateral en el teléfono. */}

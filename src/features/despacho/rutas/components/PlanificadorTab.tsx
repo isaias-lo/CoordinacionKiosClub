@@ -1184,7 +1184,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
               <SegmentadoA etiqueta="Calendario" valor={calFuente} onCambio={setCalFuente}
                 opciones={[['seco', 'Seco'], ['congelados', '❄ Congelados']] as const} />
             </div>
-            <div className="flex flex-col gap-1.5 min-w-0">
+            {/* Los 7 días necesitan ~360 px: bajo 960 px de ancho van en su propia fila, así no se
+                cortan en «Dom» (tablet horizontal con el mapa abierto). */}
+            <div className="flex flex-col gap-1.5 min-w-0 col-span-full cq-xl:col-span-1">
               <RotuloA>Día</RotuloA>
               <SegmentadoA etiqueta="Día" valor={calDia} onCambio={setCalDia} ancho
                 opciones={DIAS.map(d => [d, DIA_LABEL[d]] as const)} />
@@ -1328,13 +1330,13 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
       </button>
       {agregarVisibleA && (<>
       <div className="px-4 pb-3 flex flex-col gap-3">
-        <div className="flex flex-col md:flex-row gap-2">
-          <label className={`flex items-center gap-2 md:flex-1 min-w-0 ${inputA}`}>
+        <div className="flex flex-col cq-md:flex-row gap-2">
+          <label className={`flex items-center gap-2 cq-md:flex-1 min-w-0 ${inputA}`}>
             <Search size={16} className="text-kmuted flex-shrink-0" />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar tienda"
               aria-label="Buscar tienda" className="flex-1 min-w-0 outline-none bg-transparent" />
           </label>
-          <div className="flex gap-2 md:flex-[1.4] min-w-0">
+          <div className="flex gap-2 cq-md:flex-[1.4] min-w-0">
             <AddressAutocomplete
               value={paradaAddr}
               onChange={v => { setParadaAddr(v); setParadaGeo('idle'); }}
@@ -1390,13 +1392,16 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
 
   if (vistaA) {
     const ORDEN_A: ['ventanas' | 'cercania' | 'manual', string][] = [['ventanas', 'Horarios'], ['cercania', 'Cercanía'], ['manual', 'A mano']];
-    const colsTabla = 'grid-cols-[48px_minmax(0,1fr)_116px] md:grid-cols-[52px_minmax(0,1fr)_110px_64px_150px]';
+    // Las columnas siguen el ancho de la tarjeta de la ruta (`contenedor`), no el de la pantalla:
+    // con el mapa abierto o en una tablet, la tarjeta puede medir 450 px aunque la pantalla sea
+    // ancha, y la tabla de 5 columnas encimaba «Tienda» con «Recibe».
+    const colsTabla = 'grid-cols-[48px_minmax(0,1fr)_116px] cq-md:grid-cols-[52px_minmax(0,1fr)_110px_64px_150px]';
     return (
-      <div className="h-full overflow-y-auto p-3 md:p-4 bg-kbg flex flex-col gap-4">
+      <div className="contenedor h-full overflow-y-auto p-3 md:p-4 bg-kbg flex flex-col gap-4">
         {avisoPlaces}
         {calendarioA}
 
-        <div className="grid gap-4 items-start grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="grid gap-4 items-start grid-cols-1 cq-lg:grid-cols-[280px_minmax(0,1fr)]">
           {/* Izquierda: las rutas, con su resumen y si alguna parada llega tarde */}
           <aside className="bg-white border border-black/[0.09] rounded-[16px] overflow-hidden flex flex-col">
             <div className="px-4 py-3.5 border-b border-black/[0.07] text-cuerpo font-bold text-ktext">
@@ -1470,9 +1475,9 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
           </aside>
 
           {/* Centro: la ruta abierta, parada por parada, con a qué hora recibe y a qué hora llega */}
-          <section className="bg-white border border-black/[0.09] rounded-[16px] overflow-hidden min-w-0">
+          <section className="contenedor bg-white border border-black/[0.09] rounded-[16px] overflow-hidden min-w-0">
             <div className="px-4 py-3 border-b border-black/[0.07] flex items-center gap-3 flex-wrap">
-              <span className="text-cuerpo font-bold flex-1 basis-full sm:basis-0 min-w-0 truncate" style={{ color: activeColor }}>{activeRoute.nombre}</span>
+              <span className="text-cuerpo font-bold flex-1 basis-full cq-md:basis-0 min-w-0 truncate" style={{ color: activeColor }}>{activeRoute.nombre}</span>
               <span className="text-apoyo text-kmuted">Ordenar por</span>
               <div className="flex rounded-[10px] p-[3px] gap-[3px]" style={{ background: '#EEF0F5' }}>
                 {ORDEN_A.map(([id, txt]) => (
@@ -1508,7 +1513,7 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
               </div>
             )}
             <div className={`grid ${colsTabla} gap-3 px-4 py-2.5 text-rotulo font-bold text-black/60 bg-[#F7F8FA] border-b border-black/[0.07]`}>
-              <span>#</span><span>TIENDA</span><span className="hidden md:block">RECIBE</span><span className="hidden md:block">LLEGA</span><span>ESTADO</span>
+              <span>#</span><span>TIENDA</span><span className="hidden cq-md:block">RECIBE</span><span className="hidden cq-md:block">LLEGA</span><span>ESTADO</span>
             </div>
             <div ref={tactilRef}>
               {orderedCods.map((cod, i) => {
@@ -1543,14 +1548,14 @@ export default function PlanificadorTab({ gps, tiendas, onPlanRutas, legDataByRo
                       <span className="text-cuerpo font-semibold text-ktext truncate" style={tarde ? { color: '#B42318' } : undefined}>{nombre(cod)}</span>
                       <span className="text-rotulo tracking-normal text-kmuted truncate">
                         {esDir ? 'Dirección' : [cod, comuna(cod)].filter(Boolean).join(' · ')}
-                        {ventana && <span className="md:hidden"> · recibe {ventana}</span>}
+                        {ventana && <span className="cq-md:hidden"> · recibe {ventana}</span>}
                       </span>
                     </span>
-                    <span className="hidden md:block font-mono text-apoyo text-ktext2 truncate" title={ventana}>{ventana || '—'}</span>
-                    <span className="hidden md:block font-mono text-apoyo text-ktext">{eta != null ? minAHHMM(eta) : '—'}</span>
+                    <span className="hidden cq-md:block font-mono text-apoyo text-ktext2 truncate" title={ventana}>{ventana || '—'}</span>
+                    <span className="hidden cq-md:block font-mono text-apoyo text-ktext">{eta != null ? minAHHMM(eta) : '—'}</span>
                     <span className="flex items-center gap-2 min-w-0">
                       <span className="flex-1 min-w-0 flex flex-col">
-                        {eta != null && <span className="md:hidden font-mono text-apoyo text-ktext">{minAHHMM(eta)}</span>}
+                        {eta != null && <span className="cq-md:hidden font-mono text-apoyo text-ktext">{minAHHMM(eta)}</span>}
                         <span className="text-apoyo font-bold leading-tight" style={{ color: colorEst }}>{est.texto}</span>
                       </span>
                       <button type="button" onClick={() => quitar(cod)} aria-label={`Quitar ${nombre(cod)} de la ruta`}
