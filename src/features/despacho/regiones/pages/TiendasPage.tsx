@@ -2394,7 +2394,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         agregar={{ bloqueado: bloqueada, opciones: [
           { texto: 'Pallet',      clase: 'pallet',     onClick: () => setDialogPkg('pallet') },
           { texto: 'Bulto',       clase: 'bulto',      onClick: () => setDialogPkg('box') },
-          { texto: 'Cont.',       clase: 'contenedor', onClick: () => setDialogPkg('contenedor') },
+          // El contenedor ya no se usa (Isaias, 8 oct 2026): no se ofrece. Los que ya existen se
+          // siguen viendo, pesando y sumando como siempre.
           { texto: 'Choc.',       clase: 'chocolate',  onClick: () => setDialogPkg('chocolate') },
           // No piden medidas ni peso: se crean de un toque, sin diálogo.
           { texto: 'Adquisición', clase: 'agregado', detalle: 'no se pesa', onClick: () => void addFormRow('adquisicion') },

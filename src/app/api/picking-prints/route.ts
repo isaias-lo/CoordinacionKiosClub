@@ -18,9 +18,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   if (!await verifyAuth(request)) return UNAUTH();
-  const body = await request.json() as { stateKey: string; pickerLabel: string; pallets: number; date: string; tipo?: string; printedByName?: string; batch?: string };
+  const body = await request.json() as { stateKey: string; pickerLabel: string; pallets: number; date: string; tipo?: string; printedByName?: string; batch?: string; client_op_id?: string };
   // RPC atómico: inserta (print_count=1) o incrementa print_count en reimpresión, y guarda el batch.
-  const { error } = await supabaseServer().rpc('fn_record_picking_print', {
+  const params = {
     p_state_key:       body.stateKey,
     p_date:            body.date,
     p_picker_label:    body.pickerLabel,
@@ -28,7 +28,22 @@ export async function POST(request: NextRequest) {
     p_tipo:            body.tipo ?? 'P',
     p_printed_by_name: body.printedByName ?? null,
     p_batch:           body.batch ?? null,
-  });
+  };
+  const db = supabaseServer();
+  // Con `client_op_id`, un reenvío de la MISMA impresión (se perdió la respuesta y la cola lo
+  // reintentó) no suma a print_count. Esa versión de la función viene en
+  // sql/2026-10-08_picking_prints_idempotencia.sql; mientras no esté aplicada, se usa la de siempre.
+  let { error } = body.client_op_id
+    ? await db.rpc('fn_record_picking_print', { ...params, p_client_op_id: body.client_op_id })
+    : await db.rpc('fn_record_picking_print', params);
+  if (error && body.client_op_id && funcionNoExiste(error)) {
+    ({ error } = await db.rpc('fn_record_picking_print', params));
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
+}
+
+/** PostgREST no encontró la función con esos parámetros (PGRST202) o Postgres no la tiene (42883). */
+function funcionNoExiste(error: { code?: string }): boolean {
+  return error.code === 'PGRST202' || error.code === '42883';
 }

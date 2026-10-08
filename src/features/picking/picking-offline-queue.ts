@@ -27,6 +27,7 @@ export type OfflineQueueItem =
       op: 'print';
       stateKey: string; pickerLabel: string; pallets: number;
       tipo: string; date: string; printedByName: string; batch?: string;
+      clientOpId?: string;  // el mismo id del intento online: si llegó, el reenvío no suma otra impresión
     };
 
 export type PendientePicking = ItemCola<OfflineQueueItem>;
@@ -48,10 +49,11 @@ function nuevoId(): string {
 const OPCIONES = { permiteRespaldo: true } as const;
 
 export async function enqueuePickingItem(op: OfflineQueueItem): Promise<void> {
-  // El `clientOpId` de `add` ya viene armado desde la pantalla, porque el primer intento ONLINE lo
-  // mandó con ese mismo id: si la petición sí llegó y lo que se perdió fue la respuesta, el reenvío
-  // tiene que repetirlo para que el servidor lo reconozca en vez de crear un segundo pallet.
-  const clientOpId = (op.op === 'add' && op.clientOpId) || nuevoId();
+  // El `clientOpId` ya viene armado desde la pantalla, porque el primer intento ONLINE lo mandó con
+  // ese mismo id: si la petición sí llegó y lo que se perdió fue la respuesta, el reenvío tiene que
+  // repetirlo para que el servidor lo reconozca en vez de crear un segundo pallet (o contar una
+  // segunda impresión).
+  const clientOpId = op.clientOpId || nuevoId();
   await guardar<OfflineQueueItem>(
     { id: nuevoId(), modulo: 'picking', clientOpId, payload: op, intentos: 0, createdAt: Date.now() },
     OPCIONES,
@@ -96,7 +98,7 @@ export async function migrarColaVieja(): Promise<number> {
 
   let migrados = 0;
   for (const op of viejos) {
-    const clientOpId = (op.op === 'add' && op.clientOpId) || nuevoId();
+    const clientOpId = op.clientOpId || nuevoId();
     const ok = await guardar<OfflineQueueItem>(
       { id: nuevoId(), modulo: 'picking', clientOpId, payload: op, intentos: 0, createdAt: Date.now() },
       OPCIONES,
@@ -123,10 +125,8 @@ function cuerpo(op: OfflineQueueItem, clientOpId: string): { url: string; body: 
       }),
     };
   }
-  // Ojo: /api/picking-prints todavía NO mira `client_op_id` — la idempotencia de la cola la da el
-  // servidor, y ese endpoint no la implementa. Se manda igual para que empiece a llegar el día que
-  // se agregue, pero hoy un reintento que sí llegó y perdió la respuesta registra la impresión dos
-  // veces. Es lo mismo que pasaba antes de la cola única; queda anotado para no darlo por resuelto.
+  // /api/picking-prints usa `client_op_id` para no contar dos veces la misma impresión cuando un
+  // reintento sí había llegado (ver sql/2026-10-08_picking_prints_idempotencia.sql).
   return {
     url: '/api/picking-prints',
     body: JSON.stringify({

@@ -149,7 +149,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
         </div>
       )}
       {/* Card header */}
-      <div className="px-4 py-2.5 border-b flex items-center gap-3 min-w-0" style={{ borderColor: 'var(--color-border)', background: '#fff' }}>
+      <div className="px-4 py-2.5 border-b flex flex-wrap items-center gap-x-3 gap-y-1.5 min-w-0" style={{ borderColor: 'var(--color-border)', background: '#fff' }}>
         <span className="font-mono text-[12px] font-semibold shrink-0 px-2 py-0.5 rounded"
           style={{ background: 'rgba(0,0,0,0.04)', color: '#475569' }}>{group.key}</span>
         {displayName && <span className="text-[14px] font-semibold text-slate-700 truncate flex-1">{displayName}</span>}
@@ -294,9 +294,13 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
           {/* Contadores P / C / B / CH */}
           <div>
             <label className="text-[11px] font-medium text-slate-400 block mb-2">Unidades a despachar</label>
-            <div className="flex gap-2">
+            {/* Grilla que se acomoda al ancho: en la columna angosta de «Todas» los contadores
+                pasan a la fila de abajo en vez de cortarse por la derecha. */}
+            <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))' }}>
               {([
                 { tipo: 'P'         as ClaveUnidad, sigla: 'P',  label: 'Pallets'      },
+                // El contenedor ya no se ofrece (tiposUnidad.ts). Sigue en la lista solo para que uno
+                // que ya exista se vea y se pueda quitar.
                 { tipo: 'C'         as ClaveUnidad, sigla: 'C',  label: 'Contenedores' },
                 { tipo: 'B'         as ClaveUnidad, sigla: 'B',  label: 'Bultos'       },
                 // El chocolate se abre en sus dos cajas: la negra mide siempre igual, la de cartón
@@ -315,7 +319,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                 const active = count > 0;
                 return (
                   <div key={tipo}
-                    className="flex-1 flex flex-col items-center gap-2 py-2.5 px-1.5 rounded border transition-all"
+                    className="flex flex-col items-center gap-2 py-2.5 px-1.5 rounded border transition-all"
                     style={{
                       borderColor: active ? 'var(--color-info)' : 'var(--color-border)',
                       background: '#fff',
@@ -337,12 +341,14 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                             onTipoPalletsChange(tipo, Math.max(0, count - 1));
                           }
                         }}
-                        className="w-7 h-7 rounded text-[16px] flex items-center justify-center cursor-pointer border"
-                        style={{ borderColor: 'var(--color-border)', color: '#94A3B8', background: '#fff' }}>−</button>
+                        aria-label={`Quitar ${label}`}
+                        className="w-[40px] h-[40px] rounded-lg text-[20px] flex items-center justify-center cursor-pointer border"
+                        style={{ borderColor: 'var(--color-border)', color: '#64748B', background: '#fff' }}>−</button>
                       <span className="w-8 text-center text-[20px] font-bold leading-none"
                         style={{ color: active ? '#1E293B' : '#CBD5E1' }}>{count}</span>
                       <button onClick={() => onTipoPalletsChange(tipo, count + 1)}
-                        className="w-7 h-7 rounded text-[16px] flex items-center justify-center cursor-pointer"
+                        aria-label={`Agregar ${label}`}
+                        className="w-[40px] h-[40px] rounded-lg text-[20px] flex items-center justify-center cursor-pointer"
                         style={{ background: 'var(--color-info)', color: '#fff', border: 'none' }}>+</button>
                     </div>
                   </div>
@@ -391,41 +397,17 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
         {/* RIGHT / BOTTOM */}
         <div className={`${stickerBelow ? 'w-full border-t border-border' : 'lg:w-[55%]'} p-4 bg-[#FAFAFA]`}>
           {!sinBloqueoOdoo ? (
-            <div className="h-full min-h-[180px] flex flex-col gap-3">
-              <div className="flex items-center gap-2 mb-1">
-                <AlertTriangle size={13} className="text-slate-400 shrink-0" />
-                <span className="text-[12px] font-medium text-slate-500">Operaciones pendientes — completa todas para imprimir</span>
+            /* Las operaciones ya están arriba, cada una con su estado y su botón de recargar. Acá
+               se repetían enteras; basta con decir cuánto falta para poder imprimir. */
+            <div className="h-full min-h-[120px] flex flex-col items-center justify-center gap-2 text-center px-4">
+              <AlertTriangle size={20} className="text-slate-400" />
+              <div className="text-[14px] font-semibold text-slate-600">
+                {(() => {
+                  const hechas = group.operations.filter(o => o.state === 'done').length;
+                  return `${hechas} de ${group.operations.length} operaciones realizadas en Odoo`;
+                })()}
               </div>
-              {group.operations.map(op => {
-                const info = STATE_INFO[op.state] ?? STATE_INFO.draft;
-                return (
-                  <div key={op.id} className="flex items-center gap-3 bg-white border rounded-lg px-4 py-3"
-                    style={{ borderColor: info.border }}>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-[13px] font-bold text-navy">{op.name}</span>
-                        <StateBadge state={op.state} />
-                        {op.lineCount > 0 && (
-                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                            style={{ background: 'rgba(26,37,80,0.07)', color: '#374151' }}>
-                            {op.lineCount} líneas
-                          </span>
-                        )}
-                      </div>
-                      {op.categories.length > 0 && (
-                        <div className="text-[12px] text-text-3 mt-0.5">{op.categories.join(' · ')}</div>
-                      )}
-                    </div>
-                    {op.state !== 'done' && (
-                      <button onClick={() => onRefreshOp(op)} disabled={refreshingId === op.id}
-                        className="text-[13px] shrink-0 border rounded-full px-2.5 py-1.5 cursor-pointer disabled:opacity-40"
-                        style={{ borderColor: 'rgba(37,99,235,0.35)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
-                        <RotateCcw size={13} className={refreshingId === op.id ? 'animate-spin' : ''} />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
+              <div className="text-[13px] text-slate-500">Se puede imprimir cuando estén todas realizadas.</div>
             </div>
           ) : assignedNums.length === 0 && avisoOtraSeccion ? (
             /* El cero de esta pestaña NO es un error: el pallet existe y se cuenta en otra. Se
@@ -530,16 +512,18 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                   </div>
                 </div>
               )}
-              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 8 }}>
+              {/* Las columnas de Configuración, pero nunca más angostas que una etiqueta legible:
+                  en la columna angosta de «Todas» bajan solas a las que quepan. */}
+              <div style={{ display: 'grid', gap: 8,
+                gridTemplateColumns: `repeat(auto-fill, minmax(max(150px, calc((100% - ${(colsPerRow - 1) * 8}px) / ${colsPerRow})), 1fr))` }}>
                 {assignedNums.map((pNum, i) => {
                   const isSelected = selectedIndices.has(i);
                   const slot       = slots[i];
                   const slotTipo   = (slot?.tipo as PickerType | undefined) ?? 'P';
                   const tipoTotal  = slots.filter(s => ((s.tipo as PickerType | undefined) ?? 'P') === slotTipo).length;
-                  const itemWidth  = `calc((100% - ${(colsPerRow - 1) * 8}px) / ${colsPerRow})`;
                   return (
                     <div key={slot?.id ?? i}
-                      style={{ width: itemWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
                       <div onClick={() => toggleIndex(i)}
                         style={{
                           position: 'relative', cursor: 'pointer', borderRadius: 10,
