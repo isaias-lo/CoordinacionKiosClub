@@ -1,17 +1,13 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Loader2, AlertTriangle, Search, X, Zap, Trash2, Check } from 'lucide-react';
+import { Loader2, AlertTriangle, X, Trash2 } from 'lucide-react';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import type { PickingOperation, TodayStore, StoreGroupKey } from '../picking-types';
 import { getStoreGroup, GROUP_LABELS, isPickeableState } from '../picking-utils';
 
-const GROUP_STYLE: Record<StoreGroupKey, { bg: string; color: string }> = {
-  region:   { bg: 'rgba(37,99,235,0.07)',  color: '#1D4ED8' },
-  costa:    { bg: 'rgba(16,185,129,0.07)', color: '#059669' },
-  santiago: { bg: 'rgba(26,37,80,0.05)',   color: '#374151' },
-};
-const GROUP_ORDER: StoreGroupKey[] = ['region', 'costa', 'santiago'];
+// Santiago arriba, como en el diseño: es el grupo con más tiendas cada día.
+const GROUP_ORDER: StoreGroupKey[] = ['santiago', 'region', 'costa'];
 
 interface Props {
   selectedCods: string[];
@@ -68,83 +64,67 @@ export const StoreListPanel = React.memo(function StoreListPanel({
   }, [q, todayStores, tiendaOverrides]);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="px-4 pt-4 pb-3 border-b border-border flex-shrink-0">
-        <div className="font-barlow-condensed text-[14px] font-semibold text-navy uppercase tracking-widest mb-2 flex items-center gap-2">
+    <div className="pk-stores">
+      <div className="pk-sh">
+        <div className="t">
           Tiendas de hoy
-          {storesLoading
-            ? <span className="text-[12px] text-text-3 font-normal normal-case">cargando…</span>
-            : todayStores.length > 0
-              ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[rgba(217,119,6,0.12)] text-amber-700">{todayStores.length}</span>
-              : null}
-          {selectedCods.length > 0 && (
-            <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">{selectedCods.length} sel.</span>
-          )}
+          <span>
+            {storesLoading ? 'cargando…' : todayStores.length > 0 ? `${todayStores.length}` : ''}
+            {!storesLoading && todayStores.length > 0 && selectedCods.length > 0 ? ' · ' : ''}
+            {selectedCods.length > 0 ? `${selectedCods.length} ${selectedCods.length === 1 ? 'elegida' : 'elegidas'}` : ''}
+          </span>
         </div>
-        <div className="flex items-center gap-2 bg-[var(--color-bg)] border border-border rounded-xl px-3 py-2">
-          <Search size={16} className="text-text-3 shrink-0" aria-hidden="true" />
+        <div className="pk-search">
           <label htmlFor="store-search" className="sr-only">Buscar tienda</label>
           <input id="store-search" type="text" value={q} onChange={e => setQ(e.target.value)}
-            placeholder="Buscar tienda…"
-            className="flex-1 bg-transparent border-none outline-none text-[14px] font-barlow text-text min-w-0" />
+            placeholder="Buscar tienda o código…" />
           {q && (
             <button type="button" onClick={() => setQ('')} aria-label="Limpiar búsqueda"
-              className="text-text-3 border-none bg-transparent cursor-pointer shrink-0 flex items-center">
+              className="border-none bg-transparent cursor-pointer shrink-0 flex items-center" style={{ color: '#8A91A1' }}>
               <X size={14} />
             </button>
           )}
         </div>
         {onOpenAdelanto && (
-          <button onClick={onOpenAdelanto}
-            className="mt-2 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-bold cursor-pointer transition-colors"
-            style={{ background: 'rgba(30,64,175,0.06)', color: '#1E40AF', border: '1.5px dashed rgba(30,64,175,0.35)' }}>
-            <Zap size={13} aria-hidden="true" /> Agregar tienda (adelanto)
+          <button type="button" onClick={onOpenAdelanto} className="pk-btn" style={{ padding: 6 }}>
+            + Adelantar tienda
           </button>
         )}
         {isFallback && !storesLoading && (
-          <div className="mt-1.5 text-[12px] text-text-3 italic">
-            {todayStores.length === 0 ? 'Sin despachos hoy — mostrando todas' : 'Sin coincidencias hoy — buscando en todas'}
+          <div style={{ fontSize: 12, color: '#6B7280' }}>
+            {todayStores.length === 0 ? 'Sin despachos hoy: mostrando todas' : 'Sin coincidencias hoy: buscando en todas'}
           </div>
         )}
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {storesLoading && <div className="px-4 py-6 text-center text-[13px] text-text-3">Cargando despachos de hoy…</div>}
+        {storesLoading && <div className="px-4 py-6 text-center" style={{ fontSize: 13, color: '#6B7280' }}>Cargando despachos de hoy…</div>}
         {!storesLoading && GROUP_ORDER.map(gKey => {
           const stores = grouped[gKey];
           if (stores.length === 0) return null;
-          const style = GROUP_STYLE[gKey];
+          const cods = stores.map(s => s.cod);
+          const elegidas = cods.filter(c => selectedCods.includes(c)).length;
+          const todas = elegidas === cods.length;
+          const contenido = (
+            <>
+              <span>{GROUP_LABELS[gKey]} · {stores.length}</span>
+              {onToggleGrupo && (
+                <span className="acc">{elegidas > 0 ? `${elegidas} ${elegidas === 1 ? 'elegida' : 'elegidas'}` : 'Elegir todas'}</span>
+              )}
+            </>
+          );
           return (
             <div key={gKey}>
-              {(() => {
-                const cods = stores.map(s => s.cod);
-                const elegidas = cods.filter(c => selectedCods.includes(c)).length;
-                const todas = elegidas === cods.length;
-                const contenido = (
-                  <>
-                    <span className="flex-1 text-left">{GROUP_LABELS[gKey]} ({stores.length})</span>
-                    {onToggleGrupo && (
-                      <span className="font-mono text-[10px] opacity-70">
-                        {elegidas > 0 ? `${elegidas}/${cods.length}` : 'elegir todas'}
-                      </span>
-                    )}
-                  </>
-                );
-                const clases = 'w-full flex items-center gap-2 px-4 py-2 text-[11px] font-semibold uppercase tracking-widest sticky top-0 z-10 border-none';
-                const estilo = { background: style.bg, color: style.color, borderBottom: '1px solid rgba(0,0,0,0.04)' };
-                return onToggleGrupo ? (
-                  <button type="button"
-                    onClick={() => onToggleGrupo(cods, !todas)}
-                    aria-pressed={todas}
-                    title={todas ? `Quitar las ${cods.length} tiendas de ${GROUP_LABELS[gKey]}` : `Elegir las ${cods.length} tiendas de ${GROUP_LABELS[gKey]}`}
-                    className={clases + ' cursor-pointer hover:brightness-95 transition-all'}
-                    style={estilo}>
-                    {contenido}
-                  </button>
-                ) : (
-                  <div className={clases} style={estilo}>{contenido}</div>
-                );
-              })()}
+              {onToggleGrupo ? (
+                <button type="button" className="pk-sg"
+                  onClick={() => onToggleGrupo(cods, !todas)}
+                  aria-pressed={todas}
+                  title={todas ? `Quitar las ${cods.length} tiendas de ${GROUP_LABELS[gKey]}` : `Elegir las ${cods.length} tiendas de ${GROUP_LABELS[gKey]}`}>
+                  {contenido}
+                </button>
+              ) : (
+                <div className="pk-sg">{contenido}</div>
+              )}
               {stores.map(store => {
                 const isSelected  = selectedCods.includes(store.cod);
                 const isLoading   = loadingCods.includes(store.cod);
@@ -156,68 +136,34 @@ export const StoreListPanel = React.memo(function StoreListPanel({
                 const doneOps = ops.filter(o => o.state === 'done').length;
                 const storeStatus: 'none' | 'partial' | 'complete' =
                   totalOps === 0 ? 'none' : doneOps === totalOps ? 'complete' : 'partial';
-                const pickerCount = isSelected && ops.length > 0 ? new Set(ops.map(o => o.responsible || 'Sin asignar')).size : 0;
-                const opCount     = ops.length;
-                // Texto para lectores de pantalla — el estado hoy se comunica solo con el
-                // borde de color izquierdo (y con el fondo cuando está seleccionada).
-                const statusText = storeStatus === 'complete' ? 'Todo realizado'
-                  : storeStatus === 'partial' ? `${doneOps} de ${totalOps} operaciones`
-                  : isSelected ? 'Seleccionada' : 'Sin operaciones';
                 return (
-                  <div key={store.cod}
-                    className="w-full flex items-center border-b border-border transition-all"
-                    style={{
-                      background:  isSelected ? 'rgba(217,119,6,0.09)' : 'transparent',
-                      borderLeft: `4px solid ${storeStatus === 'complete' ? '#16A34A' : storeStatus === 'partial' ? '#F59E0B' : isSelected ? '#D97706' : 'transparent'}`,
-                    }}>
-                    <button onClick={() => onToggleStore(store.cod)} disabled={isLoading}
+                  <div key={store.cod} className="flex items-stretch">
+                    <button type="button" onClick={() => onToggleStore(store.cod)} disabled={isLoading}
                       aria-pressed={isSelected}
-                      className="flex-1 min-w-0 flex items-center gap-2 px-4 py-3 cursor-pointer text-left transition-all disabled:cursor-wait border-none bg-transparent">
-                      <div className="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all"
-                        style={{ borderColor: storeStatus === 'complete' ? '#16A34A' : storeStatus === 'partial' ? '#F59E0B' : isSelected ? '#D97706' : 'rgba(26,37,80,0.2)', background: isSelected ? (storeStatus === 'complete' ? '#16A34A' : storeStatus === 'partial' ? '#F59E0B' : '#D97706') : 'transparent' }}>
-                        {isSelected && <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                      </div>
-                      <span className="font-mono text-[13px] font-bold shrink-0 px-2 py-0.5 rounded-lg"
-                        style={{ background: isSelected ? 'rgba(217,119,6,0.15)' : 'rgba(26,37,80,0.07)', color: isSelected ? '#D97706' : '#374151' }}>
-                        {store.cod}
+                      className={`pk-sr${isSelected ? ' sel' : ''}`}>
+                      <span className="ck" aria-hidden="true">
+                        {isSelected && <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                       </span>
-                      <span className="text-[14px] truncate flex-1" style={{ color: isSelected ? '#B45309' : '#374151', fontWeight: isSelected ? 600 : 400 }}>
-                        {store.name}
+                      <span className="c">{store.cod}</span>
+                      <span className="nm">{store.name}</span>
+                      <span className="fin">
+                        {isLoading && <Loader2 size={14} className="animate-spin" style={{ color: '#8A91A1' }} aria-label="Cargando" />}
+                        {hasError && !isLoading && <span title="Error al cargar: toca para reintentar"><AlertTriangle size={14} style={{ color: '#A3271A' }} aria-label="Error al cargar" /></span>}
+                        {store.adelanto && (
+                          <span className="pk-pill info" title={store.adelanto.fecha_despacho ? `Despacho: ${store.adelanto.fecha_despacho}` : 'Adelanto'}>Adelanto</span>
+                        )}
+                        {storeStatus === 'complete' && <span className="pk-pill ok">Listo</span>}
+                        {storeStatus === 'partial' && (
+                          <span className="pk-pill warn" aria-label={`${doneOps} de ${totalOps} operaciones`}>{doneOps}/{totalOps} ops</span>
+                        )}
                       </span>
-                      <span className="sr-only">{statusText}</span>
-                      {isLoading && <span className="shrink-0"><Loader2 size={14} className="animate-spin text-text-3" /></span>}
-                      {hasError && !isLoading && <span className="shrink-0" title="Error al cargar — haz clic para reintentar"><AlertTriangle size={14} className="text-amber-600" /></span>}
-                      {storeStatus === 'complete' && (
-                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 inline-flex items-center gap-1"
-                          style={{ background: 'rgba(22,163,74,0.15)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.3)' }}>
-                          <Check size={11} aria-hidden="true" /> Listo
-                        </span>
-                      )}
-                      {storeStatus === 'partial' && (
-                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
-                          style={{ background: 'rgba(245,158,11,0.15)', color: '#D97706', border: '1px solid rgba(245,158,11,0.3)' }}>
-                          {doneOps}/{totalOps}
-                        </span>
-                      )}
-                      {isSelected && !isLoading && storeStatus !== 'complete' && opCount > 0 && (
-                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
-                          style={{ background: 'rgba(217,119,6,0.18)', color: '#D97706' }}>
-                          {pickerCount}p · {opCount}op
-                        </span>
-                      )}
-                      {store.adelanto && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 inline-flex items-center gap-1"
-                          title={store.adelanto.fecha_despacho ? `Despacho: ${store.adelanto.fecha_despacho}` : 'Adelanto'}
-                          style={{ background: 'rgba(30,64,175,0.12)', color: '#1E40AF', border: '1px solid rgba(30,64,175,0.3)' }}>
-                          <Zap size={9} aria-hidden="true" /> Adelanto
-                        </span>
-                      )}
                     </button>
                     {store.adelanto && onDeleteAdelanto && (
                       <button type="button" onClick={() => onDeleteAdelanto(store.adelanto!.id)}
                         aria-label={`Eliminar adelanto de ${store.cod}`} title="Eliminar adelanto"
-                        className="shrink-0 flex items-center justify-center px-2.5 py-3 cursor-pointer border-none bg-transparent">
-                        <Trash2 size={13} style={{ color: '#DC2626' }} />
+                        className="shrink-0 flex items-center justify-center px-2.5 cursor-pointer border-none"
+                        style={{ background: isSelected ? '#F3F5FD' : 'transparent' }}>
+                        <Trash2 size={13} style={{ color: '#A3271A' }} />
                       </button>
                     )}
                   </div>
@@ -228,10 +174,8 @@ export const StoreListPanel = React.memo(function StoreListPanel({
         })}
       </div>
       {onVerElegidas && selectedCods.length > 0 && (
-        <div className="lg:hidden flex-shrink-0 p-3 border-t border-border bg-white">
-          <button type="button" onClick={onVerElegidas}
-            className="w-full min-h-[48px] rounded-xl text-[16px] font-bold cursor-pointer border-none text-white"
-            style={{ background: '#2563EB' }}>
+        <div className="lg:hidden flex-shrink-0 p-3 bg-white" style={{ borderTop: '1px solid #E4E7EC' }}>
+          <button type="button" onClick={onVerElegidas} className="pk-btn pri w-full min-h-[48px]" style={{ fontSize: 16 }}>
             Ver {selectedCods.length === 1 ? 'la tienda' : `las ${selectedCods.length} tiendas`} →
           </button>
         </div>

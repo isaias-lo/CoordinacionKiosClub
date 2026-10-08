@@ -1,0 +1,64 @@
+/* Marco de Picking: franja superior, menú lateral y lista de tiendas.
+   Valores copiados de /mnt/project-files/disenos/picking/Main.dc.html («Picking, propuesta
+   empresarial»). Todo cuelga de .pk para no tocar el resto de la app. */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+.pk{background:#F5F6F8;color:#14161B;font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:14px}
+.pk button{font-family:inherit}
+.pk-mono{font-family:'IBM Plex Mono',monospace}
+
+/* Franja superior */
+.pk-top{height:52px;flex-shrink:0;background:#FFFFFF;color:#14161B;border-bottom:1px solid #E4E7EC;display:flex;align-items:center;gap:18px;padding:0 18px}
+.pk-crumb{color:#6B7280;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pk-crumb b{color:#14161B;font-weight:600}
+.pk-sp{flex:1}
+.pk-sync{display:flex;align-items:center;gap:8px;font-size:13px;color:#4B5160;border:1px solid #E4E7EC;border-radius:999px;padding:5px 12px;white-space:nowrap}
+.pk-sync i{width:8px;height:8px;border-radius:4px;background:#34D399;display:inline-block;flex-shrink:0}
+.pk-sync.off i{background:#F59E0B}
+.pk-fecha{font-size:13px;color:#4B5160;white-space:nowrap}
+
+/* Menú lateral */
+.pk-nav{width:200px;flex-shrink:0;background:#FFFFFF;border-right:1px solid #E4E7EC;padding:14px 10px;display:flex;flex-direction:column;gap:2px;overflow-y:auto}
+.pk-navg{font-size:11px;font-weight:700;letter-spacing:.08em;color:#8A91A1;padding:12px 10px 6px;text-transform:uppercase}
+.pk-navi{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:#3D4350;font-weight:500;font-size:14px;background:transparent;border:0;text-align:left;cursor:pointer;width:100%}
+.pk-navi:hover{background:#F5F6F8}
+.pk-navi .dot{width:8px;height:8px;border-radius:2px;background:#C3C8D3;flex-shrink:0}
+.pk-navi .n{margin-left:auto;font-size:12px;color:#8A91A1;font-weight:500}
+.pk-navi.on{background:#EEF1FB;color:#1C2E7A;font-weight:700}
+.pk-navi.on .dot{background:#3B5BDB}
+
+/* Lista de tiendas */
+.pk-stores{background:#FFFFFF;display:flex;flex-direction:column;min-height:0;height:100%;font-size:14px}
+.pk-sh{padding:14px 14px 10px;border-bottom:1px solid #E4E7EC;display:flex;flex-direction:column;gap:10px;flex-shrink:0}
+.pk-sh .t{display:flex;align-items:baseline;justify-content:space-between;font-weight:700}
+.pk-sh .t span{font-weight:500;color:#6B7280;font-size:13px}
+.pk-search{display:flex;align-items:center;gap:6px;border:1px solid #D7DBE3;border-radius:8px;padding:7px 10px;font-size:13px;color:#14161B}
+.pk-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;color:inherit}
+.pk-search input::placeholder{color:#8A91A1}
+.pk-search:focus-within{border-color:#3B5BDB}
+.pk-btn{border:1px solid #D7DBE3;background:#FFFFFF;color:#2B303B;border-radius:8px;padding:8px 13px;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer}
+.pk-btn:hover{background:#F8F9FB}
+.pk-btn.pri{background:#2B4BC8;border-color:#2B4BC8;color:#FFFFFF}
+.pk-sg{font-size:11px;font-weight:700;letter-spacing:.08em;color:#8A91A1;padding:10px 14px 4px;display:flex;justify-content:space-between;text-transform:uppercase;width:100%;background:#FFFFFF;border:0;position:sticky;top:0;z-index:1}
+button.pk-sg{cursor:pointer}
+button.pk-sg:hover .acc{color:#2B4BC8}
+.pk-sr{display:grid;grid-template-columns:16px 52px minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 14px;font-size:13px;border-left:3px solid transparent;width:100%;background:transparent;border-top:0;border-right:0;border-bottom:0;text-align:left;color:#14161B;cursor:pointer}
+.pk-sr:hover{background:#F8F9FB}
+.pk-sr:disabled{cursor:wait}
+.pk-sr .ck{width:16px;height:16px;border-radius:4px;border:1.5px solid #B8BECB;display:flex;align-items:center;justify-content:center;color:#FFFFFF}
+.pk-sr.sel{background:#F3F5FD;border-left-color:#3B5BDB}
+.pk-sr.sel .ck{background:#3B5BDB;border-color:#3B5BDB}
+.pk-sr .c{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6B7280}
+.pk-sr .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk-sr .fin{display:flex;align-items:center;gap:6px}
+
+/* Píldoras */
+.pk-pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:600;white-space:nowrap}
+.pk-pill.ok{background:#E6F4EC;color:#14653A}
+.pk-pill.warn{background:#FDF1DE;color:#8A4A06}
+.pk-pill.bad{background:#FCE9E7;color:#A3271A}
+.pk-pill.mute{background:#EEF0F4;color:#4B5160}
+.pk-pill.info{background:#E7EEFC;color:#1F3FA8}
+
+/* Teléfono y handheld: filas que se tocan con el dedo (la fase 6 rehace esta vista). */
+@media (max-width:1023px){.pk-sr{min-height:48px}}

@@ -64,6 +64,8 @@ import { ConfigTab }          from './components/ConfigTab';
 import CalendarioColumnas     from '@/features/control-interno/CalendarioColumnas';
 import { PickerGroupCard }    from './components/PickerGroupCard';
 import { StoreListPanel }     from './components/StoreListPanel';
+import { BarraSuperior }      from './marco/BarraSuperior';
+import { MenuLateral }        from './marco/MenuLateral';
 import { AgregarAdelantoDialog } from './components/AgregarAdelantoDialog';
 import { enqueuePickingItem, flushPickingQueue, migrarColaVieja, contarPendientesPicking } from './picking-offline-queue';
 import type { MedidasPallet } from '@/features/despacho/shared/medidasPallet';
@@ -148,7 +150,7 @@ export function PickingScreen() {
 
   // Resizable left panel
   const { width: leftWidth, isDesktop, handleMouseDown: handlePanelMouseDown, handleTouchStart: handlePanelTouchStart } =
-    useResizablePanel({ storageKey: 'picking_left_panel_width', defaultWidth: 288, min: 180, max: 480 });
+    useResizablePanel({ storageKey: 'picking_left_panel_width', defaultWidth: 290, min: 180, max: 480 });
   // [M-08] Plegado automático del panel de tiendas donde la selección no cambia lo que se ve.
   const selectorColapsado = isDesktop && !usaSelectorDeTiendas(rightTab) && !selectorAbiertoManual;
   // Al cambiar de pestaña vuelve al automático: haberlo abierto en Calendario no debería dejarlo
@@ -187,15 +189,15 @@ export function PickingScreen() {
     };
   }, [vaciarCola]);
 
-  // Cuántas acciones esperan señal en este equipo. Solo se cuenta sin conexión, que es cuando el
-  // aviso lo muestra: con señal la cola se vacía sola al reconectar.
+  // Cuántas acciones esperan en la cola de este equipo. La franja superior lo muestra siempre:
+  // «todo guardado» solo si de verdad no queda nada. Sin conexión se cuenta más seguido, porque es
+  // cuando la cola crece; con señal basta para ver que se vació.
   const [pendientesCola, setPendientesCola] = useState(0);
   useEffect(() => {
-    if (isOnline) { setPendientesCola(0); return; }
     let vivo = true;
     const contar = () => { void contarPendientesPicking().then(n => { if (vivo) setPendientesCola(n); }).catch(() => {}); };
     contar();
-    const id = setInterval(contar, 3000);
+    const id = setInterval(contar, isOnline ? 15000 : 3000);
     return () => { vivo = false; clearInterval(id); };
   }, [isOnline]);
 
@@ -1395,7 +1397,6 @@ export function PickingScreen() {
     return () => { vivo = false; };
   }, []);
 
-  const todayLabel     = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
   // Datos de impresión — una etiqueta por slot, sección activa del supervisor
   const printableLabels = useMemo(() => {
     type LabelData = {
@@ -1536,39 +1537,11 @@ export function PickingScreen() {
       document.body
     )}
 
-    <div className="fixed inset-0 flex flex-col overflow-hidden bg-[#F5F6FA]">
+    <div className="pk fixed inset-0 flex flex-col overflow-hidden">
 
-      {/* ── Header ── */}
-      <div className="mobile-menu-safe flex items-center gap-3 px-4 py-2.5 flex-shrink-0 print:hidden bg-white"
-        style={{ borderBottom: '1px solid var(--color-border)' }}>
-        {/* Solo navegación interna en mobile (planilla → lista de tiendas). El "Inicio"
-            se quitó: el sidebar ya provee la navegación a casa. */}
-        {panelView === 'planilla' && (
-          <button className="lg:hidden border cursor-pointer text-slate-500 hover:text-slate-800 text-[13px] font-medium px-2.5 py-1.5 rounded"
-            style={{ background: '#F1F5F9', borderColor: 'var(--color-border)' }}
-            onClick={() => setPanelView('stores')}>
-            ← Tiendas
-          </button>
-        )}
-
-        <div className="flex-1 min-w-0">
-          {selectedCods.length > 0 ? (
-            <div className="text-[13px] font-semibold text-slate-700 truncate">{selectedCods.join(' · ')}</div>
-          ) : (
-            <div className="text-[13px] font-semibold text-slate-700 truncate">
-              {profile?.full_name ?? ''} <span className="font-normal text-slate-400">· {todayLabel}</span>
-            </div>
-          )}
-        </div>
-
-        {selectedCods.length > 0 && lastRefresh && (
-          <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0">
-            <RefreshCw size={11} />
-            {lastRefresh.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
-          </div>
-        )}
-
-      </div>
+      {/* ── Franja superior ── */}
+      <BarraSuperior tab={rightTab} online={isOnline} pendientes={pendientesCola}
+        onVolverATiendas={panelView === 'planilla' ? () => setPanelView('stores') : undefined} />
 
       {/* ── Alerta cambios calendario ── */}
       {notifCount > 0 && (
@@ -1590,12 +1563,15 @@ export function PickingScreen() {
       {/* ── Split body ── */}
       <div className="flex-1 flex overflow-hidden">
 
+        {/* Menú lateral: reemplaza la fila de pestañas en escritorio. */}
+        {isDesktop && <MenuLateral tab={rightTab} onTab={setRightTab} tiendasElegidas={selectedCods.length} />}
+
         {/* LEFT PANEL */}
         <div
           className={[
             'flex flex-col bg-white shrink-0 overflow-hidden',
             panelView === 'planilla' ? 'hidden lg:flex' : 'flex',
-            isDesktop ? '' : 'w-full border-r border-border',
+            isDesktop ? '' : 'w-full',
           ].join(' ')}
           style={isDesktop ? { width: selectorColapsado ? 0 : leftWidth } : undefined}
           aria-hidden={selectorColapsado || undefined}
@@ -1635,14 +1611,14 @@ export function PickingScreen() {
             aria-label={selectorColapsado ? 'Mostrar las tiendas' : 'Esconder las tiendas'}
             title={selectorColapsado ? 'Mostrar las tiendas' : 'Arrastra para ajustar · toca para esconder'}
             className="group flex-shrink-0 flex flex-col items-center justify-center gap-1.5 relative select-none z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
-            style={{ width: selectorColapsado ? 14 : 6, background: 'rgba(0,0,0,0.06)', cursor: selectorColapsado ? 'pointer' : 'col-resize' }}
+            style={{ width: selectorColapsado ? 14 : 6, background: selectorColapsado ? '#FFFFFF' : 'transparent', borderLeft: '1px solid #E4E7EC', borderRight: selectorColapsado ? '1px solid #E4E7EC' : undefined, cursor: selectorColapsado ? 'pointer' : 'col-resize' }}
             onMouseDown={e => { if (selectorColapsado) return; handlePanelMouseDown(e); }}
             onTouchStart={e => { if (selectorColapsado) return; handlePanelTouchStart(e); }}
             onClick={() => setSelectorAbiertoManual(v => !v)}
             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectorAbiertoManual(v => !v); } }}
           >
             <div className="absolute inset-0 group-hover:bg-blue-500/10 transition-colors duration-150" />
-            <div className="flex flex-col gap-1 relative z-10 opacity-40 group-hover:opacity-100 transition-opacity duration-150">
+            <div className="flex flex-col gap-1 relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
               {[0, 1, 2].map(i => (
                 <div key={i} className="w-[4px] h-[4px] rounded-full" style={{ background: '#94A3B8' }} />
               ))}
@@ -1650,7 +1626,7 @@ export function PickingScreen() {
             <span className="relative z-10 text-[10px] leading-none opacity-50 group-hover:opacity-100 transition-opacity" style={{ color: '#64748B' }} aria-hidden="true">
               {selectorColapsado ? '›' : '‹'}
             </span>
-            <div className="flex flex-col gap-1 relative z-10 opacity-40 group-hover:opacity-100 transition-opacity duration-150">
+            <div className="flex flex-col gap-1 relative z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
               {[0, 1, 2].map(i => (
                 <div key={i} className="w-[4px] h-[4px] rounded-full" style={{ background: '#94A3B8' }} />
               ))}
@@ -1675,8 +1651,8 @@ export function PickingScreen() {
           )}
 
           {/* ── Tab bar ──
-              Escritorio: las siete en fila. Teléfono y handheld: las tres del trabajo diario y el
-              resto en «Más», que antes quedaban fuera de la pantalla sin que se notara. */}
+              Solo teléfono y handheld: las tres del trabajo diario y el resto en «Más». En
+              escritorio las pestañas están en el menú lateral (MenuLateral). */}
           {(() => {
             const TABS = [
               { key: 'monitoreo',     label: 'Seco'        },
@@ -1705,7 +1681,7 @@ export function PickingScreen() {
               );
             };
             return (
-              <div className="flex flex-shrink-0 print:hidden"
+              <div className="flex flex-shrink-0 print:hidden lg:hidden"
                 style={{ background: '#fff', borderBottom: '1px solid var(--color-border)' }}>
                 {TABS.slice(0, PRINCIPALES).map(t => boton(t, 'max-lg:min-h-[44px] max-lg:text-[13px]'))}
                 {enMas.map(t => boton(t, 'hidden lg:block'))}
