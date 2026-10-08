@@ -26,11 +26,14 @@ interface Props {
   tiendaOverrides?: Record<string, string>; // nombres desde Supabase (override del hardcoded)
   onOpenAdelanto?: () => void;              // abrir diálogo "agregar tienda (adelanto)"
   onDeleteAdelanto?: (id: number) => void;  // eliminar una tienda de adelanto
+  /** Teléfono y handheld: pasar a la planilla con las tiendas elegidas. En escritorio las dos
+   *  partes se ven juntas y no hace falta. */
+  onVerElegidas?: () => void;
 }
 
 export const StoreListPanel = React.memo(function StoreListPanel({
   selectedCods, loadingCods, errorCods, opsMap, todayStores, storesLoading, onToggleStore, onToggleGrupo, tiendaOverrides = {},
-  onOpenAdelanto, onDeleteAdelanto,
+  onOpenAdelanto, onDeleteAdelanto, onVerElegidas,
 }: Props) {
   const [q, setQ] = useState('');
 
@@ -224,6 +227,15 @@ export const StoreListPanel = React.memo(function StoreListPanel({
           );
         })}
       </div>
+      {onVerElegidas && selectedCods.length > 0 && (
+        <div className="lg:hidden flex-shrink-0 p-3 border-t border-border bg-white">
+          <button type="button" onClick={onVerElegidas}
+            className="w-full min-h-[48px] rounded-xl text-[16px] font-bold cursor-pointer border-none text-white"
+            style={{ background: '#2563EB' }}>
+            Ver {selectedCods.length === 1 ? 'la tienda' : `las ${selectedCods.length} tiendas`} →
+          </button>
+        </div>
+      )}
     </div>
   );
 });

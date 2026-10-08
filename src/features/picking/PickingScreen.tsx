@@ -1109,7 +1109,6 @@ export function PickingScreen() {
     const faltantes = cods.filter(c => !selectedCods.includes(c));
     if (!faltantes.length) return;
     setSelectedCods(prev => [...prev, ...faltantes]);
-    setPanelView('planilla');
     for (const cod of faltantes) {
       if (!opsMap[cod]) await fetchOpsForStore(cod);
     }
@@ -1123,7 +1122,8 @@ export function PickingScreen() {
       setSelectedCods(prev => [...prev, cod]);
       if (!opsMap[cod]) await fetchOpsForStore(cod);
     }
-    setPanelView('planilla');
+    // Ya no salta a la planilla al tocar una tienda: en el teléfono eso obligaba a volver con
+    // «← Tiendas» por cada una. Se eligen todas y se pasa con «Ver N tiendas» (StoreListPanel).
   }, [selectedCods, opsMap, fetchOpsForStore]);
 
   // Grupos cuyo texto de "Documento origen" trae una fecha distinta a hoy (typo o plantilla
@@ -1613,6 +1613,7 @@ export function PickingScreen() {
             tiendaOverrides={tiendaOverrides}
             onOpenAdelanto={() => setAdelantoDialogOpen(true)}
             onDeleteAdelanto={handleDeleteAdelanto}
+            onVerElegidas={() => setPanelView('planilla')}
           />
         </div>
 
@@ -1673,10 +1674,11 @@ export function PickingScreen() {
             </div>
           )}
 
-          {/* ── Tab bar ── */}
-          <div className="flex flex-shrink-0 print:hidden overflow-x-auto"
-            style={{ background: '#fff', borderBottom: '1px solid var(--color-border)' }}>
-            {([
+          {/* ── Tab bar ──
+              Escritorio: las siete en fila. Teléfono y handheld: las tres del trabajo diario y el
+              resto en «Más», que antes quedaban fuera de la pantalla sin que se notara. */}
+          {(() => {
+            const TABS = [
               { key: 'monitoreo',     label: 'Seco'        },
               { key: 'congelados',    label: 'Congelados'  },
               { key: 'actividad',     label: 'Actividad'   },
@@ -1684,11 +1686,16 @@ export function PickingScreen() {
               { key: 'estadisticas',  label: 'Estadísticas'},
               { key: 'configuracion', label: 'Config'      },
               { key: 'calendario',    label: 'Calendario'  },
-            ] as { key: typeof rightTab; label: string }[]).map(tab => {
+            ] as { key: typeof rightTab; label: string }[];
+            const PRINCIPALES = 3;
+            const enMas = TABS.slice(PRINCIPALES);
+            const activaEnMas = enMas.find(t => t.key === rightTab);
+            const boton = (tab: { key: typeof rightTab; label: string }, extra = '') => {
               const active = rightTab === tab.key;
               return (
                 <button key={tab.key} onClick={() => setRightTab(tab.key)}
-                  className="relative flex-1 py-2.5 text-[11px] font-medium cursor-pointer transition-colors border-none bg-transparent whitespace-nowrap px-3"
+                  aria-current={active ? 'page' : undefined}
+                  className={`relative flex-1 py-2.5 text-[11px] font-medium cursor-pointer transition-colors border-none bg-transparent whitespace-nowrap px-3 ${extra}`}
                   style={{
                     color: active ? '#1A2550' : '#64748B',
                     borderBottom: active ? '2px solid var(--color-info)' : '2px solid transparent',
@@ -1696,8 +1703,28 @@ export function PickingScreen() {
                   {tab.label}
                 </button>
               );
-            })}
-          </div>
+            };
+            return (
+              <div className="flex flex-shrink-0 print:hidden"
+                style={{ background: '#fff', borderBottom: '1px solid var(--color-border)' }}>
+                {TABS.slice(0, PRINCIPALES).map(t => boton(t, 'max-lg:min-h-[44px] max-lg:text-[13px]'))}
+                {enMas.map(t => boton(t, 'hidden lg:block'))}
+                <label className="lg:hidden relative flex-1 flex items-center justify-center min-h-[44px] text-[13px] font-medium cursor-pointer"
+                  style={{
+                    color: activaEnMas ? '#1A2550' : '#64748B',
+                    borderBottom: activaEnMas ? '2px solid var(--color-info)' : '2px solid transparent',
+                  }}>
+                  <span aria-hidden="true">{activaEnMas ? activaEnMas.label : 'Más'} ▾</span>
+                  <select value={activaEnMas?.key ?? ''} aria-label="Más secciones"
+                    onChange={e => { if (e.target.value) setRightTab(e.target.value as typeof rightTab); }}
+                    className="absolute inset-0 opacity-0 cursor-pointer">
+                    <option value="" disabled>Más</option>
+                    {enMas.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                  </select>
+                </label>
+              </div>
+            );
+          })()}
 
           {/* ── Tab content: Estadísticas ── */}
           {rightTab === 'estadisticas' && (
@@ -1907,17 +1934,17 @@ export function PickingScreen() {
                       {/* Acciones de tienda: actualizar todo (batch, 1 solo request) + imprimir */}
                       <div className="ml-auto flex items-center gap-2 print:hidden">
                         <button onClick={() => { const sec: SectionFilter = esTabCongelados ? 'congelados' : sectionFilter; setAddingManualCod(addingManualCod === cod ? null : cod); setManualName(''); setManualBatch(''); setManualSeccion(sec); setManualTipo(primeraUnidadPorDefecto(sec)); }}
-                          className="text-[13px] font-medium px-3 py-1.5 rounded cursor-pointer transition-all flex items-center gap-1.5"
+                          className="text-[13px] font-medium px-3 py-1.5 max-lg:min-h-[40px] whitespace-nowrap rounded cursor-pointer transition-all flex items-center gap-1.5"
                           style={{ border: '1px solid var(--color-border)', color: '#64748B', background: '#fff' }}>
-                          <UserPlus size={13} /> Encargado manual
+                          <UserPlus size={13} /> <span className="sm:hidden">Manual</span><span className="hidden sm:inline">Encargado manual</span>
                         </button>
                         {ops.length > 0 && (
                           <button onClick={() => void refreshAllOps(ops, cod)}
                             disabled={refreshingStoreCod === cod}
-                            className="text-[13px] font-medium px-3 py-1.5 rounded cursor-pointer transition-all flex items-center gap-1.5 disabled:opacity-50"
+                            className="text-[13px] font-medium px-3 py-1.5 max-lg:min-h-[40px] whitespace-nowrap rounded cursor-pointer transition-all flex items-center gap-1.5 disabled:opacity-50"
                             style={{ border: '1px solid var(--color-border)', color: '#64748B', background: '#fff' }}>
                             <RefreshCw size={13} className={refreshingStoreCod === cod ? 'animate-spin' : ''} />
-                            Actualizar todo
+                            <span className="sm:hidden">Actualizar</span><span className="hidden sm:inline">Actualizar todo</span>
                           </button>
                         )}
                         {(() => {
@@ -1931,11 +1958,11 @@ export function PickingScreen() {
                               setArmedPrintCod(cod);
                               armedPrintTimerRef.current = setTimeout(() => setArmedPrintCod(null), 2500);
                             }}
-                              className="text-[13px] font-bold px-3 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
+                              className="text-[13px] font-bold px-3 py-1.5 max-lg:min-h-[40px] whitespace-nowrap rounded-xl cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
                               style={armado
                                 ? { background: '#D97706', color: '#fff', border: '1px solid #D97706' }
                                 : { background: 'rgba(217,119,6,0.1)', color: '#D97706', border: '1px solid rgba(217,119,6,0.3)' }}>
-                              <Printer size={13} /> {armado ? '¿Confirmar?' : `${cod} · ${storeLabels.length} etiqueta${storeLabels.length !== 1 ? 's' : ''}`}
+                              <Printer size={13} /> {armado ? '¿Confirmar?' : <><span className="hidden sm:inline">{cod} · </span>{storeLabels.length} etiqueta{storeLabels.length !== 1 ? 's' : ''}</>}
                             </button>
                           );
                         })()}
@@ -2234,7 +2261,9 @@ export function PickingScreen() {
                                 const total = countSlots(col.groups);
                                 const meta  = SECTION_META[col.key];
                                 return (
-                                  <div key={col.key}>
+                                  // En el teléfono las columnas van una debajo de otra: una vacía era
+                                  // media pantalla diciendo «Sin operaciones aún». Ahí se omite.
+                                  <div key={col.key} className={col.groups.length === 0 ? 'hidden md:block' : undefined}>
                                     {renderSectionHeader(col.key, total)}
                                     {col.groups.length > 0 ? (
                                       <div className="space-y-3">
