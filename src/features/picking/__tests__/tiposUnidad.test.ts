@@ -41,14 +41,25 @@ describe('tiposDeUnidad — qué contadores muestra la tarjeta', () => {
     expect(tiposDeUnidad(false, 'chocolates')).toEqual(['P', 'CH:negra', 'CH:carton']);
   });
 
-  it('Aseo y Comida, y Hogar: todo menos Chocolate', () => {
-    expect(tiposDeUnidad(false, 'comida')).toEqual(['P', 'C', 'B']);
-    expect(tiposDeUnidad(false, 'aseo')).toEqual(['P', 'C', 'B']);
-    expect(tiposDeUnidad(false, 'hogar')).toEqual(['P', 'C', 'B']);
+  it('Comida, Aseo y Hogar: Pallet y Bulto', () => {
+    expect(tiposDeUnidad(false, 'comida')).toEqual(['P', 'B']);
+    expect(tiposDeUnidad(false, 'aseo')).toEqual(['P', 'B']);
+    expect(tiposDeUnidad(false, 'hogar')).toEqual(['P', 'B']);
   });
 
   it('Todas (seco): los cuatro de seco, nunca las cajas de congelado', () => {
-    expect(tiposDeUnidad(false, 'all')).toEqual(['P', 'C', 'B', 'CH:negra', 'CH:carton']);
+    expect(tiposDeUnidad(false, 'all')).toEqual(['P', 'B', 'CH:negra', 'CH:carton']);
+  });
+
+  it('el contenedor ya no se ofrece en ninguna sección', () => {
+    for (const sec of ['all', 'comida', 'aseo', 'hogar', 'chocolates'] as const) {
+      expect(tiposDeUnidad(false, sec)).not.toContain('C');
+    }
+    expect(tiposDeUnidad(true, 'all')).not.toContain('C');
+  });
+
+  it('un contenedor que ya existe se sigue viendo, para poder quitarlo', () => {
+    expect(tiposDeUnidad(false, 'comida', { C: 1 })).toEqual(['P', 'C', 'B']);
   });
 
   it('una unidad que EXISTE nunca queda invisible, aunque no sea de esa sección', () => {

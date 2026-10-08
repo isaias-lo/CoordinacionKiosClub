@@ -64,6 +64,13 @@ describe('encolar y leer', () => {
     expect((await loadPickingQueue())[0].clientOpId).toBe('op-add-1');
   });
 
+  it('una impresión también conserva el id de su intento online', async () => {
+    // Si el POST de la impresión llegó y se perdió la respuesta, el reenvío con el mismo id no
+    // la cuenta como reimpresión (ver sql/2026-10-08_picking_prints_idempotencia.sql).
+    await enqueuePickingItem({ ...PRINT_ITEM, clientOpId: 'op-print-1' });
+    expect((await loadPickingQueue())[0].clientOpId).toBe('op-print-1');
+  });
+
   it('le da un clientOpId propio a lo que no trae uno', async () => {
     await enqueuePickingItem(PRINT_ITEM);
     expect((await loadPickingQueue())[0].clientOpId).toBeTruthy();

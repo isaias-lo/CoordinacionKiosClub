@@ -41,7 +41,7 @@ const ORDEN: ClaveUnidad[] = ['P', 'C', 'B', 'CH:negra', 'CH:carton', 'CC', 'CN'
  * Los contadores que muestra la tarjeta de un encargado, en orden fijo.
  *
  * Las reglas por sección son las de siempre (Congelados solo cajas; Chocolates solo P y CH; Aseo y
- * Hogar sin CH). Lo nuevo: **un tipo que ya tiene unidades se muestra igual**, aunque no sea el de
+ * Hogar sin CH; el contenedor en ninguna). Lo nuevo: **un tipo que ya tiene unidades se muestra igual**, aunque no sea el de
  * esa sección. Si no, esa unidad existe en la base sin que nadie la pueda ver ni quitar — que es lo
  * que pasaba con el pallet con que nacía el encargado manual de Congelados.
  */
@@ -51,6 +51,9 @@ export function tiposDeUnidad(
   const permitido = (t: ClaveUnidad): boolean => {
     const esCaja = t === 'CC' || t === 'CN';
     const esChocolate = t === 'CH:negra' || t === 'CH:carton';
+    // El contenedor ya no se usa (Isaias, 8 oct 2026): no se ofrece en ninguna sección. Uno que ya
+    // exista se sigue mostrando por la regla de abajo, para poder verlo y quitarlo.
+    if (t === 'C') return false;
     if (isCongelados) return esCaja;
     if (esCaja) return false;
     // Chocolates ofrece el pallet y LAS DOS CAJAS: negra (medidas fijas) y cartón (solo peso).

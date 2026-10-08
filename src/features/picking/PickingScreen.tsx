@@ -65,7 +65,7 @@ import CalendarioColumnas     from '@/features/control-interno/CalendarioColumna
 import { PickerGroupCard }    from './components/PickerGroupCard';
 import { StoreListPanel }     from './components/StoreListPanel';
 import { AgregarAdelantoDialog } from './components/AgregarAdelantoDialog';
-import { enqueuePickingItem, flushPickingQueue, migrarColaVieja } from './picking-offline-queue';
+import { enqueuePickingItem, flushPickingQueue, migrarColaVieja, contarPendientesPicking } from './picking-offline-queue';
 import type { MedidasPallet } from '@/features/despacho/shared/medidasPallet';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import {
@@ -75,6 +75,7 @@ import {
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { tipoTienda } from '@/features/despacho/rutas/utils/tipoTienda';
 import { avisoOdoo, motivoOdoo } from './avisoOdoo';
+import { textoSinConexion } from './avisoSinConexion';
 import { usaSelectorDeTiendas } from './selectorTiendas';
 
 
@@ -184,6 +185,18 @@ export function PickingScreen() {
       window.removeEventListener('offline', handleOffline);
     };
   }, [vaciarCola]);
+
+  // Cuántas acciones esperan señal en este equipo. Solo se cuenta sin conexión, que es cuando el
+  // aviso lo muestra: con señal la cola se vacía sola al reconectar.
+  const [pendientesCola, setPendientesCola] = useState(0);
+  useEffect(() => {
+    if (isOnline) { setPendientesCola(0); return; }
+    let vivo = true;
+    const contar = () => { void contarPendientesPicking().then(n => { if (vivo) setPendientesCola(n); }).catch(() => {}); };
+    contar();
+    const id = setInterval(contar, 3000);
+    return () => { vivo = false; clearInterval(id); };
+  }, [isOnline]);
 
   // Al abrir: traer lo que haya quedado en la cola vieja de localStorage y vaciar la cola.
   //
@@ -1019,11 +1032,18 @@ export function PickingScreen() {
     return subscribeToCalendarChanges(applyCalendar);
   }, [applyCalendar]);
 
-  // Si hay tiendas seleccionadas al restaurar sesión, mostrar planilla y siempre recargar ops frescos
+  // Restaurar las tiendas elegidas al recargar, mostrar la planilla y recargar ops frescos.
+  //
+  // La sesión las guardaba pero nadie las leía: `selectedCods` nace vacío, así que este efecto
+  // nunca entraba y una recarga (o una actualización de la app) dejaba al supervisor eligiendo
+  // todo de nuevo. Se restauran acá y no en el `useState` inicial porque el servidor no ve
+  // sessionStorage: arrancar con tiendas en el cliente y sin ellas en el servidor no hidrata.
   useEffect(() => {
-    if (selectedCods.length > 0) {
+    const guardadas = (session.selectedCods ?? []).filter(c => typeof c === 'string' && c);
+    if (guardadas.length > 0) {
+      setSelectedCods(guardadas);
       setPanelView('planilla');
-      void fetchBatchOps(selectedCods); // un solo request en vez de N paralelos
+      void fetchBatchOps(guardadas); // un solo request en vez de N paralelos
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1209,9 +1229,12 @@ export function PickingScreen() {
     };
     const candidates = groups.filter(group => slotsOf(group.stateKey).length > 0);
     if (candidates.length === 0) return 0;
+    // Un id por impresión, el mismo en el intento online y en el reenvío de la cola: si el POST
+    // llegó y lo que se perdió fue la respuesta, el servidor no la cuenta como reimpresión.
+    const opIds = candidates.map(() => crypto.randomUUID());
 
     const results = await Promise.allSettled(
-      candidates.map(group => {
+      candidates.map((group, gi) => {
         const pallets     = slotsOf(group.stateKey).length;
         // El `picker_label` del slot como respaldo: si el nombre en sesión se perdió —les pasó a
         // 25 encargados cuando el batch pisaba esa fila— el slot todavía lo tiene. Mismo orden
@@ -1228,7 +1251,7 @@ export function PickingScreen() {
         const batch = group.operations.find(o => o.batch)?.batch || (pickerBatch[group.stateKey] ? `BATCH/${pickerBatch[group.stateKey]}` : '');
         return pickingFetch('/api/picking-prints', {
           method: 'POST',
-          body: JSON.stringify({ stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '', batch }),
+          body: JSON.stringify({ stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '', batch, client_op_id: opIds[gi] }),
         }).then(res => {
           if (!res.ok) throw new Error(`picking-prints ${res.status}`);
           return { storeCod: group.storeCod, pickerLabel, pallets, tipo, printedAt: new Date().toISOString() } satisfies SupervisorPrint;
@@ -1256,7 +1279,7 @@ export function PickingScreen() {
               slotTipos.filter(x => x === t).length > slotTipos.filter(x => x === acc).length ? t : acc
             , slotTipos[0]);
           const batch = group.operations.find(o => o.batch)?.batch || (pickerBatch[group.stateKey] ? `BATCH/${pickerBatch[group.stateKey]}` : '');
-          void enqueuePickingItem({ op: 'print', stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '', batch });
+          void enqueuePickingItem({ op: 'print', stateKey: group.stateKey, pickerLabel, pallets, tipo, date, printedByName: profile?.full_name ?? '', batch, clientOpId: opIds[i] });
         }
       });
     }
@@ -1643,7 +1666,9 @@ export function PickingScreen() {
           {!isOnline && (
             <div className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-amber-800 bg-amber-50 border-b border-amber-200 print:hidden flex-shrink-0">
               <AlertTriangle size={13} className="shrink-0" />
-              <span>Sin conexión — los cambios no se están guardando</span>
+              {/* Agregar pallets e imprimir SÍ se guardan: quedan en la cola de este equipo y se
+                  envían al volver la señal. El aviso anterior decía lo contrario. */}
+              <span>{textoSinConexion(pendientesCola)}</span>
             </div>
           )}
 
