@@ -83,7 +83,6 @@ export default function MarcoEnrutador({
     <div className="flex-shrink-0 relative">
       {/* 1. Cabecera */}
       <header className="mobile-menu-safe bg-white border-b border-black/[0.09] flex items-center gap-3 md:gap-6 px-3 md:px-5 min-h-[56px] py-1.5">
-        <span className="font-barlow-condensed text-cifra font-extrabold text-knavy leading-none">Enrutador</span>
         {cabecera ? (
           <div className="flex items-center gap-1.5 md:gap-2.5 text-apoyo min-w-0 flex-wrap">
             <span className="text-kmuted">{cabecera.etiqueta}</span>
