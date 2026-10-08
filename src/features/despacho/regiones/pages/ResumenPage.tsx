@@ -339,7 +339,8 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
                       <div>
                         <div className={LABEL_SM}>Paquete</div>
                         <div className="flex gap-1">
-                          {(['pallet', 'box', 'contenedor'] as TipoPaquete[]).map(p => (
+                          {/* Contenedor solo si ya lo era: ya no se usa, pero uno existente no puede quedar sin su botón. */}
+                          {(['pallet', 'box', ...(item.pkg === 'contenedor' ? ['contenedor'] : [])] as TipoPaquete[]).map(p => (
                             <button key={p} type="button" onClick={() => setEditPkg(p)}
                               className={`min-h-[36px] px-2.5 rounded-btn border-[1.5px] text-apoyo font-bold cursor-pointer ${
                                 editPkg === p ? `${ESTILO_EDIT[p]}` : 'bg-card text-text-2 border-border'}`}>

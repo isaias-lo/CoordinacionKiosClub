@@ -3042,7 +3042,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           agregar={{ bloqueado: bloqueada, opciones: [
             { texto: 'Pallet',      clase: 'pallet',     onClick: () => setDialogTipo('Pallet') },
             { texto: 'Bulto',       clase: 'bulto',      onClick: () => setDialogTipo('Bulto') },
-            { texto: 'Cont.',       clase: 'contenedor', onClick: () => setDialogTipo('Contenedor') },
+            // El contenedor ya no se usa (Isaias, 8 oct 2026): no se ofrece. Los que ya existen se
+            // siguen viendo, pesando y sumando como siempre.
             { texto: 'Choc.',       clase: 'chocolate',  onClick: () => setDialogTipo('Chocolate') },
             // No piden medidas ni peso: se crean de un toque, sin diálogo. Ver shared/adquisicion.
             { texto: 'Adquisición', clase: 'agregado', detalle: 'no se pesa', onClick: () => void addFormRow('Adquisicion') },
