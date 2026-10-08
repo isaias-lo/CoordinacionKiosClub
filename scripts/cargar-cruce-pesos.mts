@@ -14,7 +14,8 @@ import fs from 'node:fs';
 import { armarCruce, type MovimientoOdoo } from '../src/features/despacho/shared/cruceDePesos';
 import { valoresDeFila } from '../src/features/despacho/shared/hojaCrucePesos';
 import { sumarPesosPorTienda, conflictosDePeso, pesoCreible, type FilaDePeso } from '../src/features/despacho/shared/sumaPesosBodega';
-import { dominioDespachosDelDia } from '../src/features/despacho/shared/dominioOdoo';
+import { dominioDespachosDelDia, TIPO_DESPACHO_A_TIENDAS } from '../src/features/despacho/shared/dominioOdoo';
+import { tiendasPlanificadas, marcaDeCalendario, type CalendarioSemanal } from '../src/features/despacho/shared/calendarioDelDia';
 
 const env = Object.fromEntries(
   fs.readFileSync(new URL('../.env.local', import.meta.url), 'utf8').split('\n').map(l => {
@@ -105,6 +106,13 @@ async function pesosDeLaBalanza(
 
 async function deLaBase() {
   const tiendas = await rest<{ codigo: string; nombre: string }>('tiendas?select=codigo,nombre');
+  // El calendario, para la columna EN CALENDARIO. Si falla, la marca queda en blanco y la hoja se
+  // escribe igual: es informativa, no vale tumbar la carga por ella.
+  const [calFilas, adeFilas] = await Promise.all([
+    rest<{ data: CalendarioSemanal }>('calendario_central?select=data&id=eq.current').catch(() => []),
+    rest<{ store_cod: string }>(`tiendas_adelanto?select=store_cod&fecha_despacho=eq.${fecha}`).catch(() => []),
+  ]);
+  const planificadas = tiendasPlanificadas(calFilas[0]?.data ?? null, fecha, adeFilas.map(r => r.store_cod));
   const [rm, reg] = await Promise.all([
     rest<FilaDePeso>(`despacho_rm?select=cod,peso_kg,tipo,picking_slot_id&fecha=eq.${encodeURIComponent(fechaDDMM)}`),
     rest<FilaDePeso>(`despacho_regiones?select=cod,peso_kg,tipo,picking_slot_id&fecha=eq.${encodeURIComponent(fechaDDMM)}`),
@@ -133,7 +141,7 @@ async function deLaBase() {
     const kg = pesoCreible(r.peso_kg, r.tipo, r.id);
     if (kg > 0) pesados.set(cod, (pesados.get(cod) ?? 0) + kg);
   }
-  return {
+  return { planificadas,
     pesados,
     nombres: new Map(tiendas.map(r => [r.codigo.toUpperCase(), r.nombre])),
     codigos: new Set(tiendas.map(r => r.codigo.toUpperCase())),
@@ -142,6 +150,13 @@ async function deLaBase() {
 }
 
 const [movs, base] = await Promise.all([movimientosDelDia(), deLaBase()]);
+// Odoo no trajo nada y la balanza sí: es una contradicción, no «el día no empezó». Mismo corte
+// que en la app — sin esto la hoja se escribiría vacía sin que nadie se entere.
+if (movs.length === 0 && base.pesados.size > 0) {
+  console.error(`\nOdoo no devolvió ningún despacho para el ${fechaDDMM}, pero la balanza tiene ${base.pesados.size} tienda(s) pesadas.`);
+  console.error(`Revisá que el tipo de operación «${TIPO_DESPACHO_A_TIENDAS}» siga existiendo en Odoo con ese nombre. No se escribió nada.`);
+  process.exit(1);
+}
 const cruces = armarCruce(movs, base.codigos);
 const ahora = new Date().toISOString();
 
@@ -153,6 +168,7 @@ const valores = cruces.map(cruce => valoresDeFila({
   kgBodega: base.pesos.has(cruce.codigo) ? (base.pesos.get(cruce.codigo) as number) : null,
   kgPesado: base.pesados.has(cruce.codigo) ? (base.pesados.get(cruce.codigo) as number) : null,
   actualizado: ahora,
+  enCalendario: marcaDeCalendario(base.planificadas, cruce.codigo),
 }));
 
 const totalOdoo = cruces.reduce((s, c) => s + c.totalOdoo, 0);
