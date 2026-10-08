@@ -184,9 +184,10 @@ describe('ALIAS_COLUMNA — renombraron TOTAL BODEGA a «TOTAL Fisico»', () => 
       c => indicesDeEncabezado(HOJA_REAL)[normalizarColumna(c)] === undefined);
     // Lo que se prueba acá es que TOTAL BODEGA NO queda huérfana, que es lo que el alias resuelve.
     expect(faltantes).not.toContain('TOTAL BODEGA');
-    // `TOTAL PESADO` sí falta, y está bien: es una columna NUEVA que la hoja todavía no tiene y
-    // que el escritor va a agregar al final. No es un renombre sin alias, es un estreno.
-    expect(faltantes).toEqual(['TOTAL PESADO']);
+    // `TOTAL PESADO` y `EN CALENDARIO` sí faltan, y está bien: son columnas NUEVAS que esta hoja
+    // de ejemplo todavía no tiene y que el escritor va a agregar al final. No es un renombre sin
+    // alias, es un estreno. La lista va completa para que estrenar otra obligue a pasar por acá.
+    expect(faltantes).toEqual(['TOTAL PESADO', 'EN CALENDARIO']);
   });
 
   it('con acento también, y sin importar mayúsculas', () => {
