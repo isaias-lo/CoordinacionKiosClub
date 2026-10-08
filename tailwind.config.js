@@ -1,3 +1,18 @@
+import plugin from 'tailwindcss/plugin';
+
+// Consultas por CONTENEDOR (el ancho de la caja, no el de la pantalla). En el Enrutador el ancho
+// útil depende del mapa arrastrable y de la tablet (vertical u horizontal): una tabla con `md:`
+// se armaba en 5 columnas aunque el mapa le dejara 450 px, y los títulos se encimaban. La caja
+// que manda lleva la clase `contenedor`; adentro, `cq-md:` etc. miran ESE ancho.
+// Tailwind 3.4 no las trae sin el plugin oficial; esto son las cuatro que se usan.
+const consultasContenedor = plugin(({ addUtilities, addVariant }) => {
+  addUtilities({ '.contenedor': { 'container-type': 'inline-size' } });
+  addVariant('cq-sm', '@container (min-width: 480px)');
+  addVariant('cq-md', '@container (min-width: 640px)');
+  addVariant('cq-lg', '@container (min-width: 760px)');
+  addVariant('cq-xl', '@container (min-width: 960px)');
+});
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -151,5 +166,5 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [consultasContenedor],
 }

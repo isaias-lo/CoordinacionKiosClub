@@ -465,7 +465,9 @@ function RutaCard({
 // ── [Vista nueva · Flota] «Quién maneja» como tabla (diseño A) ──────────────────────────────
 // Mismo estado, mismos selects y el mismo Guardar que RutaCard; solo cambia el dibujo. Un select
 // vacío se marca con borde punteado: naranja si es el conductor (falta), gris si es pioneta.
-const COLS_TABLA = 'md:grid-cols-[110px_120px_repeat(3,minmax(0,1fr))_130px]';
+// Las columnas dependen del ancho de la tarjeta (`cq-lg:`), no de la pantalla: en una tablet
+// vertical, con «Vehículos de hoy» al lado, la tarjeta mide ~450 px y la tabla se encimaba.
+const COLS_TABLA = 'cq-lg:grid-cols-[110px_120px_repeat(3,minmax(0,1fr))_130px]';
 
 function estiloSelectA(lleno: boolean, obligatorio: boolean): React.CSSProperties {
   if (lleno) return { border: '1px solid #D5D9E3', background: '#FFFFFF', color: '#1C1C1E' };
@@ -481,7 +483,7 @@ function SelectA({ value, onChange, opciones, vacio, obligatorio, etiqueta }: {
   const lista = value && !opciones.includes(value) ? [value, ...opciones] : opciones;
   return (
     <label className="flex flex-col gap-1 min-w-0">
-      <span className="md:hidden text-rotulo font-bold uppercase text-kmuted">{etiqueta}</span>
+      <span className="cq-lg:hidden text-rotulo font-bold uppercase text-kmuted">{etiqueta}</span>
       <select value={value} onChange={e => onChange(e.target.value)} aria-label={etiqueta}
         className="w-full min-w-0 rounded-[8px] px-2.5 py-2 text-apoyo min-h-[40px] truncate"
         style={estiloSelectA(!!value, !!obligatorio)}>
@@ -516,13 +518,13 @@ function FilaQuienManeja({
             {ruta.ruta_tiendas.length} {ruta.ruta_tiendas.length === 1 ? 'tienda' : 'tiendas'} · {totalUnidades(ruta.ruta_tiendas)}
           </span>
         </span>
-        <span className="col-span-2 md:col-span-1 min-w-0">
+        <span className="col-span-2 cq-lg:col-span-1 min-w-0">
           <SelectA value={edit.chofer} onChange={v => onChange('chofer', v)} opciones={conductores.map(c => c.nombre)}
             vacio="Elegir conductor" obligatorio etiqueta="Conductor" />
         </span>
         <SelectA value={edit.pioneta_1} onChange={v => onChange('pioneta_1', v)} opciones={nombresP} vacio="Opcional" etiqueta="Pioneta 1" />
         <SelectA value={edit.pioneta_2} onChange={v => onChange('pioneta_2', v)} opciones={nombresP} vacio="Opcional" etiqueta="Pioneta 2" />
-        <span className="col-span-2 md:col-span-1 flex items-center gap-1.5">
+        <span className="col-span-2 cq-lg:col-span-1 flex items-center gap-1.5">
           {dirty ? (
             <>
               <button type="button" onClick={onSave} disabled={edit.saving}
@@ -713,7 +715,7 @@ export function ControlFlotaPanel({ onResumen, vistaA = false }: {
 
   if (vistaA) {
     return (
-      <div className="flex-1 overflow-y-auto bg-white">
+      <div className="contenedor flex-1 overflow-y-auto bg-white">
         <div className="px-4 py-3 border-b border-black/[0.07] flex items-center gap-3 flex-wrap">
           <span className="text-cuerpo font-bold text-ktext flex-1 whitespace-nowrap">Quién maneja</span>
           {modifiedCount > 0 && (
@@ -722,7 +724,7 @@ export function ControlFlotaPanel({ onResumen, vistaA = false }: {
           <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} aria-label="Fecha"
             className="h-9 rounded-[8px] border border-black/[0.12] px-2.5 text-apoyo text-ktext" />
         </div>
-        <div className={`hidden md:grid ${COLS_TABLA} gap-3 px-4 py-3 ${ENCABEZADO_TABLA_A}`}>
+        <div className={`hidden cq-lg:grid ${COLS_TABLA} gap-3 px-4 py-3 ${ENCABEZADO_TABLA_A}`}>
           <span>CAMIÓN</span><span>RUTA</span><span>CONDUCTOR</span><span>PIONETA 1</span><span>PIONETA 2</span><span>LISTO</span>
         </div>
         {loading ? (

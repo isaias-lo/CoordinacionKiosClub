@@ -588,7 +588,7 @@ export default function ManualDispatch({
   const hasSelection  = selected.size > 0;
 
   return (
-    <div className="space-y-3" ref={containerRef}>
+    <div className={`space-y-3 ${A ? 'contenedor' : ''}`} ref={containerRef}>
       {!A && tiendasCount > 0 && (
         <div className="flex gap-2 text-[11px] text-kmuted bg-kbg rounded-kios2 px-3 py-2">
           <span><span className="font-semibold text-ktext">{tiendasCount}</span> tiendas ·</span>
@@ -608,8 +608,11 @@ export default function ManualDispatch({
           la flota. En teléfono se apila igual que siempre, en una sola columna.
           Las tres pestañas —Despacho, Congelados y 2ª Vuelta— usan ESTE componente, así que las
           tres cambian juntas. */}
-      <div className={`grid grid-cols-1 gap-3 items-start ${A ? 'lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-4' : 'lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]'}`}>
-        <div className="min-w-0 lg:sticky lg:top-0">
+      {/* En la vista nueva las dos columnas dependen del ancho real del tablero (`cq-md`), no de la
+          pantalla: en una tablet vertical con el mapa plegado caben lado a lado, y con el mapa
+          abierto se apilan en vez de quedar en dos columnas de 200 px. */}
+      <div className={`grid grid-cols-1 gap-3 items-start ${A ? 'cq-md:grid-cols-[300px_minmax(0,1fr)] cq-md:gap-4' : 'lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]'}`}>
+        <div className={`min-w-0 ${A ? 'cq-md:sticky cq-md:top-0' : 'lg:sticky lg:top-0'}`}>
           {/* [Rediseño] El rótulo y el aviso viven en ESTA columna, no a lo ancho.
               Con el aviso centrado arriba, la columna izquierda quedaba vacía y no se entendía para
               qué era: parecía espacio desaprovechado en vez de el lugar de las tiendas. */}
