@@ -106,3 +106,12 @@ export function taraDeTarjeta(row: TarjetaConPeso): number | undefined {
   if (row.savedItem) return row.savedItem.taraPallet;
   return taraParaGuardar(leerTaraPallet(row.pesoPallet) ?? 0);
 }
+
+/**
+ * La tara que conserva un ítem al que se le escribe un peso nuevo sin casillero de pallet (editar o
+ * combinar desde el Resumen). Ahí el número tecleado es el peso final: si cambió, la tara vieja ya no
+ * dice nada y conservarla inventa un bruto que nadie pesó («538 kg (560 − 22)»). Si no cambió, se queda.
+ */
+export function taraTrasCorregir(pesoAntes: number | string | null | undefined, pesoNuevo: number, tara?: number | null): number | undefined {
+  return Number(pesoAntes) === pesoNuevo ? taraParaGuardar(Number(tara ?? 0)) : undefined;
+}

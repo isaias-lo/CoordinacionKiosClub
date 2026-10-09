@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
-import { pesoNetoDeTarjeta, taraDeTarjeta } from '../pesoDelPallet';
+import { pesoNetoDeTarjeta, taraDeTarjeta, taraTrasCorregir } from '../pesoDelPallet';
 import { camposDePeso } from '../actualizarSlotPicking';
 import { traeRegistrosNuevos } from '../registroPorFecha';
 import { confirmarQuitarSinGuardar, textoQuitarSinGuardar } from '../confirmarGuardado';
@@ -64,5 +64,18 @@ describe('tiendasSinCatalogo: Nacional no descarta tiendas en silencio', () => {
   const item = { orden: 'pallet1', tipo: 'hogar', pkg: 'pallet', guia: '', valor: 0, peso: 1, alto: 1, ancho: 1, largo: 1 } as DispatchItem;
   it('lista las que tienen carga y no están en el catálogo', () => {
     expect(tiendasSinCatalogo({ 'Tienda Que No Existe': [item], 'Otra Vacía': [] })).toEqual(['Tienda Que No Existe']);
+  });
+});
+
+describe('corregir o combinar desde el Resumen no inventa un bruto', () => {
+  it('si el peso cambió, la tara vieja se suelta', () => {
+    expect(taraTrasCorregir(278, 538.5, 22)).toBeUndefined();
+  });
+  it('si el peso no cambió (se editó otra cosa), la tara se queda', () => {
+    expect(taraTrasCorregir(278, 278, 22)).toBe(22);
+    expect(taraTrasCorregir('278', 278, 22)).toBe(22);
+  });
+  it('sin tara no aparece una', () => {
+    expect(taraTrasCorregir(250, 250, undefined)).toBeUndefined();
   });
 });

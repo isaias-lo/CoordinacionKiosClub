@@ -36,7 +36,7 @@ import { useTarjetaActiva } from '../../shared/useTarjetaActiva';
 import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTienda, ResumenVacio, UnidadResumen } from '../../shared/ResumenDiaUI';
 import { useAvisoNuevasTrasTerminar } from '../../shared/avisoNuevasTrasTerminar';
 import { avisoAntesDeRegistrar, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
-import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, type OpcionAgregar } from '../../shared/TiendaAbierta';
+import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, TiendaSinUnidades, type OpcionAgregar } from '../../shared/TiendaAbierta';
 import { confirmarCambioGuardado, confirmarEliminarVarios, confirmarQuitarSinGuardar } from '../../shared/confirmarGuardado';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { mismaCargaEscrita } from '../../shared/adoptarItemRemoto';
@@ -86,7 +86,7 @@ import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho
 import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
-import { pesoEnTarjeta, pesoNetoDeTarjeta, pesoNetoPallet, taraDeTarjeta, taraEnTarjeta, taraParaGuardar, textoPesoConTara } from '../../shared/pesoDelPallet';
+import { pesoEnTarjeta, pesoNetoDeTarjeta, pesoNetoPallet, taraDeTarjeta, taraEnTarjeta, taraParaGuardar, taraTrasCorregir, textoPesoConTara } from '../../shared/pesoDelPallet';
 import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
 import { itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
 import { avisoDeUnidad, avisoEnTerminada } from '../../shared/avisoUnidadEscaneada';
@@ -1357,7 +1357,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const contenido: ContenidoSantiago = src.contenido === tgt.contenido ? src.contenido : 'Mixto';
     // /6000, como en el resto del sistema (estaba en /5000 y sin decimales solo acá).
     const pesoVolumetrico = (alto * src.ancho * src.largo) / 6000;
-    const merged: SantiagoItem = { ...src, id: `${tiendaCod}-${Date.now()}`, peso, alto, contenido, pesoVolumetrico };
+    const merged: SantiagoItem = { ...src, id: `${tiendaCod}-${Date.now()}`, peso, alto, contenido, pesoVolumetrico, taraPallet: undefined };
     // Misma regla que Nacional, en un solo sitio: el fusionado queda en la POSICIÓN del primero
     // de los dos, no al final. (Acá ya era así; se comparte para que no vuelvan a divergir.)
     const newList = combinarEnLista(allItems, srcIdx, tgtIdx, merged);
@@ -1377,7 +1377,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         if (!r.ok) showToast(`⚠ La unión quedó a medias (${r.error}) — revisá el pallet`, '#D32F2F');
       });
       logActividad({ accion: 'unificar', fuente: 'rmcosta', tiendaCod,
-        label: merged.orden, sourceLabel: tgt.orden, slotId: src.pickingSlotId });
+        label: ordenToLabel(merged.orden), sourceLabel: ordenToLabel(tgt.orden), peso: merged.peso, slotId: src.pickingSlotId });
     }
     setCombineModal(null);
   };
@@ -2285,7 +2285,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     dispatch({
       type: 'EDIT_ITEM', tiendaCod: cod, idx,
       item: { ...item, tipo: rTipo, contenido: rContenido, estado: rEstado,
-        peso: pesoR, alto, largo, ancho,
+        peso: pesoR, taraPallet: taraTrasCorregir(item.peso, pesoR, item.taraPallet), alto, largo, ancho,
         pesoVolumetrico: (alto * largo * ancho) / 6000 },
     });
     // Y en el slot, como hace Guardar: si no, el cruce con Odoo seguía con el peso viejo.
@@ -2293,6 +2293,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       if (r.error) console.error('[picking_pallets update]', r.error);
       if (r.yaNoExiste) showToast(AVISO_SLOT_BORRADO, AVISO_ERROR);
     });
+    logActividad({ accion: 'editar_item', fuente: 'rmcosta', tiendaCod: cod, tiendaNombre: tiendaByCod[cod]?.tienda,
+      label: ordenToLabel(item.orden), peso: pesoR, alto, pesoPrevio: item.peso, altoPrevio: item.alto,
+      slotId: item.pickingSlotId });
     setResumenEditing(null);
     showToast('✓ Item actualizado', '#16A34A');
   };
@@ -3104,6 +3107,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               const kgPesados = pesadas.reduce((t, r) => t + (Number(r.savedItem?.peso) || 0), 0);
               return (
                 <>
+                  {!activa && enCola.length === 0 && ghostCards.length === 0 && pesadas.length === 0 && <TiendaSinUnidades />}
                   {activa && (
                     <>
                       <RotuloSeccion>Ahora</RotuloSeccion>

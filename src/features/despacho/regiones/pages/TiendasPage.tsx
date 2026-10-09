@@ -31,7 +31,7 @@ import { pkgCodeNacional } from '../../shared/tipoCode';
 import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
 import { avanceTienda, claseUnidad } from '@/features/despacho/shared/unidadVisual';
 import { useTarjetaActiva } from '@/features/despacho/shared/useTarjetaActiva';
-import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada } from '@/features/despacho/shared/TiendaAbierta';
+import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, TiendaSinUnidades } from '@/features/despacho/shared/TiendaAbierta';
 import { confirmarCambioGuardado, confirmarEliminarVarios, confirmarQuitarSinGuardar } from '@/features/despacho/shared/confirmarGuardado';
 import { FilaTienda, BarraDelDia, UnidadesDelDia, FechasBodega, RotuloLista, PieLista, BaldosaAgregar, GRILLA_MOSAICO } from '@/features/despacho/shared/ListaTiendasUI';
 import { usePlegarCabecera } from '@/features/despacho/shared/usePlegarCabecera';
@@ -2009,7 +2009,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // física de Picking) y su `id`. Antes se armaba un objeto literal nuevo y los perdía: sin
     // `pickingSlotId`, la llave de merge cae al id local del dispositivo y el mismo ítem se trata
     // como dos al sincronizar con otro equipo. RM/Costa ya preservaba `...src`.
-    const merged: DispatchItem = { ...src, peso, alto, guia: mergedGuia, valor: mergedValor, tipo: mergedTipo };
+    const merged: DispatchItem = { ...src, peso, alto, guia: mergedGuia, valor: mergedValor, tipo: mergedTipo, taraPallet: undefined };
     // `renumberItems` respeta el `seq` del slot —el número IMPRESO en la etiqueta— y conoce los
     // cuatro tipos. El contador local que había acá solo sabía de pallets y bultos, así que a un
     // contenedor o a un chocolate de esa tienda le escribía `bultoN`.
@@ -2486,6 +2486,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             const kgPesados = pesadas.reduce((t, r) => t + (Number(r.savedItem?.peso) || 0), 0);
             return (
               <>
+                {!activa && enCola.length === 0 && ghostCards.length === 0 && pesadas.length === 0 && <TiendaSinUnidades />}
                 {activa && (
                   <>
                     <RotuloSeccion>Ahora</RotuloSeccion>
