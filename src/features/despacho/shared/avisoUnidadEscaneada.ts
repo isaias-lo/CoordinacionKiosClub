@@ -16,11 +16,12 @@
 // eso el botón sigue llevando a la tienda igual. Es el mismo criterio que usa el apagado de un
 // camión con carga: se dice lo que cuesta, no se impide.
 
-import { esSinPesar } from './sinPesar';
+import { esSinPesar, esPalletWeb } from './sinPesar';
 
 /** Lo mínimo que hace falta de un ítem de Bodega para saber si ya se pesó. */
 export interface ItemPesado {
   peso?: number | null;
+  palletWeb?: boolean | null;
 }
 
 export type EstadoUnidad =
@@ -63,6 +64,8 @@ export function kg(peso: number): string {
  */
 export function avisoDeUnidad(item?: ItemPesado | null): AvisoUnidad {
   if (!item) return { estado: 'sin-cargar', peso: null, texto: null, advertir: false };
+  // Un pallet web sale sin peso a propósito: no es «ya pesado · 0 kg», ni algo que falte pesar.
+  if (esPalletWeb(item)) return { estado: 'sin-pesar', peso: null, texto: 'Pallet web, sin peso', advertir: false };
   if (esSinPesar(item)) {
     return { estado: 'sin-pesar', peso: null, texto: 'Agregado sin pesar', advertir: false };
   }
