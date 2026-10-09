@@ -11,6 +11,7 @@ import { idsDeSeleccion } from '../seleccionImpresion';
 import { STATE_INFO, sanitizeForBarcode, buildCanonicalId, todayISO } from '../picking-utils';
 import { categoriasDeSlotsManual } from '../picking-secciones';
 import { fmtHoraChile } from '@/lib/fechaChile';
+import { PanelDetalle } from './PanelDetalle';
 
 // ─── StateBadge ───────────────────────────────────────────────────────────────
 
@@ -25,6 +26,21 @@ export function StateBadge({ state }: { state: string }) {
 }
 
 // ─── PickerGroupCard ──────────────────────────────────────────────────────────
+
+// Los contadores posibles, en orden. Cuáles se muestran lo decide tiposUnidad.ts.
+const UNIDADES: { tipo: ClaveUnidad; sigla: string; label: string }[] = [
+  { tipo: 'P',         sigla: 'P',  label: 'Pallets'      },
+  // El contenedor ya no se ofrece (tiposUnidad.ts). Sigue en la lista solo para que uno
+  // que ya exista se vea y se pueda quitar.
+  { tipo: 'C',         sigla: 'C',  label: 'Contenedores' },
+  { tipo: 'B',         sigla: 'B',  label: 'Bultos'       },
+  // El chocolate se abre en sus dos cajas: la negra mide siempre igual, la de cartón
+  // varía y por eso Bodega no le pide medidas. Las dos se guardan como tipo 'CH'.
+  { tipo: 'CH:negra',  sigla: 'CH', label: 'Caja Negra'   },
+  { tipo: 'CH:carton', sigla: 'CH', label: 'Caja Cartón'  },
+  { tipo: 'CC',        sigla: 'CC', label: 'Caja Cartón'  },
+  { tipo: 'CN',        sigla: 'CN', label: 'Caja Negra'   },
+];
 
 interface Props {
   group: PickerGroup;
@@ -67,6 +83,16 @@ interface Props {
    *  otra (o en ninguna). Sin esto, acá se veía «0 pallets» y alguien lo armaba de nuevo.
    *  Ver `palletEnOtraSeccion.ts`. */
   avisoOtraSeccion?: { texto: string; boton: string; onIr: () => void } | null;
+  /** 'panel': el detalle del encargado en el panel lateral de Seco (diseño empresarial). La
+   *  lógica es la misma; cambia solo cómo se ve. */
+  variante?: 'tarjeta' | 'panel';
+  /** Unidades a mostrar, si quien llama ya las sabe (la fila de Seco usa las secciones de la fila).
+   *  Sin esto se calculan con tiposUnidad.ts a partir del filtro de sección. */
+  unidades?: ClaveUnidad[];
+  /** Por qué falta una unidad («Comida y Aseo no llevan chocolate»). Solo en el panel. */
+  notaUnidades?: string | null;
+  /** Botones extra al pie del panel (Anterior / Siguiente). */
+  pie?: React.ReactNode;
 }
 
 export const PickerGroupCard = React.memo(function PickerGroupCard({
@@ -75,6 +101,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
   isPrinted, colsPerRow, onPrintSelected, slots, stickerBelow,
   lastPrint, myName, sectionFilter, isCongelados, adelanto, otroDia,
   batchValue, onBatchChange, pesoTotal, onPesoTotalChange, avisoOtraSeccion,
+  variante = 'tarjeta', unidades, notaUnidades, pie,
 }: Props) {
   // Dos cosas DISTINTAS que antes vivían en una sola variable (`allDone`):
   //  - odooConfirmado: para el badge verde "Realizado" — un grupo manual (sin operaciones de
@@ -133,6 +160,32 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
     }
     setConfirmarReimpresion(cual);
   };
+
+  // Misma regla que el formulario del encargado manual (tiposUnidad.ts): Congelados solo
+  // cajas, Chocolates solo P/CH, Aseo y Hogar sin CH — y un tipo que YA tiene unidades se
+  // muestra igual, para que nunca quede una unidad en la base que nadie pueda ver ni quitar.
+  const permitidas = unidades ?? tiposDeUnidad(!!isCongelados, sectionFilter ?? 'all', palletsByTipo);
+  const unidadesVisibles = UNIDADES.filter(u => permitidas.includes(u.tipo));
+
+  // Bajar un contador: pide confirmación si ya se imprimió, O si es el último de su tipo — bajar
+  // de 1 a 0 sin avisar borraba la operación completa (si era el único tipo con unidades) de un
+  // solo click sin vuelta atrás.
+  const bajar = (tipo: ClaveUnidad) => {
+    const count = palletsByTipo[tipo] ?? 0;
+    if (count > 0 && (isPrinted || count === 1)) setPendingDecrementTipo(tipo);
+    else onTipoPalletsChange(tipo, Math.max(0, count - 1));
+  };
+
+  if (variante === 'panel') {
+    return <PanelDetalle {...{
+      group, displayName, palletsByTipo, onNameChange, onTipoPalletsChange, onRefreshOp, refreshingId,
+      assignedNums, isPrinted, slots, lastPrint, myName, otroDia, batchValue, onBatchChange, pesoTotal,
+      onPesoTotalChange, avisoOtraSeccion, notaUnidades, pie, totalPickers, adelanto,
+      sinBloqueoOdoo, allCategories, refs, cats, pickerLabel, barcodePickerName, unidadesVisibles, bajar,
+      selectedIndices, toggleIndex, setSelectedIndices, pendingDecrementTipo, setPendingDecrementTipo,
+      confirmarReimpresion, setConfirmarReimpresion, yaImpresosDe, pedirImpresion, onPrint, handlePrintSelected,
+    }} />;
+  }
 
   const borderColor = odooConfirmado || isPrinted ? 'rgba(22,163,74,0.3)' : 'var(--color-border)';
   const shadow      = '0 1px 3px rgba(0,0,0,0.06)';
@@ -297,24 +350,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
             {/* Grilla que se acomoda al ancho: en la columna angosta de «Todas» los contadores
                 pasan a la fila de abajo en vez de cortarse por la derecha. */}
             <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))' }}>
-              {([
-                { tipo: 'P'         as ClaveUnidad, sigla: 'P',  label: 'Pallets'      },
-                // El contenedor ya no se ofrece (tiposUnidad.ts). Sigue en la lista solo para que uno
-                // que ya exista se vea y se pueda quitar.
-                { tipo: 'C'         as ClaveUnidad, sigla: 'C',  label: 'Contenedores' },
-                { tipo: 'B'         as ClaveUnidad, sigla: 'B',  label: 'Bultos'       },
-                // El chocolate se abre en sus dos cajas: la negra mide siempre igual, la de cartón
-                // varía y por eso Bodega no le pide medidas. Las dos se guardan como tipo 'CH'.
-                { tipo: 'CH:negra'  as ClaveUnidad, sigla: 'CH', label: 'Caja Negra'   },
-                { tipo: 'CH:carton' as ClaveUnidad, sigla: 'CH', label: 'Caja Cartón'  },
-                { tipo: 'CC'        as ClaveUnidad, sigla: 'CC', label: 'Caja Cartón'  },
-                { tipo: 'CN'        as ClaveUnidad, sigla: 'CN', label: 'Caja Negra'   },
-              ])
-              // Misma regla que el formulario del encargado manual (tiposUnidad.ts): Congelados solo
-              // cajas, Chocolates solo P/CH, Aseo y Hogar sin CH — y un tipo que YA tiene unidades se
-              // muestra igual, para que nunca quede una unidad en la base que nadie pueda ver ni quitar.
-              .filter(({ tipo }) => tiposDeUnidad(!!isCongelados, sectionFilter ?? 'all', palletsByTipo).includes(tipo))
-              .map(({ tipo, sigla, label }) => {
+              {unidadesVisibles.map(({ tipo, sigla, label }) => {
                 const count  = palletsByTipo[tipo] ?? 0;
                 const active = count > 0;
                 return (
@@ -330,17 +366,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                     </div>
                     <div className="flex items-center gap-1 w-full justify-center">
                       <button
-                        onClick={() => {
-                          // Confirmar antes de decrementar si ya se imprimió, O si este es el
-                          // último de su tipo — bajar de 1 a 0 sin avisar borraba la operación
-                          // completa (si era el único tipo con unidades) de un solo click sin
-                          // vuelta atrás.
-                          if (count > 0 && (isPrinted || count === 1)) {
-                            setPendingDecrementTipo(tipo);
-                          } else {
-                            onTipoPalletsChange(tipo, Math.max(0, count - 1));
-                          }
-                        }}
+                        onClick={() => bajar(tipo)}
                         aria-label={`Quitar ${label}`}
                         className="w-[40px] h-[40px] rounded-lg text-[20px] flex items-center justify-center cursor-pointer border"
                         style={{ borderColor: 'var(--color-border)', color: '#64748B', background: '#fff' }}>−</button>
