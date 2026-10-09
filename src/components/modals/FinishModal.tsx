@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
@@ -12,6 +13,7 @@ import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
 import { marcarRegistro } from '@/features/despacho/shared/registroPorFecha';
 import { sincronizarYCruzar, AVISO_CRUCE } from '@/features/despacho/shared/avisarCruce';
 import { fechaChile } from '@/lib/fechaChile';
+import { avisoNoRegistrado } from '@/features/despacho/shared/escribirPlanilla';
 
 // Hoy en horario LOCAL (Chile). NO toISOString() (da UTC → de tarde rueda al día siguiente).
 const todayKey = todayStr();
@@ -23,6 +25,7 @@ export function FinishModal({ open, onClose }: Props) {
   const { state, dispatch, showToast, flushPending } = useApp();
   const { dispatch: dispatchData, dispatchDate } = state;
   const { user } = useAuth();
+  const [saving, setSaving] = useState(false);
 
   if (!open) return null;
 
@@ -47,34 +50,8 @@ export function FinishModal({ open, onClose }: Props) {
   });
 
   const finish = async () => {
-    onClose();
-    // Registrar NO descarga Excel (eso es solo "Exportar todo" en el Resumen).
-    // buildRows se conserva para el historial y la re-exportación posterior.
-    const rows = buildRows(dispatchData);
-
-    const entry: HistoryEntry = {
-      date: dispatchDate,
-      totalPallets: tp,
-      totalBultos: tb,
-      totalContenedores: tc,
-      totalChocolates: tch,
-      tiendas: tiendaStats,
-      rows,
-    };
-    // Save to Supabase (without rows — too large)
-    if (user) {
-      const isoDate = fechaChile();
-      supabase.from('dispatch_history').insert({
-        user_id: user.id, date: isoDate,
-        total_pallets: entry.totalPallets, total_bultos: entry.totalBultos,
-        total_contenedores: entry.totalContenedores, total_chocolates: entry.totalChocolates,
-        tiendas: entry.tiendas,
-      }).then(({ error }) => { if (error) console.error('Dispatch save:', error.message); });
-    }
-    // Keep in localStorage (rows needed for re-export)
-    const hist: HistoryEntry[] = JSON.parse(localStorage.getItem('dispatchHistory') || '[]');
-    hist.push(entry);
-    localStorage.setItem('dispatchHistory', JSON.stringify(hist.slice(-100)));
+    if (saving) return;
+    setSaving(true);
 
     // LA MISMA cuenta que RM/Costa. De esta fecha sale el `stamp` del id de cada fila.
     //
@@ -104,12 +81,52 @@ export function FinishModal({ open, onClose }: Props) {
     // abierta desde ayer escribiría la columna FECHA con el día de ayer. El comentario de arriba ya
     // avisaba de esto para el cruce; faltaba aplicarlo a la escritura de la planilla, que es
     // donde cambia el id de la fila.
-    sheetsRegionesWrite(dispatchData, 'Luis Fica', fechaDespacho, fechaChile())
-      // Volcar la hoja a la base y rehacer el cruce del día. Ver `sincronizarYCruzar`.
-      .then(() => sincronizarYCruzar(fechaChile()))
+    //
+    // SE ESPERA la planilla antes de dar el día por registrado. Antes esto salía sin esperar y la
+    // promesa nunca fallaba: con la sesión vencida o sin red se mostraba «✓ Guardado», el día
+    // quedaba registrado y el aviso de «sin registrar» no volvía. Ver `escribirPlanilla`.
+    try {
+      await sheetsRegionesWrite(dispatchData, 'Luis Fica', fechaDespacho, fechaChile());
+    } catch (e) {
+      console.error('[registrar-dia]', e);
+      showToast(avisoNoRegistrado(e), '#D32F2F');
+      setSaving(false);
+      return;
+    }
+    // El historial, recién con la planilla escrita: si fallaba, quedaba una entrada por intento.
+    // Registrar NO descarga Excel (eso es solo "Exportar todo" en el Resumen).
+    // buildRows se conserva para el historial y la re-exportación posterior.
+    const rows = buildRows(dispatchData);
+
+    const entry: HistoryEntry = {
+      date: dispatchDate,
+      totalPallets: tp,
+      totalBultos: tb,
+      totalContenedores: tc,
+      totalChocolates: tch,
+      tiendas: tiendaStats,
+      rows,
+    };
+    // Save to Supabase (without rows — too large)
+    if (user) {
+      const isoDate = fechaChile();
+      supabase.from('dispatch_history').insert({
+        user_id: user.id, date: isoDate,
+        total_pallets: entry.totalPallets, total_bultos: entry.totalBultos,
+        total_contenedores: entry.totalContenedores, total_chocolates: entry.totalChocolates,
+        tiendas: entry.tiendas,
+      }).then(({ error }) => { if (error) console.error('Dispatch save:', error.message); });
+    }
+    // Keep in localStorage (rows needed for re-export)
+    const hist: HistoryEntry[] = JSON.parse(localStorage.getItem('dispatchHistory') || '[]');
+    hist.push(entry);
+    localStorage.setItem('dispatchHistory', JSON.stringify(hist.slice(-100)));
+    // Volcar la hoja a la base y rehacer el cruce del día. Ver `sincronizarYCruzar`. Esto sí va
+    // sin esperar: la planilla ya tiene el día, y un informe que falla solo avisa.
+    sincronizarYCruzar(fechaChile())
       .then(aviso => { if (aviso) showToast(aviso, '#D97706'); })
       .catch(() => showToast(AVISO_CRUCE, '#D97706'));
-    showToast('✓ Guardado · enviando a Sheets…', '#16A34A');
+    showToast('✓ Registrado en Sheets', '#16A34A');
 
     // El `registros` se CALCULA acá y se empuja en la misma vuelta. Un `dispatch` no actualiza
     // `stateRef` hasta el próximo efecto, así que empujar «sin más» mandaba el estado de ANTES y
@@ -121,6 +138,8 @@ export function FinishModal({ open, onClose }: Props) {
     // Forzar el push inmediato del estado con registrado=true a shared_session_state,
     // así el banner "sin registrar" no reaparece al día siguiente ni en otro equipo.
     flushPending({ registrado: true, registros: registrosNuevos });
+    setSaving(false);
+    onClose();
   };
 
   return (
@@ -143,14 +162,14 @@ export function FinishModal({ open, onClose }: Props) {
         ))}
 
         <div className="flex gap-2.5 mt-5">
-          <button onClick={onClose}
-            className="flex-1 py-3.5 bg-bg-2 text-text-2 rounded-card border-none font-barlow-condensed text-lg font-bold cursor-pointer">
+          <button onClick={onClose} disabled={saving}
+            className="flex-1 py-3.5 bg-bg-2 text-text-2 rounded-card border-none font-barlow-condensed text-lg font-bold cursor-pointer disabled:opacity-50">
             Cancelar
           </button>
-          <button onClick={finish}
-            className="flex-1 py-3.5 bg-red text-white rounded-card border-none font-barlow-condensed text-lg font-bold cursor-pointer"
+          <button onClick={finish} disabled={saving}
+            className="flex-1 py-3.5 bg-red text-white rounded-card border-none font-barlow-condensed text-lg font-bold cursor-pointer disabled:opacity-60"
             style={{ boxShadow: '0 4px 16px rgba(211,47,47,0.3)' }}>
-            ✓ Guardar
+            {saving ? 'Registrando…' : '✓ Guardar'}
           </button>
         </div>
       </div>

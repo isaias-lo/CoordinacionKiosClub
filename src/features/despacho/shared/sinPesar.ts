@@ -15,6 +15,21 @@
 
 import { esAgregado } from './adquisicion';
 
+// ── Y SALVO EL PALLET WEB (9 oct 2026) ─────────────────────────────────────────────────────────
+//
+// Un pallet armado con pedidos web que sale sin pasar por la balanza. Isaias lo pidió como opción
+// del «+» junto a Adquisición y Web/retiro: cuenta como un pallet más del día (P), pero no se pesa
+// ni se mide. Por lo mismo que los agregados, no puede quedar marcado como «sin pesar»: nadie va a
+// volver a pesarlo, y la alerta quedaría puesta para siempre.
+//
+// Se marca con `palletWeb: true` en el ítem y NO con un envase nuevo: para Picking, la planilla, el
+// Enrutador y los conteos sigue siendo un Pallet, que es lo que sube al camión.
+
+/** ¿Es un pallet web? (se guarda sin peso a propósito). */
+export function esPalletWeb(item: { palletWeb?: boolean | null }): boolean {
+  return item.palletWeb === true;
+}
+
 /**
  * ¿Esta unidad está esperando que alguien la pese?
  *
@@ -27,8 +42,10 @@ export function esSinPesar(item: {
   peso?: number | null;
   tipo?: string | null;
   pkg?: string | null;
+  palletWeb?: boolean | null;
 }): boolean {
   if (esAgregado(item.tipo) || esAgregado(item.pkg)) return false;
+  if (esPalletWeb(item)) return false;
   return !item.peso || item.peso <= 0;
 }
 

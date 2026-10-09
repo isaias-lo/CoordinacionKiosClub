@@ -6,7 +6,7 @@ import { esperaDePush } from '@/lib/esperaDePush';
 import { renumerarSoloSinOrden } from '@/features/despacho/shared/numeroCard';
 import type { AppState, DispatchItem, TipoContenido, TipoPaquete, PdfData } from '../types';
 import { useAuth } from '@/components/AuthProvider';
-import { pushSessionState, subscribeToSessionState, fetchSessionStateMeta, remotoEsMasViejo } from '@/lib/userSessionState';
+import { pushSessionStateResult, REINTENTO_PUSH_MS, subscribeToSessionState, fetchSessionStateMeta, remotoEsMasViejo } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { mergeEntriesByKey, mergeItemsByTienda } from '@/features/despacho/santiago/context/mergeItems';
 import { agregarSinDuplicar } from '@/features/despacho/shared/itemPorUnidad';
@@ -14,7 +14,7 @@ import { fechaChile } from '@/lib/fechaChile';
 import { stableItemKey } from '@/features/despacho/shared/formRowsReconcile';
 import { serializarBase } from '@/features/despacho/shared/syncBase';
 import { tieneLapida, lapidasComoLista, absorberLapidas } from '@/features/despacho/shared/lapidasBorrado';
-import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, type RegistroPorFecha } from '@/features/despacho/shared/registroPorFecha';
+import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, traeRegistrosNuevos, type RegistroPorFecha } from '@/features/despacho/shared/registroPorFecha';
 import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
 
 const today = new Date();
@@ -300,6 +300,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const lastPushTimestampRef   = useRef<number>(0); // pushedAt value included in last push payload
   const lastServerStampRef     = useRef<number>(0); // [C3/RC-6] updated_at (reloj SERVIDOR) del último push/adopción
   const catchUpRef        = useRef<() => void>(() => {}); // [P9] re-fetch + apply remoto (catch-up)
+  // Un push que falla NO se da por hecho. `pushSessionState` devolvía `null` ante un error y nunca
+  // rechazaba, así que el `.catch` que debía deshacer la marca de «ya empujado» no corría jamás:
+  // si se cortaba el Wi-Fi en el último cambio (o en el de REGISTRAR), el equipo lo daba por
+  // guardado y no volvía a intentarlo. Ahora se deshace la marca —solo si nada más nuevo salió
+  // después— y se reintenta solo, con lo que haya en ese momento.
+  const reintentoPushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushRef         = useRef<() => void>(() => {});
+  const pushFallido = (enviado: string, prevBase: string, prevFull: string) => {
+    if (lastPushedFullRef.current === enviado) { lastPushedRef.current = prevBase; lastPushedFullRef.current = prevFull; }
+    if (reintentoPushRef.current) return;
+    reintentoPushRef.current = setTimeout(() => { reintentoPushRef.current = null; flushRef.current(); }, REINTENTO_PUSH_MS);
+  };
+  useEffect(() => () => { if (reintentoPushRef.current) clearTimeout(reintentoPushRef.current); }, []);
   const pendingCatchupRef = useRef(false);                // [P9] remoto llegó durante push local → catch-up al terminar
   // [P5] Catch-up programado cuando un remoto cae dentro de la ventana de 3 s post-push.
   const ventanaCatchupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -356,7 +369,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // —con sessionDate/pushedAt— contra una base sin esos campos, así que no coincidía nunca y
       // cada equipo re-empujaba lo que adoptaba: tormenta de escrituras que no converge).
       const remoteStr = serializarBase(remoteState as { dispatch?: unknown; pdfData?: unknown });
-      if (remoteStr === lastPushedRef.current) return; // already in sync
+      if (remoteStr === lastPushedRef.current) {
+        // Mismos ítems, pero el otro equipo puede haber REGISTRADO el día. Eso sí se adopta: ver
+        // `traeRegistrosNuevos`.
+        if (traeRegistrosNuevos(stateRef.current.registros, remote.registros)) {
+          dispatch({ type: 'LOAD_STATE', payload: { registros: remote.registros } });
+        }
+        return; // already in sync
+      }
       // Voy a incorporar este remoto → avanzo el reloj de servidor de referencia.
       if (updatedAt != null && updatedAt > lastServerStampRef.current) lastServerStampRef.current = updatedAt;
 
@@ -498,9 +518,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const pushedAt = Date.now();
       lastPushTimestampRef.current = pushedAt;
       // Include sessionDate and pushedAt so other devices/tabs can reject stale pushes
-      pushSessionState('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined)
-        .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6] reloj de servidor de mi push
-        .catch(() => { lastPushedRef.current = prevLastPushed; lastPushedFullRef.current = prevLastFull; }) // reset so dirty check retries correctly
+      pushSessionStateResult('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined)
+        .then(({ ok, updatedAt: serverTs }) => {
+          if (!ok) { pushFallido(current, prevLastPushed, prevLastFull); return; }
+          if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); // [C3/RC-6] reloj de servidor de mi push
+        })
+        .catch(() => pushFallido(current, prevLastPushed, prevLastFull))
         .finally(() => {
           isPushingRef.current = false; lastPushCompletedAtRef.current = Date.now();
           // [P9] Si llegó un remoto mientras empujábamos, ponerse al día ahora (no se descarta).
@@ -564,14 +587,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lastPushedFullRef.current = current;
     const pushedAt = Date.now();
     lastPushTimestampRef.current = pushedAt;
-    pushSessionState('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined)
-      .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6]
-      .catch(() => { lastPushedRef.current = prevPushed; lastPushedFullRef.current = prevFull; })
+    pushSessionStateResult('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined)
+      .then(({ ok, updatedAt: serverTs }) => {
+        if (!ok) { pushFallido(current, prevPushed, prevFull); return; }
+        if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); // [C3/RC-6]
+      })
+      .catch(() => pushFallido(current, prevPushed, prevFull))
       .finally(() => { lastPushCompletedAtRef.current = Date.now(); });
     try { localStorage.setItem(REGIONES_KEY, JSON.stringify(stateRef.current)); } catch {}
   }, [userId]);
 
   // [P9] Al volver a la pestaña/app → catch-up con el estado remoto; al ocultarla → flush de pendientes.
+  flushRef.current = () => flushPending();
   useVisibilityRefetch(() => catchUpRef.current(), flushPending);
 
   const catchUp = useCallback(() => catchUpRef.current(), []);

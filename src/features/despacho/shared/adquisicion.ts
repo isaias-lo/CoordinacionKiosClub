@@ -40,6 +40,8 @@ export const PKG_WEB_RETIRO  = 'web-retiro';
 /** Lo que se escribe en la columna TIPO de la planilla. Es texto para leer, con tilde. */
 export const LABEL_ADQUISICION = 'Adquisición';
 export const LABEL_WEB_RETIRO  = 'Web / retiro';
+/** Un pallet que sale sin pesar (ver `sinPesar.ts` → `esPalletWeb`). No es un envase: es un Pallet. */
+export const LABEL_PALLET_WEB  = 'Pallet web';
 
 /**
  * Prefijo del ID de la fila (`${orden}${cod}${stamp}${prefijo}`).
@@ -111,6 +113,7 @@ export function etiquetaAgregado(tipoOPkg?: string | null): string | null {
  * Sirve para no escribir `0kg · 0cm` en la tarjeta de una adquisición. Ese cero no es un peso: es
  * la ausencia de uno, y mostrarlo como número invita a creer que la unidad pesa cero.
  */
-export function etiquetaDeUnidad(item: { tipo?: string | null; pkg?: string | null }): string | null {
+export function etiquetaDeUnidad(item: { tipo?: string | null; pkg?: string | null; palletWeb?: boolean | null }): string | null {
+  if (item.palletWeb === true) return LABEL_PALLET_WEB;
   return etiquetaAgregado(item.tipo) ?? etiquetaAgregado(item.pkg);
 }
