@@ -70,7 +70,7 @@ import { AyudaPanel }         from './marco/AyudaPanel';
 import { accionDeTecla, estaEscribiendo } from './marco/ayuda';
 import { VistaSeco }          from './seco/VistaSeco';
 import type { FilaSeco }      from './seco/TablaEncargados';
-import { seccionesDeFila, unidadesDeFila, notaUnidades, totalesPorTipo, sinImprimir, COLOR_SECCION } from './seco/filaEncargado';
+import { seccionesDeFila, unidadesDeFila, notaUnidades, totalesPorTipo, sinImprimir, formatoKg, COLOR_SECCION } from './seco/filaEncargado';
 import { AgregarAdelantoDialog } from './components/AgregarAdelantoDialog';
 import { enqueuePickingItem, flushPickingQueue, migrarColaVieja, contarPendientesPicking } from './picking-offline-queue';
 import type { MedidasPallet } from '@/features/despacho/shared/medidasPallet';
@@ -1599,42 +1599,48 @@ export function PickingScreen() {
     armedPrintTimerRef.current = setTimeout(() => setArmedPrintCod(null), 2500);
   };
 
-  // Seco en escritorio (diseño empresarial): una tienda a la vez, en tabla. Arma los datos con lo
-  // mismo que usan las tarjetas (propsDeTarjeta), así la tabla y el panel escriben igual que ellas.
-  const renderVistaSeco = () => {
+  // Seco y Congelados en escritorio (diseño empresarial): una tienda a la vez, en tabla. Arma los
+  // datos con lo mismo que usan las tarjetas (propsDeTarjeta), así la tabla y el panel escriben
+  // igual que ellas.
+  const renderVistaOperacion = () => {
+    const cong = esTabCongelados;
     const cod = tiendaActiva && selectedCods.includes(tiendaActiva) ? tiendaActiva : selectedCods[0];
     const allStore = allGroupedByStore[cod] ?? [];
     const storeGroups = (groupedByStore[cod] ?? []).filter(g => !ocultarSinAsignar(g, slotsByStateKey[g.stateKey]));
     const filas: FilaSeco[] = storeGroups.map(group => {
       const tarjeta = propsDeTarjeta(group, cod, allStore);
-      const categorias = (group.operations.length > 0
+      const todas = group.operations.length > 0
         ? [...new Set(group.operations.flatMap(o => o.categories))]
-        : categoriasDeSlotsManual(slotsByStateKey[group.stateKey] ?? [])).filter(c => c !== 'Congelados');
-      const secciones = seccionesDeFila(categorias);
-      const unidades = unidadesDeFila(secciones, sectionFilter, tarjeta.palletsByTipo);
+        : categoriasDeSlotsManual(slotsByStateKey[group.stateKey] ?? []);
+      const categorias = cong ? ['Congelados'] : todas.filter(c => c !== 'Congelados');
+      const secciones = cong ? ['congelados' as SectionFilter] : seccionesDeFila(categorias);
+      // Congelados solo cuenta cajas (tiposUnidad.ts); Seco, según las secciones de la fila.
+      const unidades = cong ? tiposDeUnidad(true, 'all', tarjeta.palletsByTipo) : unidadesDeFila(secciones, sectionFilter, tarjeta.palletsByTipo);
       const escrito = pickerDisplayNames[group.stateKey];
       return {
         group, tarjeta, categorias, secciones, unidades,
-        nota: notaUnidades(sectionFilter !== 'all' ? [sectionFilter] : secciones, unidades),
+        nota: cong ? null : notaUnidades(sectionFilter !== 'all' ? [sectionFilter] : secciones, unidades),
         nombre: tarjeta.displayName || group.key,
         subNombre: group.operations.length === 0 ? 'Encargado manual'
-          : escrito && escrito !== group.key ? `En Odoo: ${group.key}` : 'Nombre de Odoo',
+          : escrito && escrito !== group.key ? `En Odoo: ${group.key}` : cong ? '' : 'Nombre de Odoo',
       };
     });
 
-    // Operaciones de Seco de la tienda (las de Congelados tienen su pestaña).
+    // Operaciones de la pestaña: Seco sin las congeladas, Congelados solo esas.
     const ops = opsMap[cod] ?? [];
     const congeladas = new Set(filtrarOpsPorSeccion(ops, 'congelados'));
-    const opsSeco = ops.filter(o => !congeladas.has(o));
+    const opsSeco = ops.filter(o => congeladas.has(o) === cong);
     const pickeables = opsSeco.filter(o => isPickeableState(o.state));
     const opsVista = filtrarOpsPorSeccion(opsSeco, sectionFilter);
     const sinAsignarOps = filtrarOpsPorSeccion(
-      allStore.filter(g => g.key === 'Sin asignar').flatMap(g => g.operations).filter(o => !congeladas.has(o)), sectionFilter);
+      allStore.filter(g => g.key === 'Sin asignar').flatMap(g => g.operations).filter(o => congeladas.has(o) === cong), sectionFilter);
 
     const tot = filas.reduce((a, f) => {
       const t = totalesPorTipo(f.tarjeta.palletsByTipo);
-      return { P: a.P + t.P, B: a.B + t.B, CH: a.CH + t.CH, total: a.total + t.total, sin: a.sin + sinImprimir(f.tarjeta.slots) };
-    }, { P: 0, B: 0, CH: 0, total: 0, sin: 0 });
+      const kg = (['CC', 'CN'] as TipoCaja[]).reduce((x, k) => x + (f.tarjeta.pesoTotal?.[k]?.guardado?.total ?? 0), 0);
+      return { P: a.P + t.P, B: a.B + t.B, CH: a.CH + t.CH, CC: a.CC + t.CC, CN: a.CN + t.CN, kg: a.kg + kg,
+        total: a.total + t.total, sin: a.sin + sinImprimir(f.tarjeta.slots) };
+    }, { P: 0, B: 0, CH: 0, CC: 0, CN: 0, kg: 0, total: 0, sin: 0 });
     const detalle = [tot.P && `${tot.P} P`, tot.B && `${tot.B} B`, tot.CH && `${tot.CH} CH`].filter(Boolean).join(' · ');
     const storeLabels = printableLabels.filter(l => l.storeCod === cod);
     const etiquetaSeccion: Record<string, string> = { all: 'Todas', comida: 'Comida', aseo: 'Aseo', hogar: 'Hogar', chocolates: 'Chocolates' };
@@ -1647,8 +1653,11 @@ export function PickingScreen() {
           {nombresConocidos.map(n => <option key={n} value={n} />)}
         </datalist>
         <VistaSeco
+          modo={cong ? 'congelados' : 'seco'}
           encabezado={{
             cod, nombre: nameFor(cod), tipo: tipoFor(cod),
+            marca: cong ? { texto: 'Congelados', fondo: '#E3F6F9', color: '#0B6170' } : null,
+            acento: cong ? '#1098AD' : undefined,
             tiendas: selectedCods.map(c => ({ cod: c, nombre: nameFor(c) })),
             onElegirTienda: c => { setTiendaActiva(c); setEncargadoAbierto(null); },
             onManual: () => abrirFormManual(cod),
@@ -1656,11 +1665,19 @@ export function PickingScreen() {
             actualizando: loadingCods.includes(cod),
             actualizadoA: hora,
             imprimir: storeLabels.length > 0 ? { n: storeLabels.length, armado: armedPrintCod === cod, onClick: () => tocarImprimirTienda(cod) } : null,
-            kpis: {
-              opsHechas: pickeables.filter(o => o.state === 'done').length, opsTotal: pickeables.length,
-              encargados: filas.length, unidades: tot.total, detalleUnidades: detalle, sinImprimir: tot.sin,
-            },
-            secciones: seccionesDeLaPestana(false).map(k => ({
+            kpis: [
+              { etiqueta: 'Operaciones realizadas', valor: pickeables.filter(o => o.state === 'done').length, detalle: `de ${pickeables.length}` },
+              ...(cong ? [
+                { etiqueta: 'Cajas contadas', valor: tot.CC + tot.CN,
+                  detalle: [tot.CC && `${tot.CC} cartón`, tot.CN && `${tot.CN} negra${tot.CN !== 1 ? 's' : ''}`].filter(Boolean).join(' · ') },
+                { etiqueta: 'Peso anotado', valor: formatoKg(tot.kg), detalle: 'kg' },
+              ] : [
+                { etiqueta: 'Encargados', valor: filas.length },
+                { etiqueta: 'Unidades contadas', valor: tot.total, detalle },
+              ]),
+              { etiqueta: 'Etiquetas sin imprimir', valor: tot.sin, destacado: tot.sin > 0 },
+            ],
+            secciones: cong ? undefined : seccionesDeLaPestana(false).map(k => ({
               key: k, label: etiquetaSeccion[k] ?? k, color: COLOR_SECCION[etiquetaSeccion[k]],
               cuenta: filtrarOpsPorSeccion(opsSeco, k).length,
             })),
@@ -1906,6 +1923,7 @@ export function PickingScreen() {
             onOpenAdelanto={() => setAdelantoDialogOpen(true)}
             onDeleteAdelanto={handleDeleteAdelanto}
             onVerElegidas={() => setPanelView('planilla')}
+            titulo={esTabCongelados ? 'Tiendas de congelados' : undefined}
           />
         </div>
 
@@ -2078,8 +2096,8 @@ export function PickingScreen() {
           )}
 
           {/* ── Tab content: Monitoreo ── */}
-          {rightTab === 'monitoreo' && isDesktop && selectedCods.length > 0 && renderVistaSeco()}
-          {(rightTab === 'monitoreo' || rightTab === 'congelados') && !(rightTab === 'monitoreo' && isDesktop && selectedCods.length > 0) && (selectedCods.length === 0 ? (
+          {(rightTab === 'monitoreo' || rightTab === 'congelados') && isDesktop && selectedCods.length > 0 && renderVistaOperacion()}
+          {(rightTab === 'monitoreo' || rightTab === 'congelados') && !(isDesktop && selectedCods.length > 0) && (selectedCods.length === 0 ? (
             <div className="flex-1 overflow-y-auto min-h-0">
               <div className="flex flex-col items-center justify-center text-center px-8 py-12">
                 <div className="mb-4 text-slate-200"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>

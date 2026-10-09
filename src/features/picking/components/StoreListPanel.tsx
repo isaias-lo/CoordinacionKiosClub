@@ -26,11 +26,13 @@ interface Props {
   /** Teléfono y handheld: pasar a la planilla con las tiendas elegidas. En escritorio las dos
    *  partes se ven juntas y no hace falta. */
   onVerElegidas?: () => void;
+  /** Título de la lista; en la pestaña Congelados dice «Tiendas de congelados». */
+  titulo?: string;
 }
 
 export const StoreListPanel = React.memo(function StoreListPanel({
   selectedCods, loadingCods, errorCods, opsMap, todayStores, storesLoading, onToggleStore, onToggleGrupo, tiendaOverrides = {},
-  onOpenAdelanto, onDeleteAdelanto, onVerElegidas,
+  onOpenAdelanto, onDeleteAdelanto, onVerElegidas, titulo = 'Tiendas de hoy',
 }: Props) {
   const [q, setQ] = useState('');
   const [filtro, setFiltro] = useState<FiltroTiendas>('todas');
@@ -79,7 +81,7 @@ export const StoreListPanel = React.memo(function StoreListPanel({
     <div className="pk-stores">
       <div className="pk-sh">
         <div className="t">
-          Tiendas de hoy
+          {titulo}
           <span>
             {storesLoading ? 'cargando…' : todayStores.length > 0 ? `${todayStores.length}` : ''}
             {!storesLoading && todayStores.length > 0 && selectedCods.length > 0 ? ' · ' : ''}

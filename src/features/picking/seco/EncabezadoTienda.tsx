@@ -3,10 +3,8 @@
 import React from 'react';
 import { RefreshCw, UserPlus } from 'lucide-react';
 
-export interface Kpis {
-  opsHechas: number; opsTotal: number; encargados: number;
-  unidades: number; detalleUnidades: string; sinImprimir: number;
-}
+/** Un indicador: «Operaciones realizadas 3 de 5». `destacado` lo pinta en azul (lo que falta hacer). */
+export interface Kpi { etiqueta: string; valor: string | number; detalle?: string; destacado?: boolean }
 
 export interface TabSeccion { key: string; label: string; color?: string; cuenta: number }
 
@@ -14,6 +12,10 @@ interface Props {
   cod: string;
   nombre: string;
   tipo?: { label: string } | null;
+  /** Píldora fija junto al nombre en vez del tipo de tienda (Congelados). */
+  marca?: { texto: string; fondo: string; color: string } | null;
+  /** Color del borde superior del encabezado (Congelados). */
+  acento?: string;
   /** Las tiendas elegidas, para pasar de una a otra. Con una sola no se muestra. */
   tiendas: { cod: string; nombre: string }[];
   onElegirTienda: (cod: string) => void;
@@ -22,21 +24,23 @@ interface Props {
   actualizando: boolean;
   actualizadoA?: string | null;
   imprimir: { n: number; armado: boolean; onClick: () => void } | null;
-  kpis: Kpis;
-  secciones: TabSeccion[];
-  seccion: string;
-  onSeccion: (key: string) => void;
+  kpis: Kpi[];
+  /** Pestañas de sección (Seco). Sin ellas queda un espacio, como en el diseño de Congelados. */
+  secciones?: TabSeccion[];
+  seccion?: string;
+  onSeccion?: (key: string) => void;
 }
 
 /** Encabezado de la tienda: nombre, acciones, 4 indicadores y las secciones con su conteo. */
 export function EncabezadoTienda(p: Props) {
-  const k = p.kpis;
   return (
-    <div className="pk-head print:hidden">
+    <div className="pk-head print:hidden" style={p.acento ? { borderTop: `3px solid ${p.acento}` } : undefined}>
       <div className="pk-hrow">
         <span className="pk-code">{p.cod}</span>
         <span className="pk-h1">{p.nombre}</span>
-        {p.tipo?.label && p.tipo.label !== 'Otro' && <span className="pk-pill mute">{p.tipo.label.replace(' Center', '')}</span>}
+        {p.marca
+          ? <span className="pk-pill" style={{ background: p.marca.fondo, color: p.marca.color }}>{p.marca.texto}</span>
+          : p.tipo?.label && p.tipo.label !== 'Otro' && <span className="pk-pill mute">{p.tipo.label.replace(' Center', '')}</span>}
         {p.tiendas.length > 1 && (
           <span className="pk-seg" role="tablist" aria-label="Tienda" style={{ marginLeft: 8 }}>
             {p.tiendas.map(t => (
@@ -63,20 +67,24 @@ export function EncabezadoTienda(p: Props) {
         </span>
       </div>
       <div className="pk-kpis">
-        <div className="pk-kpi"><span className="l">Operaciones realizadas</span><span className="v">{k.opsHechas} <small>de {k.opsTotal}</small></span></div>
-        <div className="pk-kpi"><span className="l">Encargados</span><span className="v">{k.encargados}</span></div>
-        <div className="pk-kpi"><span className="l">Unidades contadas</span><span className="v">{k.unidades} {k.detalleUnidades && <small>{k.detalleUnidades}</small>}</span></div>
-        <div className="pk-kpi"><span className="l">Etiquetas sin imprimir</span><span className="v" style={k.sinImprimir > 0 ? { color: '#2B4BC8' } : undefined}>{k.sinImprimir}</span></div>
-      </div>
-      <div className="pk-tabs" role="tablist" aria-label="Sección">
-        {p.secciones.map(s => (
-          <button key={s.key} type="button" role="tab" aria-selected={p.seccion === s.key}
-            className={`pk-tab${p.seccion === s.key ? ' on' : ''}`} onClick={() => p.onSeccion(s.key)}>
-            {s.color && <span className="sw" style={{ background: s.color }} aria-hidden="true" />}
-            {s.label} <span className="k">{s.cuenta}</span>
-          </button>
+        {p.kpis.map(k => (
+          <div key={k.etiqueta} className="pk-kpi">
+            <span className="l">{k.etiqueta}</span>
+            <span className="v" style={k.destacado ? { color: '#2B4BC8' } : undefined}>{k.valor} {k.detalle && <small>{k.detalle}</small>}</span>
+          </div>
         ))}
       </div>
+      {p.secciones ? (
+        <div className="pk-tabs" role="tablist" aria-label="Sección">
+          {p.secciones.map(s => (
+            <button key={s.key} type="button" role="tab" aria-selected={p.seccion === s.key}
+              className={`pk-tab${p.seccion === s.key ? ' on' : ''}`} onClick={() => p.onSeccion?.(s.key)}>
+              {s.color && <span className="sw" style={{ background: s.color }} aria-hidden="true" />}
+              {s.label} <span className="k">{s.cuenta}</span>
+            </button>
+          ))}
+        </div>
+      ) : <div style={{ height: 0 }} />}
     </div>
   );
 }
