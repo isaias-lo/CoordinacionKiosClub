@@ -12,7 +12,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { useApp } from '@/context/AppContext';
-import { Printer, Bell, AlertTriangle, RefreshCw, Package, UserPlus } from 'lucide-react';
+import { Bell, AlertTriangle } from 'lucide-react';
 
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
 import { fetchCalendarioCongelados, subscribeToCalendarioCongelados, type CalRecord } from '@/lib/calendarioCongeladosSync';
@@ -55,7 +55,7 @@ import { palletsDeOtraSeccion, textoDelAviso, destinoDelAviso, textoDelBoton } f
 import { pideSeccion, seccionYContenidoManual, normalizarBatch } from './encargadoManual';
 import { slotsYaImpresos } from './reimpresion';
 import { etiquetasDeLaSeleccion } from './seleccionImpresion';
-import { seccionEfectiva, seccionesDeLaPestana, tiposDeUnidad, primeraUnidadPorDefecto, columnaSeco, type ColumnaSeco } from './tiposUnidad';
+import { seccionEfectiva, seccionesDeLaPestana, tiposDeUnidad, primeraUnidadPorDefecto } from './tiposUnidad';
 import { usePickingOdoo }     from './hooks/usePickingOdoo';
 import { StatsTab }           from './components/StatsTab';
 import { HistorialTab }       from './components/HistorialTab';
@@ -69,6 +69,8 @@ import { MenuLateral }        from './marco/MenuLateral';
 import { AyudaPanel }         from './marco/AyudaPanel';
 import { accionDeTecla, estaEscribiendo } from './marco/ayuda';
 import { VistaSeco }          from './seco/VistaSeco';
+import { VistaTelefono }      from './telefono/VistaTelefono';
+import { BarraInferior }      from './telefono/BarraInferior';
 import { VistaCalendario }    from './ajustes/VistaCalendario';
 import type { FilaSeco }      from './seco/TablaEncargados';
 import { seccionesDeFila, unidadesDeFila, notaUnidades, totalesPorTipo, sinImprimir, formatoKg, COLOR_SECCION } from './seco/filaEncargado';
@@ -257,8 +259,8 @@ export function PickingScreen() {
   useEffect(() => () => { if (armedPrintTimerRef.current) clearTimeout(armedPrintTimerRef.current); }, []);
 
   const {
-    hasOdoo, odooDesactivado, opsMap, loadingCods, errorCods, lastRefresh, refreshingId, refreshingStoreCod,
-    fetchBatchOps, fetchOpsForStore, refreshOp, refreshAllOps,
+    hasOdoo, odooDesactivado, opsMap, loadingCods, errorCods, lastRefresh, refreshingId,
+    fetchBatchOps, fetchOpsForStore, refreshOp,
   } = usePickingOdoo({ selectedCods, initialOpsMap: session.opsMap ?? {} });
   const [calStores, setCalStores]         = useState<TodayStore[]>([]);
   const [adelantos, setAdelantos]         = useState<TiendaAdelanto[]>([]);
@@ -1149,6 +1151,13 @@ export function PickingScreen() {
     setRightTab(fuente === 'congelados' ? 'congelados' : 'monitoreo');
   }, [handleToggleGrupo, setRightTab]);
 
+  // Barra de abajo del teléfono: Seco y Congelados muestran la planilla si ya hay tiendas elegidas,
+  // y si no, la lista para elegirlas. El resto de las pestañas no usa tiendas.
+  const irAPestanaTelefono = useCallback((k: typeof rightTab) => {
+    setRightTab(k);
+    setPanelView(usaSelectorDeTiendas(k) && selectedCods.length === 0 ? 'stores' : 'planilla');
+  }, [setRightTab, selectedCods.length]);
+
   // Historial → «Reimprimir»: abre al encargado en Seco o Congelados (según lo que se imprimió),
   // con su tienda elegida y el panel lateral abierto, donde está el botón de imprimir.
   const abrirEncargado = useCallback((stateKey: string, tipo: string) => {
@@ -1175,11 +1184,6 @@ export function PickingScreen() {
     }
     return keys;
   }, [allGroups]);
-
-  const otroDiaCount = useMemo(
-    () => allGroups.filter(g => otroDiaGroupKeys.has(g.stateKey)).length,
-    [allGroups, otroDiaGroupKeys],
-  );
 
   const filteredGroups = useMemo(() => {
     // [P6] Cada tab ve solo lo suyo: Congelados muestra únicamente las ops congeladas, y Seco las
@@ -1521,8 +1525,6 @@ export function PickingScreen() {
     return labels;
   }, [selectedCods, groupedByStore, allGroupedByStore, palletSlots, palletNumsBySlotId, pickerDisplayNames, getCanonicalName, pickerBatch, catalogoTiendas]);
 
-  const hasBarcodes = printableLabels.length > 0;
-
   // Formulario «Encargado manual» de una tienda (lo abre el botón del encabezado de la tienda).
   const renderFormManual = (cod: string) => addingManualCod !== cod ? null : (
       <div className="px-3 py-2.5 flex items-center gap-2 print:hidden" style={{ borderBottom: '1px solid var(--color-border)', background: '#fff' }}>
@@ -1663,6 +1665,9 @@ export function PickingScreen() {
     const storeLabels = printableLabels.filter(l => l.storeCod === cod);
     const etiquetaSeccion: Record<string, string> = { all: 'Todas', comida: 'Comida', aseo: 'Aseo', hogar: 'Hogar', chocolates: 'Chocolates' };
     const hora = lastRefresh ? lastRefresh.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : null;
+    // Teléfono y handheld: las mismas filas en tarjetas con botones grandes (VistaTelefono).
+    // Reciben lo mismo; VistaSeco ignora onElegirTiendas (en escritorio la lista está al lado).
+    const Vista = (isDesktop ? VistaSeco : VistaTelefono) as typeof VistaTelefono;
 
     return (
       <>
@@ -1670,7 +1675,8 @@ export function PickingScreen() {
         <datalist id="picking-nombres-conocidos">
           {nombresConocidos.map(n => <option key={n} value={n} />)}
         </datalist>
-        <VistaSeco
+        <Vista
+          onElegirTiendas={() => setPanelView('stores')}
           modo={cong ? 'congelados' : 'seco'}
           encabezado={{
             cod, nombre: nameFor(cod), tipo: tipoFor(cod),
@@ -1703,6 +1709,7 @@ export function PickingScreen() {
             onSeccion: k => setSectionFilter(k as SectionFilter),
           }}
           sinAsignar={sinAsignarOps.length === 0 ? null : {
+            n: sinAsignarOps.length,
             texto: `${sinAsignarOps.length} operación${sinAsignarOps.length !== 1 ? 'es' : ''} sin responsable en Odoo.`,
             detalle: `${sinAsignarOps.slice(0, 3).map(o => `${o.name} (${[o.categories.join(', '), o.lineCount ? `${o.lineCount} líneas` : ''].filter(Boolean).join(', ')})`).join(', ')}${sinAsignarOps.length > 3 ? ' y otras' : ''} no ${sinAsignarOps.length !== 1 ? 'generan' : 'genera'} etiqueta hasta que se asigne un picker en Odoo.`,
             onActualizar: () => void fetchOpsForStore(cod),
@@ -1892,7 +1899,7 @@ export function PickingScreen() {
 
       {/* ── Franja superior ── */}
       <BarraSuperior tab={rightTab} online={isOnline} pendientes={pendientesCola}
-        onVolverATiendas={panelView === 'planilla' ? () => setPanelView('stores') : undefined} />
+        onVolverATiendas={panelView === 'planilla' && usaSelectorDeTiendas(rightTab) ? () => setPanelView('stores') : undefined} />
 
       {/* ── Alerta cambios calendario ── */}
       {notifCount > 0 && (
@@ -2004,61 +2011,6 @@ export function PickingScreen() {
             </div>
           )}
 
-          {/* ── Tab bar ──
-              Solo teléfono y handheld: las tres del trabajo diario y el resto en «Más». En
-              escritorio las pestañas están en el menú lateral (MenuLateral). */}
-          {(() => {
-            const TABS = [
-              { key: 'monitoreo',     label: 'Seco'        },
-              { key: 'congelados',    label: 'Congelados'  },
-              { key: 'actividad',     label: 'Actividad'   },
-              { key: 'historial',     label: 'Historial'   },
-              { key: 'estadisticas',  label: 'Estadísticas'},
-              { key: 'configuracion', label: 'Config'      },
-              { key: 'calendario',    label: 'Calendario'  },
-            ] as { key: typeof rightTab; label: string }[];
-            const PRINCIPALES = 3;
-            const enMas = TABS.slice(PRINCIPALES);
-            const activaEnMas = enMas.find(t => t.key === rightTab);
-            const boton = (tab: { key: typeof rightTab; label: string }, extra = '') => {
-              const active = rightTab === tab.key;
-              return (
-                <button key={tab.key} onClick={() => setRightTab(tab.key)}
-                  aria-current={active ? 'page' : undefined}
-                  className={`relative flex-1 py-2.5 text-[11px] font-medium cursor-pointer transition-colors border-none bg-transparent whitespace-nowrap px-3 ${extra}`}
-                  style={{
-                    color: active ? '#1A2550' : '#64748B',
-                    borderBottom: active ? '2px solid var(--color-info)' : '2px solid transparent',
-                  }}>
-                  {tab.label}
-                </button>
-              );
-            };
-            return (
-              <div className="flex flex-shrink-0 print:hidden lg:hidden"
-                style={{ background: '#fff', borderBottom: '1px solid var(--color-border)' }}>
-                {TABS.slice(0, PRINCIPALES).map(t => boton(t, 'max-lg:min-h-[44px] max-lg:text-[13px]'))}
-                {enMas.map(t => boton(t, 'hidden lg:block'))}
-                <label className="lg:hidden relative flex-1 flex items-center justify-center min-h-[44px] text-[13px] font-medium cursor-pointer"
-                  style={{
-                    color: activaEnMas ? '#1A2550' : '#64748B',
-                    borderBottom: activaEnMas ? '2px solid var(--color-info)' : '2px solid transparent',
-                  }}>
-                  <span aria-hidden="true">{activaEnMas ? activaEnMas.label : 'Más'} ▾</span>
-                  <select value={activaEnMas?.key ?? ''} aria-label="Más secciones"
-                    onChange={e => {
-                      if (e.target.value === 'ayuda') { setAyudaAbierta(true); return; }
-                      if (e.target.value) setRightTab(e.target.value as typeof rightTab);
-                    }}
-                    className="absolute inset-0 opacity-0 cursor-pointer">
-                    <option value="" disabled>Más</option>
-                    {enMas.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-                    <option value="ayuda">Ayuda</option>
-                  </select>
-                </label>
-              </div>
-            );
-          })()}
 
           {/* ── Tab content: Estadísticas ── */}
           {rightTab === 'estadisticas' && (
@@ -2123,8 +2075,8 @@ export function PickingScreen() {
           )}
 
           {/* ── Tab content: Monitoreo ── */}
-          {(rightTab === 'monitoreo' || rightTab === 'congelados') && isDesktop && selectedCods.length > 0 && renderVistaOperacion()}
-          {(rightTab === 'monitoreo' || rightTab === 'congelados') && !(isDesktop && selectedCods.length > 0) && (selectedCods.length === 0 ? (
+          {(rightTab === 'monitoreo' || rightTab === 'congelados') && selectedCods.length > 0 && renderVistaOperacion()}
+          {(rightTab === 'monitoreo' || rightTab === 'congelados') && selectedCods.length === 0 && (
             <div className="flex-1 overflow-y-auto min-h-0">
               <div className="flex flex-col items-center justify-center text-center px-8 py-12">
                 <div className="mb-4 text-slate-200"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
@@ -2146,321 +2098,12 @@ export function PickingScreen() {
                 })()}
               </div>
             </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto min-h-0">
-            <div className="px-4 pb-10">
-
-              {/* Filtro de sección + columnas por fila */}
-              <div className="mt-4 mb-3 print:hidden flex flex-wrap items-center gap-4">
-                <div>
-                  <div className="text-[11px] font-medium text-slate-400 mb-2">Sección</div>
-                  <div className="flex gap-1.5">
-                    {([
-                      { key: 'all',         label: 'Todas' },
-                      { key: 'comida',      label: 'Comida' },
-                      { key: 'aseo',        label: 'Aseo' },
-                      { key: 'hogar',       label: 'Hogar' },
-                      { key: 'chocolates',  label: 'Chocolates' },
-            ] as { key: SectionFilter; label: string }[])
-              // Cada pestaña ofrece lo suyo: Congelados solo "Todas"; Seco sus cuatro secciones, sin
-              // "Congelados" (que tiene su propia pestaña — antes aparecía en los dos lados).
-              .filter(({ key }) => seccionesDeLaPestana(esTabCongelados).includes(key))
-              .map(({ key, label }) => (
-                      <button key={key} onClick={() => setSectionFilter(key)}
-                        className="px-3.5 py-1.5 rounded text-[12px] font-medium cursor-pointer transition-all border"
-                        style={{
-                          background: sectionFilter === key ? 'var(--color-info)' : '#fff',
-                          color:      sectionFilter === key ? '#fff'    : '#64748B',
-                          borderColor: sectionFilter === key ? 'var(--color-info)' : 'var(--color-border)',
-                        }}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="ml-auto">
-                  {hasBarcodes && (
-                    <button onClick={printAll}
-                      className="flex items-center gap-2 border-none cursor-pointer font-semibold text-[13px] px-3.5 py-1.5 rounded"
-                      style={{ background: '#2563EB', color: '#fff' }}>
-                      <Printer size={14} />
-                      Imprimir {printableLabels.length}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="mb-4 flex items-center justify-between print:hidden">
-                <div>
-                  <div className="text-[14px] font-semibold text-text-2">
-                    {filteredGroups.length === 0
-                      ? 'Sin operaciones de Abastecimiento hoy'
-                      : (() => {
-                          // «Sin asignar» no es un encargado: no se cuenta (su aviso va en cada tienda).
-                          const n = filteredGroups.filter(g => !ocultarSinAsignar(g, slotsByStateKey[g.stateKey])).length;
-                          return `${n} encargado${n !== 1 ? 's' : ''} · ${selectedCods.length} tienda${selectedCods.length !== 1 ? 's' : ''}`;
-                        })()}
-                  </div>
-                  {otroDiaCount > 0 && (
-                    <div className="text-[11px] text-amber-600 font-medium mt-0.5">
-                      ⚠ {otroDiaCount} movimiento{otroDiaCount !== 1 ? 's' : ''} con fecha de origen distinta a hoy — revisa antes de trabajar{otroDiaCount !== 1 ? 'los' : 'lo'}
-                    </div>
-                  )}
-                  {lastRefresh && (
-                    <div className="text-[13px] text-text-3">
-                      Actualizado: {lastRefresh.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => void fetchBatchOps(selectedCods)}
-                  disabled={loadingCods.length > 0}
-                  className="flex items-center gap-1.5 text-[13px] font-medium cursor-pointer border rounded px-3 py-1.5 transition-all disabled:opacity-40"
-                  style={{ borderColor: 'var(--color-border)', color: '#64748B', background: '#fff' }}>
-                  <RefreshCw size={12} className={loadingCods.length > 0 ? 'animate-spin' : ''} />
-                  {loadingCods.length > 0 ? 'Cargando…' : 'Actualizar'}
-                </button>
-              </div>
-
-              {/* Sugerencias del datalist "Encargado manual" — una sola vez, no por tienda */}
-              <datalist id="picking-nombres-conocidos">
-                {nombresConocidos.map(n => <option key={n} value={n} />)}
-              </datalist>
-
-              {selectedCods.map(cod => {
-                const storeGroups = (groupedByStore[cod] ?? []).filter(g => !ocultarSinAsignar(g, slotsByStateKey[g.stateKey]));
-                const isLoading   = loadingCods.includes(cod);
-                const ops         = opsMap[cod] ?? [];
-                // Solo pickeables (assigned/partially_available/done): un 'confirmed'/'waiting'
-                // sin stock (duplicado/backorder) no debe restar completitud a la tienda.
-                const totalOps = ops.filter(o => isPickeableState(o.state)).length;
-                const doneOps = ops.filter(o => o.state === 'done').length;
-                const storeStatus: 'none' | 'partial' | 'complete' =
-                  totalOps === 0 ? 'none' : doneOps === totalOps ? 'complete' : 'partial';
-                return (
-                  <section key={cod} aria-label={`Tienda ${cod} — ${nameFor(cod)}`}
-                    className="mb-6 rounded-xl"
-                    style={{ border: '1px solid var(--color-border)', borderTop: '3px solid #1E40AF', background: '#F8FAFC' }}>
-                    {/* Header sticky: se fija arriba mientras se hace scroll dentro de esta tienda,
-                        y es empujado por el header sticky de la siguiente (patrón CSS puro). */}
-                    <div className="sticky top-0 z-20 flex items-center gap-3 px-3 py-2.5 print:static print:mb-2 flex-wrap"
-                      style={{ background: '#F8FAFC', borderBottom: '1px solid var(--color-border)', borderTopLeftRadius: 11, borderTopRightRadius: 11 }}>
-                      <span className="font-mono text-[13px] font-semibold px-2 py-0.5 rounded" style={{ background: '#F1F5F9', color: '#475569' }}>{cod}</span>
-                      <span className="text-[18px] font-semibold" style={{ color: '#0F172A' }}>{nameFor(cod)}</span>
-                      {(() => {
-                        const tp = tipoFor(cod);
-                        if (!tp.label || tp.label === 'Otro') return null;
-                        return (
-                          <span className="text-[11px] font-bold rounded"
-                            style={{ color: tp.color, background: `${tp.color}1A`, border: `1px solid ${tp.color}40`, padding: '2px 9px' }}>
-                            {tp.label.replace(' Center', '')}
-                          </span>
-                        );
-                      })()}
-                      {storeStatus === 'complete' && (
-                        <span className="text-[13px] font-bold px-3 py-0.5 rounded"
-                          style={{ background: 'rgba(22,163,74,0.12)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.3)' }}>
-                          ✓ Todo realizado
-                        </span>
-                      )}
-                      {storeStatus === 'partial' && (
-                        <span className="text-[13px] font-bold px-3 py-0.5 rounded"
-                          style={{ background: 'rgba(234,179,8,0.12)', color: '#D97706', border: '1px solid rgba(234,179,8,0.3)' }}>
-                          {doneOps}/{totalOps} ops
-                        </span>
-                      )}
-                      {isLoading && <span className="text-[14px] text-text-3 font-medium">Cargando…</span>}
-                      {/* [m-10] Solo si OTRAS tiendas sí tienen: cuando no hay ninguna, el mensaje
-                          de la página ya lo dijo una vez y repetirlo por tienda es ruido. */}
-                      {!isLoading && storeGroups.length === 0 && filteredGroups.length > 0 && (
-                        <span className="text-[14px] text-text-3 font-medium">Sin operaciones de Abastecimiento hoy</span>
-                      )}
-                      {/* Acciones de tienda: actualizar todo (batch, 1 solo request) + imprimir */}
-                      <div className="ml-auto flex items-center gap-2 print:hidden">
-                        <button onClick={() => abrirFormManual(cod)}
-                          className="text-[13px] font-medium px-3 py-1.5 max-lg:min-h-[40px] whitespace-nowrap rounded cursor-pointer transition-all flex items-center gap-1.5"
-                          style={{ border: '1px solid var(--color-border)', color: '#64748B', background: '#fff' }}>
-                          <UserPlus size={13} /> <span className="sm:hidden">Manual</span><span className="hidden sm:inline">Encargado manual</span>
-                        </button>
-                        {ops.length > 0 && (
-                          <button onClick={() => void refreshAllOps(ops, cod)}
-                            disabled={refreshingStoreCod === cod}
-                            className="text-[13px] font-medium px-3 py-1.5 max-lg:min-h-[40px] whitespace-nowrap rounded cursor-pointer transition-all flex items-center gap-1.5 disabled:opacity-50"
-                            style={{ border: '1px solid var(--color-border)', color: '#64748B', background: '#fff' }}>
-                            <RefreshCw size={13} className={refreshingStoreCod === cod ? 'animate-spin' : ''} />
-                            <span className="sm:hidden">Actualizar</span><span className="hidden sm:inline">Actualizar todo</span>
-                          </button>
-                        )}
-                        {(() => {
-                          const storeLabels = printableLabels.filter(l => l.storeCod === cod);
-                          if (!storeLabels.length) return null;
-                          const armado = armedPrintCod === cod;
-                          return (
-                            <button onClick={() => tocarImprimirTienda(cod)}
-                              className="text-[13px] font-bold px-3 py-1.5 max-lg:min-h-[40px] whitespace-nowrap rounded-xl cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
-                              style={armado
-                                ? { background: '#D97706', color: '#fff', border: '1px solid #D97706' }
-                                : { background: 'rgba(217,119,6,0.1)', color: '#D97706', border: '1px solid rgba(217,119,6,0.3)' }}>
-                              <Printer size={13} /> {armado ? '¿Confirmar?' : <><span className="hidden sm:inline">{cod} · </span>{storeLabels.length} etiqueta{storeLabels.length !== 1 ? 's' : ''}</>}
-                            </button>
-                          );
-                        })()}
-                      </div>
-                    </div>
-
-                    {renderFormManual(cod)}
-
-                    <div className="px-3 pt-3 pb-4">
-                    {/* Sin asignar warning */}
-                    {(() => {
-                      const sinAsignar = (allGroupedByStore[cod] ?? []).filter(g => g.key === 'Sin asignar');
-                      const count = sinAsignar.reduce((s, g) => s + g.operations.length, 0);
-                      if (!count) return null;
-                      return (
-                        <div className="mb-3 print:hidden flex items-center gap-3 bg-white border border-[rgba(220,38,38,0.2)] rounded-xl px-4 py-2.5">
-                          <AlertTriangle size={18} className="shrink-0" style={{color:'#DC2626'}} />
-                          <div className="flex-1 text-[13px]" style={{ color: '#B91C1C' }}>
-                            <span className="font-bold">{count} operación{count !== 1 ? 'es' : ''} sin responsable en Odoo</span>
-                            {' '}— no generarán etiqueta. Asigna picker en Odoo y recarga.
-                          </div>
-                          <button onClick={() => void fetchOpsForStore(cod)}
-                            className="text-[13px] font-bold px-3 py-1.5 rounded-lg cursor-pointer shrink-0 transition-all"
-                            style={{ background: 'rgba(37,99,235,0.1)', color: '#2563EB', border: '1px solid rgba(37,99,235,0.25)' }}>
-                            ↻ Recargar
-                          </button>
-                        </div>
-                      );
-                    })()}
-
-                    {(() => {
-                        const allStore = allGroupedByStore[cod] ?? [];
-
-                        const renderCard = (group: PickerGroup, stickerBelow = false) => (
-                          <PickerGroupCard key={group.stateKey} {...propsDeTarjeta(group, cod, allStore, stickerBelow)} />
-                        );
-
-                        // Filtro activo (Hogar / Aseo y Comida), o la pestaña Congelados: render plano.
-                        // Congelados no tiene secciones — antes caía en la grilla de Seco y mostraba
-                        // tres columnas de seco vacías más una con sus tarjetas.
-                        if (sectionFilter !== 'all' || esTabCongelados) {
-                          return <div className="space-y-4">{storeGroups.map(g => renderCard(g))}</div>;
-                        }
-
-                        // "Todas" de Seco: grid de 4 columnas fijas, siempre visibles (Congelados tiene su pestaña)
-                        const SECTION_META = {
-                          comida:        { label: 'Comida',        color: '#D97706', bg: 'rgba(217,119,6,0.06)', border: 'rgba(217,119,6,0.28)' },
-                          aseo:          { label: 'Aseo',          color: '#0D9488', bg: 'rgba(13,148,136,0.06)', border: 'rgba(13,148,136,0.26)' },
-                          hogar:         { label: 'Hogar',         color: '#1D4ED8', bg: 'rgba(29,78,216,0.06)',  border: 'rgba(29,78,216,0.22)' },
-                          chocolates:    { label: 'Chocolates',    color: '#92400E', bg: 'rgba(146,64,14,0.06)', border: 'rgba(146,64,14,0.22)' },
-                          congelados:    { label: 'Congelados',    color: '#0891B2', bg: 'rgba(8,145,178,0.06)', border: 'rgba(8,145,178,0.22)' },
-                          mixto:         { label: 'Mixto',         color: '#7C3AED', bg: 'rgba(124,58,237,0.06)', border: 'rgba(124,58,237,0.22)' },
-                        } as const;
-
-                        // Un encargado manual no tiene operaciones de Odoo: su columna sale de la sección
-                        // de sus unidades (antes caían TODOS en Hogar). Ver columnaSeco.
-                        const getSection = (g: PickerGroup): ColumnaSeco => {
-                          const esManual = g.operations.length === 0;
-                          const cats = esManual
-                            ? categoriasDeSlotsManual(slotsByStateKey[g.stateKey] ?? [])
-                            : g.operations.flatMap(o => o.categories);
-                          return columnaSeco(cats, esManual);
-                        };
-
-                        const countSlots = (gs: PickerGroup[]) =>
-                          gs.reduce((sum, g) => sum + Object.values(palletsByTipoAndStateKey[g.stateKey] ?? {}).reduce((a, b) => a + b, 0), 0);
-
-                        const comidaGroups     = storeGroups.filter(g => getSection(g) === 'comida');
-                        const aseoGroups       = storeGroups.filter(g => getSection(g) === 'aseo');
-                        const hogarGroups      = storeGroups.filter(g => getSection(g) === 'hogar');
-                        const chocoGroups      = storeGroups.filter(g => getSection(g) === 'chocolates');
-                        const mixtoGroups      = storeGroups.filter(g => getSection(g) === 'mixto');
-                        const mixtoTotal       = countSlots(mixtoGroups);
-
-                        const renderSectionHeader = (key: keyof typeof SECTION_META, total: number) => {
-                          const meta = SECTION_META[key];
-                          return (
-                            <div className="mb-4 print:hidden">
-                              <div className="flex items-center gap-3 mb-2">
-                                <span className="font-barlow-condensed text-[18px] font-bold uppercase tracking-wide flex-shrink-0" style={{ color: meta.color }}>
-                                  {meta.label}
-                                </span>
-                                {total > 0 && (
-                                  <span className="text-[13px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
-                                    style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>
-                                    {total} pallet{total !== 1 ? 's' : ''}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="h-[3px] rounded-full w-full" style={{ background: meta.color, opacity: 0.55 }} />
-                            </div>
-                          );
-                        };
-
-                        const columns: Array<{ key: keyof typeof SECTION_META; groups: PickerGroup[] }> = [
-                          { key: 'comida',     groups: comidaGroups },
-                          { key: 'aseo',       groups: aseoGroups },
-                          { key: 'hogar',      groups: hogarGroups },
-                          { key: 'chocolates', groups: chocoGroups },
-                        ];
-
-                        return (
-                          <div className="space-y-4">
-                            {/* Mixto (dos secciones en el mismo encargado, típicamente Comida + Aseo)
-                                — ancho completo ARRIBA. Abajo de las cuatro columnas quedaba fuera de
-                                la vista, y desde que Comida y Aseo se separaron es un caso frecuente. */}
-                            {mixtoGroups.length > 0 && (
-                              <div>
-                                {renderSectionHeader('mixto', mixtoTotal)}
-                                <div className="space-y-3">
-                                  {mixtoGroups.map(g => renderCard(g))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Grid de 4 columnas fijas — todas siempre visibles. En pantallas
-                                medianas van de a dos para que la tarjeta no quede ilegible. */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start">
-                              {columns.map((col) => {
-                                const total = countSlots(col.groups);
-                                const meta  = SECTION_META[col.key];
-                                return (
-                                  // En el teléfono las columnas van una debajo de otra: una vacía era
-                                  // media pantalla diciendo «Sin operaciones aún». Ahí se omite.
-                                  <div key={col.key} className={col.groups.length === 0 ? 'hidden md:block' : undefined}>
-                                    {renderSectionHeader(col.key, total)}
-                                    {col.groups.length > 0 ? (
-                                      <div className="space-y-3">
-                                        {col.groups.map(g => renderCard(g, true))}
-                                      </div>
-                                    ) : storeGroups.length > 0 ? (
-                                      /* [m-10] El recuadro vacío de una columna solo aporta cuando la
-                                         tienda SÍ tiene carga en otra: dice "acá no, allá sí". Con la
-                                         tienda entera vacía, son tres recuadros repitiendo lo mismo. */
-                                      <div className="rounded-lg border-2 border-dashed flex flex-col items-center justify-center py-10 px-4"
-                                        style={{ borderColor: meta.color + '28', background: '#fff' }}>
-                                        <div className="mb-1" style={{ opacity: 0.18 }}><Package size={28} /></div>
-                                        <div className="text-[12px] font-semibold text-center" style={{ color: meta.color, opacity: 0.5 }}>
-                                          Sin operaciones aún
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                );
-                              })}
-                            </div>
-
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </section>
-                );
-              })}
-            </div>
-            </div>
-          ))}
+          )}
         </div>
       </div>
+
+      {/* Teléfono y handheld: las pestañas van abajo, al alcance del pulgar. */}
+      {!isDesktop && <BarraInferior tab={rightTab} onTab={irAPestanaTelefono} onAyuda={() => setAyudaAbierta(true)} />}
     </div>
     </>
   );

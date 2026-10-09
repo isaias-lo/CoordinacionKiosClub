@@ -7,11 +7,11 @@ import { PanelEncargado } from './PanelEncargado';
 
 type PropsEncabezado = React.ComponentProps<typeof EncabezadoTienda>;
 
-interface Props {
+export interface VistaSecoProps {
   modo?: 'seco' | 'congelados';
   encabezado: PropsEncabezado;
   /** Operaciones sin responsable en Odoo: solo el aviso de arriba, nunca una fila. */
-  sinAsignar: { texto: string; detalle: string; onActualizar: () => void } | null;
+  sinAsignar: { n: number; texto: string; detalle: string; onActualizar: () => void } | null;
   otroDia: number;
   formManual: React.ReactNode;
   cargando: boolean;
@@ -24,7 +24,7 @@ interface Props {
 }
 
 /** Seco y Congelados en escritorio: encabezado de la tienda, avisos, tabla de encargados y su panel lateral. */
-export function VistaSeco(p: Props) {
+export function VistaSeco(p: VistaSecoProps) {
   const i = p.filas.findIndex(f => f.group.stateKey === p.abierta);
   const fila = i >= 0 ? p.filas[i] : null;
   const { onAbrir } = p;
