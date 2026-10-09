@@ -9,6 +9,7 @@ import { fechaDespachoBodega } from './fechaLocal';
 import { sheetsRegionesWrite } from '../regiones/utils/sheetsRegiones';
 import { getTiendaSantiagoByCod } from '../santiago/data/tiendasSantiago';
 import { fechaChile } from '@/lib/fechaChile';
+import { avisoNoRegistrado } from './escribirPlanilla';
 
 type Fuente = 'santiago' | 'regiones';
 
@@ -77,6 +78,7 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
   const [reviewing, setReviewing] = useState<PendingDraft | null>(null);
   const [busy,      setBusy]      = useState<string | null>(null);
   const [toast,     setToast]     = useState<string | null>(null);
+  const [toastMal,  setToastMal]  = useState(false);
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
@@ -171,6 +173,12 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
       // y por eso se avisa sin deshacer nada.
       setToast(avisoCruce ?? `✓ Registrado el despacho del ${fechaBonita(d.fecha)}`);
       setTimeout(() => setToast(null), 4000);
+    } catch (e) {
+      // La planilla no se escribió: el borrador se queda en la lista para reintentar.
+      console.error('[borrador:registrar]', e);
+      setToastMal(true);
+      setToast(avisoNoRegistrado(e));
+      setTimeout(() => { setToast(null); setToastMal(false); }, 6000);
     } finally {
       setBusy(null);
     }
@@ -193,7 +201,9 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
   return (
     <>
       {toast && (
-        <div className="flex-shrink-0 px-4 py-2 bg-[rgba(22,163,74,0.10)] border-b border-[rgba(22,163,74,0.25)] text-[13px] font-bold text-success">
+        <div className={`flex-shrink-0 px-4 py-2 border-b text-[13px] font-bold ${toastMal
+          ? 'bg-[rgba(211,47,47,0.10)] border-[rgba(211,47,47,0.25)] text-red'
+          : 'bg-[rgba(22,163,74,0.10)] border-[rgba(22,163,74,0.25)] text-success'}`}>
           {toast}
         </div>
       )}

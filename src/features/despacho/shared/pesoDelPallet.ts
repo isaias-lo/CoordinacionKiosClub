@@ -81,3 +81,37 @@ export function textoPesoConTara(neto: number, tara?: number | null): string {
   const base = `${coma(neto)} kg`;
   return tara && tara > 0 ? `${base} (${coma(redondear(neto + tara))} − ${coma(tara)})` : base;
 }
+
+interface TarjetaConPeso {
+  peso: string;
+  pesoPallet?: string;
+  savedItem?: { peso: number; taraPallet?: number };
+}
+
+/**
+ * El peso NETO de una tarjeta, guardada o no: lo que se suma o se une a otra.
+ *
+ * Sumar o unificar sobre un pallet SIN GUARDAR tomaba el Peso tecleado tal cual, que es el bruto, y
+ * la tarjeta se reabría con el «Peso del pallet» vacío: P1 de 300 con tara 22 más un bulto de 20
+ * quedaba en 320 (debía ser 298), y así se escribía en el slot.
+ */
+export function pesoNetoDeTarjeta(row: TarjetaConPeso): number {
+  if (row.savedItem) return row.savedItem.peso;
+  const neto = pesoNetoPallet(row.peso, row.pesoPallet);
+  return neto.ok ? neto.neto : (leerPeso(row.peso) ?? 0);
+}
+
+/** La tara de la tarjeta: la guardada, o la que está escrita si todavía no se guardó. */
+export function taraDeTarjeta(row: TarjetaConPeso): number | undefined {
+  if (row.savedItem) return row.savedItem.taraPallet;
+  return taraParaGuardar(leerTaraPallet(row.pesoPallet) ?? 0);
+}
+
+/**
+ * La tara que conserva un ítem al que se le escribe un peso nuevo sin casillero de pallet (editar o
+ * combinar desde el Resumen). Ahí el número tecleado es el peso final: si cambió, la tara vieja ya no
+ * dice nada y conservarla inventa un bruto que nadie pesó («538 kg (560 − 22)»). Si no cambió, se queda.
+ */
+export function taraTrasCorregir(pesoAntes: number | string | null | undefined, pesoNuevo: number, tara?: number | null): number | undefined {
+  return Number(pesoAntes) === pesoNuevo ? taraParaGuardar(Number(tara ?? 0)) : undefined;
+}
