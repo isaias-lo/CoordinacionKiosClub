@@ -83,7 +83,7 @@ import { levantarLapidasDeSlotsVivos } from '../../shared/lapidasBorrado';
 import { actualizarSlotPicking, camposDePeso, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
 import { sincronizarYCruzar } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
-import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
+import { esSinPesar, esPalletWeb, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
 import { pesoEnTarjeta, pesoNetoDeTarjeta, pesoNetoPallet, taraDeTarjeta, taraEnTarjeta, taraParaGuardar, taraTrasCorregir, textoPesoConTara } from '../../shared/pesoDelPallet';
@@ -99,7 +99,7 @@ import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despa
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
 import { esAgregado, etiquetaAgregado, etiquetaDeUnidad } from '@/features/despacho/shared/adquisicion';
 import { avisoNoRegistrado } from '../../shared/escribirPlanilla';
-import { AVISO_ERROR } from '../../shared/colorAviso';
+import { AVISO_ERROR, AVISO_OK, AVISO_ESPERA } from '../../shared/colorAviso';
 
 /* ── Calendar localStorage ── */
 const todayKey = fechaChile();
@@ -1357,7 +1357,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const contenido: ContenidoSantiago = src.contenido === tgt.contenido ? src.contenido : 'Mixto';
     // /6000, como en el resto del sistema (estaba en /5000 y sin decimales solo acá).
     const pesoVolumetrico = (alto * src.ancho * src.largo) / 6000;
-    const merged: SantiagoItem = { ...src, id: `${tiendaCod}-${Date.now()}`, peso, alto, contenido, pesoVolumetrico, taraPallet: undefined };
+    const merged: SantiagoItem = { ...src, id: `${tiendaCod}-${Date.now()}`, peso, alto, contenido, pesoVolumetrico, taraPallet: undefined, palletWeb: peso > 0 ? undefined : src.palletWeb };
     // Misma regla que Nacional, en un solo sitio: el fusionado queda en la POSICIÓN del primero
     // de los dos, no al final. (Acá ya era así; se comparte para que no vuelvan a divergir.)
     const newList = combinarEnLista(allItems, srcIdx, tgtIdx, merged);
@@ -2166,6 +2166,44 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     finally { addingSlotRef.current.delete(key); }
   };
 
+  // [Pallet web] Un pallet que sale sin pasar por la balanza (Isaias, 9 oct 2026): de un toque, sin
+  // peso ni medidas, pero en la serie de PALLETS y escrito como Pallet en la planilla. Espejo de
+  // Nacional (TiendasPage → agregarPalletWeb). Ver shared/sinPesar.ts → esPalletWeb.
+  const agregarPalletWeb = async () => {
+    esperarNueva();
+    const cod = currentTienda?.cod;
+    if (!cod || !currentTienda) return;
+    if (!regimen) { showToast('Selecciona régimen', AVISO_ESPERA); return; }
+    const key = `${cod}:pallet-web`;
+    if (addingSlotRef.current.has(key)) { showToast('Agregando… espera un segundo', AVISO_ESPERA); return; }
+    addingSlotRef.current.add(key);
+    try {
+      const { slot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: 'P', contenido: 'hogar' });
+      if (!slot) { showToast(`⚠ No se pudo agregar el pallet web (${error}) — reintenta`, AVISO_ERROR); return; }
+      setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot] }));
+      // El número sale del `seq` del slot, igual que al guardar un pallet pesado (`saveRow`).
+      const seqsHermanas = (items[cod] || [])
+        .filter(i => claseSantiago(i.tipo) === 'pallet')
+        .map(i => seqDeSlot(cod, i.pickingSlotId));
+      const stamp = Date.now();
+      const item: SantiagoItem = {
+        id: `${cod}-pweb-${stamp}`, tiendaCod: cod, tipo: 'Pallet', contenido: 'Hogar',
+        peso: 0, alto: 0, largo: 0, ancho: 0, pesoVolumetrico: 0, regimen,
+        orden: ordenDeItem('Pallet', numeroParaUnidadNueva(seqsHermanas, slot.seq)), estado: ESTADO_DEFAULT,
+        pickingSlotId: slot.id, canonical_id: slot.canonical_id ?? undefined, palletWeb: true,
+      };
+      dispatch({ type: 'ADD_ITEM', item });
+      setFormRows(prev => [...prev, {
+        id: `saved-pweb-${stamp}`, tipo: 'Pallet', contenido: 'Hogar',
+        peso: '', alto: '', largo: '', ancho: '',
+        saved: true, savedItem: item, pickingSlotId: slot.id,
+      }]);
+      showToast(`✓ ${item.orden} agregado como pallet web`, AVISO_OK);
+      logActividad({ accion: 'registrar_item', fuente: 'rmcosta', tiendaCod: cod,
+        tiendaNombre: currentTienda.tienda, label: item.orden, peso: 0, alto: 0, contenido: item.contenido, slotId: slot.id });
+    } finally { addingSlotRef.current.delete(key); }
+  };
+
   // [Duplicar bulto] Crea `cantidad` copias de un bulto guardado con su MISMO peso y medidas,
   // agregadas al instante, sin pasar por el formulario. Solo para bultos.
   const duplicarBulto = async (row: FormRow, cantidad: number) => {
@@ -2273,7 +2311,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     }
     const item = (items[cod] || [])[idx];
     // Las mismas guardias que la tarjeta: sin peso no se guarda y un peso imposible se ataja acá.
-    const pesoR = esAgregado(item.tipo) ? (leerPeso(resumenEditing.peso) ?? 0) : leerPeso(resumenEditing.peso);
+    const pesoR = esAgregado(item.tipo) || esPalletWeb(item) ? (leerPeso(resumenEditing.peso) ?? 0) : leerPeso(resumenEditing.peso);
     if (pesoR == null) { showToast('Ingresa el peso', '#D97706'); return; }
     const duroR = excedeTopeDuro(pesoR, claseSantiago(rTipo));
     if (duroR) { showToast(`⚠ ${duroR}`, '#D32F2F'); return; }
@@ -2286,6 +2324,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       type: 'EDIT_ITEM', tiendaCod: cod, idx,
       item: { ...item, tipo: rTipo, contenido: rContenido, estado: rEstado,
         peso: pesoR, taraPallet: taraTrasCorregir(item.peso, pesoR, item.taraPallet), alto, largo, ancho,
+        // Un pallet web al que le ponen peso pasa a ser un pallet pesado como cualquier otro.
+        palletWeb: esPalletWeb(item) && pesoR <= 0 ? true : undefined,
         pesoVolumetrico: (alto * largo * ancho) / 6000 },
     });
     // Y en el slot, como hace Guardar: si no, el cruce con Odoo seguía con el peso viejo.
@@ -3076,6 +3116,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             // No piden medidas ni peso: se crean de un toque, sin diálogo. Ver shared/adquisicion.
             { texto: 'Adquisición', clase: 'agregado', detalle: 'no se pesa', onClick: () => void addFormRow('Adquisicion') },
             { texto: 'Web / retiro', clase: 'agregado', detalle: 'no se pesa', onClick: () => void addFormRow('WebRetiro') },
+            { texto: 'Pallet web', clase: 'agregado', detalle: 'pallet sin peso', onClick: () => void agregarPalletWeb() },
           ] }}
           botonRegistrar={
             <RegistrarTiendaButton rol={profile?.role} terminada={tiendaTerminada(currentTienda.cod)} variante="claro"

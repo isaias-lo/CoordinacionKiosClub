@@ -4,7 +4,7 @@ import { pkgCodeNacional } from '@/features/despacho/shared/tipoCode';
 import { etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
 import type { DispatchItem } from '../../../../types';
 import { desempatarOrdenNacional } from '../../shared/numeroCard';
-import { esSinPesar } from '../../shared/sinPesar';
+import { esSinPesar, esPalletWeb } from '../../shared/sinPesar';
 import { escribirPlanilla, type ResultadoPlanilla } from '../../shared/escribirPlanilla';
 
 const CARGA_LABEL: Record<string, string> = {
@@ -87,7 +87,8 @@ export function buildRows(
       // [Agregar sin pesar] Ver mismo comentario en sheetsSantiago.buildRows: si el item no fue
       // pesado, escribimos el NÚMERO 0 (no '') en PESO_KG/ALTO/LARGO/ANCHO/PESO_V para que
       // sheets-write vea peso_kg = 0 (no null) y no pierda el batch por `hasDims` falso.
-      const sinPesar = esSinPesar(item);
+      // Un pallet web tampoco tiene peso: también va como 0, por la misma razón.
+      const sinPesar = esSinPesar(item) || esPalletWeb(item);
       const pesoV = sinPesar ? 0 : (item.alto && item.largo && item.ancho
         ? Math.round((item.alto * item.largo * item.ancho) / 6000 * 100) / 100
         : '');

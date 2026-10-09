@@ -23,7 +23,8 @@ import { eliminarSlotPicking } from '../../shared/eliminarSlotPicking';
 import { formatCLPCorto } from '../../shared/formatoCLP';
 import { excedeTopeDuro } from '../../shared/pesoIngresado';
 import { actualizarSlotPicking, camposDePeso, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
-import { esSinPesar } from '../../shared/sinPesar';
+import { esSinPesar, esPalletWeb } from '../../shared/sinPesar';
+import { etiquetaDeUnidad } from '../../shared/adquisicion';
 import { claseUnidad } from '../../shared/unidadVisual';
 import { confirmarCambioGuardado } from '../../shared/confirmarGuardado';
 import { taraTrasCorregir, textoPesoConTara } from '../../shared/pesoDelPallet';
@@ -179,7 +180,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
     const valor = (src.valor || 0) + (tgt.valor || 0);
     // `...src` conserva el `pickingSlotId`, y `combinarEnLista` lo deja en la posición del primero
     // de los dos — la misma regla que usan los dos formularios, en un solo sitio.
-    const merged: DispatchItem = { ...src, peso, alto, tipo: tipoMerge, guia, valor, taraPallet: undefined };
+    const merged: DispatchItem = { ...src, peso, alto, tipo: tipoMerge, guia, valor, taraPallet: undefined, palletWeb: peso > 0 ? undefined : src.palletWeb };
     dispatch({ type: 'UPDATE_ITEMS', tienda, items: renumber(combinarEnLista(list, srcIdx, tgtIdx, merged)) });
     // El slot que sobrevive se queda con el peso combinado: el cruce con Odoo lee el slot.
     void actualizarSlotPicking(merged.pickingSlotId, camposDePeso(merged, esSinPesar(merged))).then(r => {
@@ -233,7 +234,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
     // Las mismas guardias que la tarjeta de pesaje: sin peso no se guarda, y un peso imposible
     // (la coma que se perdió) se ataja acá y no en el cruce del día siguiente.
     const clase = claseNacional(editPkg);
-    const sinPeso = clase === 'adquisicion' || clase === 'webretiro';
+    const sinPeso = clase === 'adquisicion' || clase === 'webretiro' || esPalletWeb(list[idx]);
     const peso = sinPeso ? (leerPeso(editPeso) ?? 0) : leerPeso(editPeso);
     if (peso == null) { showToast('Ingresa el peso', '#D97706'); return; }
     const duro = excedeTopeDuro(peso, clase);
@@ -245,6 +246,8 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
       tipo:  editTipo,
       peso,
       taraPallet: taraTrasCorregir(list[idx].peso, peso, list[idx].taraPallet),
+      // Un pallet web al que le ponen peso pasa a ser un pallet pesado como cualquier otro.
+      palletWeb: esPalletWeb(list[idx]) && peso <= 0 ? true : undefined,
       alto:  parseFloat(editAlto)  || 0,
       ancho: parseFloat(editAncho) || 0,
       largo: parseFloat(editLargo) || 0,
@@ -439,7 +442,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
               const isDragging = dragIdx === idx && dragTienda === name;
               const isDropTarget = dropIdx === idx && dragTienda === name && dragIdx !== null && items[dragIdx]?.pkg === item.pkg;
               const clase = claseUnidad(item.pkg);
-              const sinPeso = clase === 'agregado';
+              const sinPeso = clase === 'agregado' || esPalletWeb(item);
               const detalle = [
                 LABEL[item.tipo],
                 sinPeso ? '' : formatoMedidas(item.alto, item.ancho, item.largo),
@@ -501,7 +504,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
                   {...arrastre}
                   className={cerrada ? '' : dragIdx !== null && dragTienda === name ? 'cursor-grabbing' : 'cursor-grab'}
                   clase={clase} etiqueta={item.orden || LABEL[item.pkg]}
-                  peso={sinPeso ? LABEL[item.pkg] : textoPesoConTara(item.peso, item.taraPallet)}
+                  peso={sinPeso ? (etiquetaDeUnidad(item) ?? LABEL[item.pkg]) : textoPesoConTara(item.peso, item.taraPallet)}
                   detalle={detalle}
                   seleccion={{ activa: isSel, onToggle: () => dispatch({ type: 'TOGGLE_SELECTION', tienda: name, idx }) }}
                   bloqueada={cerrada} resaltada={isDropTarget} apagada={isDragging}

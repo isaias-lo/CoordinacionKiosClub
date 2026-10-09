@@ -95,7 +95,7 @@ import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despa
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
 import { esAgregado, etiquetaAgregado, etiquetaDeUnidad } from '@/features/despacho/shared/adquisicion';
 import { avisoNoRegistrado } from '../../shared/escribirPlanilla';
-import { AVISO_ERROR } from '../../shared/colorAviso';
+import { AVISO_ERROR, AVISO_OK, AVISO_ESPERA } from '../../shared/colorAviso';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ──
    [Bug 60PBL, 2026-09-10] Antes esto era un `const` calculado UNA sola vez, al cargar el módulo.
@@ -1296,6 +1296,45 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     finally { addingSlotRef.current.delete(key); }
   };
 
+  // [Pallet web] Un pallet que sale sin pasar por la balanza (Isaias, 9 oct 2026). Se crea de un
+  // toque, como la adquisición, pero es un PALLET: slot 'P', número en la serie de pallets, y la
+  // planilla lo escribe como Pallet. Se guarda sin peso ni medidas y no queda «sin pesar»: no se va
+  // a pesar nunca. Espejo de RM/Costa (StepForm). Ver shared/sinPesar.ts → esPalletWeb.
+  const agregarPalletWeb = async () => {
+    esperarNueva();
+    if (!selectedTienda) return;
+    const tiendaSel = selectedTienda;
+    const cod = TIENDAS[tiendaSel]?.cod ?? '';
+    if (!cod) return;
+    const key = `${tiendaSel}:pallet-web`;
+    if (addingSlotRef.current.has(key)) { showToast('Agregando… espera un segundo', AVISO_ESPERA); return; }
+    addingSlotRef.current.add(key);
+    try {
+      const { slot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: 'P', contenido: 'hogar' });
+      if (!slot) { showToast(`⚠ No se pudo agregar el pallet web (${error}) — reintenta`, AVISO_ERROR); return; }
+      setPickingSlotsFull(prev => ({ ...prev, [tiendaSel]: [...(prev[tiendaSel] ?? []), slot] }));
+      // El número sale del `seq` del slot, igual que al guardar un pallet pesado (`saveRow`).
+      const seqsHermanas = (dispatchData[tiendaSel] || [])
+        .filter(i => claseNacional(i.pkg) === 'pallet')
+        .map(i => seqDeSlotRef(tiendaSel, i.pickingSlotId));
+      const item: DispatchItem = {
+        id: crypto.randomUUID(),
+        orden: ordenNacional('pallet', numeroParaUnidadNueva(seqsHermanas, slot.seq)), tipo: 'hogar', pkg: 'pallet',
+        peso: 0, alto: 0, ancho: 0, largo: 0, guia: '', valor: 0,
+        pickingSlotId: slot.id, canonical_id: slot.canonical_id ?? undefined, palletWeb: true,
+      };
+      dispatch({ type: 'ADD_ITEM', tienda: tiendaSel, item });
+      setFormRows(prev => [...prev, {
+        id: `saved-pweb-${Date.now()}`, pkg: 'pallet', tipo: 'hogar',
+        peso: '', alto: '', ancho: '', largo: '',
+        guia: '', valor: '', saved: true, savedItem: item, pickingSlotId: slot.id,
+      }]);
+      showToast(`✓ ${ordenToLabel(item.orden)} agregado como pallet web`, AVISO_OK);
+      logActividad({ accion: 'registrar_item', fuente: 'nacional', tiendaCod: cod, tiendaNombre: tiendaSel,
+        label: ordenToLabel(item.orden), peso: 0, alto: 0, slotId: slot.id });
+    } finally { addingSlotRef.current.delete(key); }
+  };
+
   // [Duplicar bulto] Crea `cantidad` copias de un bulto guardado con su MISMO peso y medidas,
   // agregadas al instante, sin pasar por el formulario. Solo para bultos (pkg 'box').
   const duplicarBulto = async (row: FormRow, cantidad: number) => {
@@ -2009,7 +2048,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // física de Picking) y su `id`. Antes se armaba un objeto literal nuevo y los perdía: sin
     // `pickingSlotId`, la llave de merge cae al id local del dispositivo y el mismo ítem se trata
     // como dos al sincronizar con otro equipo. RM/Costa ya preservaba `...src`.
-    const merged: DispatchItem = { ...src, peso, alto, guia: mergedGuia, valor: mergedValor, tipo: mergedTipo, taraPallet: undefined };
+    const merged: DispatchItem = { ...src, peso, alto, guia: mergedGuia, valor: mergedValor, tipo: mergedTipo, taraPallet: undefined, palletWeb: peso > 0 ? undefined : src.palletWeb };
     // `renumberItems` respeta el `seq` del slot —el número IMPRESO en la etiqueta— y conoce los
     // cuatro tipos. El contador local que había acá solo sabía de pallets y bultos, así que a un
     // contenedor o a un chocolate de esa tienda le escribía `bultoN`.
@@ -2405,6 +2444,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           // No piden medidas ni peso: se crean de un toque, sin diálogo.
           { texto: 'Adquisición', clase: 'agregado', detalle: 'no se pesa', onClick: () => void addFormRow('adquisicion') },
           { texto: 'Web / retiro', clase: 'agregado', detalle: 'no se pesa', onClick: () => void addFormRow('web-retiro') },
+          { texto: 'Pallet web', clase: 'agregado', detalle: 'pallet sin peso', onClick: () => void agregarPalletWeb() },
         ] }}
         acciones={tienda?.cod ? (
           <>

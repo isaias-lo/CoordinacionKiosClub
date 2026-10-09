@@ -1,7 +1,7 @@
 import type { SantiagoItem } from '../types';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import { desempatarOrdenSantiago } from '../../shared/numeroCard';
-import { esSinPesar } from '../../shared/sinPesar';
+import { esSinPesar, esPalletWeb } from '../../shared/sinPesar';
 import { PREFIJO_ADQUISICION, PREFIJO_WEB_RETIRO, etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
 import { escribirPlanilla, type ResultadoPlanilla } from '../../shared/escribirPlanilla';
 
@@ -79,7 +79,8 @@ export function buildRows(
       // r.peso_kg !== null)`, y n('') → null. Si TODOS los items del batch fueran sin pesar y
       // escribiéramos '', hasDims sería false y las filas NO se agregarían a la hoja ni al DB
       // (pérdida de datos). Con 0 numérico, peso_kg = 0 (no null) y hasDims se mantiene true.
-      const sinPesar = esSinPesar(item);
+      // Un pallet web tampoco tiene peso: también va como 0, por la misma razón.
+      const sinPesar = esSinPesar(item) || esPalletWeb(item);
       rows.push([
         `${item.orden}${cod}${stamp}${tipoPrefix}`,                       // ID — mantiene stamp de despacho (idempotencia del registro)
         fechaArmadoFmt,                                                    // FECHA (armado) [P4] — llave de match cod+fecha
