@@ -63,6 +63,47 @@ function canon(s: string): string {
 }
 
 /**
+ * La misma forma, pero con la Ñ BORRADA en vez de convertida en N.
+ *
+ * Es lo que de verdad imprimían las etiquetas de 23PEÑ y 37VIÑ hasta el 9 oct 2026: JsBarcode no
+ * acepta la Ñ en Code128, tiraba error, y `Barcode1D` reintentaba quitando todo lo que no fuera
+ * ASCII. El código quedaba `1B37VI21092026B` y la handheld leía eso, que no calzaba con nada.
+ * Las etiquetas nuevas llevan N (ver `textoParaCodigoDeBarras`); esto es para las que ya andan
+ * impresas por la bodega.
+ */
+function canonSinEnie(s: string): string {
+  return canon(String(s ?? '').replace(/[ñÑ]/g, ''));
+}
+
+/** Lo que va dentro del Code128: la Ñ como N y nada fuera de ASCII imprimible. */
+export function textoParaCodigoDeBarras(s: string): string {
+  return String(s ?? '').replace(/ñ/g, 'n').replace(/Ñ/g, 'N')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\x20-\x7E]/g, '');
+}
+
+/**
+ * Los `canonical_id` que puede haber detrás de lo leído, para buscar en la base (que guarda la Ñ).
+ *
+ * Una etiqueta de 37VIÑ llega como `…37VIN…` (las nuevas) o `…37VI…` (las viejas, sin la Ñ). Se
+ * ubica el código de tienda —dos dígitos y letras justo antes de la fecha de 8 dígitos— y se
+ * prueban sus letras con cada N cambiada por Ñ y con una Ñ agregada en cada posición. Son pocas
+ * variantes y todas tienen que calzar EXACTO con algo guardado, así que no abre la puerta a otra tienda.
+ */
+export function variantesDeCodigo(codigo: string): string[] {
+  const c = String(codigo ?? '').trim().toUpperCase();
+  const out = new Set<string>([c]);
+  const m = c.match(/^(.*\d{2})([A-ZÑ]{1,5})(\d{8}[A-Z]*)$/);
+  if (m) {
+    const [, antes, letras, despues] = m;
+    for (let i = 0; i < letras.length; i++) {
+      if (letras[i] === 'N') out.add(`${antes}${letras.slice(0, i)}Ñ${letras.slice(i + 1)}${despues}`);
+    }
+    for (let i = 0; i <= letras.length; i++) out.add(`${antes}${letras.slice(0, i)}Ñ${letras.slice(i)}${despues}`);
+  }
+  return [...out];
+}
+
+/**
  * Busca el pallet que la persona indicó, sea tecleando su número o escaneando su etiqueta.
  *
  * Primero por número —es lo más barato y lo que la persona escribe a mano— y después por código.
@@ -93,6 +134,12 @@ export function buscarPallet<Slot extends SlotDePallet>(
   if (!objetivo) return null;
   for (const [claveTienda, slots] of Object.entries(slotsPorTienda)) {
     const slot = slots.find(s => s.canonical_id && canon(s.canonical_id) === objetivo);
+    if (slot) return { claveTienda, slot, via: 'codigo' };
+  }
+  // Etiqueta vieja de una tienda con Ñ, impresa sin la Ñ (ver `canonSinEnie`). Solo si no calzó
+  // nada antes, y solo contra códigos que de verdad tienen Ñ.
+  for (const [claveTienda, slots] of Object.entries(slotsPorTienda)) {
+    const slot = slots.find(s => s.canonical_id && /[ñÑ]/.test(s.canonical_id) && canonSinEnie(s.canonical_id) === objetivo);
     if (slot) return { claveTienda, slot, via: 'codigo' };
   }
   return null;

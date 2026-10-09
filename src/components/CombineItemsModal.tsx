@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { leerPeso, limpiarTecleo } from '@/features/despacho/shared/pesoIngresado';
 
 interface CombineItemsModalProps {
   pkgLabel: string;
@@ -18,7 +19,11 @@ interface CombineItemsModalProps {
 export function CombineItemsModal({ pkgLabel, srcLabel, tgtLabel, mergedGuia, mergedValor, initialPeso, askAltura = true, onConfirm, onCancel }: CombineItemsModalProps) {
   const [peso, setPeso] = useState(initialPeso != null && initialPeso > 0 ? String(initialPeso) : '');
   const [alto, setAlto] = useState('');
-  const canConfirm = parseFloat(peso) > 0 && (!askAltura || parseFloat(alto) > 0);
+  // `leerPeso` y no `parseFloat` sobre un `type="number"`: en ese campo la coma se pierde y
+  // «353,7» llegaba como 3537. Es el mismo arreglo que ya tenía la tarjeta de pesaje.
+  const pesoKg = leerPeso(peso);
+  const altoCm = leerPeso(alto);
+  const canConfirm = pesoKg != null && pesoKg > 0 && (!askAltura || (altoCm != null && altoCm > 0));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }} onClick={onCancel}>
@@ -47,7 +52,7 @@ export function CombineItemsModal({ pkgLabel, srcLabel, tgtLabel, mergedGuia, me
         <div className="space-y-3 mb-5">
           <div>
             <label className="block text-[11px] font-bold text-text-3 uppercase tracking-wider mb-1">Nuevo peso (kg)</label>
-            <input type="number" value={peso} onChange={e => setPeso(e.target.value)} min="0" step="0.1"
+            <input type="text" inputMode="decimal" value={peso} onChange={e => setPeso(limpiarTecleo(e.target.value))}
               className="w-full border border-border rounded-xl px-3 py-2.5 text-[14px] focus:outline-none focus:border-navy" placeholder="ej. 35" autoFocus />
             {initialPeso != null && initialPeso > 0 && (
               <p className="text-[10px] text-text-3 mt-1">Sumado automáticamente ({initialPeso} kg) — ajústalo si hace falta.</p>
@@ -56,7 +61,7 @@ export function CombineItemsModal({ pkgLabel, srcLabel, tgtLabel, mergedGuia, me
           {askAltura && (
             <div>
               <label className="block text-[11px] font-bold text-text-3 uppercase tracking-wider mb-1">Nueva altura (cm)</label>
-              <input type="number" value={alto} onChange={e => setAlto(e.target.value)} min="0" step="1"
+              <input type="text" inputMode="decimal" value={alto} onChange={e => setAlto(limpiarTecleo(e.target.value))}
                 className="w-full border border-border rounded-xl px-3 py-2.5 text-[14px] focus:outline-none focus:border-navy" placeholder="ej. 120" />
             </div>
           )}
@@ -64,7 +69,7 @@ export function CombineItemsModal({ pkgLabel, srcLabel, tgtLabel, mergedGuia, me
 
         <div className="flex gap-3">
           <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-border text-[13px] font-bold text-text-2 cursor-pointer bg-white hover:bg-gray-50">Cancelar</button>
-          <button onClick={() => canConfirm && onConfirm(parseFloat(peso), askAltura ? parseFloat(alto) : 0)} disabled={!canConfirm}
+          <button onClick={() => canConfirm && onConfirm(pesoKg!, askAltura ? altoCm! : 0)} disabled={!canConfirm}
             className="flex-1 py-2.5 rounded-xl text-[13px] font-bold text-white cursor-pointer transition-all disabled:opacity-40"
             style={{ background: '#10B981' }}>
             Combinar

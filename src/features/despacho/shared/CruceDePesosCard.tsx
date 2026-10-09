@@ -46,12 +46,15 @@ const COLOR: Record<TipoCruce, { fg: string; bg: string }> = {
   chocolate: { fg: '#7C2D12', bg: '#FFEDD5' },
 };
 
-// Tres estados, no dos. El gris de "sin pesar" NO es un estado de error: es que todavía no hay
+// No son dos estados. El gris de "sin pesar" (y de "sin Odoo") NO es un estado de error: es que todavía no hay
 // nada que comparar, y teñirlo de rojo haría que la tarjeta empiece el día acusando.
+const TONO_NEUTRO = { barra: '#C7C7CC', texto: '#6B7280', franja: '#F9FAFB' };
 const TONO: Record<BloqueCruce['estado'], { barra: string; texto: string; franja: string }> = {
   'cuadra':    { barra: '#16A34A', texto: '#15803D', franja: '#F0FDF4' },
   'revisar':   { barra: '#DC2626', texto: '#B91C1C', franja: '#FEF2F2' },
-  'sin-pesar': { barra: '#C7C7CC', texto: '#6B7280', franja: '#F9FAFB' },
+  'sin-pesar': TONO_NEUTRO,
+  // Pesado pero sin Odoo: tampoco hay qué comparar, así que ni verde ni rojo.
+  'sin-odoo':  TONO_NEUTRO,
 };
 
 const pct = (n: number) => `${n > 0 ? '+' : ''}${n.toLocaleString('es-CL', { maximumFractionDigits: 1 })}%`;
@@ -106,7 +109,7 @@ export function CruceDePesosCard({ cruce, items, listo = true }: Props) {
         </span>
         <span className={`${vis.plegado('inline')} ml-auto text-xs tabular-nums whitespace-nowrap truncate min-w-0`}>
           {b.kgDif === null
-            ? <span className="text-gray-500">{b.kgOdoo > 0 ? `sin pesar · Odoo ${enKg(b.kgOdoo)} kg` : 'sin pesar'}</span>
+            ? <span className="text-gray-500">{b.estado === 'sin-odoo' ? 'Odoo sin movimientos' : b.kgOdoo > 0 ? `sin pesar · Odoo ${enKg(b.kgOdoo)} kg` : 'sin pesar'}</span>
             : <span className="font-extrabold" style={{ color: tono.texto }}>
                 {`${b.kgDif > 0 ? '+' : ''}${enKg(b.kgDif)} kg`}
                 {b.pctDif === null ? '' : <span className="font-bold"> · {pct(b.pctDif)}</span>}

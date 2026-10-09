@@ -7,7 +7,7 @@ import type {
   SantiagoState, SantiagoItem, TiendaSantiago, RegimenCarga,
 } from '../types';
 import { useAuth } from '@/components/AuthProvider';
-import { pushSessionState, fetchSessionStateMeta, subscribeToSessionState, remotoEsMasViejo } from '@/lib/userSessionState';
+import { pushSessionStateResult, REINTENTO_PUSH_MS, fetchSessionStateMeta, subscribeToSessionState, remotoEsMasViejo } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { mergeItemsByTienda, itemsFromSnapshot } from './mergeItems';
 import { tieneLapida, lapidasComoLista, absorberLapidas } from '../../shared/lapidasBorrado';
@@ -15,7 +15,7 @@ import { agregarSinDuplicar } from '../../shared/itemPorUnidad';
 import { stableItemKey } from '../../shared/formRowsReconcile';
 import { serializarBaseSantiago } from '../../shared/syncBase';
 import { fechaChile, fechaChileDe } from '@/lib/fechaChile';
-import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, type RegistroPorFecha } from '@/features/despacho/shared/registroPorFecha';
+import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, traeRegistrosNuevos, type RegistroPorFecha } from '@/features/despacho/shared/registroPorFecha';
 import { fechaDespachoBodega } from '../../shared/fechaLocal';
 import { soltarTiendasAjenas } from '../../shared/itemsDelEspejo';
 import { isRegionesCod } from '../../regiones/data/tiendas';
@@ -244,6 +244,19 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
   const lastPushTimestampRef = useRef<number>(0); // pushedAt value included in last push payload
   const lastServerStampRef   = useRef<number>(0); // [C3/RC-6] updated_at (reloj SERVIDOR) del último push/adopción
   const catchUpRef        = useRef<() => void>(() => {}); // [P9] re-fetch + apply remoto (catch-up)
+  // Un push que falla NO se da por hecho. `pushSessionState` devolvía `null` ante un error y nunca
+  // rechazaba, así que el `.catch` que debía deshacer la marca de «ya empujado» no corría jamás:
+  // si se cortaba el Wi-Fi en el último cambio (o en el de REGISTRAR), el equipo lo daba por
+  // guardado y no volvía a intentarlo. Ahora se deshace la marca —solo si nada más nuevo salió
+  // después— y se reintenta solo, con lo que haya en ese momento.
+  const reintentoPushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushRef         = useRef<() => void>(() => {});
+  const pushFallido = (enviado: string, prevBase: string, prevFull: string) => {
+    if (lastPushedFullRef.current === enviado) { lastPushedRef.current = prevBase; lastPushedFullRef.current = prevFull; }
+    if (reintentoPushRef.current) return;
+    reintentoPushRef.current = setTimeout(() => { reintentoPushRef.current = null; flushRef.current(); }, REINTENTO_PUSH_MS);
+  };
+  useEffect(() => () => { if (reintentoPushRef.current) clearTimeout(reintentoPushRef.current); }, []);
   const pendingCatchupRef = useRef(false);        // [P9] remoto llegó durante push local → catch-up al terminar
   const vencimientoPushRef = useRef<number>(0);   // tope del debounce (ver lib/esperaDePush)
 
@@ -280,7 +293,14 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       // [P5] Base canónica: antes acá se serializaban 3 claves y en el push 5, así que `isDirty`
       // daba SIEMPRE true y el corta-ecos no cortaba nunca → cada equipo re-empujaba lo adoptado.
       const remoteStr = serializarBaseSantiago(remote);
-      if (remoteStr === lastPushedRef.current) return; // already in sync
+      if (remoteStr === lastPushedRef.current) {
+        // Mismos ítems, pero el otro equipo puede haber REGISTRADO el día. Eso sí se adopta: ver
+        // `traeRegistrosNuevos`.
+        if (traeRegistrosNuevos(stateRef.current.registros, remote.registros)) {
+          dispatch({ type: 'LOAD_STATE', payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: stateRef.current.items, registros: remote.registros } });
+        }
+        return; // already in sync
+      }
       // Voy a incorporar este remoto → avanzo el reloj de servidor de referencia.
       if (updatedAt != null && updatedAt > lastServerStampRef.current) lastServerStampRef.current = updatedAt;
 
@@ -304,7 +324,9 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
           },
           // [Lápidas] Lo que se borró (acá o en otro equipo) no vuelve. Ver `shared/lapidasBorrado.ts`.
           tieneLapida);
-        dispatch({ type: 'LOAD_STATE', payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: merged } });
+        // Con los registros del remoto: en esta rama se descartaban, y un día registrado en otro
+        // equipo mientras este tenía cambios sin empujar se perdía al empujar.
+        dispatch({ type: 'LOAD_STATE', payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: merged, registros: remote.registros } });
       } else {
         // Lo local está limpio → se adopta el remoto, PERO lo que yo tengo y el remoto no trae se
         // conserva (ausencia no es borrado; ver mergeItems). "Limpio" es exactamente como queda
@@ -410,9 +432,12 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       isPushingRef.current = true;
       const pushedAt = Date.now();
       lastPushTimestampRef.current = pushedAt;
-      pushSessionState('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined)
-        .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6] reloj de servidor de mi push
-        .catch(() => { lastPushedRef.current = prevLastPushed; lastPushedFullRef.current = prevLastFull; }) // reset so dirty check retries correctly
+      pushSessionStateResult('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined)
+        .then(({ ok, updatedAt: serverTs }) => {
+          if (!ok) { pushFallido(current, prevLastPushed, prevLastFull); return; }
+          if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); // [C3/RC-6] reloj de servidor de mi push
+        })
+        .catch(() => pushFallido(current, prevLastPushed, prevLastFull))
         .finally(() => {
           isPushingRef.current = false;
           // [P9] Si llegó un remoto mientras empujábamos, ponerse al día ahora (no se descarta).
@@ -474,13 +499,17 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     lastPushedFullRef.current = current;
     const pushedAt = Date.now();
     lastPushTimestampRef.current = pushedAt;
-    pushSessionState('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined)
-      .then((serverTs) => { if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); }) // [C3/RC-6]
-      .catch(() => { lastPushedRef.current = prevPushed; lastPushedFullRef.current = prevFull; });
+    pushSessionStateResult('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined)
+      .then(({ ok, updatedAt: serverTs }) => {
+        if (!ok) { pushFallido(current, prevPushed, prevFull); return; }
+        if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); // [C3/RC-6]
+      })
+      .catch(() => pushFallido(current, prevPushed, prevFull));
     try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...stateRef.current, _savedAt: Date.now() })); } catch {}
   }, [userId]);
 
   // [P9] Al volver a la pestaña/app → catch-up con el estado remoto; al ocultarla → flush de pendientes.
+  flushRef.current = () => flushPending();
   useVisibilityRefetch(() => catchUpRef.current(), flushPending);
 
   const catchUp = useCallback(() => catchUpRef.current(), []);

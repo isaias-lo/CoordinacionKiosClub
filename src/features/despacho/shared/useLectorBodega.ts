@@ -169,6 +169,18 @@ export function tarjetaAMedias(slotDestino: number): boolean {
   return [...tarjeta.querySelectorAll<HTMLInputElement>('input[data-campo]')].some(c => c.value.trim() !== '');
 }
 
+/**
+ * Cuándo llegó la tecla al equipo, no cuándo la atendió la página.
+ *
+ * Con el cursor en Peso cada carácter re-dibuja la tarjeta, y en un equipo lento los siguientes
+ * esperan en cola: medido con `performance.now()` al atenderlos, una lectura de 8 ms entre teclas
+ * se veía de 70-130 ms, la ráfaga se cortaba en dos y la etiqueta salía mocha («S09102026B no
+ * encontrada»). `timeStamp` es la hora del evento, en el mismo reloj que `performance.now()`.
+ */
+function horaDe(e: Event): number {
+  return e.timeStamp > 0 ? e.timeStamp : performance.now();
+}
+
 export function useLectorBodega({ activo, reconoce, alEscanear }: OpcionesLector): void {
   // Las funciones cambian en cada render de la pantalla; los listeners se registran una vez.
   const cb = useRef({ reconoce, alEscanear });
@@ -227,7 +239,7 @@ export function useLectorBodega({ activo, reconoce, alEscanear }: OpcionesLector
         return;
       }
       if (e.key.length === 1) {
-        rafaga.agregar(e.key, performance.now(), marcar);
+        rafaga.agregar(e.key, horaDe(e), marcar);
         teclaSumada = true;
         esperarSilencio();
         return;
@@ -240,7 +252,7 @@ export function useLectorBodega({ activo, reconoce, alEscanear }: OpcionesLector
       const ie = e as InputEvent;
       if (teclaSumada) { teclaSumada = false; return; }
       if (!ie.data) return;
-      rafaga.agregar(ie.data, performance.now(), marcar);
+      rafaga.agregar(ie.data, horaDe(ie), marcar);
       if (/[\r\n]/.test(ie.data)) {
         cancelarSilencio();
         const r = rafaga.cerrar();

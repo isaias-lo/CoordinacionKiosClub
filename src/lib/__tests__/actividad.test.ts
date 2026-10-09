@@ -65,6 +65,13 @@ describe('buildActividadMensaje', () => {
       .toBe('Registró el despacho RM/Costa');
   });
 
+  it('editar_item con peso antes y después dice el cambio', () => {
+    expect(buildActividadMensaje('editar_item', { fuente: 'nacional', label: 'P2', peso: 260, pesoPrevio: 250 }))
+      .toBe('Editó P2 (250kg → 260kg)');
+    expect(buildActividadMensaje('editar_item', { fuente: 'nacional', label: 'P2', peso: 250, pesoPrevio: 250 }))
+      .toBe('Editó P2');
+  });
+
   it('sin tienda no agrega " en ..."', () => {
     expect(buildActividadMensaje('editar_item', { fuente: 'rmcosta', label: 'P1' }))
       .toBe('Editó P1');
