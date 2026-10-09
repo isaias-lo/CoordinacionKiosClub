@@ -250,6 +250,19 @@ export function RotuloSeccion({ children, derecha }: { children: ReactNode; dere
   );
 }
 
+/**
+ * Tienda sin ninguna unidad: Picking todavía no armó nada para ella. Antes el cuerpo quedaba en
+ * blanco bajo el cruce y no se sabía si estaba cargando, si falló o si de verdad no había nada.
+ */
+export function TiendaSinUnidades() {
+  return (
+    <div className="mx-1 mt-3 rounded-xl border border-dashed border-border px-4 py-6 text-center">
+      <div className="font-bold text-text">Esta tienda no tiene unidades de Picking</div>
+      <div className="mt-1 text-apoyo text-text-sub">Escanea una etiqueta o agrega una unidad con el botón +.</div>
+    </div>
+  );
+}
+
 /** La tarjeta que se está pesando. Los atributos `data-*` los usa el lector (useLectorBodega). */
 export function TarjetaActiva({ clase, slotId, resaltada, children }: {
   clase: ClaseUnidad;

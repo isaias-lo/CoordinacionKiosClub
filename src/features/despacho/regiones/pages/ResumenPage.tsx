@@ -3,7 +3,7 @@
 import { useState, useRef, type ReactNode } from 'react';
 import { claseNacional } from '../../shared/numeroCard';
 import { finalizarSlotUnion } from '@/features/despacho/shared/finalizarSlotUnion';
-import { logActividad } from '@/lib/actividad';
+import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { useAuth } from '@/components/AuthProvider';
 import { TraerOdooButton } from '@/features/despacho/shared/TraerOdooButton';
 import { fechaChile } from '@/lib/fechaChile';
@@ -22,11 +22,15 @@ import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { eliminarSlotPicking } from '../../shared/eliminarSlotPicking';
 import { formatCLPCorto } from '../../shared/formatoCLP';
 import { excedeTopeDuro } from '../../shared/pesoIngresado';
+import { actualizarSlotPicking, camposDePeso, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
+import { esSinPesar, esPalletWeb } from '../../shared/sinPesar';
+import { etiquetaDeUnidad } from '../../shared/adquisicion';
 import { claseUnidad } from '../../shared/unidadVisual';
 import { confirmarCambioGuardado } from '../../shared/confirmarGuardado';
-import { textoPesoConTara } from '../../shared/pesoDelPallet';
+import { taraTrasCorregir, textoPesoConTara } from '../../shared/pesoDelPallet';
 import { copiaParaOtraTienda, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
 import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTienda, ResumenVacio, UnidadResumen } from '../../shared/ResumenDiaUI';
+import { AVISO_ERROR } from '../../shared/colorAviso';
 
 const NOMBRE_PLURAL: Partial<Record<TipoPaquete, string>> = {
   pallet: 'Pallets', box: 'Bultos', contenedor: 'Contenedores', chocolate: 'Chocolates',
@@ -92,7 +96,9 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
   const [dragIdx,      setDragIdx]      = useState<number | null>(null);
   const [dropIdx,      setDropIdx]      = useState<number | null>(null);
   const [dragTienda,   setDragTienda]   = useState<string | null>(null);
-  const [combineModal, setCombineModal] = useState<{ srcIdx: number; tgtIdx: number; tienda: string } | null>(null);
+  // Con los ids además de las posiciones: entre abrir el modal y confirmar, otro equipo puede borrar
+  // o agregar una unidad en la tienda y correr la lista. Por posición se unían (y borraban) otras.
+  const [combineModal, setCombineModal] = useState<{ srcIdx: number; tgtIdx: number; tienda: string; srcId?: string; tgtId?: string } | null>(null);
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editPkg,   setEditPkg]   = useState<TipoPaquete>('pallet');
   const [editTipo,  setEditTipo]  = useState<TipoContenido>('comida');
@@ -156,18 +162,31 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
 
   const handleCombineConfirm = (peso: number, alto: number) => {
     if (!combineModal) return;
-    const { srcIdx, tgtIdx, tienda } = combineModal;
+    const { tienda } = combineModal;
     const list = [...(dispatchData[tienda] || [])];
+    const srcIdx = posicionDeUnidad(list, combineModal.srcId, combineModal.srcIdx);
+    const tgtIdx = posicionDeUnidad(list, combineModal.tgtId, combineModal.tgtIdx);
     const src = list[srcIdx];
     const tgt = list[tgtIdx];
-    if (!src || !tgt) return;
+    if (!src || !tgt) {
+      showToast('⚠ Una de las dos unidades ya no está (la cambió otro equipo). No se combinó nada.', AVISO_ERROR);
+      setCombineModal(null);
+      return;
+    }
+    const duro = excedeTopeDuro(peso, claseNacional(src.pkg));
+    if (duro) { showToast(`⚠ ${duro}`, AVISO_ERROR); return; }
     const tipoMerge: TipoContenido = src.tipo === tgt.tipo ? src.tipo : 'comida-hogar';
     const guia  = [src.guia, tgt.guia].filter(Boolean).join(', ');
     const valor = (src.valor || 0) + (tgt.valor || 0);
     // `...src` conserva el `pickingSlotId`, y `combinarEnLista` lo deja en la posición del primero
     // de los dos — la misma regla que usan los dos formularios, en un solo sitio.
-    const merged: DispatchItem = { ...src, peso, alto, tipo: tipoMerge, guia, valor };
+    const merged: DispatchItem = { ...src, peso, alto, tipo: tipoMerge, guia, valor, taraPallet: undefined, palletWeb: peso > 0 ? undefined : src.palletWeb };
     dispatch({ type: 'UPDATE_ITEMS', tienda, items: renumber(combinarEnLista(list, srcIdx, tgtIdx, merged)) });
+    // El slot que sobrevive se queda con el peso combinado: el cruce con Odoo lee el slot.
+    void actualizarSlotPicking(merged.pickingSlotId, camposDePeso(merged, esSinPesar(merged))).then(r => {
+      if (r.error) console.error('[picking_pallets update]', r.error);
+      if (r.yaNoExiste) showToast(AVISO_SLOT_BORRADO, AVISO_ERROR);
+    });
     // La unidad absorbida deja de existir: su slot de picking también. Este flujo era el único de
     // los tres que no lo borraba, así que dejaba un slot huérfano que nadie volvía a mirar.
     if (src.pickingSlotId && tgt.pickingSlotId && src.pickingSlotId !== tgt.pickingSlotId) {
@@ -179,7 +198,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
       // dejaba. Los dos espejos ya lo registran; faltaba este tercer camino.
       logActividad({ accion: 'unificar', fuente: 'nacional',
         tiendaCod: TIENDAS[tienda]?.cod, tiendaNombre: tienda,
-        label: merged.orden, sourceLabel: tgt.orden, slotId: src.pickingSlotId });
+        label: ordenToLabel(merged.orden), sourceLabel: ordenToLabel(tgt.orden), peso: merged.peso, slotId: src.pickingSlotId });
     }
     setCombineModal(null);
     showToast('✓ Items combinados', '#16A34A');
@@ -215,16 +234,20 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
     // Las mismas guardias que la tarjeta de pesaje: sin peso no se guarda, y un peso imposible
     // (la coma que se perdió) se ataja acá y no en el cruce del día siguiente.
     const clase = claseNacional(editPkg);
-    const sinPeso = clase === 'adquisicion' || clase === 'webretiro';
+    const sinPeso = clase === 'adquisicion' || clase === 'webretiro' || esPalletWeb(list[idx]);
     const peso = sinPeso ? (leerPeso(editPeso) ?? 0) : leerPeso(editPeso);
     if (peso == null) { showToast('Ingresa el peso', '#D97706'); return; }
     const duro = excedeTopeDuro(peso, clase);
     if (duro) { showToast(`⚠ ${duro}`, '#D32F2F'); return; }
+    const antes = list[idx];
     list[idx] = {
       ...list[idx],
       pkg:   editPkg,
       tipo:  editTipo,
       peso,
+      taraPallet: taraTrasCorregir(list[idx].peso, peso, list[idx].taraPallet),
+      // Un pallet web al que le ponen peso pasa a ser un pallet pesado como cualquier otro.
+      palletWeb: esPalletWeb(list[idx]) && peso <= 0 ? true : undefined,
       alto:  parseFloat(editAlto)  || 0,
       ancho: parseFloat(editAncho) || 0,
       largo: parseFloat(editLargo) || 0,
@@ -232,6 +255,18 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
       valor: parseInt(editValor)   || 0,
     };
     dispatch({ type: 'UPDATE_ITEMS', tienda, items: renumber(list) });
+    // Y en el slot, como hace Guardar: corregir un peso acá dejaba la planilla bien y el cruce con
+    // Odoo (que lee `picking_pallets`) con el peso equivocado.
+    const editado = list[idx];
+    // Corregir desde el Resumen no dejaba rastro en Actividad: el peso cambiaba sin que nadie
+    // pudiera ver quién ni cuándo.
+    logActividad({ accion: 'editar_item', fuente: 'nacional', tiendaCod: TIENDAS[tienda]?.cod, tiendaNombre: tienda,
+      label: ordenToLabel(editado.orden), peso: editado.peso, alto: editado.alto,
+      pesoPrevio: antes.peso, altoPrevio: antes.alto, slotId: editado.pickingSlotId });
+    void actualizarSlotPicking(editado.pickingSlotId, camposDePeso(editado, esSinPesar(editado))).then(r => {
+      if (r.error) console.error('[picking_pallets update]', r.error);
+      if (r.yaNoExiste) showToast(AVISO_SLOT_BORRADO, AVISO_ERROR);
+    });
     setEditingItem(null);
     showToast('✓ Item actualizado', '#16A34A');
   };
@@ -407,7 +442,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
               const isDragging = dragIdx === idx && dragTienda === name;
               const isDropTarget = dropIdx === idx && dragTienda === name && dragIdx !== null && items[dragIdx]?.pkg === item.pkg;
               const clase = claseUnidad(item.pkg);
-              const sinPeso = clase === 'agregado';
+              const sinPeso = clase === 'agregado' || esPalletWeb(item);
               const detalle = [
                 LABEL[item.tipo],
                 sinPeso ? '' : formatoMedidas(item.alto, item.ancho, item.largo),
@@ -426,7 +461,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
                 onDrop: (e: React.DragEvent) => {
                   e.preventDefault();
                   if (dragIdx !== null && dragTienda === name && dragIdx !== idx && items[dragIdx]?.pkg === item.pkg)
-                    setCombineModal({ srcIdx: dragIdx, tgtIdx: idx, tienda: name });
+                    setCombineModal({ srcIdx: dragIdx, tgtIdx: idx, tienda: name, srcId: items[dragIdx]?.id, tgtId: items[idx]?.id });
                   setDragIdx(null); setDropIdx(null); setDragTienda(null);
                 },
                 onDragEnd: () => { setDragIdx(null); setDropIdx(null); setDragTienda(null); },
@@ -459,7 +494,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
                   const tgt = itemEl ? parseInt(itemEl.dataset.itemIdx ?? '-1') : -1;
                   const tgtTienda = itemEl?.dataset.itemTienda;
                   if (tgt !== -1 && tgt !== dragIdx && tgtTienda === name && items[dragIdx]?.pkg === items[tgt]?.pkg)
-                    setCombineModal({ srcIdx: dragIdx, tgtIdx: tgt, tienda: name });
+                    setCombineModal({ srcIdx: dragIdx, tgtIdx: tgt, tienda: name, srcId: items[dragIdx]?.id, tgtId: items[tgt]?.id });
                   setDragIdx(null); setDropIdx(null); setDragTienda(null);
                 },
               };
@@ -469,7 +504,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
                   {...arrastre}
                   className={cerrada ? '' : dragIdx !== null && dragTienda === name ? 'cursor-grabbing' : 'cursor-grab'}
                   clase={clase} etiqueta={item.orden || LABEL[item.pkg]}
-                  peso={sinPeso ? LABEL[item.pkg] : textoPesoConTara(item.peso, item.taraPallet)}
+                  peso={sinPeso ? (etiquetaDeUnidad(item) ?? LABEL[item.pkg]) : textoPesoConTara(item.peso, item.taraPallet)}
                   detalle={detalle}
                   seleccion={{ activa: isSel, onToggle: () => dispatch({ type: 'TOGGLE_SELECTION', tienda: name, idx }) }}
                   bloqueada={cerrada} resaltada={isDropTarget} apagada={isDragging}
@@ -500,8 +535,8 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
 
   const combineModalEl = combineModal && (() => {
     const list = dispatchData[combineModal.tienda] || [];
-    const src = list[combineModal.srcIdx];
-    const tgt = list[combineModal.tgtIdx];
+    const src = list[posicionDeUnidad(list, combineModal.srcId, combineModal.srcIdx)];
+    const tgt = list[posicionDeUnidad(list, combineModal.tgtId, combineModal.tgtIdx)];
     if (!src || !tgt) return null;
     const srcLabel = `${src.orden} · ${src.peso}kg${src.guia ? ` · #${src.guia}` : ''}`;
     const tgtLabel = `${tgt.orden} · ${tgt.peso}kg${tgt.guia ? ` · #${tgt.guia}` : ''}`;

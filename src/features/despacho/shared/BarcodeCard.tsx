@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { fmtHoraChile, odooDateToISO } from '@/lib/fechaChile';
+import { textoParaCodigoDeBarras } from './buscarPallet';
 
 // ─── LabelConfig ─────────────────────────────────────────────────────────────
 
@@ -73,15 +74,17 @@ export function Barcode1D({ value, height = 65, barWidth = 2 }: { value: string;
     if (!svgRef.current || !value) return;
     import('jsbarcode').then(({ default: JsBarcode }) => {
       if (!svgRef.current) return;
+      // La Ñ de 23PEÑ y 37VIÑ va como N: Code128 no la codifica y JsBarcode tiraba error, con lo que
+      // el reintento de abajo la BORRABA y la handheld leía `37VI`. Ver `buscarPallet.ts`.
+      const texto = textoParaCodigoDeBarras(value);
       try {
-        JsBarcode(svgRef.current, value, {
+        JsBarcode(svgRef.current, texto, {
           format: 'CODE128', width: barWidth, height,
           displayValue: false, margin: 8,
           background: '#ffffff', lineColor: '#000000',
         });
       } catch {
-        const safe = value.replace(/[^\x20-\x7E]/g, '');
-        try { JsBarcode(svgRef.current!, safe, { format: 'CODE128', width: barWidth, height, displayValue: false, margin: 8 }); } catch { /* ignore */ }
+        try { JsBarcode(svgRef.current!, texto.replace(/[^0-9A-Za-z]/g, ''), { format: 'CODE128', width: barWidth, height, displayValue: false, margin: 8 }); } catch { /* ignore */ }
       }
     });
   }, [value, height, barWidth]);

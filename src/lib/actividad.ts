@@ -78,8 +78,13 @@ export function buildActividadMensaje(accion: AccionActividad, ctx: ActividadCtx
       const kg = ctx.peso != null ? ` · ${ctx.peso}kg` : '';
       return `Ingresó ${ctx.label ?? 'ítem'}${kg}${en}`;
     }
-    case 'editar_item':
-      return `Editó ${ctx.label ?? 'ítem'}${en}`;
+    case 'editar_item': {
+      // Con peso antes y después se dice cuánto cambió: una corrección de peso es justo lo que
+      // alguien va a buscar cuando el cruce con Odoo no cuadre.
+      const cambio = ctx.pesoPrevio != null && ctx.peso != null && ctx.pesoPrevio !== ctx.peso
+        ? ` (${ctx.pesoPrevio}kg → ${ctx.peso}kg)` : '';
+      return `Editó ${ctx.label ?? 'ítem'}${cambio}${en}`;
+    }
     case 'eliminar_item':
       return `Eliminó ${ctx.label ?? 'ítem'}${en}`;
     case 'unificar':

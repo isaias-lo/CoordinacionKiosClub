@@ -31,8 +31,8 @@ import { pkgCodeNacional } from '../../shared/tipoCode';
 import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
 import { avanceTienda, claseUnidad } from '@/features/despacho/shared/unidadVisual';
 import { useTarjetaActiva } from '@/features/despacho/shared/useTarjetaActiva';
-import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada } from '@/features/despacho/shared/TiendaAbierta';
-import { confirmarCambioGuardado, confirmarEliminarVarios } from '@/features/despacho/shared/confirmarGuardado';
+import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, TiendaSinUnidades } from '@/features/despacho/shared/TiendaAbierta';
+import { confirmarCambioGuardado, confirmarEliminarVarios, confirmarQuitarSinGuardar } from '@/features/despacho/shared/confirmarGuardado';
 import { FilaTienda, BarraDelDia, UnidadesDelDia, FechasBodega, RotuloLista, PieLista, BaldosaAgregar, GRILLA_MOSAICO } from '@/features/despacho/shared/ListaTiendasUI';
 import { usePlegarCabecera } from '@/features/despacho/shared/usePlegarCabecera';
 import { avisoAntesDeRegistrar } from '@/features/despacho/shared/resumenDia';
@@ -65,7 +65,7 @@ import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDia
 import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
 import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo,
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
-import { pesoEnTarjeta, pesoNetoPallet, taraEnTarjeta, taraParaGuardar, textoPesoConTara } from '../../shared/pesoDelPallet';
+import { pesoEnTarjeta, pesoNetoDeTarjeta, pesoNetoPallet, taraDeTarjeta, taraEnTarjeta, taraParaGuardar, textoPesoConTara } from '../../shared/pesoDelPallet';
 import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
 import { abreviaturaContenido, nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional, bultosNacional } from '@/features/despacho/shared/numeroCard';
@@ -94,6 +94,8 @@ import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
 import { esAgregado, etiquetaAgregado, etiquetaDeUnidad } from '@/features/despacho/shared/adquisicion';
+import { avisoNoRegistrado } from '../../shared/escribirPlanilla';
+import { AVISO_ERROR, AVISO_OK, AVISO_ESPERA } from '../../shared/colorAviso';
 
 /* ── Reverse lookup: tienda_cod → tienda name (for picking integration) ──
    [Bug 60PBL, 2026-09-10] Antes esto era un `const` calculado UNA sola vez, al cargar el módulo.
@@ -324,8 +326,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       showToast(avisoCruce ?? `OK ${cod} registrada`, avisoCruce ? '#D97706' : '#16A34A');
       return true;
     } catch (e) {
+      // `sheets*Write` rechaza si la planilla no se escribió; antes nunca rechazaba y este
+      // catch no corría jamás: la tienda quedaba «registrada» sin estar en la hoja.
       console.error('[registrar-tienda]', e);
-      showToast('No se pudo registrar la tienda - reintenta', '#D32F2F');
+      showToast(avisoNoRegistrado(e), AVISO_ERROR);
       return false;
     }
   };
@@ -1292,6 +1296,45 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     finally { addingSlotRef.current.delete(key); }
   };
 
+  // [Pallet web] Un pallet que sale sin pasar por la balanza (Isaias, 9 oct 2026). Se crea de un
+  // toque, como la adquisición, pero es un PALLET: slot 'P', número en la serie de pallets, y la
+  // planilla lo escribe como Pallet. Se guarda sin peso ni medidas y no queda «sin pesar»: no se va
+  // a pesar nunca. Espejo de RM/Costa (StepForm). Ver shared/sinPesar.ts → esPalletWeb.
+  const agregarPalletWeb = async () => {
+    esperarNueva();
+    if (!selectedTienda) return;
+    const tiendaSel = selectedTienda;
+    const cod = TIENDAS[tiendaSel]?.cod ?? '';
+    if (!cod) return;
+    const key = `${tiendaSel}:pallet-web`;
+    if (addingSlotRef.current.has(key)) { showToast('Agregando… espera un segundo', AVISO_ESPERA); return; }
+    addingSlotRef.current.add(key);
+    try {
+      const { slot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: 'P', contenido: 'hogar' });
+      if (!slot) { showToast(`⚠ No se pudo agregar el pallet web (${error}) — reintenta`, AVISO_ERROR); return; }
+      setPickingSlotsFull(prev => ({ ...prev, [tiendaSel]: [...(prev[tiendaSel] ?? []), slot] }));
+      // El número sale del `seq` del slot, igual que al guardar un pallet pesado (`saveRow`).
+      const seqsHermanas = (dispatchData[tiendaSel] || [])
+        .filter(i => claseNacional(i.pkg) === 'pallet')
+        .map(i => seqDeSlotRef(tiendaSel, i.pickingSlotId));
+      const item: DispatchItem = {
+        id: crypto.randomUUID(),
+        orden: ordenNacional('pallet', numeroParaUnidadNueva(seqsHermanas, slot.seq)), tipo: 'hogar', pkg: 'pallet',
+        peso: 0, alto: 0, ancho: 0, largo: 0, guia: '', valor: 0,
+        pickingSlotId: slot.id, canonical_id: slot.canonical_id ?? undefined, palletWeb: true,
+      };
+      dispatch({ type: 'ADD_ITEM', tienda: tiendaSel, item });
+      setFormRows(prev => [...prev, {
+        id: `saved-pweb-${Date.now()}`, pkg: 'pallet', tipo: 'hogar',
+        peso: '', alto: '', ancho: '', largo: '',
+        guia: '', valor: '', saved: true, savedItem: item, pickingSlotId: slot.id,
+      }]);
+      showToast(`✓ ${ordenToLabel(item.orden)} agregado como pallet web`, AVISO_OK);
+      logActividad({ accion: 'registrar_item', fuente: 'nacional', tiendaCod: cod, tiendaNombre: tiendaSel,
+        label: ordenToLabel(item.orden), peso: 0, alto: 0, slotId: slot.id });
+    } finally { addingSlotRef.current.delete(key); }
+  };
+
   // [Duplicar bulto] Crea `cantidad` copias de un bulto guardado con su MISMO peso y medidas,
   // agregadas al instante, sin pasar por el formulario. Solo para bultos (pkg 'box').
   const duplicarBulto = async (row: FormRow, cantidad: number) => {
@@ -1601,6 +1644,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
   const removeUnsavedRow = (rowId: string) => {
     const row = formRows.find(r => r.id === rowId);
+    if (!confirmarQuitarSinGuardar(row ? labelDeFila(row, formRows) : 'esta unidad', row?.pickingSlotId != null)) return;
     // Sin pesar también se registra: esa unidad ya tiene una etiqueta IMPRESA de Picking.
     deletePickingSlot(row?.pickingSlotId, { label: row ? labelDeFila(row, formRows) : undefined });
     setFormRows(prev => prev.filter(r => r.id !== rowId));
@@ -1771,8 +1815,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       showToast('No se pudo sumar: recarga la tienda e inténtalo otra vez', '#D97706');
       return;
     }
-    const bultoPeso  = bultoRow.savedItem?.peso  ?? ((leerPeso(bultoRow.peso) ?? 0));
-    const pesoActual = palletRow.savedItem?.peso ?? ((leerPeso(palletRow.peso) ?? 0));
+    const bultoPeso  = pesoNetoDeTarjeta(bultoRow);
+    const pesoActual = pesoNetoDeTarjeta(palletRow);
     const nuevoPeso  = sumPeso(pesoActual, bultoPeso);
 
     // El destino se reconfirma ANTES de borrar nada. Antes se borraba el slot del bulto y recién
@@ -1804,7 +1848,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     setFormRows(prev => prev
       .filter(r => r.id !== bultoRowId)
       .map(r => r.id === palletRowId
-        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, r.savedItem?.taraPallet), pesoPallet: taraEnTarjeta(r.savedItem?.taraPallet),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
@@ -1835,8 +1879,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       showToast('No se pudo sumar: recarga la tienda e inténtalo otra vez', '#D97706');
       return;
     }
-    const pesosBultos = bultoRows.map(r => r.savedItem?.peso ?? ((leerPeso(r.peso) ?? 0)));
-    const pesoActual  = palletRow.savedItem?.peso ?? ((leerPeso(palletRow.peso) ?? 0));
+    const pesosBultos = bultoRows.map(r => pesoNetoDeTarjeta(r));
+    const pesoActual  = pesoNetoDeTarjeta(palletRow);
     const nuevoPeso   = sumarPesoMultiple(pesoActual, pesosBultos);
     const palletIdx   = formRows.slice(0, formRows.findIndex(r => r.id === palletRowId) + 1).filter(r => r.pkg === 'pallet').length;
     const palletLabel = `P${palletIdx}`;
@@ -1871,7 +1915,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     setFormRows(prev => prev
       .filter(r => !bultoRowIdSet.has(r.id))
       .map(r => r.id === palletRowId
-        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, r.savedItem?.taraPallet), pesoPallet: taraEnTarjeta(r.savedItem?.taraPallet),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
@@ -1900,8 +1944,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const iniciarUnionInline = (sourceRow: FormRow, targetRow: FormRow, srcLabel?: string, tgtLabel?: string) => {
     if (!selectedTienda) return;
     const name      = selectedTienda;
-    const srcPeso   = sourceRow.savedItem?.peso ?? ((leerPeso(sourceRow.peso) ?? 0));
-    const tgtPeso   = targetRow.savedItem?.peso ?? ((leerPeso(targetRow.peso) ?? 0));
+    const srcPeso   = pesoNetoDeTarjeta(sourceRow);
+    const tgtPeso   = pesoNetoDeTarjeta(targetRow);
     const nuevoPeso = sumPeso(tgtPeso, srcPeso);
     const prevAlto  = targetRow.savedItem?.alto ?? (parseFloat(targetRow.alto) || 0);
     const srcSlot   = sourceRow.pickingSlotId ?? sourceRow.savedItem?.pickingSlotId;
@@ -1960,7 +2004,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     setFormRows(prev => prev
       .filter(r => r.id !== sourceRow.id)
       .map(r => r.id === targetRow.id
-        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, r.savedItem?.taraPallet), pesoPallet: taraEnTarjeta(r.savedItem?.taraPallet),
+        ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
             alto: prevAlto ? String(prevAlto) : '', guia: mguia || r.guia, mergeReopened: true }
         : r));
     setFormMergeState(null);
@@ -2004,7 +2048,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // física de Picking) y su `id`. Antes se armaba un objeto literal nuevo y los perdía: sin
     // `pickingSlotId`, la llave de merge cae al id local del dispositivo y el mismo ítem se trata
     // como dos al sincronizar con otro equipo. RM/Costa ya preservaba `...src`.
-    const merged: DispatchItem = { ...src, peso, alto, guia: mergedGuia, valor: mergedValor, tipo: mergedTipo };
+    const merged: DispatchItem = { ...src, peso, alto, guia: mergedGuia, valor: mergedValor, tipo: mergedTipo, taraPallet: undefined, palletWeb: peso > 0 ? undefined : src.palletWeb };
     // `renumberItems` respeta el `seq` del slot —el número IMPRESO en la etiqueta— y conoce los
     // cuatro tipos. El contador local que había acá solo sabía de pallets y bultos, así que a un
     // contenedor o a un chocolate de esa tienda le escribía `bultoN`.
@@ -2400,6 +2444,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           // No piden medidas ni peso: se crean de un toque, sin diálogo.
           { texto: 'Adquisición', clase: 'agregado', detalle: 'no se pesa', onClick: () => void addFormRow('adquisicion') },
           { texto: 'Web / retiro', clase: 'agregado', detalle: 'no se pesa', onClick: () => void addFormRow('web-retiro') },
+          { texto: 'Pallet web', clase: 'agregado', detalle: 'pallet sin peso', onClick: () => void agregarPalletWeb() },
         ] }}
         acciones={tienda?.cod ? (
           <>
@@ -2481,6 +2526,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             const kgPesados = pesadas.reduce((t, r) => t + (Number(r.savedItem?.peso) || 0), 0);
             return (
               <>
+                {!activa && enCola.length === 0 && ghostCards.length === 0 && pesadas.length === 0 && <TiendaSinUnidades />}
                 {activa && (
                   <>
                     <RotuloSeccion>Ahora</RotuloSeccion>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buscarPallet, type SlotDePallet } from '../buscarPallet';
+import { buscarPallet, textoParaCodigoDeBarras, variantesDeCodigo, type SlotDePallet } from '../buscarPallet';
 
 // Etiquetas reales sacadas de la base el 22/09/2026.
 const s = (id: number, canonical_id: string | null = null): SlotDePallet => ({ id, canonical_id });
@@ -84,5 +84,27 @@ describe('casos de borde', () => {
 
   it('un slot sin canonical no matchea por código', () => {
     expect(buscarPallet({ t: [s(1)] }, 'CUALQUIERA')).toBeNull();
+  });
+});
+
+describe('etiquetas de 23PEÑ y 37VIÑ leídas por la handheld', () => {
+  it('la etiqueta vieja, impresa SIN la Ñ (1B37VI…), encuentra su pallet', () => {
+    expect(buscarPallet(BODEGA, '1B37VI21092026B')?.slot.id).toBe(14197);
+  });
+
+  it('pero sin la Ñ no se cuela en una tienda sin Ñ', () => {
+    expect(buscarPallet(BODEGA, '2B75PU22092026B')).toBeNull();
+  });
+
+  it('el código de barras nuevo lleva N y solo ASCII', () => {
+    expect(textoParaCodigoDeBarras('1B37VIÑ21092026B')).toBe('1B37VIN21092026B');
+    expect(textoParaCodigoDeBarras('P123PEÑ02102026P')).toBe('P123PEN02102026P');
+  });
+
+  it('las variantes para buscar en la base cubren PEN, PE y la original', () => {
+    const v = variantesDeCodigo('1b37vi21092026b');
+    expect(v).toContain('1B37VIÑ21092026B');
+    expect(variantesDeCodigo('P123PEN02102026P')).toContain('P123PEÑ02102026P');
+    expect(variantesDeCodigo('14197')).toEqual(['14197']);
   });
 });
