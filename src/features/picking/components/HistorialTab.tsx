@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { RotateCcw, Printer, Inbox } from 'lucide-react';
 import type { PickerGroup, PrintRecord, PickerNameChange, PalletSlot } from '../picking-types';
 import { TipoBadge } from './TipoBadge';
 import { fmtHoraChile } from '@/lib/fechaChile';
 import { escapeHtml } from '@/lib/escapeHtml';
+import { todayISO } from '../picking-utils';
+import { fetchActivity, type ActivityData } from '../seguimiento/cargarDia';
+import { VistaHistorial } from '../seguimiento/VistaHistorial';
 
 const CAT_COLOR: Record<string, { bg: string; color: string; border: string }> = {
   Comida: { bg: 'rgba(22,163,74,0.08)',  color: '#15803D', border: 'rgba(22,163,74,0.25)' },
@@ -37,9 +40,35 @@ interface Props {
   records:     PrintRecord[];
   palletSlots: PalletSlot[];
   onRefresh:   () => void;
+  /** Escritorio: el rediseño (VistaHistorial), con días anteriores. Teléfono: la vista de hoy. */
+  escritorio?: boolean;
+  nombreTienda?: (cod: string) => string;
+  onAbrir?: (stateKey: string, tipo: string) => void;
 }
 
-export function HistorialTab({ allGroups, nameChanges, records, palletSlots, onRefresh }: Props) {
+export function HistorialTab({
+  allGroups, nameChanges: nameChangesHoy, records: recordsHoy, palletSlots: palletSlotsHoy, onRefresh,
+  escritorio = false, nombreTienda = c => c, onAbrir,
+}: Props) {
+  // Día que se mira. Hoy usa los datos en vivo; otro día se lee de la base (solo en escritorio).
+  const hoy = todayISO();
+  const [dia, setDia] = useState(hoy);
+  const [otroDia, setOtroDia] = useState<ActivityData | null>(null);
+  const [cargandoDia, setCargandoDia] = useState(false);
+  const esHoy = dia === hoy;
+  useEffect(() => {
+    if (esHoy) { setOtroDia(null); return; }
+    let cancelado = false;
+    setCargandoDia(true);
+    fetchActivity(dia)
+      .then(d => { if (!cancelado) setOtroDia(d); })
+      .finally(() => { if (!cancelado) setCargandoDia(false); });
+    return () => { cancelado = true; };
+  }, [dia, esHoy]);
+  const { records, nameChanges, palletSlots } = useMemo(() => esHoy
+    ? { records: recordsHoy, nameChanges: nameChangesHoy, palletSlots: palletSlotsHoy }
+    : { records: otroDia?.printRecords ?? [], nameChanges: otroDia?.nameChanges ?? [], palletSlots: otroDia?.palletSlots ?? [] },
+  [esHoy, recordsHoy, nameChangesHoy, palletSlotsHoy, otroDia]);
   const [loading,  setLoading]  = useState(false);
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
 
@@ -53,12 +82,13 @@ export function HistorialTab({ allGroups, nameChanges, records, palletSlots, onR
   // Categorías por state_key desde los grupos de Odoo
   const catsByKey = useMemo(() => {
     const map: Record<string, string[]> = {};
-    for (const g of allGroups) {
+    // Las claves (tienda__encargado) se repiten de un día a otro: las categorías de Odoo son de hoy.
+    for (const g of esHoy ? allGroups : []) {
       const cats = [...new Set(g.operations.flatMap(o => o.categories))].filter(Boolean);
       if (cats.length) map[g.stateKey] = cats;
     }
     return map;
-  }, [allGroups]);
+  }, [allGroups, esHoy]);
 
   // Pallets y bultos reales por state_key desde picking_pallets
   const unitsByKey = useMemo(() => {
@@ -132,7 +162,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
 @media print{.print-btn{display:none}}
 </style></head><body><header>
 <div><h1>Historial del día — Picking</h1>
-<div class="sub">${new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div></div>
+<div class="sub">${new Date(dia + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div></div>
 <div class="meta">Generado: ${new Date().toLocaleString('es-CL')}<br>${records.length} impresión${records.length !== 1 ? 'es' : ''} · ${totalPallets} pallets · ${totalBultos} bultos</div>
 </header>
 <table><thead><tr>
@@ -148,6 +178,14 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
 <button class="print-btn" onclick="window.print()">Imprimir</button>
 </body></html>`);
     win.document.close();
+  }
+
+  if (escritorio) {
+    return (
+      <VistaHistorial records={records} nameChanges={nameChanges} palletSlots={palletSlots} allGroups={esHoy ? allGroups : []}
+        dia={dia} hoy={hoy} onDia={setDia} cargando={cargandoDia} nombreTienda={nombreTienda}
+        onImprimirResumen={exportHistorial} onAbrir={onAbrir} />
+    );
   }
 
   return (
