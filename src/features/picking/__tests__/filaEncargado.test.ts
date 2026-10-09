@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  iniciales, colorAvatar, estadoOdoo, seccionesDeFila, unidadesDeFila, notaUnidades,
+  formatoKg, iniciales, colorAvatar, estadoOdoo, seccionesDeFila, unidadesDeFila, notaUnidades,
   totalesPorTipo, sinImprimir, estadoEtiquetas,
 } from '../seco/filaEncargado';
 
@@ -46,7 +46,8 @@ describe('unidades por fila (tiposUnidad.ts)', () => {
 
 describe('totales y etiquetas', () => {
   it('suma las dos cajas de chocolate', () => {
-    expect(totalesPorTipo({ P: 2, 'CH:negra': 1, 'CH:carton': 2 })).toEqual({ P: 2, B: 0, CH: 3, total: 5 });
+    expect(totalesPorTipo({ P: 2, 'CH:negra': 1, 'CH:carton': 2 })).toEqual({ P: 2, B: 0, CH: 3, CC: 0, CN: 0, total: 5 });
+    expect(totalesPorTipo({ CC: 8, CN: 4 })).toMatchObject({ CC: 8, CN: 4, total: 12 });
   });
   it('cuenta lo que no tiene código', () => {
     expect(sinImprimir([{ canonical_id: 'x' }, { canonical_id: null }, {}])).toBe(2);
@@ -55,8 +56,16 @@ describe('totales y etiquetas', () => {
     const base = { unidades: 3, pendientes: 3, bloqueadaPorOdoo: false, enOtraSeccion: false };
     expect(estadoEtiquetas(base)).toEqual({ texto: '3 por imprimir', tono: 'info' });
     expect(estadoEtiquetas({ ...base, pendientes: 0 }).texto).toBe('Impresas');
+    expect(estadoEtiquetas({ ...base, pendientes: 0, hora: '10:42' }).texto).toBe('Impresas 10:42');
     expect(estadoEtiquetas({ ...base, bloqueadaPorOdoo: true }).texto).toBe('Espera a Odoo');
     expect(estadoEtiquetas({ ...base, unidades: 0 }).texto).toBe('Falta contar');
     expect(estadoEtiquetas({ ...base, unidades: 0, enOtraSeccion: true }).texto).toBe('En otra sección');
+  });
+});
+
+describe('formatoKg', () => {
+  it('un decimal con coma', () => {
+    expect(formatoKg(80.5)).toBe('80,5');
+    expect(formatoKg(62)).toBe('62,0');
   });
 });

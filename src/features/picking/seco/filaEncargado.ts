@@ -79,11 +79,18 @@ export function notaUnidades(secciones: SectionFilter[], unidades: ClaveUnidad[]
 }
 
 /** Unidades del encargado por tipo, sumando las dos cajas de chocolate. */
-export function totalesPorTipo(conteos: Partial<Record<string, number>>): { P: number; B: number; CH: number; total: number } {
+export function totalesPorTipo(conteos: Partial<Record<string, number>>): {
+  P: number; B: number; CH: number; CC: number; CN: number; total: number;
+} {
   const n = (k: string) => conteos[k] ?? 0;
   const CH = n('CH') + n('CH:negra') + n('CH:carton');
   const total = Object.values(conteos).reduce<number>((a, b) => a + (b ?? 0), 0);
-  return { P: n('P'), B: n('B'), CH, total };
+  return { P: n('P'), B: n('B'), CH, CC: n('CC'), CN: n('CN'), total };
+}
+
+/** 80.5 → «80,5». Un decimal, coma chilena. */
+export function formatoKg(kg: number): string {
+  return kg.toFixed(1).replace('.', ',');
 }
 
 /** Cuántas unidades todavía no tienen etiqueta. El código canónico se asigna en la primera impresión. */
@@ -94,9 +101,11 @@ export function sinImprimir(slots: Pick<PalletSlot, 'canonical_id'>[]): number {
 /** La columna ETIQUETAS. */
 export function estadoEtiquetas(a: {
   unidades: number; pendientes: number; bloqueadaPorOdoo: boolean; enOtraSeccion: boolean;
+  /** Hora de la última impresión («10:42»), si se sabe. */
+  hora?: string | null;
 }): { texto: string; tono: Tono } {
   if (a.unidades === 0) return a.enOtraSeccion ? { texto: 'En otra sección', tono: 'info' } : { texto: 'Falta contar', tono: 'mute' };
   if (a.bloqueadaPorOdoo) return { texto: 'Espera a Odoo', tono: 'mute' };
   if (a.pendientes > 0) return { texto: `${a.pendientes} por imprimir`, tono: 'info' };
-  return { texto: 'Impresas', tono: 'ok' };
+  return { texto: a.hora ? `Impresas ${a.hora}` : 'Impresas', tono: 'ok' };
 }

@@ -8,6 +8,7 @@ import { PanelEncargado } from './PanelEncargado';
 type PropsEncabezado = React.ComponentProps<typeof EncabezadoTienda>;
 
 interface Props {
+  modo?: 'seco' | 'congelados';
   encabezado: PropsEncabezado;
   /** Operaciones sin responsable en Odoo: solo el aviso de arriba, nunca una fila. */
   sinAsignar: { texto: string; detalle: string; onActualizar: () => void } | null;
@@ -22,7 +23,7 @@ interface Props {
   actualizadoA: string | null;
 }
 
-/** Seco en escritorio: encabezado de la tienda, avisos, tabla de encargados y su panel lateral. */
+/** Seco y Congelados en escritorio: encabezado de la tienda, avisos, tabla de encargados y su panel lateral. */
 export function VistaSeco(p: Props) {
   const i = p.filas.findIndex(f => f.group.stateKey === p.abierta);
   const fila = i >= 0 ? p.filas[i] : null;
@@ -51,13 +52,15 @@ export function VistaSeco(p: Props) {
         {p.cargando && p.filas.length === 0 ? (
           <div className="pk-vacio"><span>Cargando operaciones de Odoo…</span></div>
         ) : p.filas.length === 0 ? (
-          <div className="pk-vacio"><b>Sin operaciones de Abastecimiento en esta sección hoy</b><span>Si alguien trabajó sin quedar en Odoo, usa «Encargado manual».</span></div>
+          <div className="pk-vacio"><b>{p.modo === 'congelados' ? 'Sin operaciones de congelados hoy' : 'Sin operaciones de Abastecimiento en esta sección hoy'}</b><span>Si alguien trabajó sin quedar en Odoo, usa «Encargado manual».</span></div>
         ) : (
-          <TablaEncargados filas={p.filas} nombreTienda={nombre} opsConEncargado={p.opsConEncargado}
+          <TablaEncargados modo={p.modo} filas={p.filas} nombreTienda={nombre} opsConEncargado={p.opsConEncargado}
             abierta={p.abierta} onAbrir={k => onAbrir(k)} />
         )}
         <div className="pk-pie-nota print:hidden">
-          <span>— no aplica a esa sección (Aseo y Hogar no llevan chocolate; Chocolates no lleva bultos)</span>
+          <span>{p.modo === 'congelados'
+            ? 'Congelados solo cuenta cajas. El peso es el que marca la balanza con todas las cajas juntas, y se reparte entre ellas.'
+            : '— no aplica a esa sección (Aseo y Hogar no llevan chocolate; Chocolates no lleva bultos)'}</span>
           <span className="pk-sp" />
           {p.actualizadoA && <span>Odoo actualizado a las {p.actualizadoA}</span>}
           <span>Toca una fila para ver el detalle y la vista previa de etiquetas</span>
