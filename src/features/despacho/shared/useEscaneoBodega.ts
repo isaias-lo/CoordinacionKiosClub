@@ -16,7 +16,7 @@
 import { useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { avisoFisico } from '@/lib/avisoFisico';
-import { buscarPallet, type PalletEncontrado, type SlotDePallet } from './buscarPallet';
+import { buscarPallet, variantesDeCodigo, type PalletEncontrado, type SlotDePallet } from './buscarPallet';
 import type { AvisoUnidad } from './avisoUnidadEscaneada';
 import { ConfirmacionDoble } from './lectorBodega';
 import { useLectorBodega, tarjetaAMedias } from './useLectorBodega';
@@ -34,7 +34,7 @@ export interface PalletDeOtroDia {
 
 async function buscarFueraDeHoy(codigo: string): Promise<PalletDeOtroDia | null> {
   const q = supabase.from('picking_pallets').select('id, store_cod, tipo, date').limit(1);
-  const { data } = await (/^\d+$/.test(codigo) ? q.eq('id', Number(codigo)) : q.eq('canonical_id', codigo)).maybeSingle();
+  const { data } = await (/^\d+$/.test(codigo) ? q.eq('id', Number(codigo)) : q.in('canonical_id', variantesDeCodigo(codigo))).maybeSingle();
   return (data as PalletDeOtroDia | null) ?? null;
 }
 
@@ -45,7 +45,7 @@ async function buscarFueraDeHoy(codigo: string): Promise<PalletDeOtroDia | null>
 async function buscarBorrado(codigo: string): Promise<PalletDeOtroDia | null> {
   const q = supabase.from('picking_eventos').select('pallet_id, store_cod, tipo')
     .eq('event_type', 'eliminar').order('created_at', { ascending: false }).limit(1);
-  const { data } = await (/^\d+$/.test(codigo) ? q.eq('pallet_id', Number(codigo)) : q.eq('datos->>canonical_id', codigo)).maybeSingle();
+  const { data } = await (/^\d+$/.test(codigo) ? q.eq('pallet_id', Number(codigo)) : q.in('datos->>canonical_id', variantesDeCodigo(codigo))).maybeSingle();
   const ev = data as { pallet_id: number | null; store_cod: string | null; tipo: string | null } | null;
   if (!ev?.pallet_id || !ev.store_cod) return null;
   return { id: ev.pallet_id, store_cod: ev.store_cod, tipo: ev.tipo, date: null };
