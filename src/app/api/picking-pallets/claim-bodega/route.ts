@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
 import { puedeRestaurar, avisoRestaurar } from '@/features/despacho/shared/restaurarPallet';
+import { variantesDeCodigo } from '@/features/despacho/shared/buscarPallet';
 
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
@@ -44,7 +45,8 @@ export async function POST(request: NextRequest) {
       slot = data ?? null;
     }
     if (!slot) {
-      const { data } = await sb.from('picking_pallets').select(SLOT_FIELDS).eq('canonical_id', ref).maybeSingle();
+      // `variantesDeCodigo`: la etiqueta de 23PEÑ/37VIÑ llega como PEN/VIN o sin la Ñ.
+      const { data } = await sb.from('picking_pallets').select(SLOT_FIELDS).in('canonical_id', variantesDeCodigo(ref)).limit(1).maybeSingle();
       slot = data ?? null;
     }
 
@@ -72,7 +74,7 @@ export async function POST(request: NextRequest) {
           .from('picking_eventos')
           .select(CAMPOS_BORRADO)
           .eq('event_type', 'eliminar')
-          .eq('datos->>canonical_id', ref)
+          .in('datos->>canonical_id', variantesDeCodigo(ref))
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle()).data;

@@ -11,6 +11,8 @@ import { logActividad } from '@/lib/actividad';
 import { marcarRegistro } from '@/features/despacho/shared/registroPorFecha';
 import { sincronizarYCruzar, AVISO_CRUCE } from '@/features/despacho/shared/avisarCruce';
 import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
+import { avisoNoRegistrado } from '@/features/despacho/shared/escribirPlanilla';
+import { AVISO_ERROR, AVISO_OK } from '../../shared/colorAviso';
 
 interface Props { open: boolean; onClose: () => void; }
 
@@ -59,11 +61,23 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
     // detrás. Encadenada no se emitía nunca si la persona navegaba apenas registrar —`keepalive`
     // protege lo ya enviado, no lo que falta enviar— y así el 29/09 la hoja quedó vacía con el
     // día bien registrado. Ver el comentario de `api/sync-despacho`.
-    sheetsSantiagoWrite(items, regimen!, fechaDespacho, todayISO)
-      // Volcar la hoja a la base y rehacer el cruce del día. Ver `sincronizarYCruzar`.
-      .then(() => sincronizarYCruzar(todayISO))
+    //
+    // SE ESPERA la planilla antes de dar el día por registrado: antes la promesa nunca fallaba, y
+    // con la sesión vencida o sin red el día quedaba registrado sin estar en la hoja. Ver
+    // `escribirPlanilla`.
+    try {
+      await sheetsSantiagoWrite(items, regimen!, fechaDespacho, todayISO);
+    } catch (e) {
+      console.error('[registrar-dia]', e);
+      showToast(avisoNoRegistrado(e), AVISO_ERROR);
+      setSaving(false);
+      return;
+    }
+    // Volcar la hoja a la base y rehacer el cruce del día. Ver `sincronizarYCruzar`.
+    sincronizarYCruzar(todayISO)
       .then(aviso => { if (aviso) showToast(aviso, '#D97706'); })
       .catch(() => showToast(AVISO_CRUCE, '#D97706'));
+    showToast('✓ Registrado en Sheets', AVISO_OK);
 
     // 2. Marcar como terminado (badge COMPLETADO en el header).
     localStorage.setItem(SANTIAGO_TERMINADO_KEY,
@@ -86,6 +100,7 @@ export function SantiagoFinishModal({ open, onClose }: Props) {
     flushPending({ registrado: true, registros: registrosNuevos });
     logActividad({ accion: 'registrar_dia', fuente: 'rmcosta', tiendas: withItems.length, pallets: tp, bultos: tb });
 
+    setSaving(false);
     onClose();
   };
 

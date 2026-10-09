@@ -102,6 +102,8 @@ export function StepResumen() {
       largo,
       ancho,
       pesoVolumetrico: (alto * largo * ancho) / 6000,
+      // Con peso deja de ser pallet web: pasa a ser un pallet pesado como cualquier otro.
+      palletWeb: item.palletWeb && !((leerPeso(editPeso) ?? 0) > 0) ? true : undefined,
     };
     dispatch({ type: 'EDIT_ITEM', tiendaCod: cod, idx, item: updated });
     setEditingItem(null);
