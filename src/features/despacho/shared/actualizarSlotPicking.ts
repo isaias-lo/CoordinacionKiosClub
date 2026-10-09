@@ -62,3 +62,16 @@ export async function actualizarSlotPicking(
     return { ok: false, yaNoExiste: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
+
+/**
+ * Los campos de peso y medidas de una unidad, tal como los escribe Guardar. Combinar y editar desde
+ * el Resumen no escribían nada en el slot: la planilla quedaba con el peso nuevo y el cruce con
+ * Odoo, que lee `picking_pallets.peso_kg`, seguía con el viejo (o perdía los kilos del absorbido).
+ */
+export function camposDePeso(
+  m: { peso: number; alto: number; ancho: number; largo: number },
+  sinPesar = false,
+): Record<string, number | null> {
+  const pesoV = sinPesar ? 0 : (Math.round((m.alto * m.ancho * m.largo) / 6000 * 10) / 10 || null);
+  return { peso_kg: m.peso, alto: m.alto, ancho: m.ancho, largo: m.largo, peso_v: pesoV };
+}

@@ -60,6 +60,20 @@ export function fusionarRegistros(
 }
 
 /**
+ * ¿El remoto trae algún día registrado que lo local no tiene?
+ *
+ * El corta-ecos compara solo los ítems: un push de otro equipo que SOLO registró el día traía los
+ * mismos ítems y se descartaba entero. Este equipo se quedaba sin el registro y, en su siguiente
+ * push, escribía `registros: {}` sobre la fila (gana el último que escribe): al día siguiente salía
+ * «DESPACHO SIN REGISTRAR» y se ofrecía registrar de nuevo.
+ */
+export function traeRegistrosNuevos(
+  local: RegistroPorFecha | undefined | null, remoto: RegistroPorFecha | undefined | null,
+): boolean {
+  return Object.entries(remoto ?? {}).some(([fecha, v]) => v && !(local ?? {})[fecha]);
+}
+
+/**
  * Compatibilidad con el estado viejo, que guardaba un solo `registrado: boolean`.
  *
  * Hay estados así guardados en `localStorage` y en `shared_session_state` ahora mismo. Al leerlos,

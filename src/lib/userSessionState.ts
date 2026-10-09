@@ -44,6 +44,9 @@ export async function pushSessionStateResult(fuente: Fuente, state: unknown, use
   return { ok: true, updatedAt: data?.updated_at ? new Date(data.updated_at as string).getTime() : null };
 }
 
+/** Espera antes de reintentar un push al estado compartido que falló (sin red, sesión vencida). */
+export const REINTENTO_PUSH_MS = 5000;
+
 export async function pushSessionState(fuente: Fuente, state: unknown, userId?: string, fecha: string = todayISO()): Promise<number | null> {
   const { ok, updatedAt } = await pushSessionStateResult(fuente, state, userId, fecha);
   if (!ok) return null;

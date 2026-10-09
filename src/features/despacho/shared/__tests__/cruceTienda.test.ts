@@ -70,7 +70,7 @@ describe('estadoCruce — el umbral, que es lo que decide si esto sirve o es rui
   });
 
   it('con Odoo en cero no hay porcentaje que juzgar', () => {
-    expect(estadoCruce(120, 0)).toBe('cuadra');
+    expect(estadoCruce(120, 0)).toBe('sin-odoo');
   });
 });
 

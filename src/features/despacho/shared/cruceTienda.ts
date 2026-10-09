@@ -44,7 +44,7 @@ import { pctDiferencia, kgDiferencia, TIPOS_CRUCE, type FilaCruce, type TipoCruc
 export const TOLERANCIA_PCT = 25;
 export const TOLERANCIA_KG  = 150;
 
-export type EstadoCruce = 'sin-pesar' | 'cuadra' | 'revisar';
+export type EstadoCruce = 'sin-pesar' | 'sin-odoo' | 'cuadra' | 'revisar';
 
 /** Solo los administradores ven el cruce: compara el andén contra Odoo, no es dato de operación. */
 export function veElCruce(rol?: string | null): boolean {
@@ -61,7 +61,9 @@ export function estadoCruce(kgBodega: number | null, kgOdoo: number): EstadoCruc
   if (kgBodega === null || !Number.isFinite(kgBodega) || kgBodega <= 0) return 'sin-pesar';
   const pct = pctDiferencia(kgBodega, kgOdoo);
   const kg  = kgDiferencia(kgBodega, kgOdoo);
-  if (pct === null) return 'cuadra';   // Odoo en cero: no hay contra qué comparar un porcentaje
+  // Odoo en cero: no hay contra qué comparar. Antes caía en «cuadra» y la tarjeta mostraba en verde
+  // «+540 kg · Dentro de lo normal» para una tienda de la que Odoo no sabía nada.
+  if (pct === null) return 'sin-odoo';
   return Math.abs(pct) > TOLERANCIA_PCT && Math.abs(kg) > TOLERANCIA_KG ? 'revisar' : 'cuadra';
 }
 
@@ -123,8 +125,8 @@ export function armarBloqueCruce(
   const estado = estadoCruce(kgBodega, kgOdoo);
   return {
     estado, kgBodega, kgOdoo,
-    kgDif:  kgBodega === null ? null : r1(kgDiferencia(kgBodega, kgOdoo)),
-    pctDif: kgBodega === null ? null : (() => { const p = pctDiferencia(kgBodega, kgOdoo); return p === null ? null : Math.round(p * 10) / 10; })(),
+    kgDif:  kgBodega === null || estado === 'sin-odoo' ? null : r1(kgDiferencia(kgBodega, kgOdoo)),
+    pctDif: kgBodega === null || estado === 'sin-odoo' ? null : (() => { const p = pctDiferencia(kgBodega, kgOdoo); return p === null ? null : Math.round(p * 10) / 10; })(),
     pesadas, unidades, movimientos,
   };
 }
@@ -141,6 +143,9 @@ export function fraseDeEstado(b: BloqueCruce): string {
     return b.kgOdoo > 0
       ? `Odoo ya dice ${enKg(b.kgOdoo)} kg. La diferencia aparece cuando se pese.`
       : 'Todavía no hay movimientos de Odoo para esta tienda.';
+  }
+  if (b.estado === 'sin-odoo') {
+    return 'Odoo todavía no tiene movimientos para esta tienda: no hay contra qué comparar.';
   }
   if (b.estado === 'revisar') {
     return `Odoo dice ${enKg(b.kgOdoo)} y en Bodega hay ${enKg(b.kgBodega as number)}. `

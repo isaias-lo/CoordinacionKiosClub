@@ -10,13 +10,14 @@
 // El merge entre equipos ya usa la unidad como llave (`stableItemKey`), pero solo en las tiendas
 // que ese equipo editó; el alta local no pasaba por ahí.
 
-import { esSinPesar } from './sinPesar';
+import { esSinPesar, esPalletWeb } from './sinPesar';
 
 interface ItemConUnidad {
   pickingSlotId?: number;
   peso: number;
   id?: string;
   orden?: string;
+  palletWeb?: boolean;
 }
 
 const MEDIDAS = ['peso', 'alto', 'largo', 'ancho', 'pesoVolumetrico', 'taraPallet'] as const;
@@ -68,7 +69,7 @@ export function itemDeLaUnidad<T extends ItemConUnidad>(lista: T[], slotId: numb
  * — es lo que evita depender de otra medición manual la próxima vez.
  */
 export function esReingreso<T extends ItemConUnidad>(previo: T | undefined): boolean {
-  return previo !== undefined && !esSinPesar(previo);
+  return previo !== undefined && !esSinPesar(previo) && !esPalletWeb(previo);
 }
 
 /**
