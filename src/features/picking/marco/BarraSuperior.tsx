@@ -22,7 +22,7 @@ export function BarraSuperior({ tab, online, pendientes, onVolverATiendas }: Pro
           ← Tiendas
         </button>
       )}
-      <span className="pk-crumb">{p.grupo} / <b>{p.label}</b></span>
+      <span className="pk-crumb"><span className="max-lg:hidden">{p.grupo} / </span><b>{p.label}</b></span>
       <span className="pk-sp" />
       <span className={`pk-sync${online ? '' : ' off'}`} role="status" title={textoConexion(online, pendientes)}>
         <i aria-hidden="true" />

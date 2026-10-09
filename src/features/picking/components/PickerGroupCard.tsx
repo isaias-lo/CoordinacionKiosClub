@@ -11,7 +11,8 @@ import { idsDeSeleccion } from '../seleccionImpresion';
 import { STATE_INFO, sanitizeForBarcode, buildCanonicalId, todayISO } from '../picking-utils';
 import { categoriasDeSlotsManual } from '../picking-secciones';
 import { fmtHoraChile } from '@/lib/fechaChile';
-import { PanelDetalle } from './PanelDetalle';
+import { PanelDetalle, type PanelDetalleProps } from './PanelDetalle';
+import { CuerpoTelefono } from './CuerpoTelefono';
 
 // ─── StateBadge ───────────────────────────────────────────────────────────────
 
@@ -83,9 +84,10 @@ interface Props {
    *  otra (o en ninguna). Sin esto, acá se veía «0 pallets» y alguien lo armaba de nuevo.
    *  Ver `palletEnOtraSeccion.ts`. */
   avisoOtraSeccion?: { texto: string; boton: string; onIr: () => void } | null;
-  /** 'panel': el detalle del encargado en el panel lateral de Seco (diseño empresarial). La
-   *  lógica es la misma; cambia solo cómo se ve. */
-  variante?: 'tarjeta' | 'panel';
+  /** 'panel': el detalle del encargado en el panel lateral de Seco (diseño empresarial).
+   *  'telefono': la tarjeta del teléfono y el handheld, con botones de 48 px. La lógica es la
+   *  misma; cambia solo cómo se ve. */
+  variante?: 'tarjeta' | 'panel' | 'telefono';
   /** Unidades a mostrar, si quien llama ya las sabe (la fila de Seco usa las secciones de la fila).
    *  Sin esto se calculan con tiposUnidad.ts a partir del filtro de sección. */
   unidades?: ClaveUnidad[];
@@ -176,15 +178,16 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
     else onTipoPalletsChange(tipo, Math.max(0, count - 1));
   };
 
-  if (variante === 'panel') {
-    return <PanelDetalle {...{
+  if (variante === 'panel' || variante === 'telefono') {
+    const detalle: PanelDetalleProps = {
       group, displayName, palletsByTipo, onNameChange, onTipoPalletsChange, onRefreshOp, refreshingId,
       assignedNums, isPrinted, slots, lastPrint, myName, otroDia, batchValue, onBatchChange, pesoTotal,
       onPesoTotalChange, avisoOtraSeccion, notaUnidades, pie, totalPickers, adelanto,
       sinBloqueoOdoo, allCategories, refs, cats, pickerLabel, barcodePickerName, unidadesVisibles, bajar,
       selectedIndices, toggleIndex, setSelectedIndices, pendingDecrementTipo, setPendingDecrementTipo,
       confirmarReimpresion, setConfirmarReimpresion, yaImpresosDe, pedirImpresion, onPrint, handlePrintSelected,
-    }} />;
+    };
+    return variante === 'panel' ? <PanelDetalle {...detalle} /> : <CuerpoTelefono {...detalle} />;
   }
 
   const borderColor = odooConfirmado || isPrinted ? 'rgba(22,163,74,0.3)' : 'var(--color-border)';

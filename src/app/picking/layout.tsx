@@ -4,6 +4,7 @@ import '@/features/picking/marco/marco.css';
 import '@/features/picking/seco/seco.css';
 import '@/features/picking/seguimiento/seguimiento.css';
 import '@/features/picking/ajustes/ajustes.css';
+import '@/features/picking/telefono/telefono.css';
 
 export default function PickingLayout({ children }: { children: React.ReactNode }) {
   return children;
