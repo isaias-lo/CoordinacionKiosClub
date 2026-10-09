@@ -4,6 +4,7 @@
 
 .pk-main.pk-seguimiento .pk-head{padding:14px 22px 14px}
 .pk-main.pk-seguimiento .pk-content{padding:16px 22px}
+.pk-main.pk-seguimiento .pk-content>*{flex-shrink:0}
 .pk-main.pk-seguimiento .pk-tabla th:first-child,.pk-main.pk-seguimiento .pk-tabla td:first-child{padding-left:12px}
 .pk-main.pk-seguimiento .pk-tabla th{padding:9px 12px;white-space:nowrap}
 .pk-main.pk-seguimiento .pk-tabla td{padding:10px 12px}

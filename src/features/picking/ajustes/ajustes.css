@@ -1,0 +1,56 @@
+/* Ajustes: Configuración y Calendario en escritorio.
+   Valores copiados de /mnt/project-files/disenos/picking/Configuracion.dc.html y Calendario.dc.html.
+   Reusa .pk-head, .pk-tabs, .pk-card y .pk-tabla (seco.css) y .pk-seguimiento (seguimiento.css). */
+
+.pk-lbl-sec{font-size:12px;font-weight:600;color:#4B5160;letter-spacing:.02em;padding:12px 0 4px}
+.pk-lbl-sec:first-child{padding-top:0}
+
+/* Configuración: columna de controles y vista previa */
+.pk-config{display:grid;grid-template-columns:460px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:1279px){.pk-config{grid-template-columns:400px minmax(0,1fr)}}
+.pk-controles{padding:14px 18px;display:flex;flex-direction:column}
+
+/* Deslizador: riel gris, tramo azul y perilla blanca con borde */
+.pk-desl{display:grid;grid-template-columns:130px minmax(0,1fr) 48px;gap:12px;align-items:center;padding:7px 0}
+.pk-desl label{font-size:13px}
+.pk-desl .n{font-family:'IBM Plex Mono',monospace;font-size:12px;text-align:right}
+.pk-desl input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:2px;background:linear-gradient(to right,#3B5BDB var(--pct),#E4E7EC var(--pct));outline:none;margin:0;cursor:pointer}
+.pk-desl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:7px;background:#FFFFFF;border:2px solid #3B5BDB;cursor:pointer}
+.pk-desl input[type=range]::-moz-range-thumb{width:10px;height:10px;border-radius:7px;background:#FFFFFF;border:2px solid #3B5BDB;cursor:pointer}
+.pk-desl input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px rgba(59,91,219,.25)}
+
+/* Interruptor (QUÉ MUESTRA) */
+.pk-interr{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #EEF0F3}
+.pk-interr:last-child{border-bottom:0}
+.pk-interr .t{flex:1;display:flex;flex-direction:column}
+.pk-interr .t b{font-weight:600;font-size:13px}
+.pk-sw{width:36px;height:20px;border-radius:10px;background:#C3C8D3;padding:2px;display:flex;justify-content:flex-start;border:0;cursor:pointer;flex-shrink:0}
+.pk-sw[aria-checked=true]{background:#2B4BC8;justify-content:flex-end}
+.pk-sw i{width:16px;height:16px;border-radius:8px;background:#FFFFFF;display:block}
+.pk-sw:focus-visible{outline:2px solid #3B5BDB;outline-offset:2px}
+
+/* Vista previa sobre cuadrícula */
+.pk-previa{display:flex;flex-direction:column;gap:12px;align-items:center;padding:30px 16px 24px;border-radius:10px;border:1px solid #E4E7EC;background:repeating-linear-gradient(0deg,transparent 0 23px,#ECEEF2 23px 24px),repeating-linear-gradient(90deg,transparent 0 23px,#ECEEF2 23px 24px),#F5F6F8;position:sticky;top:0}
+.pk-previa .marco{background:#FFFFFF;border-radius:12px;box-shadow:0 8px 24px rgba(16,24,40,.08);overflow:hidden;position:relative}
+
+/* Nombres de pickers */
+.pk-nombres .pk-field{padding:5px 8px;min-height:0}
+.pk-nombres .pk-field.cambiado{border-color:#D97706}
+.pk-nombres .pk-field.listo{border-color:#16A34A}
+.pk-nombres td{vertical-align:middle}
+.pk-x{border:0;background:transparent;color:#8A91A1;cursor:pointer;font-size:14px;padding:4px 6px;border-radius:6px}
+.pk-x:hover{background:#FCE9E7;color:#A3271A}
+
+/* Calendario */
+.pk-cal{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+@media (max-width:1279px){.pk-cal{grid-template-columns:minmax(0,1fr) 260px}}
+.pk-cal .pk-tabla td.d,.pk-cal .pk-tabla th.d{text-align:center;padding:6px}
+.pk-cal .pk-tabla th.hoy{background:#E7EEFC;color:#1F3FA8}
+.pk-cal .pk-tabla td.hoy{background:#F3F6FE}
+.pk-cal .pk-tabla td.t{padding:6px 12px}
+.pk-cal .pk-tabla td.t .c{display:inline-block;width:52px}
+.pk-cuadro{display:inline-block;width:14px;height:14px;border-radius:4px;border:1.5px solid #D7DBE3;vertical-align:middle}
+.pk-cuadro.si{background:#2B4BC8;border-color:#2B4BC8}
+.pk-lado{display:flex;flex-direction:column;gap:12px}
+.pk-lado .pk-card{padding:14px;display:flex;flex-direction:column;gap:6px}
+.pk-lado .grande{font-size:28px;font-weight:700}

@@ -69,6 +69,7 @@ import { MenuLateral }        from './marco/MenuLateral';
 import { AyudaPanel }         from './marco/AyudaPanel';
 import { accionDeTecla, estaEscribiendo } from './marco/ayuda';
 import { VistaSeco }          from './seco/VistaSeco';
+import { VistaCalendario }    from './ajustes/VistaCalendario';
 import type { FilaSeco }      from './seco/TablaEncargados';
 import { seccionesDeFila, unidadesDeFila, notaUnidades, totalesPorTipo, sinImprimir, formatoKg, COLOR_SECCION } from './seco/filaEncargado';
 import { AgregarAdelantoDialog } from './components/AgregarAdelantoDialog';
@@ -1141,6 +1142,13 @@ export function PickingScreen() {
     // «← Tiendas» por cada una. Se eligen todas y se pasa con «Ver N tiendas» (StoreListPanel).
   }, [selectedCods, opsMap, fetchOpsForStore]);
 
+  // Calendario → «Usar tiendas de hoy»: elige las tiendas del día (las que falten) y abre la
+  // pestaña de ese calendario. Es lo mismo que «Elegir todas» en la lista, para todos los grupos.
+  const usarTiendasDeHoy = useCallback((cods: string[], fuente: 'despacho' | 'congelados') => {
+    void handleToggleGrupo(cods, true);
+    setRightTab(fuente === 'congelados' ? 'congelados' : 'monitoreo');
+  }, [handleToggleGrupo, setRightTab]);
+
   // Historial → «Reimprimir»: abre al encargado en Seco o Congelados (según lo que se imprimió),
   // con su tienda elegida y el panel lateral abierto, donde está el botón de imprimir.
   const abrirEncargado = useCallback((stateKey: string, tipo: string) => {
@@ -2083,13 +2091,19 @@ export function PickingScreen() {
               colsPerRow={colsPerRow}
               onColsPerRowChange={handleColsPerRowChange}
               currentUserName={profile?.full_name ?? ''}
+              escritorio={isDesktop}
             />
           )}
 
           {/* ── Tab content: Calendario (general, solo lectura) ──
              Sigue la sección activa: en Congelados muestra el Calendario de Congelados;
              en el resto (Seco/Aseo-Comida/Hogar/Chocolates/Todas), el Central. */}
-          {rightTab === 'calendario' && (
+          {rightTab === 'calendario' && isDesktop && (
+            <VistaCalendario fuente={calFuente} onFuente={setCalFuente} nombreTienda={nameFor}
+              onUsarHoy={usarTiendasDeHoy}
+              vistaPorDia={<CalendarioColumnas readOnly forceGeneral source={calFuente} />} />
+          )}
+          {rightTab === 'calendario' && !isDesktop && (
             <div className="flex-1 overflow-y-auto min-h-0 p-3">
               <div className="flex gap-1.5 mb-3 print:hidden" role="group" aria-label="Calendario a mostrar">
                 {([['despacho', 'Central'], ['congelados', 'Congelados']] as const).map(([k, label]) => (
