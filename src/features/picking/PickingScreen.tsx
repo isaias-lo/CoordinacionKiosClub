@@ -1141,6 +1141,16 @@ export function PickingScreen() {
     // «← Tiendas» por cada una. Se eligen todas y se pasa con «Ver N tiendas» (StoreListPanel).
   }, [selectedCods, opsMap, fetchOpsForStore]);
 
+  // Historial → «Reimprimir»: abre al encargado en Seco o Congelados (según lo que se imprimió),
+  // con su tienda elegida y el panel lateral abierto, donde está el botón de imprimir.
+  const abrirEncargado = useCallback((stateKey: string, tipo: string) => {
+    const cod = stateKey.split('__')[0];
+    setRightTab(tipo === 'CC' || tipo === 'CN' ? 'congelados' : 'monitoreo');
+    if (!selectedCods.includes(cod)) void handleToggleStore(cod);
+    setTiendaActiva(cod);
+    setEncargadoAbierto(stateKey);
+  }, [selectedCods, handleToggleStore, setRightTab]);
+
   // Grupos cuyo texto de "Documento origen" trae una fecha distinta a hoy (typo o plantilla
   // vieja en Odoo). YA vienen filtrados por scheduled_date=hoy (campo estructurado, confiable)
   // al traerlos de Odoo, así que esta fecha de texto libre es solo una señal de advertencia —
@@ -2044,7 +2054,7 @@ export function PickingScreen() {
 
           {/* ── Tab content: Estadísticas ── */}
           {rightTab === 'estadisticas' && (
-            <StatsTab hasOdoo={hasOdoo} odooDesactivado={odooDesactivado} canonicalNames={canonicalNames} />
+            <StatsTab hasOdoo={hasOdoo} odooDesactivado={odooDesactivado} canonicalNames={canonicalNames} escritorio={isDesktop} />
           )}
 
           {/* ── Tab content: Actividad ── */}
@@ -2053,12 +2063,15 @@ export function PickingScreen() {
               <ActivityTab
                 live={{ printRecords, nameChanges, palletSlots, eventos: pickingEventos, supervisors: otherSupervisors }}
                 today={todayISO()}
+                escritorio={isDesktop}
+                nombreTienda={nameFor}
               />
             </div>
           )}
 
           {/* ── Tab content: Historial ── */}
-          {rightTab === 'historial' && <HistorialTab allGroups={allGroups} nameChanges={nameChanges} records={printRecords} palletSlots={palletSlots} onRefresh={loadPrintRecords} />}
+          {rightTab === 'historial' && <HistorialTab allGroups={allGroups} nameChanges={nameChanges} records={printRecords} palletSlots={palletSlots} onRefresh={loadPrintRecords}
+            escritorio={isDesktop} nombreTienda={nameFor} onAbrir={abrirEncargado} />}
 
           {/* ── Tab content: Configuración ── */}
           {rightTab === 'configuracion' && (

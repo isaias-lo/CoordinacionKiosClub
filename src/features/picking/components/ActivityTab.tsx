@@ -2,7 +2,6 @@
 
 import { useMemo, useState, useEffect, useRef, type ReactNode } from 'react';
 import { Printer, Tag, User, Wifi, PlusCircle, MinusCircle, Plus, Minus, AlertTriangle, Calendar, Loader2, ChevronDown, Check, RotateCcw } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
 import type { PrintRecord, PickerNameChange, PalletSlot, SupervisorPresence, SupervisorPrint } from '../picking-types';
 import { TipoBadge } from './TipoBadge';
 import { detectarReincidencia, TIPO_LABEL, type PickingEvento } from '../picking-utils';
@@ -11,6 +10,8 @@ import {
   type AnyEv, type FilterCat,
 } from '../activity-filters';
 import { fmtHoraChile } from '@/lib/fechaChile';
+import { fetchActivity, shiftDate, type ActivityData } from '../seguimiento/cargarDia';
+import { VistaActividad } from '../seguimiento/VistaActividad';
 
 function fmtTime(iso: string) {
   return fmtHoraChile(iso);
@@ -416,58 +417,19 @@ function StoreBadge({ cod, onClick }: { cod: string; onClick?: (cod: string) => 
 // consultas a la BD y oculta "En línea" (Presence solo existe en el momento).
 // Además maneja el estado de los filtros (cuenta / tipo / tienda).
 
-interface ActivityData {
-  printRecords: PrintRecord[];
-  nameChanges:  PickerNameChange[];
-  palletSlots:  PalletSlot[];
-  eventos:      PickingEvento[];
-}
-
-/** YYYY-MM-DD desplazado `n` días (mediodía UTC para evitar bordes de DST). */
-function shiftDate(date: string, n: number): string {
-  return new Date(new Date(date + 'T12:00:00Z').getTime() + n * 86_400_000).toISOString().slice(0, 10);
-}
-
-/** Carga la actividad persistida de una fecha. */
-async function fetchActivity(date: string): Promise<ActivityData> {
-  const [prints, evts, pallets, names] = await Promise.all([
-    supabase.from('picking_prints')
-      .select('state_key, printed_at, picker_label, pallets, tipo, printed_by_name')
-      .eq('date', date).order('printed_at', { ascending: true }),
-    supabase.from('picking_eventos')
-      .select('id, date, event_type, pallet_id, state_key, store_cod, tipo, picker_label, actor_name, created_at')
-      .eq('date', date).order('created_at', { ascending: true }),
-    supabase.from('picking_pallets')
-      .select('id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at, seq, canonical_id')
-      .eq('date', date).eq('is_active', true).order('created_at', { ascending: true }),
-    // picker_name_changes no tiene columna `date`: filtramos por día UTC, igual que
-    // el resto del módulo de Picking (las columnas `date` se escriben con todayISO UTC).
-    supabase.from('picker_name_changes')
-      .select('id, picker_key, old_name, new_name, changed_by_name, changed_at')
-      .gte('changed_at', `${date}T00:00:00.000Z`)
-      .lte('changed_at', `${date}T23:59:59.999Z`)
-      .order('changed_at', { ascending: false }),
-  ]);
-
-  const palletSlots = ((pallets.data ?? []) as PalletSlot[])
-    .filter(s => !String(s.state_key ?? '').endsWith('__bodega') && s.picker_label !== 'Bodega');
-
-  return {
-    printRecords: (prints.data ?? []) as PrintRecord[],
-    eventos:      (evts.data ?? []) as PickingEvento[],
-    palletSlots,
-    nameChanges:  (names.data ?? []) as PickerNameChange[],
-  };
-}
+const SIN_SUPERVISORES: Record<string, SupervisorPresence> = {};
 
 interface ActivityTabProps {
   /** Datos en vivo de hoy (los que ya carga PickingScreen). */
   live:  ActivityData & { supervisors: Record<string, SupervisorPresence> };
   /** Fecha de hoy (YYYY-MM-DD, espacio UTC como el resto de Picking). */
   today: string;
+  /** Escritorio: la tabla del rediseño (VistaActividad). Teléfono: las tarjetas por supervisor. */
+  escritorio?: boolean;
+  nombreTienda?: (cod: string) => string;
 }
 
-export function ActivityTab({ live, today }: ActivityTabProps) {
+export function ActivityTab({ live, today, escritorio = false, nombreTienda = c => c }: ActivityTabProps) {
   const [selectedDate, setSelectedDate] = useState(today);
   const [histo, setHisto] = useState<ActivityData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -494,11 +456,13 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
     setUserFilters(new Set()); setStoreFilter(null); setPickerFilter(null); setTypeFilter(new Set());
   }, [selectedDate]);
 
-  const printRecords = isToday ? live.printRecords : (histo?.printRecords ?? []);
-  const nameChanges  = isToday ? live.nameChanges  : (histo?.nameChanges  ?? []);
-  const palletSlots  = isToday ? live.palletSlots  : (histo?.palletSlots  ?? []);
-  const eventos      = isToday ? live.eventos      : (histo?.eventos      ?? []);
-  const supervisors  = isToday ? live.supervisors  : {};
+  // Un solo objeto con los datos del día que se mira, para que los cálculos de abajo no se rehagan
+  // en cada render (antes cada lista salía de un condicional suelto).
+  const datosVista = useMemo(() => isToday
+    ? { printRecords: live.printRecords, nameChanges: live.nameChanges, palletSlots: live.palletSlots, eventos: live.eventos, supervisors: live.supervisors }
+    : { printRecords: histo?.printRecords ?? [], nameChanges: histo?.nameChanges ?? [], palletSlots: histo?.palletSlots ?? [], eventos: histo?.eventos ?? [], supervisors: SIN_SUPERVISORES },
+  [isToday, live.printRecords, live.nameChanges, live.palletSlots, live.eventos, live.supervisors, histo]);
+  const { printRecords, nameChanges, palletSlots, eventos, supervisors } = datosVista;
 
   const resumen = useMemo(() => ({
     impresiones: printRecords.length,
@@ -548,6 +512,13 @@ export function ActivityTab({ live, today }: ActivityTabProps) {
     if (next.has(u)) next.delete(u); else next.add(u);
     return next;
   });
+
+  if (escritorio) {
+    return (
+      <VistaActividad datos={datosVista}
+        dia={selectedDate} hoy={today} onDia={setSelectedDate} cargando={loading} nombreTienda={nombreTienda} />
+    );
+  }
 
   return (
     <div className="flex flex-col h-full min-h-0">

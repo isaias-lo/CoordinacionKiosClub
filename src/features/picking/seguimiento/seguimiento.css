@@ -1,0 +1,45 @@
+/* Seguimiento: Actividad, Historial y Estadísticas en escritorio.
+   Valores copiados de /mnt/project-files/disenos/picking/Actividad.dc.html, Historial.dc.html y
+   Estadisticas.dc.html. Reusa .pk-head, .pk-kpis, .pk-card y .pk-tabla de seco.css. */
+
+.pk-main.pk-seguimiento .pk-head{padding:14px 22px 14px}
+.pk-main.pk-seguimiento .pk-content{padding:16px 22px}
+.pk-main.pk-seguimiento .pk-tabla th:first-child,.pk-main.pk-seguimiento .pk-tabla td:first-child{padding-left:12px}
+.pk-main.pk-seguimiento .pk-tabla th{padding:9px 12px;white-space:nowrap}
+.pk-main.pk-seguimiento .pk-tabla td{padding:10px 12px}
+.pk-main.pk-seguimiento .pk-tabla tr.tot td{white-space:nowrap}
+.pk-main.pk-seguimiento .pk-tabla th.r,.pk-main.pk-seguimiento .pk-tabla td.r{text-align:right}
+.pk-main.pk-seguimiento .pk-tabla th.c,.pk-main.pk-seguimiento .pk-tabla td.c{text-align:center}
+.pk-tabla td.pk-n{font-family:'IBM Plex Mono',monospace;text-align:right}
+
+/* Desplegable con forma de campo («Tienda: todas ▾») */
+.pk-select{position:relative;border:1px solid #D7DBE3;border-radius:8px;padding:8px 10px;font-size:13px;background:#FFFFFF;color:#2B303B;display:flex;align-items:center;gap:6px;width:200px}
+.pk-select:focus-within{border-color:#3B5BDB}
+.pk-select .k{color:#6B7280;white-space:nowrap}
+.pk-select .v{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk-select select{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;font:inherit}
+.pk-seg input[type=date]{border:0;background:#FFFFFF;border-radius:6px;font:inherit;font-size:13px;font-weight:600;color:#14161B;padding:4px 8px;box-shadow:0 1px 2px rgba(16,24,40,.12)}
+
+/* Título de tarjeta (Impresiones, Resumen por tienda…) */
+.pk-card .pk-card-t{padding:12px 14px;border-bottom:1px solid #E4E7EC;font-size:15px;font-weight:700}
+
+/* Historial y Estadísticas: tabla principal y columna fija al lado */
+.pk-dos{display:grid;gap:16px;align-items:start}
+.pk-dos.hist{grid-template-columns:minmax(0,1fr) 340px}
+.pk-dos.stats{grid-template-columns:420px minmax(0,1fr)}
+@media (max-width:1279px){.pk-dos.hist,.pk-dos.stats{grid-template-columns:minmax(0,1fr)}}
+.pk-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+
+/* Barras de unidades por picker */
+.pk-barras{padding:14px;display:flex;flex-direction:column;gap:12px}
+.pk-barra{display:grid;grid-template-columns:110px minmax(0,1fr) 52px;gap:10px;align-items:center;font-size:13px}
+.pk-barra .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk-barra .bg{height:14px;border-radius:4px;background:#EEF0F4;overflow:hidden}
+.pk-barra .bg i{display:block;height:100%;background:#3B5BDB;border-radius:4px}
+.pk-barra .n{font-family:'IBM Plex Mono',monospace;text-align:right}
+
+/* Encabezado de columna que ordena */
+.pk-orden{border:0;background:transparent;font:inherit;color:inherit;letter-spacing:inherit;padding:0;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.pk-orden .f{color:#3B5BDB}
+
+.pk-mas{display:flex;justify-content:center}

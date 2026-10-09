@@ -8,6 +8,7 @@ import { fmtDuration, fmtSecs, isAllowedPicker, buildPickerKeyList } from '../pi
 import { escapeHtml } from '@/lib/escapeHtml';
 import { InlineConfirm } from './InlineConfirm';
 import { avisoOdoo, motivoOdoo } from '../avisoOdoo';
+import { VistaEstadisticas } from '../seguimiento/VistaEstadisticas';
 
 type SortKey = keyof PickerStatRow;
 
@@ -16,6 +17,8 @@ interface Props {
   /** Odoo apagado a propósito por el administrador (distinto de nunca configurado) — M-07. */
   odooDesactivado?: boolean;
   canonicalNames: Record<string, string>;
+  /** Escritorio: el rediseño (VistaEstadisticas). Teléfono: la tabla de siempre. */
+  escritorio?: boolean;
 }
 
 // Columnas de la tabla — en orden exacto pedido por el negocio.
@@ -63,7 +66,7 @@ const COLS: {
   },
 ];
 
-export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames }: Props) {
+export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames, escritorio = false }: Props) {
   const [cache, setCache] = useState<StatsCache | null>(() => {
     if (typeof window === 'undefined') return null;
     try { return JSON.parse(localStorage.getItem(STATS_CACHE_KEY) ?? 'null') as StatsCache | null; }
@@ -205,6 +208,21 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
   }
 
   // ─── Render ────────────────────────────────────────────────────────────────
+
+  if (escritorio) {
+    return (
+      <VistaEstadisticas rows={sorted} canonicalNames={canonicalNames} desde={dateFrom} hasta={dateTo}
+        onPeriodo={(desde, hasta) => {
+          // Lo mismo que «Aplicar» con fechas a mano: el período nuevo reemplaza al guardado.
+          setPendingFrom(desde); setPendingTo(hasta); setDateFrom(desde); setDateTo(hasta);
+          setCache(null); localStorage.removeItem(STATS_CACHE_KEY);
+          void loadStats(desde, hasta);
+        }}
+        onActualizar={() => void loadStats()} onImprimir={exportStats}
+        cargando={loading} hayDatos={!!cache} actualizado={cachedAt} error={error}
+        sinOdoo={hasOdoo ? null : avisoOdoo(motivoOdoo(odooDesactivado), 'no se pueden cargar las estadísticas')} />
+    );
+  }
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
