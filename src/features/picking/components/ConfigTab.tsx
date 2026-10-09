@@ -5,6 +5,7 @@ import { RotateCcw, Plus, X, Check, AlertTriangle } from 'lucide-react';
 import { LabelConfig, DEFAULT_LABEL_CONFIG, CFG_SLIDER_CSS, BarcodeCard, PropRow } from '@/features/despacho/shared/BarcodeCard';
 import { buildPickerKeyList, isCustomPickerKey } from '../picking-utils';
 import { InlineConfirm } from './InlineConfirm';
+import { VistaConfiguracion } from '../ajustes/VistaConfiguracion';
 
 // ─── PickerNameRow ────────────────────────────────────────────────────────────
 
@@ -91,9 +92,11 @@ interface Props {
   colsPerRow:            number;
   onColsPerRowChange:    (n: number) => void;
   currentUserName:       string;
+  /** Escritorio: el rediseño en pestañas (VistaConfiguracion). Teléfono: la página de siempre. */
+  escritorio?:           boolean;
 }
 
-export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonicalNamesChange, colsPerRow, onColsPerRowChange, currentUserName }: Props) {
+export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonicalNamesChange, colsPerRow, onColsPerRowChange, currentUserName, escritorio = false }: Props) {
   const previewScale = 0.50;
   // Altura base subida de 600→780: con la fila de Batch/Hora término y el código de tienda
   // más grande, el contenido real de la etiqueta ya no cabía en 600px y se recortaba por abajo.
@@ -162,6 +165,20 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
     delete next[key];
     onCanonicalNamesChange(next, key, '', currentUserName); // display_name '' → borra la fila en Supabase
   };
+
+  if (escritorio) {
+    return (
+      <VistaConfiguracion labelConfig={labelConfig} onLabelConfigChange={onLabelConfigChange}
+        pickerKeys={pickerKeys} canonicalNames={canonicalNames} esAgregado={isCustomPickerKey}
+        onGuardarNombre={handleNameSave} onQuitarPicker={handleRemovePicker}
+        onAgregarPicker={key => {
+          if (pickerKeys.some(k => k.toLowerCase() === key.toLowerCase())) return `Ya existe un picker o pistola con el nombre «${key}».`;
+          onCanonicalNamesChange({ ...canonicalNames, [key]: key }, key, key, currentUserName);
+          return null;
+        }}
+        colsPerRow={colsPerRow} onColsPerRowChange={onColsPerRowChange} />
+    );
+  }
 
   return (
     <>
