@@ -200,7 +200,13 @@ async function calendarioDelDia(
   const sb = supabaseServer();
   const [cal, ade] = await Promise.all([
     sb.from('calendario_central').select('data').eq('id', 'current').maybeSingle(),
-    sb.from('tiendas_adelanto').select('store_cod').eq('fecha_despacho', fechaISO),
+    // Por CUALQUIERA de las dos fechas. La fila del cruce es la del ARMADO —el día en que Odoo
+    // despachó— y `fecha` es «el día en que entra al flujo», que es ese. Pero una tienda adelantada
+    // puede tener `fecha_despacho` distinto, y dejarla afuera la marcaría «No» siendo que alguien
+    // la agregó a propósito. Pedir las dos no puede marcar de más: solo marca «Sí» a tiendas que
+    // alguien escribió para ese día.
+    sb.from('tiendas_adelanto').select('store_cod')
+      .or(`fecha.eq.${fechaISO},fecha_despacho.eq.${fechaISO}`),
   ]);
   if (cal.error) console.error('[cruce] calendario:', cal.error.message);
   if (ade.error) console.error('[cruce] adelantos:', ade.error.message);

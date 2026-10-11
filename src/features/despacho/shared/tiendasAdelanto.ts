@@ -76,6 +76,45 @@ export async function addTiendaAdelanto(input: {
   }
 }
 
+/** Lo que escribe Bodega cuando alguien agrega una tienda al día desde la lista. */
+export const TIPO_AGREGADA_EN_BODEGA = 'bodega';
+
+/**
+ * Agrega una tienda al día DE VERDAD: en la base, no solo en este dispositivo.
+ *
+ * ── POR QUÉ ───────────────────────────────────────────────────────────────────────────────────
+ *
+ * «Agregar tienda» en Bodega escribía SOLO en `localStorage` (`calendarExtra_<fecha>`). O sea que
+ * la tienda aparecía nada más en el navegador de quien la agregó: otro equipo no la veía, el
+ * servidor tampoco, y al limpiar el navegador se perdía. Picking, en cambio, ya guardaba sus
+ * adelantos en `tiendas_adelanto` — y Bodega los LEÍA. La mitad que faltaba era escribir.
+ *
+ * Se vio con 30PHU el 06/10/2026: salió marcada «No estaba en el calendario» en CRUCE PESOS
+ * cuando en realidad alguien la había agregado a mano ese día. La marca no mentía sobre el
+ * calendario; mentía sobre el hecho, porque el hecho no estaba escrito en ninguna parte.
+ *
+ * Se usa el MISMO `tiendas_adelanto` que Picking —que Bodega ya lee— con `tipo` distinto, para
+ * poder separar después «se adelantó» de «la agregaron en Bodega» sin inventar otra tabla.
+ *
+ * El `localStorage` se conserva: la lista tiene que responder al instante y seguir funcionando sin
+ * señal. Lo que cambia es que ahora ADEMÁS queda escrito donde todos lo ven.
+ */
+export async function agregarTiendaAlDia(input: {
+  cod: string; fecha: string; zona: ZonaAdelanto; creadoPor?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const r = await addTiendaAdelanto({
+    fecha: input.fecha,
+    store_cod: input.cod,
+    zona: input.zona,
+    tipo: TIPO_AGREGADA_EN_BODEGA,
+    // Bodega arma hoy lo que sale hoy o mañana; el día que importa para el cruce es el del
+    // ARMADO, que es `fecha`. Se guarda igual para no perder la intención.
+    fecha_despacho: input.fecha,
+    creado_por: input.creadoPor,
+  });
+  return { ok: r.ok, error: r.error };
+}
+
 export async function deleteTiendaAdelanto(id: number): Promise<boolean> {
   try {
     const res = await fetch(`/api/tiendas-adelanto?id=${id}`, { method: 'DELETE' });

@@ -11,7 +11,7 @@ import { avisoSendu } from '../data/senduCompletitud';
 import { ZONAS_DEFAULT, type ConfigZonas } from '../../rutas/utils/zonasTransporte';
 import { formatCod, matchCodArchivo } from '../../rutas/utils/helpers';
 import { getTiendasDelDia, subscribeToCalendarChanges } from '../../utils/useCalendario';
-import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
+import { getTiendasAdelantoHoy, agregarTiendaAlDia, zonaForStore } from '../../shared/tiendasAdelanto';
 import { tipoBadge } from '../../santiago/tipoTienda';
 import { useOdooProgress } from '../../shared/useOdooProgress';
 import { SectionCount } from '../../shared/SectionCount';
@@ -1049,7 +1049,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   /* Calendar add/remove */
   const addToToday = (name: string) => {
     const t = TIENDAS[name]; if (!t) return;
+    // El `localStorage` se conserva: la lista responde al instante y sigue andando sin señal.
     const next = [...extraCods, t.cod]; setExtraCods(next); saveExtraCods(next);
+    // Y ADEMAS queda escrito donde todos lo ven. Ver `agregarTiendaAlDia`.
+    void agregarTiendaAlDia({ cod: t.cod, fecha: fechaChile(), zona: zonaForStore(t.cod), creadoPor: profile?.full_name ?? undefined })
+      .then(r => { if (!r.ok) showToast(`${t.name} se agrego solo en este equipo: ${r.error ?? 'sin conexion'}`, '#D97706'); });
     showToast(`✓ ${t.name} agregada a hoy`, '#16A34A');
   };
   const removeFromToday = (name: string) => {
