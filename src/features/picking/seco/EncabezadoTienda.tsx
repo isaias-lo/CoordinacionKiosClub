@@ -23,7 +23,7 @@ interface Props {
   onActualizar: () => void;
   actualizando: boolean;
   actualizadoA?: string | null;
-  imprimir: { n: number; armado: boolean; onClick: () => void } | null;
+  imprimir: { n: number; todaLaTienda?: boolean; armado: boolean; onClick: () => void } | null;
   kpis: Kpi[];
   /** Pestañas de sección (Seco). Sin ellas queda un espacio, como en el diseño de Congelados. */
   secciones?: TabSeccion[];
@@ -60,8 +60,11 @@ export function EncabezadoTienda(p: Props) {
         </button>
         {p.imprimir && (
           // Dos toques: el primero arma, el segundo imprime (igual que antes en la tienda).
-          <button type="button" className={`pk-btn ${p.imprimir.armado ? 'armado' : 'pri'}`} onClick={p.imprimir.onClick}>
-            {p.imprimir.armado ? '¿Confirmar impresión?' : `Imprimir ${p.imprimir.n} etiqueta${p.imprimir.n !== 1 ? 's' : ''}`}
+          <button type="button" className={`pk-btn ${p.imprimir.armado ? 'armado' : 'pri'}`} onClick={p.imprimir.onClick}
+            title={p.imprimir.todaLaTienda ? 'Imprime las etiquetas de todas las secciones de la tienda' : undefined}>
+            {p.imprimir.armado ? '¿Confirmar impresión?'
+              : p.imprimir.todaLaTienda ? `Imprimir toda la tienda · ${p.imprimir.n}`
+              : `Imprimir ${p.imprimir.n} etiqueta${p.imprimir.n !== 1 ? 's' : ''}`}
           </button>
         )}
         </span>

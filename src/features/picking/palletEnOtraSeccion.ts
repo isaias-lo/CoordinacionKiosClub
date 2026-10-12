@@ -57,6 +57,19 @@ export interface PalletAjeno {
   seccion: Seccion | null;
 }
 
+// «mixto» no nombra sus categorías, así que `categoriasDeContenido` no lo lee. Pero no es ambiguo:
+// `categoriesToContenido` (picking-utils.ts) lo escribe solo para Comida + Hogar. Sin esto, el caso
+// más común —un encargado de Comida y Hogar que cuenta en «Todas»— salía en la pestaña Comida como
+// «Falta contar», sin aviso (12 oct 2026). «completo» sigue sin adivinarse (ver los tests).
+// Solo para el aviso: la etiqueta no cambia.
+const CONTENIDO_SIN_NOMBRE: Record<string, string[]> = {
+  mixto: ['Comida', 'Hogar'],
+};
+
+function categoriasDelPallet(contenido: string): string[] {
+  return CONTENIDO_SIN_NOMBRE[String(contenido ?? '').trim().toLowerCase()] ?? categoriasDeContenido(contenido);
+}
+
 /**
  * Los pallets del grupo que llevan carga de `seccionActiva` pero NO se cuentan en ella.
  *
@@ -74,7 +87,7 @@ export function palletsDeOtraSeccion(
   for (const s of slots) {
     const sec = seccionDeSlot(s);
     if (sec === seccionActiva) continue;
-    if (!categoriasDeContenido(s.contenido).includes(categoria)) continue;
+    if (!categoriasDelPallet(s.contenido).includes(categoria)) continue;
     out.push({ slotId: s.id, seccion: sec });
   }
   return out;

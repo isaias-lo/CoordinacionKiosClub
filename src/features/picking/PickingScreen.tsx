@@ -27,6 +27,12 @@ const NOMBRE_UNIDAD: Record<string, string> = {
   'CH:negra': 'Chocolate · Caja Negra', 'CH:carton': 'Chocolate · Caja Cartón',
   CC: 'Caja Cartón', CN: 'Caja Negra',
 };
+/** Lo mismo, corto, para los botones de «Nace con»: la clave cruda (CH:negra) no se entiende. */
+const NOMBRE_CORTO_UNIDAD: Record<string, string> = {
+  P: 'Pallet', C: 'Contenedor', B: 'Bulto',
+  'CH:negra': 'Choc. negra', 'CH:carton': 'Choc. cartón',
+  CC: 'Caja cartón', CN: 'Caja negra',
+};
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
@@ -76,7 +82,7 @@ import { VistaCalendario }    from './ajustes/VistaCalendario';
 import type { FilaSeco }      from './seco/TablaEncargados';
 import { seccionesDeFila, unidadesDeFila, notaUnidades, totalesPorTipo, sinImprimir, formatoKg, COLOR_SECCION } from './seco/filaEncargado';
 import { AgregarAdelantoDialog } from './components/AgregarAdelantoDialog';
-import { enqueuePickingItem, flushPickingQueue, migrarColaVieja, contarPendientesPicking } from './picking-offline-queue';
+import { enqueuePickingItem, flushPickingQueue, migrarColaVieja, contarPendientesPicking, altasEnCola, sacarAltaDeLaCola } from './picking-offline-queue';
 import type { MedidasPallet } from '@/features/despacho/shared/medidasPallet';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import {
@@ -175,12 +181,20 @@ export function PickingScreen() {
   const [ayudaAbierta, setAyudaAbierta] = useState(false);
 
   // Online/offline detection + flush de cola offline al reconectar
-  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  // Nace en línea y se corrige al montar. Node 21+ también tiene `navigator` (sin `onLine`), así
+  // que leerlo acá hacía que el servidor pintara «Sin conexión» y la hidratación fallara.
+  const [isOnline, setIsOnline] = useState(true);
   // Para los callbacks memorizados: leer `isOnline` del closure dejaba el valor del primer render.
   const isOnlineRef = useRef(isOnline);
   isOnlineRef.current = isOnline;
 
+  // Cada vuelta de la cola avisa acá, para poner al día lo encolado en pantalla (ver más abajo).
+  const [vueltasCola, setVueltasCola] = useState(0);
+  const vaciando = useRef(false);
   const vaciarCola = useCallback(() => {
+    // Una vuelta a la vez: el reintento de abajo y el evento `online` pueden coincidir.
+    if (vaciando.current) return;
+    vaciando.current = true;
     void flushPickingQueue(
       pickingFetch,
       (count) => {
@@ -192,7 +206,7 @@ export function PickingScreen() {
       (count) => {
         showToast(`⚠ ${count} acción${count !== 1 ? 'es' : ''} rechazada${count !== 1 ? 's' : ''} por el servidor — hay que volver a registrarla${count !== 1 ? 's' : ''}`, '#DC2626');
       },
-    );
+    ).finally(() => { vaciando.current = false; setVueltasCola(n => n + 1); });
   }, [pickingFetch, showToast]);
 
   useEffect(() => {
@@ -201,6 +215,7 @@ export function PickingScreen() {
       vaciarCola();
     };
     const handleOffline = () => setIsOnline(false);
+    if (!navigator.onLine) setIsOnline(false);
     window.addEventListener('online',  handleOnline);
     window.addEventListener('offline', handleOffline);
     return () => {
@@ -215,11 +230,18 @@ export function PickingScreen() {
   const [pendientesCola, setPendientesCola] = useState(0);
   useEffect(() => {
     let vivo = true;
-    const contar = () => { void contarPendientesPicking().then(n => { if (vivo) setPendientesCola(n); }).catch(() => {}); };
+    const contar = () => { void contarPendientesPicking().then(n => {
+      if (!vivo) return;
+      setPendientesCola(n);
+      // El evento `online` llega a veces antes que la red de verdad, y ese único intento fallaba:
+      // lo encolado se quedaba esperando hasta volver a abrir la pantalla. Con señal y algo
+      // pendiente, se vuelve a intentar en cada conteo.
+      if (n > 0 && isOnline && navigator.onLine) vaciarCola();
+    }).catch(() => {}); };
     contar();
     const id = setInterval(contar, isOnline ? 15000 : 3000);
     return () => { vivo = false; clearInterval(id); };
-  }, [isOnline]);
+  }, [isOnline, vaciarCola]);
 
   // Al abrir: traer lo que haya quedado en la cola vieja de localStorage y vaciar la cola.
   //
@@ -301,6 +323,10 @@ export function PickingScreen() {
   // Altas en viaje que alguien ya quitó con el «−»: al volver, se borra la unidad real en vez de
   // mostrarla. Ver `quitarUnidad.ts`.
   const cancelarAltas = useRef<Set<number>>(new Set());
+  // Unidades agregadas sin señal: se quedan en pantalla (id provisorio → clientOpId de la cola)
+  // hasta que la cola las mande. Antes desaparecían al instante y el contador volvía atrás, así
+  // que lo natural era tocar «+» de nuevo y terminar con dos.
+  const encoladas = useRef<Map<number, string>>(new Map());
 
   // Derived: count per (state_key, tipo) — feeds the 3 independent counters
   const palletsByTipoAndStateKey = useMemo(() => {
@@ -643,10 +669,27 @@ export function PickingScreen() {
       if (data) {
         // Excluir IDs creados desde Bodega (origen "<cod>__bodega") — solo viven en Bodega/Enrutador/Seguimiento
         const slots = (data as PalletSlot[]).filter(s => !String(s.state_key ?? '').endsWith('__bodega') && s.picker_label !== 'Bodega');
-        setPalletSlots(slots);
+        setPalletSlots(prev => [...slots, ...prev.filter(s => encoladas.current.has(s.id))]);
       }
     } catch { /* silent */ }
   }, []);
+
+  // Después de cada vuelta de la cola: lo que ya salió deja de ser provisorio y se recarga lo real.
+  useEffect(() => {
+    if (vueltasCola === 0) return;
+    let vivo = true;
+    void (async () => {
+      const siguen = await altasEnCola().catch(() => null);
+      if (!vivo || !siguen) return;
+      void contarPendientesPicking().then(n => { if (vivo) setPendientesCola(n); }).catch(() => {});
+      const salieron = new Set<number>();
+      for (const [id, op] of encoladas.current) if (!siguen.has(op)) { encoladas.current.delete(id); salieron.add(id); }
+      if (salieron.size === 0) return;
+      setPalletSlots(prev => prev.filter(s => !salieron.has(s.id)));
+      void loadPalletSlots();
+    })();
+    return () => { vivo = false; };
+  }, [vueltasCola, loadPalletSlots]);
 
   useEffect(() => { void loadPalletSlots(); }, [loadPalletSlots]);
   // Polling fallback: si algún evento de INSERT fue perdido por el WebSocket
@@ -738,6 +781,13 @@ export function PickingScreen() {
       ...(medidas ?? {}),
     };
     setPalletSlots(prev => [...prev, tempSlot]);
+    // Sin señal (o con el servidor fallando) la unidad queda en pantalla como provisoria y viaja
+    // por la cola. Las dos salidas antes se olvidaban de algo: una no llevaba el peso y ninguna la
+    // caja del chocolate.
+    const encolarAlta = () => {
+      encoladas.current.set(tempId, clientOpId);
+      void enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, subtipo, contenido, section, refs, date, clientOpId, actorName, medidas });
+    };
     try {
       const res = await pickingFetch('/api/picking-pallets', {
         method: 'POST',
@@ -746,11 +796,10 @@ export function PickingScreen() {
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
         console.error('[picking] addPalletSlot error', res.status, err.error ?? '');
-        setPalletSlots(prev => prev.filter(s => s.id !== tempId));
         // Ya la habían quitado: no hay nada que reintentar.
-        if (cancelarAltas.current.delete(tempId)) return;
+        if (cancelarAltas.current.delete(tempId)) { setPalletSlots(prev => prev.filter(s => s.id !== tempId)); return; }
         showToast('⚠ No se pudo agregar el pallet — se reintentará al reconectar', '#D97706');
-        void enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, section, refs, date, clientOpId, actorName, medidas });
+        encolarAlta();
         return;
       }
       const json = await res.json() as { data?: PalletSlot };
@@ -801,10 +850,9 @@ export function PickingScreen() {
       }
     } catch (e) {
       console.error('[picking] addPalletSlot network error', e);
-      setPalletSlots(prev => prev.filter(s => s.id !== tempId));
-      if (cancelarAltas.current.delete(tempId)) return;
+      if (cancelarAltas.current.delete(tempId)) { setPalletSlots(prev => prev.filter(s => s.id !== tempId)); return; }
       showToast('⚠ Sin conexión — el pallet se agregará al reconectar', '#D97706');
-      void enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, section, refs, date, clientOpId, actorName });
+      encolarAlta();
     }
   }, [pickingFetch, showToast, loadEventos]);
 
@@ -855,6 +903,18 @@ export function PickingScreen() {
         && !pendingDeleteIds.current.has(s.id) && !cancelarAltas.current.has(s.id));
     const quitar = unidadAQuitar(candidatas);
     if (quitar.tipo === 'nada') return;
+    const enCola = quitar.tipo === 'cancelar-alta' ? encoladas.current.get(quitar.slot.id) : undefined;
+    if (enCola !== undefined) {
+      // Agregada sin señal y todavía sin enviar: quitarla es sacarla de la cola. Funciona sin red.
+      const tempId = quitar.slot.id;
+      encoladas.current.delete(tempId);
+      setPalletSlots(prev => prev.filter(s => s.id !== tempId));
+      const sacada = await sacarAltaDeLaCola(enCola).catch(() => false);
+      // Ya había salido: la unidad es real y la trae la recarga. Se quita como cualquier otra.
+      if (!sacada) { await loadPalletSlots(); showToast('Esa unidad ya se había enviado — vuelve a quitarla', '#D97706'); }
+      else void contarPendientesPicking().then(setPendientesCola).catch(() => {});
+      return;
+    }
     if (quitar.tipo === 'cancelar-alta') {
       // Todavía viajando: se cancela acá y se borra al volver (ver addPalletSlot).
       cancelarAltas.current.add(quitar.slot.id);
@@ -878,7 +938,7 @@ export function PickingScreen() {
     } finally {
       pendingDeleteIds.current.delete(slot.id);
     }
-  }, [loadEventos, pickingFetch, showToast]);
+  }, [loadEventos, loadPalletSlots, pickingFetch, showToast]);
 
   // sectionFilter y labelConfig persistidos automáticamente por useLocalStorage
 
@@ -1412,15 +1472,17 @@ export function PickingScreen() {
     setDoPrint(true);
   }, [slotsByStateKey, showToast, recordPrints, assignCanonicalIds, sectionFilter, palletSlots]);
 
-  const printStoreLabels = useCallback((cod: string) => {
+  const printStoreLabels = useCallback(async (cod: string) => {
     setSlotsCopia(slotsYaImpresos(palletSlots));
     setSelectionPrint(null);
     setPrintOnlyStateKey(null);
     setPrintOnlySection(null);
     setPrintOnlyStore(cod);
     const groups = groupedByStore[cod] ?? [];
+    // Igual que al imprimir un encargado: el código va a la base ANTES de imprimir. Sin el await,
+    // la impresión de la tienda corría contra el guardado del código.
+    await assignCanonicalIds(groups);
     pendingPrintRef.current = recordPrints(groups);
-    void assignCanonicalIds(groups);
     setDoPrint(true);
   }, [groupedByStore, recordPrints, assignCanonicalIds, palletSlots]);
 
@@ -1574,7 +1636,7 @@ export function PickingScreen() {
 
   // Formulario «Encargado manual» de una tienda (lo abre el botón del encabezado de la tienda).
   const renderFormManual = (cod: string) => addingManualCod !== cod ? null : (
-      <div className="px-3 py-2.5 flex items-center gap-2 print:hidden" style={{ borderBottom: '1px solid var(--color-border)', background: '#fff' }}>
+      <div className="px-3 py-2.5 flex flex-wrap items-center gap-2 print:hidden" style={{ borderBottom: '1px solid var(--color-border)', background: '#fff' }}>
         <input
           type="text"
           autoFocus
@@ -1601,7 +1663,8 @@ export function PickingScreen() {
             className="text-[13px] px-2 py-1.5 rounded border cursor-pointer"
             style={{ borderColor: 'var(--color-border)', color: '#374151', background: '#fff' }}>
             <option value="all">Todas</option>
-            <option value="aseo-comida">Aseo y Comida</option>
+            <option value="comida">Comida</option>
+            <option value="aseo">Aseo</option>
             <option value="hogar">Hogar</option>
             <option value="chocolates">Chocolates</option>
           </select>
@@ -1620,7 +1683,7 @@ export function PickingScreen() {
         )}
         {/* Con qué unidad nace. Viene preseleccionada según la sección (Congelados →
             Caja Cartón, Chocolates → CH, el resto → P) y se puede cambiar. */}
-        <div className="flex items-center gap-1" role="radiogroup" aria-label="Primera unidad del encargado">
+        <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Primera unidad del encargado">
           <span className="text-[11px] text-slate-400 mr-0.5">Nace con</span>
           {tiposDeUnidad(manualSeccion === 'congelados', manualSeccion).map(t => {
             const nombre = NOMBRE_UNIDAD[t] ?? t;
@@ -1634,7 +1697,7 @@ export function PickingScreen() {
                   color:       activo ? '#fff' : '#64748B',
                   borderColor: activo ? 'var(--color-info)' : 'var(--color-border)',
                 }}>
-                {t}
+                {NOMBRE_CORTO_UNIDAD[t] ?? t}
               </button>
             );
           })}
@@ -1661,7 +1724,7 @@ export function PickingScreen() {
   // Imprimir las etiquetas de una tienda: el primer toque arma, el segundo imprime.
   const tocarImprimirTienda = (cod: string) => {
     if (armedPrintTimerRef.current) clearTimeout(armedPrintTimerRef.current);
-    if (armedPrintCod === cod) { setArmedPrintCod(null); printStoreLabels(cod); return; }
+    if (armedPrintCod === cod) { setArmedPrintCod(null); void printStoreLabels(cod); return; }
     setArmedPrintCod(cod);
     armedPrintTimerRef.current = setTimeout(() => setArmedPrintCod(null), 2500);
   };
@@ -1735,7 +1798,9 @@ export function PickingScreen() {
             onActualizar: () => void fetchOpsForStore(cod),
             actualizando: loadingCods.includes(cod),
             actualizadoA: hora,
-            imprimir: storeLabels.length > 0 ? { n: storeLabels.length, armado: armedPrintCod === cod, onClick: () => tocarImprimirTienda(cod) } : null,
+            // En una pestaña de sección, el botón igual imprime TODA la tienda: tiene que decirlo, o
+            // «Imprimir 4» al lado de una tabla en 0 parece un error.
+            imprimir: storeLabels.length > 0 ? { n: storeLabels.length, todaLaTienda: sectionFilter !== 'all', armado: armedPrintCod === cod, onClick: () => tocarImprimirTienda(cod) } : null,
             kpis: [
               { etiqueta: 'Operaciones realizadas', valor: pickeables.filter(o => o.state === 'done').length, detalle: `de ${pickeables.length}` },
               ...(cong ? [
@@ -1869,7 +1934,10 @@ export function PickingScreen() {
       refreshingId: refreshingId,
       totalPickers: allStore.length,
       assignedNums: nums,
-      isPrinted: printedKeys.has(group.stateKey),
+      // Impreso = hay registro de impresión, O alguna etiqueta ya tiene su código (se le pone justo
+      // al imprimir). Si el registro falló —sin señal, cola offline— las etiquetas igual salieron, y
+      // el «−» tiene que pedir confirmación antes de borrar una unidad que ya lleva etiqueta pegada.
+      isPrinted: printedKeys.has(group.stateKey) || allCardSlots.some(s => !!s.canonical_id),
       colsPerRow: colsPerRow,
       onPrintSelected: (slotIds) => printSelectedLabels(group.stateKey, slotIds),
       slots: cardSlots,
@@ -2007,6 +2075,7 @@ export function PickingScreen() {
             creadoPor={profile?.full_name ?? undefined}
             onClose={() => setAdelantoDialogOpen(false)}
             onAdded={loadAdelantos}
+            yaHoy={new Set(todayStores.map(t => t.cod))}
           />
         )}
 

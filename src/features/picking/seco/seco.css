@@ -100,7 +100,7 @@
 .pk-prev{border-radius:8px;cursor:pointer;outline:2px solid transparent;outline-offset:1px;min-width:0}
 .pk-prev.sel{outline-color:#3B5BDB}
 .pk-prev:focus-visible{outline-color:#3B5BDB}
-.pk-pie-hint{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk-pie-hint{flex:1;min-width:0;line-height:1.3}
 .pk-pd-b .pk-trunc{max-width:190px}
 .pk-kg{width:96px;padding:5px 8px;min-height:0;justify-content:flex-end;font-family:'IBM Plex Mono',monospace}
 .pk-kg input{text-align:right}

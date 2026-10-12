@@ -196,8 +196,10 @@ export function TablaEncargados({ modo = 'seco', filas, nombreTienda, opsConEnca
                 {confirmar?.stateKey === f.group.stateKey && (
                   <tr className="conf">
                     <td colSpan={cong ? 8 : 9}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }} role="alertdialog" aria-label="Confirmar eliminación">
-                        <span style={{ flex: 1, color: '#5C1A12' }}>{confirmar.texto}</span>
+                      {/* Los botones van pegados al texto y no al borde derecho: la tabla es más ancha que la
+                          pantalla en un portátil, y «Eliminar» quedaba fuera de vista (12 oct 2026). */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', maxWidth: 560 }} role="alertdialog" aria-label="Confirmar eliminación">
+                        <span style={{ color: '#5C1A12' }}>{confirmar.texto}</span>
                         <button type="button" className="pk-btn" onClick={() => setConfirmar(null)}>Cancelar</button>
                         <button type="button" className="pk-btn peligro" onClick={() => {
                           const n = t.palletsByTipo[confirmar.clave] ?? 0;

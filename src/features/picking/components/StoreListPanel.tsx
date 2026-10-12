@@ -6,6 +6,7 @@ import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import type { PickingOperation, TodayStore, StoreGroupKey } from '../picking-types';
 import { getStoreGroup, GROUP_LABELS } from '../picking-utils';
 import { estadoTienda, pasaFiltro, FILTROS, type FiltroTiendas } from '../filtroTiendas';
+import { InlineConfirm } from './InlineConfirm';
 
 // Santiago arriba, como en el diseño: es el grupo con más tiendas cada día.
 const GROUP_ORDER: StoreGroupKey[] = ['santiago', 'region', 'costa'];
@@ -37,6 +38,9 @@ export const StoreListPanel = React.memo(function StoreListPanel({
   const [q, setQ] = useState('');
   const [filtro, setFiltro] = useState<FiltroTiendas>('todas');
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
+  // El tacho del adelanto está pegado a la fila de la tienda: un toque de más la sacaba de la lista
+  // sin preguntar.
+  const [adelantoAQuitar, setAdelantoAQuitar] = useState<string | null>(null);
   const filtrosRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!filtrosAbiertos) return;
@@ -173,7 +177,8 @@ export const StoreListPanel = React.memo(function StoreListPanel({
                 const ops         = opsMap[store.cod] ?? [];
                 const { estado: storeStatus, hechas: doneOps, total: totalOps } = estadoTienda(ops);
                 return (
-                  <div key={store.cod} className="flex items-stretch">
+                  <React.Fragment key={store.cod}>
+                  <div className="flex items-stretch">
                     <button type="button" onClick={() => onToggleStore(store.cod)} disabled={isLoading}
                       aria-pressed={isSelected}
                       className={`pk-sr${isSelected ? ' sel' : ''}`}>
@@ -195,7 +200,7 @@ export const StoreListPanel = React.memo(function StoreListPanel({
                       </span>
                     </button>
                     {store.adelanto && onDeleteAdelanto && (
-                      <button type="button" onClick={() => onDeleteAdelanto(store.adelanto!.id)}
+                      <button type="button" onClick={() => setAdelantoAQuitar(store.cod)}
                         aria-label={`Eliminar adelanto de ${store.cod}`} title="Eliminar adelanto"
                         className="shrink-0 flex items-center justify-center px-2.5 cursor-pointer border-none"
                         style={{ background: isSelected ? '#F3F5FD' : 'transparent' }}>
@@ -203,6 +208,17 @@ export const StoreListPanel = React.memo(function StoreListPanel({
                       </button>
                     )}
                   </div>
+                  {adelantoAQuitar === store.cod && store.adelanto && onDeleteAdelanto && (
+                    <div className="px-3 pb-2">
+                      <InlineConfirm
+                        message={`¿Quitar ${store.cod} de la lista de hoy?`}
+                        confirmLabel="Quitar"
+                        onCancel={() => setAdelantoAQuitar(null)}
+                        onConfirm={() => { setAdelantoAQuitar(null); onDeleteAdelanto(store.adelanto!.id); }}
+                      />
+                    </div>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </div>

@@ -14,6 +14,8 @@ interface Props {
   onClose: () => void;
   /** Se llama tras agregar con éxito (para refrescar la lista). */
   onAdded: () => void;
+  /** Tiendas que ya están en la lista de hoy: se pueden elegir (para cambiar su despacho), pero se avisa. */
+  yaHoy?: ReadonlySet<string>;
 }
 
 const ZONA_LABEL: Record<ZonaAdelanto, string> = {
@@ -27,7 +29,7 @@ const ZONA_LABEL: Record<ZonaAdelanto, string> = {
  * buscar la tienda, confirmar la zona (Bodega destino) y la fecha de despacho.
  * No toca el calendario de abastecimiento — solo agrega un extra para hoy.
  */
-export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded }: Props) {
+export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded, yaHoy }: Props) {
   const [q, setQ]             = useState('');
   const [sel, setSel]         = useState<{ cod: string; name: string } | null>(null);
   const [zona, setZona]       = useState<ZonaAdelanto>('rm');
@@ -145,6 +147,9 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded }: Pro
                   <button key={r.cod} style={bigBtn} onClick={() => pick(r)}>
                     <span className="font-mono font-bold text-[13px] mr-2" style={{ color: '#1E40AF' }}>{r.cod}</span>
                     <span className="text-[14px]" style={{ color: '#0F172A' }}>{r.name}</span>
+                    {yaHoy?.has(r.cod) && (
+                      <span className="text-[11px] font-semibold ml-2" style={{ color: '#B45309' }}>Ya está hoy</span>
+                    )}
                   </button>
                 ))}
                 {q.trim() && results.length === 0 && (
