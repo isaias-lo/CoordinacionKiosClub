@@ -52,6 +52,7 @@ import {
 import type { PickingEvento } from './picking-utils';
 import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, categoriasDeSlotsManual, categoriasDelGrupo, type Seccion } from './picking-secciones';
 import { palletsDeOtraSeccion, textoDelAviso, destinoDelAviso, textoDelBoton } from './palletEnOtraSeccion';
+import { unidadAQuitar } from './quitarUnidad';
 import { pideSeccion, seccionYContenidoManual, normalizarBatch } from './encargadoManual';
 import { slotsYaImpresos } from './reimpresion';
 import { etiquetasDeLaSeleccion } from './seleccionImpresion';
@@ -175,6 +176,9 @@ export function PickingScreen() {
 
   // Online/offline detection + flush de cola offline al reconectar
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  // Para los callbacks memorizados: leer `isOnline` del closure dejaba el valor del primer render.
+  const isOnlineRef = useRef(isOnline);
+  isOnlineRef.current = isOnline;
 
   const vaciarCola = useCallback(() => {
     void flushPickingQueue(
@@ -294,6 +298,9 @@ export function PickingScreen() {
   const pendingDeleteIds = useRef<Set<number>>(new Set());
   // Decreasing counter for optimistic (temp) slot IDs — negative to never collide with real DB ids
   const tempIdRef = useRef(-1);
+  // Altas en viaje que alguien ya quitó con el «−»: al volver, se borra la unidad real en vez de
+  // mostrarla. Ver `quitarUnidad.ts`.
+  const cancelarAltas = useRef<Set<number>>(new Set());
 
   // Derived: count per (state_key, tipo) — feeds the 3 independent counters
   const palletsByTipoAndStateKey = useMemo(() => {
@@ -663,6 +670,12 @@ export function PickingScreen() {
           state_key:    r.state_key as string,
           picker_label: (r.picker_label as string) ?? '',
           tipo:         (r.tipo as string) ?? 'P',
+          // Sin estos tres, cualquier evento (un peso, el código al imprimir) dejaba el slot local sin
+          // su caja (una de cartón pasaba a contarse como negra) y sin su código: el aviso de
+          // «esto ya se imprimió» no aparecía hasta la recarga completa de cada minuto.
+          subtipo:      (r.subtipo as string | null) ?? null,
+          seq:          (r.seq as number | null) ?? null,
+          canonical_id: (r.canonical_id as string | null) ?? null,
           contenido:    (r.contenido as string) ?? 'hogar',
           section:      (r.section as string | null) ?? null,
           refs:         (r.refs as string) ?? '',
@@ -734,11 +747,36 @@ export function PickingScreen() {
         const err = await res.json().catch(() => ({})) as { error?: string };
         console.error('[picking] addPalletSlot error', res.status, err.error ?? '');
         setPalletSlots(prev => prev.filter(s => s.id !== tempId));
+        // Ya la habían quitado: no hay nada que reintentar.
+        if (cancelarAltas.current.delete(tempId)) return;
         showToast('⚠ No se pudo agregar el pallet — se reintentará al reconectar', '#D97706');
         void enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, section, refs, date, clientOpId, actorName, medidas });
         return;
       }
       const json = await res.json() as { data?: PalletSlot };
+      if (json.data && cancelarAltas.current.delete(tempId)) {
+        // La quitaron mientras viajaba: se borra la real y no se muestra (ni aunque Realtime ya la
+        // haya traído).
+        const realId = json.data.id;
+        pendingDeleteIds.current.add(realId);
+        setPalletSlots(prev => prev.filter(s => s.id !== tempId && s.id !== realId));
+        try {
+          const del = await pickingFetch('/api/picking-pallets', {
+            method: 'DELETE',
+            body: JSON.stringify({ id: realId, actor_name: actorName }),
+          });
+          if (!del.ok) {
+            setPalletSlots(prev => prev.some(s => s.id === realId) ? prev : [...prev, json.data!]);
+            showToast('⚠ No se pudo quitar la unidad — revisa el contador', '#D97706');
+          } else void loadEventos();
+        } catch {
+          setPalletSlots(prev => prev.some(s => s.id === realId) ? prev : [...prev, json.data!]);
+          showToast('⚠ No se pudo quitar la unidad — revisa el contador', '#D97706');
+        } finally {
+          pendingDeleteIds.current.delete(realId);
+        }
+        return;
+      }
       if (json.data) {
         // 4-case dedup: the incremental INSERT handler may have already added the real slot
         // (realtime via WebSocket arrives faster than the HTTP response).
@@ -764,6 +802,7 @@ export function PickingScreen() {
     } catch (e) {
       console.error('[picking] addPalletSlot network error', e);
       setPalletSlots(prev => prev.filter(s => s.id !== tempId));
+      if (cancelarAltas.current.delete(tempId)) return;
       showToast('⚠ Sin conexión — el pallet se agregará al reconectar', '#D97706');
       void enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, contenido, section, refs, date, clientOpId, actorName });
     }
@@ -806,17 +845,25 @@ export function PickingScreen() {
   // section: cuando hay filtro de sección activo, elimina un slot DE ESA sección (para que el
   // "−" del stepper baje el conteo de la sección visible, no cualquier pallet del picker).
   const removePalletSlot = useCallback(async (stateKey: string, tipo: string, section: Seccion | null = null, subtipo: string | null = null) => {
-    if (!isOnline) { console.warn('[picking] offline — cannot remove pallet slot'); return; }
     // Read from ref (avoids stale closure) and skip pending deletes; filters by tipo for 3-counter accuracy
-    const slot = palletSlotsRef.current
+    const candidatas = palletSlotsRef.current
       .filter(s => s.state_key === stateKey && (s.tipo || 'P') === tipo
         && (section == null || seccionDeSlot(s) === section)
         // Con dos cajas bajo el mismo tipo CH, el "−" tiene que sacar una de LA CAJA que se está
         // descontando. Sin esto, bajar el contador de cartón podía borrar una caja negra.
         && (subtipo == null || subtipoDeCaja(s.subtipo) === subtipoDeCaja(subtipo))
-        && !pendingDeleteIds.current.has(s.id))
-      .at(-1);
-    if (!slot) return;
+        && !pendingDeleteIds.current.has(s.id) && !cancelarAltas.current.has(s.id));
+    const quitar = unidadAQuitar(candidatas);
+    if (quitar.tipo === 'nada') return;
+    if (quitar.tipo === 'cancelar-alta') {
+      // Todavía viajando: se cancela acá y se borra al volver (ver addPalletSlot).
+      cancelarAltas.current.add(quitar.slot.id);
+      setPalletSlots(prev => prev.filter(s => s.id !== quitar.slot.id));
+      return;
+    }
+    // Antes salía sin decir nada: el «−» parecía no responder.
+    if (!isOnlineRef.current) { showToast('⚠ Sin conexión: no se puede quitar ahora', '#D97706'); return; }
+    const slot = quitar.slot;
     pendingDeleteIds.current.add(slot.id);
     setPalletSlots(prev => prev.filter(s => s.id !== slot.id));
     try {
@@ -831,7 +878,7 @@ export function PickingScreen() {
     } finally {
       pendingDeleteIds.current.delete(slot.id);
     }
-  }, [loadEventos]);
+  }, [loadEventos, pickingFetch, showToast]);
 
   // sectionFilter y labelConfig persistidos automáticamente por useLocalStorage
 
