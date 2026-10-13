@@ -6,15 +6,8 @@ import type { DispatchItem } from '../../../../types';
 import { desempatarOrdenNacional } from '../../shared/numeroCard';
 import { esSinPesar, esPalletWeb } from '../../shared/sinPesar';
 import { escribirPlanilla, type ResultadoPlanilla } from '../../shared/escribirPlanilla';
+import { cargaParaPlanilla } from '../../shared/contenidoCarga';
 
-const CARGA_LABEL: Record<string, string> = {
-  comida:         'Comida',
-  hogar:          'Hogar',
-  'comida-hogar': 'Comida-Hogar',
-  aseo:           'Aseo',
-  chocolate:      'Chocolate',
-  mixto:          'Mixto',
-};
 
 const URBAN_COMMUNES = new Set([
   'Santiago', 'Providencia', 'Las Condes', 'Vitacura', 'Ñuñoa',
@@ -103,7 +96,7 @@ export function buildRows(
         'Seco',                                         // REGIMEN (producto seco, como Santiago)
         transporte,                                     // TRANSPORTE
         '',                                             // PATENTE (enrutador la completa)
-        CARGA_LABEL[item.tipo] ?? item.tipo,            // CARGA
+        cargaParaPlanilla(item.tipo, esPalletWeb(item)), // CARGA (pallet web: sin categoría)
         tienda.region,                                  // REGION
         tienda.comuna,                                  // COMUNA
         URBAN_COMMUNES.has(tienda.comuna) ? 'Urbano' : 'Extraurbano', // TIPO_COMUNA
