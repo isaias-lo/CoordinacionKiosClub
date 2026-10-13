@@ -1302,7 +1302,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     [currentTienda, pickingSlotsFull],
   );
   useEffect(() => {
-    if (!currentTienda || !currentItems) return;
+    // Sin `currentItems` igual corre: ver `reconciliarFormRows` (38SP2, 13/10/2026).
+    if (!currentTienda) return;
     const SANT_TIPO: Record<string, TipoCargamento> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate' };
     // Era una copia propia del clasificador; ahora el mismo de contenidoCarga.ts (ocho tipos).
     const mapC = contenidoSantiago;

@@ -3,7 +3,9 @@ import { slotsSinTarjeta, slotsRepresentados } from '../slotsSinTarjeta';
 
 const P  = (id: number) => ({ id, tipo: 'P',  contenido: 'hogar' });
 const B  = (id: number) => ({ id, tipo: 'B',  contenido: 'aseo-comida' });
-const CH = (id: number) => ({ id, tipo: 'CH', contenido: 'chocolates' });
+// El «+ Choc.» de Bodega: el slot lleva picker_label 'Bodega' (fn_create_bodega_slot).
+const CH = (id: number) => ({ id, tipo: 'CH', contenido: 'chocolates', picker_label: 'Bodega' });
+const CHdePicking = (id: number) => ({ id, tipo: 'CH', contenido: 'chocolates', picker_label: 'Nathaly Rubio' });
 const CC = (id: number) => ({ id, tipo: 'C',  contenido: 'congelados' });
 
 describe('slotsRepresentados', () => {
@@ -64,6 +66,12 @@ describe('qué slots entran', () => {
 
   it('el ítem de OTRO chocolate no habilita a este', () => {
     expect(slotsSinTarjeta([CH(7)], vacio, [{ pickingSlotId: 8 }])).toEqual([]);
+  });
+
+  // 38SP2, 13/10/2026: los CH de Picking no tienen ítem hasta que se pesan en Bodega. Con la regla
+  // de arriba no aparecían nunca con la tienda abierta («0/3 ch.» sin ninguna tarjeta).
+  it('un CH armado en Picking entra aunque no tenga ítem', () => {
+    expect(slotsSinTarjeta([CHdePicking(9)], vacio, []).map(s => s.id)).toEqual([9]);
   });
 });
 
