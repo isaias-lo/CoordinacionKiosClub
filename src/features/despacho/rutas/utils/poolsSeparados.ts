@@ -41,6 +41,31 @@ export function enPool(g: string | undefined, scope: PoolScope): boolean {
   return poolDeGrupo(g) === scope;
 }
 
+/**
+ * Las tiendas que se MUESTRAN en un pool. PURA.
+ *
+ * ── POR QUÉ RECIBE UN SCOPE OPCIONAL ───────────────────────────────────────────────────────────
+ *
+ * `ManualDispatch` solo dibuja el selector de pool cuando le pasan `onPool`. Y `poolScope` tenía
+ * un valor por DEFECTO —'rm-costa'—, así que una vista sin selector no mostraba todo: filtraba a
+ * RM/Costa y escondía el resto SIN QUE SE PUDIERA LLEGAR.
+ *
+ * Le pasó a la pestaña de 2ª VUELTA, que nunca recibió `pool` ni `onPool`. El 12/10/2026 quedaron
+ * dos tiendas de Regiones —39PSB y 51SER, pendientes desde el viernes 9— invisibles para siempre:
+ * en pantalla salía «2 pendientes en el otro» y no había forma de llegar al otro.
+ *
+ * Sin scope se muestra TODO. Es el lado seguro: una vista a la que se le olvide el selector
+ * enseña de más, que se ve y se corrige, en vez de esconder, que no se ve.
+ */
+export function tiendasDelPool<T extends { c: string }>(
+  tiendas: readonly T[],
+  grupoDe: (cod: string) => string | undefined,
+  scope?: PoolScope,
+): T[] {
+  if (!scope) return [...tiendas];
+  return tiendas.filter(t => enPool(grupoDe(t.c), scope));
+}
+
 /** ¿El grupo está sin definir? Se marca en pantalla para que nadie lo dé por sentado. */
 export function grupoIndefinido(g?: string): boolean {
   return !g || (g !== 'fal' && g !== 'rm' && g !== 'costa');
