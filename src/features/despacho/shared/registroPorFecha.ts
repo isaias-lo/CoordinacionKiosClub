@@ -49,7 +49,8 @@ export function marcarRegistro(
  * `true`, nunca al revés— y por el mismo motivo: dos personas trabajan el mismo día desde equipos
  * distintos, y el que todavía no registró no puede desregistrar al que sí.
  *
- * La contrapartida, a propósito: deshacer un registro es local. No se propaga a los otros equipos.
+ * Esta función sola NO sabe de reaperturas: por eso el resultado pasa después por
+ * `aplicarDecisiones`. Ver el bloque de abajo.
  */
 export function fusionarRegistros(
   local: RegistroPorFecha | undefined | null, remoto: RegistroPorFecha | undefined | null,
@@ -68,9 +69,16 @@ export function fusionarRegistros(
  * «DESPACHO SIN REGISTRAR» y se ofrecía registrar de nuevo.
  */
 export function traeRegistrosNuevos(
-  local: RegistroPorFecha | undefined | null, remoto: RegistroPorFecha | undefined | null,
+  local: RegistroPorFecha | undefined | null,
+  remoto: RegistroPorFecha | undefined | null,
+  /** Si acá se reabrió ese día, el `true` de la fila vieja no es una novedad: es lo que se deshizo. */
+  decisiones?: DecisionPorFecha | null,
 ): boolean {
-  return Object.entries(remoto ?? {}).some(([fecha, v]) => v && !(local ?? {})[fecha]);
+  return Object.entries(remoto ?? {}).some(([fecha, v]) => {
+    if (!v || (local ?? {})[fecha]) return false;
+    const d = leerDecision(decisiones?.[fecha]);
+    return !(d && !d.registrado);
+  });
 }
 
 /**
@@ -89,4 +97,86 @@ export function migrarRegistroViejo(
   const base = { ...(mapa ?? {}) };
   if (registradoViejo === true && fecha) base[fecha] = true;
   return base;
+}
+
+
+// ── REABRIR UN DÍA YA REGISTRADO ──────────────────────────────────────────────────────────────
+//
+// El 12/10/2026 el coordinador necesitaba modificar y volver a registrar RM/Costa. Apretaba
+// Reabrir, el botón pasaba a REGISTRAR y **volvía solo a Completado en un segundo**.
+//
+// No era la pantalla: era este archivo. Reabrir borra la fecha del mapa local, pero la fila de
+// `shared_session_state` seguía con `registros: {"2026-10-13": true}` —medido—, y la regla de
+// arriba dice que un `true` remoto nunca se pierde. Al primer evento de sincronización —su propio
+// eco, el otro espejo, o el catch-up al volver a la pestaña— el `true` se volvía a adoptar.
+//
+// La regla «un true nunca se pierde» es correcta y se queda: nació de un caso real en que mover la
+// fecha de despacho desregistraba el día para todos. Lo que le faltaba es la distinción que el
+// repositorio ya usa para los ítems borrados (`lapidasBorrado.ts`):
+//
+//     NO TENER un registro ≠ HABERLO DESHECHO A PROPÓSITO.
+//
+// Un equipo que todavía no registró no trae el `true` porque no lo tiene: ese no puede
+// desregistrar a nadie. Reabrir es una decisión explícita, con hora, y esa sí manda.
+//
+// Por qué con hora y no una simple lápida: después de reabrir hay que poder REGISTRAR de nuevo, y
+// ese registro tiene que ganarle a la reapertura. Con la hora de cada decisión, gana la última, en
+// cualquiera de los dos sentidos y venga del equipo que venga.
+
+/** La última decisión EXPLÍCITA sobre un día —registrarlo o reabrirlo— con la hora en que se tomó. */
+export type DecisionPorFecha = Record<string, { registrado: boolean; ts: number }>;
+
+/** Valida una decisión que llega de la red o del `localStorage`. Lo que no calza se ignora. */
+function leerDecision(d: unknown): { registrado: boolean; ts: number } | null {
+  if (!d || typeof d !== 'object') return null;
+  const { registrado, ts } = d as { registrado?: unknown; ts?: unknown };
+  if (typeof registrado !== 'boolean' || typeof ts !== 'number' || !Number.isFinite(ts)) return null;
+  return { registrado, ts };
+}
+
+/** Deja asentado que alguien registró o reabrió ese día, a esa hora. */
+export function decidir(
+  mapa: DecisionPorFecha | undefined | null, fecha: string, registrado: boolean, ahora: number,
+): DecisionPorFecha {
+  const base = { ...(mapa ?? {}) };
+  if (!fecha || !Number.isFinite(ahora)) return base;
+  base[fecha] = { registrado, ts: ahora };
+  return base;
+}
+
+/** Une las decisiones de dos equipos: por fecha, **gana la más nueva**. */
+export function fusionarDecisiones(
+  local: DecisionPorFecha | undefined | null, remoto: DecisionPorFecha | undefined | null,
+): DecisionPorFecha {
+  const out: DecisionPorFecha = {};
+  for (const [fecha, d] of Object.entries(local ?? {})) {
+    const v = leerDecision(d);
+    if (v) out[fecha] = v;
+  }
+  for (const [fecha, d] of Object.entries(remoto ?? {})) {
+    const v = leerDecision(d);
+    if (!v) continue;
+    const mio = out[fecha];
+    // Empate: se queda el local. No hay forma de desempatar y cambiar de opinión sola es peor.
+    if (!mio || v.ts > mio.ts) out[fecha] = v;
+  }
+  return out;
+}
+
+/**
+ * Aplica las decisiones sobre el mapa de registros ya fusionado. **Va al final de todo**, después
+ * de `fusionarRegistros` y de `migrarRegistroViejo`: si fuera antes, el booleano viejo del estado
+ * remoto volvería a marcar el día que se acaba de reabrir.
+ */
+export function aplicarDecisiones(
+  registros: RegistroPorFecha | undefined | null, decisiones: DecisionPorFecha | undefined | null,
+): RegistroPorFecha {
+  const out = { ...(registros ?? {}) };
+  for (const [fecha, d] of Object.entries(decisiones ?? {})) {
+    const v = leerDecision(d);
+    if (!v) continue;
+    if (v.registrado) out[fecha] = true;
+    else delete out[fecha];
+  }
+  return out;
 }

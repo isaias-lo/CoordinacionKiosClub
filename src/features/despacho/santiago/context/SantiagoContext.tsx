@@ -15,7 +15,7 @@ import { agregarSinDuplicar } from '../../shared/itemPorUnidad';
 import { stableItemKey } from '../../shared/formRowsReconcile';
 import { serializarBaseSantiago } from '../../shared/syncBase';
 import { fechaChile, fechaChileDe } from '@/lib/fechaChile';
-import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, traeRegistrosNuevos, type RegistroPorFecha } from '@/features/despacho/shared/registroPorFecha';
+import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, traeRegistrosNuevos, decidir, fusionarDecisiones, aplicarDecisiones, type RegistroPorFecha, type DecisionPorFecha } from '@/features/despacho/shared/registroPorFecha';
 import { fechaDespachoBodega } from '../../shared/fechaLocal';
 import { soltarTiendasAjenas } from '../../shared/itemsDelEspejo';
 import { isRegionesCod } from '../../regiones/data/tiendas';
@@ -37,6 +37,9 @@ type SyncableState = {
   registrado?: boolean;
   /** La fuente de verdad: qué días quedaron registrados. Ver shared/registroPorFecha. */
   registros?: RegistroPorFecha;
+  /** Las decisiones explícitas —registrar o REABRIR— con su hora. Sin esto, reabrir no duraba un
+   *  segundo: el `true` de la fila compartida se re-adoptaba. Ver shared/registroPorFecha. */
+  decisiones?: DecisionPorFecha;
   /** Lápidas compartidas: la única señal de borrado que respeta el merge. Ver shared/lapidasBorrado. */
   borrados?: string[];
 };
@@ -139,10 +142,14 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
       const fechaTrasCarga = action.payload.fechaDespacho ?? state.fechaDespacho;
       // Se ADOPTAN los registros del otro equipo (un `true` nunca se pierde) y se conserva el
       // booleano viejo que puedan traer los estados ya guardados.
-      const registrosTrasCarga = migrarRegistroViejo(
+      // Las decisiones explícitas se unen por hora —gana la más nueva— y se aplican DESPUÉS de
+      // todo lo demás: si fueran antes, el booleano viejo que migra del remoto volvería a marcar
+      // el día que se acaba de reabrir. Ver shared/registroPorFecha.
+      const decisiones = fusionarDecisiones(state.decisiones, action.payload.decisiones);
+      const registrosTrasCarga = aplicarDecisiones(migrarRegistroViejo(
         fusionarRegistros(state.registros, action.payload.registros),
         action.payload.registrado, action.payload.fechaDespacho,
-      );
+      ), decisiones);
       return {
         ...state,
         // step is intentionally not synced — each device controls its own navigation
@@ -154,6 +161,7 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
         items:         itemsPropios(action.payload.items ?? state.items),
         fechaDespacho: fechaTrasCarga,
         registros:     registrosTrasCarga,
+        decisiones,
         // `registrado` pasa a ser DERIVADO del mapa: los componentes lo siguen leyendo igual.
         registrado:    estaRegistrado(registrosTrasCarga, fechaDespachoBodega(fechaTrasCarga)),
       };
@@ -183,8 +191,15 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
       // había registrado — que es lo que el #643 creyó arreglar y no arregló.
       //
       // `fechaDespachoBodega` es la MISMA función que usan el selector y la escritura de la planilla.
-      const registros = marcarRegistro(state.registros, fechaDespachoBodega(state.fechaDespacho), action.payload);
-      return { ...state, registros, registrado: action.payload };
+      //
+      // REABRIR TAMBIÉN SE ASIENTA. Borrar la fecha del mapa no alcanzaba: la fila compartida
+      // seguía con el `true` y el merge lo re-adoptaba al primer evento (12/10/2026, el botón
+      // volvía solo a Completado). La hora sale de acá y no de la acción para no tocar los seis
+      // sitios que despachan esto; la parte decidible es pura y está testeada (`decidir`).
+      const fecha = fechaDespachoBodega(state.fechaDespacho);
+      const registros  = marcarRegistro(state.registros, fecha, action.payload);
+      const decisiones = decidir(state.decisiones, fecha, action.payload, Date.now());
+      return { ...state, registros, decisiones, registrado: action.payload };
     }
 
     default:
@@ -236,6 +251,9 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     dispatchReact({ type: '__ESTADO', estado: siguiente });
   }, []);
   const lastPushedRef   = useRef<string>('');       // [P5] BASE canónica (serializarBaseSantiago)
+  // `null` hasta la primera vuelta del efecto: así montar la pantalla con decisiones ya guardadas
+  // no cuenta como un cambio y no dispara un push inmediato de algo que nadie tocó.
+  const ultimasDecisionesRef = useRef<string | null>(null);
   const lastPushedFullRef = useRef<string>('');     // [P5] payload completo: solo para "¿hay que empujar?"
   const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPushingRef    = useRef(false); // true while the async Supabase upsert is in-flight
@@ -296,8 +314,8 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       if (remoteStr === lastPushedRef.current) {
         // Mismos ítems, pero el otro equipo puede haber REGISTRADO el día. Eso sí se adopta: ver
         // `traeRegistrosNuevos`.
-        if (traeRegistrosNuevos(stateRef.current.registros, remote.registros)) {
-          dispatch({ type: 'LOAD_STATE', payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: stateRef.current.items, registros: remote.registros } });
+        if (traeRegistrosNuevos(stateRef.current.registros, remote.registros, stateRef.current.decisiones)) {
+          dispatch({ type: 'LOAD_STATE', payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: stateRef.current.items, registros: remote.registros, decisiones: remote.decisiones } });
         }
         return; // already in sync
       }
@@ -326,7 +344,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
           tieneLapida);
         // Con los registros del remoto: en esta rama se descartaban, y un día registrado en otro
         // equipo mientras este tenía cambios sin empujar se perdía al empujar.
-        dispatch({ type: 'LOAD_STATE', payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: merged, registros: remote.registros } });
+        dispatch({ type: 'LOAD_STATE', payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: merged, registros: remote.registros, decisiones: remote.decisiones } });
       } else {
         // Lo local está limpio → se adopta el remoto, PERO lo que yo tengo y el remoto no trae se
         // conserva (ausencia no es borrado; ver mergeItems). "Limpio" es exactamente como queda
@@ -413,6 +431,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     const payload: SyncableState = {
       step: state.step, regimen: state.regimen, items: state.items,
       fechaDespacho: state.fechaDespacho, registrado: state.registrado, registros: state.registros,
+      decisiones: state.decisiones,
       borrados: lapidasComoLista(),
     };
     // [P5] El chequeo de cambios mira el payload COMPLETO; la base del merge/corta-ecos va aparte.
@@ -456,7 +475,15 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     // suele ir a Inicio justo tras Registrar → eso desmonta el provider y el cleanup del debounce
     // solo guarda en localStorage (no empuja a Supabase), así que registrado=true no llegaba a la
     // BD y PendingDraftBanner mostraba "sin registrar" al día siguiente. Empujarlo ya evita la carrera.
-    if (state.registrado) doPush();
+    // REABRIR es igual de crítico, y al revés no se notaba: `registrado` pasa a false y caía en el
+    // debounce. Quien reabre suele irse de la pantalla enseguida —el botón está en el encabezado—,
+    // el cleanup solo guarda en localStorage, y la reapertura no llegaba nunca a la BD: los otros
+    // equipos seguían con el día registrado y lo volvían a empujar.
+    const decisionesAhora = JSON.stringify(state.decisiones ?? {});
+    const cambioLaDecision = ultimasDecisionesRef.current !== null
+      && decisionesAhora !== ultimasDecisionesRef.current;
+    ultimasDecisionesRef.current = decisionesAhora;
+    if (state.registrado || cambioLaDecision) doPush();
     else debounceRef.current = setTimeout(doPush, espera);
 
     return () => {
@@ -467,7 +494,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
         try { localStorage.setItem(SANTIAGO_KEY, JSON.stringify({ ...stateRef.current, _savedAt: Date.now() })); } catch {}
       }
     };
-  }, [state.step, state.regimen, state.items, state.fechaDespacho, state.registrado, state]);
+  }, [state.step, state.regimen, state.items, state.fechaDespacho, state.registrado, state.decisiones, state]);
 
   /**
    * Empuja YA lo que estuviera pendiente. Se llama antes de navegar.
@@ -486,6 +513,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     const payload: SyncableState = {
       step: stateRef.current.step, regimen: stateRef.current.regimen, items: stateRef.current.items,
       fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado, registros: stateRef.current.registros,
+      decisiones: stateRef.current.decisiones,
       borrados: lapidasComoLista(),
       ...extra,
     };
