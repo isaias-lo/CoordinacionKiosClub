@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, abreviaturaContenido, nombreContenido, clasificarContenido, contenidoSantiago, contenidoRegiones, CONTENIDO_CHOCOLATE } from '../contenidoCarga';
+  CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, abreviaturaContenido, nombreContenido, clasificarContenido, contenidoSantiago, contenidoRegiones, CONTENIDO_CHOCOLATE,
+  TIPOS_SIMPLES, TIPOS_MEZCLA, componentesDe, esMezcla, unirTipos, cargaParaPlanilla, tipoDesdePicking } from '../contenidoCarga';
 
 describe('dimsAlCambiarContenido', () => {
   it('un PALLET de chocolate conserva sus medidas — nunca se le pisan', () => {
@@ -48,14 +49,17 @@ describe('etiquetas de contenido', () => {
   it('abrevia a tres letras para los botones', () => {
     expect(abreviaturaContenido('comida')).toBe('Com');
     expect(abreviaturaContenido('hogar')).toBe('Hog');
-    expect(abreviaturaContenido('comida-hogar')).toBe('Mix');
+    expect(abreviaturaContenido('aseo')).toBe('Ase');
+    expect(abreviaturaContenido('comida-hogar')).toBe('Com · Hog');
     expect(abreviaturaContenido('chocolate')).toBe('Cho');
   });
 
   it('el nombre completo va en el title, que es lo que se lee al dudar', () => {
     expect(nombreContenido('comida')).toBe('Comida');
     expect(nombreContenido('hogar')).toBe('Hogar');
-    expect(nombreContenido('comida-hogar')).toBe('Mixto (comida y hogar)');
+    expect(nombreContenido('comida-hogar')).toBe('Comida · Hogar');
+    expect(nombreContenido('Mixto')).toBe('Comida · Hogar');
+    expect(nombreContenido('Comida-Hogar-Aseo')).toBe('Comida · Hogar · Aseo');
     expect(nombreContenido('chocolate')).toBe('Chocolate');
   });
 });
@@ -86,16 +90,31 @@ describe('clasificarContenido', () => {
     expect(clasificarContenido('Alimentos')).toBe('comida');
   });
 
-  it('hogar incluye aseo y limpieza', () => {
-    for (const v of ['hogar', 'Aseo', 'productos de limpieza']) {
-      expect(clasificarContenido(v)).toBe('hogar');
+  // Desde el 13/10/2026 aseo es su propio tipo, como en Picking.
+  it('aseo y limpieza son aseo, ya no hogar', () => {
+    for (const v of ['Aseo', 'productos de limpieza']) {
+      expect(clasificarContenido(v)).toBe('aseo');
     }
+    expect(clasificarContenido('hogar')).toBe('hogar');
   });
 
-  it('los dos juntos es mixto, escrito como sea', () => {
-    expect(clasificarContenido('comida-hogar')).toBe('mixto');
-    expect(clasificarContenido('mixto')).toBe('mixto');
-    expect(clasificarContenido('comida y hogar')).toBe('mixto');
+  it('comida y hogar juntos, escrito como sea', () => {
+    expect(clasificarContenido('comida-hogar')).toBe('comida-hogar');
+    expect(clasificarContenido('mixto')).toBe('comida-hogar');
+    expect(clasificarContenido('Mixto')).toBe('comida-hogar');
+    expect(clasificarContenido('comida y hogar')).toBe('comida-hogar');
+  });
+
+  it('las mezclas que escribe Picking (categoriesToContenido)', () => {
+    expect(clasificarContenido('completo')).toBe('comida-hogar-aseo');
+    expect(clasificarContenido('comida-aseo')).toBe('comida-aseo');
+    expect(clasificarContenido('aseo-comida')).toBe('comida-aseo'); // legado
+    expect(clasificarContenido('aseo-hogar')).toBe('hogar-aseo');
+  });
+
+  it('lo que guarda RM/Costa se lee igual', () => {
+    expect(clasificarContenido('Comida-Hogar-Aseo')).toBe('comida-hogar-aseo');
+    expect(clasificarContenido('Hogar-Aseo')).toBe('hogar-aseo');
   });
 
   it('lo desconocido cae en hogar, que es el default histórico', () => {
@@ -115,5 +134,55 @@ describe('los dos espejos de Bodega clasifican igual con distinto rótulo', () =
     for (const v of ['chocolate', 'comida', 'hogar', 'mixto', 'aseo', '']) {
       expect(contenidoSantiago(v) === 'Chocolate').toBe(contenidoRegiones(v) === 'chocolate');
     }
+  });
+});
+
+describe('los ocho tipos', () => {
+  it('ida y vuelta por los dos espejos sin perder nada', () => {
+    for (const t of [...TIPOS_SIMPLES, ...TIPOS_MEZCLA]) {
+      expect(clasificarContenido(contenidoSantiago(t))).toBe(t);
+      expect(clasificarContenido(contenidoRegiones(t))).toBe(t);
+    }
+  });
+
+  it('las mezclas tienen sus componentes; el chocolate no', () => {
+    expect(componentesDe('comida-hogar-aseo')).toEqual(['comida', 'hogar', 'aseo']);
+    expect(componentesDe('chocolate')).toEqual([]);
+    expect(esMezcla('hogar-aseo')).toBe(true);
+    expect(esMezcla('aseo')).toBe(false);
+  });
+});
+
+describe('unirTipos', () => {
+  it('junta lo que traían las dos', () => {
+    expect(unirTipos('comida', 'aseo')).toBe('comida-aseo');
+    expect(unirTipos('comida-hogar', 'aseo')).toBe('comida-hogar-aseo');
+    expect(unirTipos('Hogar', 'Hogar')).toBe('hogar');
+  });
+
+  it('el chocolate no entra en una mezcla', () => {
+    expect(unirTipos('chocolate', 'chocolate')).toBe('chocolate');
+    expect(unirTipos('chocolate', 'comida')).toBe('comida');
+  });
+});
+
+describe('cargaParaPlanilla', () => {
+  it('escribe el nombre con guiones, como ya decía «Comida-Hogar»', () => {
+    expect(cargaParaPlanilla('comida-hogar')).toBe('Comida-Hogar');
+    expect(cargaParaPlanilla('comida-hogar-aseo')).toBe('Comida-Hogar-Aseo');
+    expect(cargaParaPlanilla('chocolate')).toBe('Chocolate');
+  });
+
+  it('el pallet web va sin categoría', () => {
+    expect(cargaParaPlanilla('hogar', true)).toBe('');
+  });
+});
+
+describe('tipoDesdePicking', () => {
+  it('bloquea lo que armó un picker, no lo que creó Bodega', () => {
+    expect(tipoDesdePicking({ picker_label: 'Nathaly Rubio' })).toBe(true);
+    expect(tipoDesdePicking({ picker_label: 'Bodega' })).toBe(false);
+    expect(tipoDesdePicking(undefined)).toBe(false);
+    expect(tipoDesdePicking({ picker_label: null })).toBe(false);
   });
 });
