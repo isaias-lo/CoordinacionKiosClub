@@ -52,7 +52,7 @@ import {
 import {
   todayISO, getStoreName, isPickeableState, isFetchedToday,
   categoriesToContenido, buildCanonicalId, sanitizeForBarcode,
-  computePalletNums, isSinAsignar, buildPickerKeyList,
+  computePalletNums, claveNumeracion, esSlotDeBodega, avisoNumerosDeBodega, isSinAsignar, buildPickerKeyList,
   parseSavedNames, serializeSavedNames,
 } from './picking-utils';
 import type { PickingEvento } from './picking-utils';
@@ -315,6 +315,10 @@ export function PickingScreen() {
     return parseSavedNames(localStorage.getItem(SAVED_NAMES_KEY));
   });
   const [palletSlots, setPalletSlots] = useState<PalletSlot[]>([]);
+  // Números que Bodega ya dio a sus slots (pallet web, adquisiciones), por tienda::tipo. Picking no
+  // muestra esos slots, pero sus números están tomados: sin esto, 06MQH (12/10/2026) imprimió una
+  // etiqueta con el mismo código de barras que un pallet web.
+  const [seqsBodega, setSeqsBodega] = useState<Record<string, number[]>>({});
   const palletSlotsRef = useRef<PalletSlot[]>([]);
   palletSlotsRef.current = palletSlots;
   const pendingDeleteIds = useRef<Set<number>>(new Set());
@@ -345,7 +349,7 @@ export function PickingScreen() {
   // P slots count P-1, P-2...; C slots count C-1, C-2...; B slots count B-1, B-2...
   // Excluye el bucket "Sin asignar" (nunca se imprime) para no correr la numeración de los CH
   // reales (P6), y ordena por created_at+id de forma determinista (P7). Lógica en computePalletNums.
-  const palletNumsBySlotId = useMemo(() => computePalletNums(palletSlots), [palletSlots]);
+  const palletNumsBySlotId = useMemo(() => computePalletNums(palletSlots, seqsBodega), [palletSlots, seqsBodega]);
 
   // Derived: sorted list of pallet numbers per state_key
   const assignedNumsByStateKey = useMemo(() => {
@@ -667,8 +671,15 @@ export function PickingScreen() {
         .order('created_at', { ascending: true })
         .order('id', { ascending: true });
       if (data) {
-        // Excluir IDs creados desde Bodega (origen "<cod>__bodega") — solo viven en Bodega/Enrutador/Seguimiento
-        const slots = (data as PalletSlot[]).filter(s => !String(s.state_key ?? '').endsWith('__bodega') && s.picker_label !== 'Bodega');
+        // Excluir IDs creados desde Bodega (origen "<cod>__bodega") — solo viven en Bodega/Enrutador/Seguimiento.
+        // Sus números sí se guardan: están tomados y Picking no puede repetirlos.
+        const slots: PalletSlot[] = [];
+        const deBodega: Record<string, number[]> = {};
+        for (const s of data as PalletSlot[]) {
+          if (!esSlotDeBodega(s)) { slots.push(s); continue; }
+          if (s.seq != null) (deBodega[claveNumeracion(s.store_cod, s.tipo)] ??= []).push(s.seq);
+        }
+        setSeqsBodega(deBodega);
         setPalletSlots(prev => [...slots, ...prev.filter(s => encoladas.current.has(s.id))]);
       }
     } catch { /* silent */ }
@@ -736,7 +747,9 @@ export function PickingScreen() {
           const isActive   = (newRow as { is_active?: boolean }).is_active;
           const stateKey   = (newRow as { state_key?: string }).state_key ?? '';
           const pickerLbl  = (newRow as { picker_label?: string }).picker_label ?? '';
-          const isBodega   = stateKey.endsWith('__bodega') || pickerLbl === 'Bodega';
+          const isBodega   = esSlotDeBodega({ state_key: stateKey, picker_label: pickerLbl });
+          // Uno nuevo de Bodega no se muestra, pero su número queda tomado: recargar para verlo.
+          if (isActive !== false && isBodega) void loadPalletSlots();
           if (isActive !== false && !isBodega) {
             const slot = toSlot(newRow as Record<string, unknown>);
             setPalletSlots(prev =>
@@ -1358,12 +1371,19 @@ export function PickingScreen() {
         });
       }
     }
-    if (!slots.length) return;
-    await pickingFetch('/api/picking-pallets', {
+    if (!slots.length) return true;
+    // Sin red o error del servidor se imprime igual (como antes): el número es el que se calculó con
+    // todo lo conocido. Si la base dice que el número ya es de otro pallet, NO se imprime: esa
+    // etiqueta repetiría el código de barras. Se recarga para numerar con lo nuevo.
+    const res = await pickingFetch('/api/picking-pallets', {
       method: 'PATCH',
       body:   JSON.stringify({ slots }),
-    }).catch(() => {});
-  }, [slotsByStateKey, palletNumsBySlotId, pickingFetch]);
+    }).catch(() => null);
+    if (res?.status !== 409) return true;
+    await loadPalletSlots();
+    showToast('⚠ Otro pallet de la tienda ya tenía ese número. Se actualizó la numeración: revisa y vuelve a imprimir', '#DC2626');
+    return false;
+  }, [slotsByStateKey, palletNumsBySlotId, pickingFetch, loadPalletSlots, showToast]);
 
   const recordPrints = useCallback(async (groups: PickerGroup[], section: Seccion | null = null): Promise<number> => {
     const date = todayISO();
@@ -1464,9 +1484,9 @@ export function PickingScreen() {
     // Si hay filtro de sección activo, imprimir SOLO esa sección de la card (consistente con su contador).
     const section: Seccion | null = sectionFilter === 'all' ? null : (sectionFilter as Seccion);
     setPrintOnlySection(section);
-    setSlotsCopia(slotsYaImpresos(palletSlots));
     // 1) Asignar seq + canonical ANTES de registrar/imprimir → la etiqueta lleva código y queda en BD.
-    await assignCanonicalIds([group]);
+    if (!await assignCanonicalIds([group])) return;
+    setSlotsCopia(slotsYaImpresos(palletSlots));
     // 2) Registrar la impresión y disparar el print del navegador.
     pendingPrintRef.current = recordPrints([group], section);
     setDoPrint(true);
@@ -1481,25 +1501,29 @@ export function PickingScreen() {
     const groups = groupedByStore[cod] ?? [];
     // Igual que al imprimir un encargado: el código va a la base ANTES de imprimir. Sin el await,
     // la impresión de la tienda corría contra el guardado del código.
-    await assignCanonicalIds(groups);
+    if (!await assignCanonicalIds(groups)) return;
     pendingPrintRef.current = recordPrints(groups);
     setDoPrint(true);
   }, [groupedByStore, recordPrints, assignCanonicalIds, palletSlots]);
 
-  const printSelectedLabels = useCallback((stateKey: string, slotIds: Set<number>) => {
+  const printSelectedLabels = useCallback(async (stateKey: string, slotIds: Set<number>) => {
     if (slotIds.size === 0) return;             // nunca imprimir "todas" por una selección vacía
+    // Código de barras SOLO para los seleccionados (el comentario de antes lo decía; el código no),
+    // y antes de imprimir, como en las otras impresiones.
+    const allGroups = Object.values(groupedByStore).flat().filter(g => g.stateKey === stateKey);
+    if (!await assignCanonicalIds(allGroups, slotIds)) return;
     setSlotsCopia(slotsYaImpresos(palletSlots));
     setSelectionPrint({ stateKey, slotIds });
     setPrintOnlyStore(null);
     setPrintOnlyStateKey(null);
     setPrintOnlySection(null); // la selección ya está acotada por ids
     setDoPrint(true);
-    // Código de barras SOLO para los seleccionados (el comentario de antes lo decía; el código no).
-    const allGroups = Object.values(groupedByStore).flat().filter(g => g.stateKey === stateKey);
-    void assignCanonicalIds(allGroups, slotIds);
   }, [groupedByStore, assignCanonicalIds, palletSlots]);
 
-  const printAll = useCallback(() => {
+  const printAll = useCallback(async () => {
+    // El código va a la base antes de imprimir, como en las otras impresiones.
+    const asignados = await Promise.all(selectedCods.map(cod => assignCanonicalIds(groupedByStore[cod] ?? [])));
+    if (asignados.includes(false)) return;
     setSlotsCopia(slotsYaImpresos(palletSlots));
     setPrintOnlyStore(null);
     setPrintOnlyStateKey(null);
@@ -1507,7 +1531,6 @@ export function PickingScreen() {
     pendingPrintRef.current = Promise.all(
       selectedCods.map(cod => recordPrints(groupedByStore[cod] ?? []))
     ).then(counts => counts.reduce((s, n) => s + n, 0));
-    for (const cod of selectedCods) void assignCanonicalIds(groupedByStore[cod] ?? []);
     setDoPrint(true);
   }, [selectedCods, groupedByStore, recordPrints, assignCanonicalIds, palletSlots]);
 
@@ -1827,6 +1850,7 @@ export function PickingScreen() {
             onActualizar: () => void fetchOpsForStore(cod),
           }}
           otroDia={filas.filter(f => f.tarjeta.otroDia).length}
+          numerosDeBodega={avisoNumerosDeBodega(cod, seqsBodega, cong ? ['CC', 'CN'] : ['P', 'B', 'CH'])}
           formManual={renderFormManual(cod)}
           cargando={loadingCods.includes(cod)}
           filas={filas}
