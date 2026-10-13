@@ -7,7 +7,7 @@ import { agruparCamionesPorEmpresa } from '../utils/empresaFlota';
 import { tipoTienda } from '../utils/tipoTienda';
 import { etiquetaCamion, avisosCamionNoHabilitado } from '../utils/zonaCamion';
 import { puedeMoverCarga } from '../utils/cierrePorVehiculo';
-import { enPool, flotaDePool, camionesExtra, grupoIndefinido, POOLS, type PoolScope } from '../utils/poolsSeparados';
+import { enPool, flotaDePool, camionesExtra, grupoIndefinido, tiendasDelPool, POOLS, type PoolScope } from '../utils/poolsSeparados';
 import { enElPool } from '../utils/pool';
 import { podarVacias, tableroConTrabajo } from '../utils/asignacionIncremental';
 import type { ConfigZonas } from '../utils/zonasTransporte';
@@ -165,7 +165,7 @@ export default function ManualDispatch({
   onToggleFlota,
   ordenActivacion,
   hideCalcular,
-  pool: poolScope = 'rm-costa',
+  pool: poolScope,
   onPool,
   todaLaFlota = false,
   onTodaLaFlota,
@@ -264,7 +264,9 @@ export default function ManualDispatch({
   const paradasPool  = paradasConGps.filter(p => !asignadasSet.has(p.id));
   // [Pools] Solo se muestran las tiendas del pool activo. Es un filtro de VISTA: los conteos, la
   // capacidad y el registro siguen viendo el día completo.
-  const poolMostrado = pool.filter(t => enPool(calT[t.c]?.g, poolScope));
+  // Sin selector de pool se muestra TODO: filtrar a un default escondía tiendas sin forma de
+  // llegar a ellas. Ver `tiendasDelPool`.
+  const poolMostrado = tiendasDelPool(pool, c => calT[c]?.g, poolScope);
   // De lo mostrado, lo que YA se puede arrastrar a un camión (terminada en Bodega, o sin filtro
   // configurado — Congelados/2ª vuelta). Es lo que cuenta "Asignar N"/"restantes": lo demás está
   // visible pero todavía no es carga real para rutear.
@@ -284,7 +286,7 @@ export default function ManualDispatch({
   // Los camiones de ESTE tablero: en servicio Y elegidos acá. Sin `seleccion` se comporta como
   // antes (todos los que están en servicio) — ver utils/flotaPorTablero.
   const activos    = visiblesEnTablero(flota, seleccion);
-  const ofrecidos  = todaLaFlota ? activos : flotaDePool(activos, poolScope, zonasCfg);
+  const ofrecidos  = todaLaFlota || !poolScope ? activos : flotaDePool(activos, poolScope, zonasCfg);
   const extraZona  = todaLaFlota ? [] : camionesExtra(activos, ofrecidos, asignaciones);
   // [Bug carga invisible] Apagar un camión no le saca la carga (el tablero solo se ACUMULA, ver
   // `flotaConCapacidadRestante`/preflightCierre): si ese camión desaparecía del tablero, sus
