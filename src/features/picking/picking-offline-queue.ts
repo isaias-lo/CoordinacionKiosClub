@@ -17,6 +17,8 @@ export type OfflineQueueItem =
       op: 'add';
       stateKey: string; storeCod: string; pickerLabel: string;
       tipo: string; contenido: string; section?: string | null; refs: string; date: string;
+      // La caja del chocolate (negra/cartón). Sin esto, un CH agregado sin señal llegaba sin caja.
+      subtipo?: string | null;
       clientOpId?: string;  // idempotencia: el replay reusa el mismo id ⇒ no duplica
       actorName?: string;   // atribución: conserva quién creó aunque se reenvíe offline
       // El peso viaja en la cola: si se pesó sin red, ese dato no se puede perder — nadie va a
@@ -69,6 +71,23 @@ export async function bloqueadasPicking(): Promise<PendientePicking[]> {
   return soloBloqueados(await loadPickingQueue());
 }
 
+/** `clientOpId` de las altas que siguen esperando envío (las rechazadas ya no van a llegar). */
+export async function altasEnCola(): Promise<Set<string>> {
+  const items = await loadPickingQueue();
+  return new Set(items.filter(i => i.payload.op === 'add' && !i.bloqueado).map(i => i.clientOpId));
+}
+
+/**
+ * Saca de la cola un alta que todavía no salió. Es el «−» sobre una unidad agregada sin señal:
+ * como nunca llegó al servidor, quitarla es no mandarla.
+ */
+export async function sacarAltaDeLaCola(clientOpId: string): Promise<boolean> {
+  const item = (await loadPickingQueue()).find(i => i.payload.op === 'add' && i.clientOpId === clientOpId);
+  if (!item) return false;
+  await eliminar(item.id);
+  return true;
+}
+
 export async function contarPendientesPicking(): Promise<number> {
   return contar('picking');
 }
@@ -118,7 +137,7 @@ function cuerpo(op: OfflineQueueItem, clientOpId: string): { url: string; body: 
       url: '/api/picking-pallets',
       body: JSON.stringify({
         date: op.date, store_cod: op.storeCod, state_key: op.stateKey,
-        picker_label: op.pickerLabel, tipo: op.tipo,
+        picker_label: op.pickerLabel, tipo: op.tipo, subtipo: op.subtipo ?? null,
         contenido: op.contenido, section: op.section ?? null, refs: op.refs,
         client_op_id: clientOpId, actor_name: op.actorName,
         ...(op.medidas ?? {}),

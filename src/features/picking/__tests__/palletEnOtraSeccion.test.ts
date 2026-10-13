@@ -80,3 +80,12 @@ describe('cuándo NO hay que avisar nada', () => {
     expect(palletsDeOtraSeccion([], 'aseo')).toEqual([]);
   });
 });
+
+describe('contenidos que no nombran sus categorías (12 oct 2026)', () => {
+  it('«mixto» (Comida + Hogar) contado en Todas avisa en Comida y en Hogar, no en Aseo', () => {
+    const slots = [{ id: 21, section: null, contenido: 'mixto' }];
+    expect(palletsDeOtraSeccion(slots, 'comida')).toEqual([{ slotId: 21, seccion: null }]);
+    expect(palletsDeOtraSeccion(slots, 'hogar')).toEqual([{ slotId: 21, seccion: null }]);
+    expect(palletsDeOtraSeccion(slots, 'aseo')).toEqual([]);
+  });
+});

@@ -289,7 +289,7 @@ export function PanelDetalle(p: PanelDetalleProps) {
       </div>
 
       <div className="pk-pd-pie">
-        <span className="pk-sub pk-pie-hint">Se guardan solas al cambiar</span>
+        <span className="pk-sub pk-pie-hint">Los cambios se guardan solos</span>
         {p.pie}
         {selectedIndices.size > 0 && (
           <>

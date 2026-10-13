@@ -24,8 +24,8 @@ export function pideSeccion(filtro: SectionFilter, esTabCongelados = false): boo
  * Sección y `contenido` con los que nace el PRIMER pallet de un encargado manual.
  *
  * `seccion` es el dato fuerte (columna `section`); `contenido` es el fallback con el que
- * `seccionDeSlot` clasifica los pallets viejos que no la tienen. Por eso 'hogar' y 'aseo-comida'
- * comparten contenido: se distinguen por `section`, que acá siempre viaja explícita.
+ * `seccionDeSlot` clasifica los pallets viejos que no la tienen. Igual tiene que decir lo mismo que
+ * la sección, porque Bodega y la planilla leen `contenido`, no `section`.
  *
  * "Todas" nace SIN sección y con contenido 'mixto' —que a propósito no matchea ninguna sección—
  * porque "todas" significa "sin sección específica", no "una por cada sección".
@@ -41,7 +41,9 @@ export function seccionYContenidoManual(
   if (sel === 'all') return { seccion: null, contenido: 'mixto' };
   if (sel === 'chocolates') return { seccion: 'chocolates', contenido: 'chocolate' };
   if (sel === 'congelados') return { seccion: 'congelados', contenido: 'congelados' };
-  return { seccion: sel, contenido: 'hogar' };
+  // El contenido nombra la sección: Bodega y la planilla lo leen, y un pallet de Comida que
+  // decía «hogar» se cargaba como Hogar.
+  return { seccion: sel, contenido: sel };
 }
 
 /**

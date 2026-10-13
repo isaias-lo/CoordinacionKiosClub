@@ -33,12 +33,12 @@ describe('seccionYContenidoManual', () => {
     expect(seccionYContenidoManual('congelados')).toEqual({ seccion: 'congelados', contenido: 'congelados' });
   });
 
-  it('hogar, comida y aseo comparten contenido "hogar", pero la sección los distingue', () => {
-    // `contenido` es solo el fallback de clasificación; `seccionDeSlot` prefiere `section`,
-    // que acá sí viene explícita y distinta. Se fija el comportamiento actual tal cual.
+  it('hogar, comida y aseo llevan su propio contenido', () => {
+    // Bodega y la planilla leen `contenido`: un pallet de Comida que decía «hogar» se cargaba
+    // como Hogar.
     expect(seccionYContenidoManual('hogar')).toEqual({ seccion: 'hogar', contenido: 'hogar' });
-    expect(seccionYContenidoManual('comida')).toEqual({ seccion: 'comida', contenido: 'hogar' });
-    expect(seccionYContenidoManual('aseo')).toEqual({ seccion: 'aseo', contenido: 'hogar' });
+    expect(seccionYContenidoManual('comida')).toEqual({ seccion: 'comida', contenido: 'comida' });
+    expect(seccionYContenidoManual('aseo')).toEqual({ seccion: 'aseo', contenido: 'aseo' });
   });
 
   it('la sección devuelta nunca es la cadena "all"', () => {

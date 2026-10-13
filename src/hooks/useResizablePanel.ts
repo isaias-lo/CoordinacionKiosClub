@@ -31,14 +31,16 @@ export function useResizablePanel({
   desktopBreakpoint = 1024,
   inverted = false,
 }: UseResizablePanelOpts): UseResizablePanelReturn {
-  const [width, setWidth] = useState<number>(() => {
-    if (typeof window === 'undefined') return defaultWidth;
-    return Number(localStorage.getItem(storageKey) || defaultWidth);
-  });
+  // Nacen con lo mismo que pinta el servidor (que no tiene ventana ni localStorage) y se corrigen
+  // al montar. Leerlos en el inicializador hacía que la hidratación fallara en escritorio.
+  const [width, setWidth] = useState<number>(defaultWidth);
+  const [isDesktop, setIsDesktop] = useState<boolean>(false);
 
-  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
-    typeof window !== 'undefined' && window.innerWidth >= desktopBreakpoint
-  );
+  useEffect(() => {
+    const guardado = Number(localStorage.getItem(storageKey));
+    if (guardado) setWidth(guardado);
+    setIsDesktop(window.innerWidth >= desktopBreakpoint);
+  }, [storageKey, desktopBreakpoint]);
 
   const isResizingRef     = useRef(false);
   const dragStartXRef     = useRef(0);

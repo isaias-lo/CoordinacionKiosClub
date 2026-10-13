@@ -30,6 +30,10 @@
 .pk-card.tabla{overflow-x:auto}
 .pk-tabla{border-collapse:collapse;width:100%}
 .pk-tabla th:first-child,.pk-tabla td:first-child{padding-left:14px}
+/* El encargado queda fijo al correr la tabla a lo ancho: al tocar la › de la derecha la tabla se
+   corría y la fila quedaba sin nombre (12 oct 2026). */
+.pk-tabla th:first-child,.pk-tabla td:first-child{position:sticky;left:0;z-index:1}
+.pk-tabla td:first-child{background:#FFFFFF}
 .pk-tabla th{font-size:11px;font-weight:700;letter-spacing:.06em;color:#6B7280;text-align:left;padding:9px 8px;background:#F8F9FB;border-bottom:1px solid #E4E7EC;vertical-align:bottom}
 .pk-tabla td{padding:10px 8px;border-bottom:1px solid #EEF0F3;vertical-align:middle;font-size:13px}
 .pk-tabla tr:last-child td{border-bottom:0}
@@ -96,7 +100,7 @@
 .pk-prev{border-radius:8px;cursor:pointer;outline:2px solid transparent;outline-offset:1px;min-width:0}
 .pk-prev.sel{outline-color:#3B5BDB}
 .pk-prev:focus-visible{outline-color:#3B5BDB}
-.pk-pie-hint{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk-pie-hint{flex:1;min-width:0;line-height:1.3}
 .pk-pd-b .pk-trunc{max-width:190px}
 .pk-kg{width:96px;padding:5px 8px;min-height:0;justify-content:flex-end;font-family:'IBM Plex Mono',monospace}
 .pk-kg input{text-align:right}
