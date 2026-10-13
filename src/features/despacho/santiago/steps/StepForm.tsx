@@ -11,6 +11,7 @@ import { getTiendasSantiagoHoyGrouped, getCalendarioSantiagoInicialHoy } from '.
 import { guideKey } from '../utils/guideKey';
 import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy, agregarTiendaAlDia, zonaForStore } from '../../shared/tiendasAdelanto';
+import { AvisoDiaViejo } from '../../shared/AvisoDiaViejo';
 import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
 import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
 import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, ordenDeItem, renumerarOrden, etiquetaCard, claseSantiago, bultosSantiago } from '@/features/despacho/shared/numeroCard';
@@ -778,9 +779,15 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       const ch = list.filter(i => i.tipo === 'Chocolate').length;
       if (p > 0 || b > 0 || c > 0 || ch > 0) counts[cod] = { p, b, c, ch };
     });
-    const todayKey = fechaChile();
+    // EL DÍA DE LA SESIÓN, no el de hoy. Esta pantalla cargó el estado de ese día y muestra sus
+    // tiendas: lo que haya acá le pertenece. Una pestaña abierta desde el viernes escribía la
+    // carga del viernes con la fecha de hoy — 19 pallets y 6 bultos fantasma en el Manual del
+    // lunes 12/10/2026. El sello del caché va igual, porque el Enrutador lo descarta si no es de
+    // hoy: así los conteos del viernes tampoco entran al tablero del lunes. Ver `diaDeLaSesion`.
+    // `todayKey` es la constante de MÓDULO (línea 106): se fija al cargar la página. Acá había
+    // un `const todayKey = fechaChile()` que la tapaba y volvía a calcular la fecha en cada push.
     localStorage.setItem('santiagoCounts', JSON.stringify({ date: todayKey, counts }));
-    pushCounts('santiago', counts, conocidas).catch(() => {});
+    pushCounts('santiago', counts, conocidas, todayKey).catch(() => {});
   }, [items]);
 
   // Read despachoCounts → sync from Despacho
@@ -3334,6 +3341,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
 
   return (
     <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+
+      {/* La pantalla quedó abierta de un día para otro: la lista, el calendario y los conteos son
+          los del día en que se abrió. Ver `diaDeLaSesion.ts`. */}
+      <AvisoDiaViejo diaDeLaSesion={todayKey} />
 
       {/* ─── LEFT PANEL ─── always visible on mobile; hidden only in resumen view */}
       <div
