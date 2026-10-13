@@ -75,3 +75,38 @@ export function resumenDeVersiones(
   if (local === remota) return `misma versión (${versionCorta(local)}) · la descargó el navegador`;
   return `tienes ${versionCorta(local)} · publicada ${versionCorta(remota)}`;
 }
+
+// ── CUANDO EL SERVICE WORKER AVISA PERO NO HAY NADA NUEVO ─────────────────────────────────────
+//
+// El aviso tiene DOS fuentes: comparar versiones contra `/api/version`, y el service worker, que
+// avisa con que haya una versión descargada ESPERANDO. La segunda no compara nada.
+//
+// 12/10/2026, en el Mac del coordinador: el aviso no se iba ni recargando ni cerrando sesión, y en
+// los demás equipos no pasaba. La línea de diagnóstico del #687 lo dijo solo:
+//
+//     misma versión (731b3f1) · la descargó el navegador
+//
+// Las dos versiones IGUALES. O sea que no había ninguna versión nueva que traer: en esa máquina
+// quedó un worker trabado en `waiting`, y como el aviso se levanta por su sola presencia, volvía
+// a aparecer después de cada recarga. El botón no podía sacarlo porque no había nada que buscar.
+//
+// La regla: con la misma versión no se avisa. Se le cede el paso al worker en silencio, para que
+// deje de estar esperando, y no se molesta a nadie con una recarga que no trae nada.
+
+/** Qué hacer cuando el service worker dice que tiene una versión esperando. */
+export type AccionWorkerEsperando = 'avisar' | 'activar-en-silencio';
+
+/**
+ * `publicada` es lo que respondió `/api/version`, o `null` si no se pudo preguntar. PURA.
+ *
+ * Sin respuesta se AVISA, como hasta ahora: el service worker ya descargó algo, y perder un aviso
+ * real porque el servidor no contestó es peor que mostrar uno de más. La regla nueva solo aplica
+ * cuando hay una respuesta y dice que es la misma versión.
+ */
+export function queHacerConElWorkerEsperando(
+  local: string | null | undefined,
+  publicada: string | null | undefined,
+): AccionWorkerEsperando {
+  if (!publicada) return 'avisar';
+  return hayVersionNueva(local, publicada) ? 'avisar' : 'activar-en-silencio';
+}

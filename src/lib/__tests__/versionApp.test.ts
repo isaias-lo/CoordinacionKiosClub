@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { hayVersionNueva, VERSION_DESCONOCIDA, debeMostrarAviso, POSPONER_MS,
-  resumenDeVersiones, versionCorta } from '../versionApp';
+  resumenDeVersiones, versionCorta, queHacerConElWorkerEsperando } from '../versionApp';
 
 describe('hayVersionNueva', () => {
   it('avisa cuando el servidor publicó otro commit', () => {
@@ -98,5 +98,39 @@ describe('versionCorta', () => {
     expect(versionCorta('')).toBe('—');
     expect(versionCorta(null)).toBe('—');
     expect(versionCorta(undefined)).toBe('—');
+  });
+});
+
+// ── EL AVISO QUE NO SE IBA, EN UNA SOLA MÁQUINA ───────────────────────────────────────────────
+//
+// 12/10/2026: en el Mac del coordinador el aviso no se iba ni recargando ni cerrando sesión, y en
+// los demás equipos no pasaba. La línea de diagnóstico del #687 lo dijo sola:
+//
+//     misma versión (731b3f1) · la descargó el navegador
+//
+// Las dos versiones IGUALES. No había ninguna versión nueva que traer: en esa máquina quedó un
+// service worker trabado en `waiting`, y como esa rama del aviso se levanta por su SOLA PRESENCIA
+// —sin comparar nada—, volvía después de cada recarga. El botón no podía sacarlo.
+
+describe('queHacerConElWorkerEsperando', () => {
+  it('EL CASO: misma versión → se lo destraba en silencio, sin avisar', () => {
+    expect(queHacerConElWorkerEsperando('731b3f1aa', '731b3f1aa')).toBe('activar-en-silencio');
+  });
+
+  it('versión distinta → se avisa, como siempre', () => {
+    expect(queHacerConElWorkerEsperando('731b3f1aa', 'f6a7b8c9d')).toBe('avisar');
+  });
+
+  it('SIN RESPUESTA del servidor se avisa igual', () => {
+    // El worker ya descargó algo. Perder un aviso real porque `/api/version` no contestó es peor
+    // que mostrar uno de más: la regla nueva solo aplica cuando hay respuesta y dice que es igual.
+    expect(queHacerConElWorkerEsperando('731b3f1aa', null)).toBe('avisar');
+    expect(queHacerConElWorkerEsperando('731b3f1aa', undefined)).toBe('avisar');
+    expect(queHacerConElWorkerEsperando('731b3f1aa', '')).toBe('avisar');
+  });
+
+  it('en desarrollo no se avisa de más: «dev» no es una versión comparable', () => {
+    expect(queHacerConElWorkerEsperando('dev', 'dev')).toBe('activar-en-silencio');
+    expect(queHacerConElWorkerEsperando('dev', '731b3f1aa')).toBe('activar-en-silencio');
   });
 });
