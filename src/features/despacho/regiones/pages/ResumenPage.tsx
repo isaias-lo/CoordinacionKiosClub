@@ -31,14 +31,19 @@ import { taraTrasCorregir, textoPesoConTara } from '../../shared/pesoDelPallet';
 import { copiaParaOtraTienda, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
 import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTienda, ResumenVacio, UnidadResumen } from '../../shared/ResumenDiaUI';
 import { AVISO_ERROR } from '../../shared/colorAviso';
+import { nombreContenido, unirTipos } from '../../shared/contenidoCarga';
+import { SelectorTipoCarga } from '../../shared/SelectorTipoCarga';
+import { tipoBloqueadoDeSlot } from '../../shared/tipoDeSlot';
 
 const NOMBRE_PLURAL: Partial<Record<TipoPaquete, string>> = {
   pallet: 'Pallets', box: 'Bultos', contenedor: 'Contenedores', chocolate: 'Chocolates',
 };
-const LABEL: Record<TipoContenido | TipoPaquete, string> = {
-  comida: 'Comida', hogar: 'Hogar', 'comida-hogar': 'Mixto', pallet: 'Pallet', box: 'Bulto', contenedor: 'Contenedor', chocolate: 'Chocolate',
+const LABEL: Record<TipoPaquete, string> = {
+  pallet: 'Pallet', box: 'Bulto', contenedor: 'Contenedor', chocolate: 'Chocolate',
   adquisicion: 'Adquisición', 'web-retiro': 'Web / retiro',
 };
+/** El tipo de carga para leer. Un pallet web va sin categoría (Isaias, 13/10/2026). */
+const tipoLeible = (item: DispatchItem) => (esPalletWeb(item) ? '' : nombreContenido(item.tipo));
 
 // El renumerado del Resumen ya no es propio: era la TERCERA copia del mismo bloque posicional, y
 // aplastaba el número de los chocolates igual que lo hacía el reducer. Como el reducer dejó de
@@ -102,6 +107,8 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editPkg,   setEditPkg]   = useState<TipoPaquete>('pallet');
   const [editTipo,  setEditTipo]  = useState<TipoContenido>('comida');
+  // El tipo que marcó Picking para la unidad que se edita: entonces se ve bloqueado, como en la tarjeta.
+  const [editTipoPicking, setEditTipoPicking] = useState<TipoContenido | null>(null);
   const [editPeso,  setEditPeso]  = useState('');
   const [editAlto,  setEditAlto]  = useState('');
   const [editAncho, setEditAncho] = useState('');
@@ -150,6 +157,8 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
     if (!item) return;
     setEditPkg(item.pkg);
     setEditTipo(item.tipo);
+    setEditTipoPicking(null);
+    void tipoBloqueadoDeSlot(item.pickingSlotId).then(t => { if (t) { setEditTipoPicking(t); setEditTipo(t); } });
     setEditPeso(String(item.peso));
     setEditAlto(String(item.alto || ''));
     setEditAncho(String(item.ancho || ''));
@@ -175,7 +184,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
     }
     const duro = excedeTopeDuro(peso, claseNacional(src.pkg));
     if (duro) { showToast(`⚠ ${duro}`, AVISO_ERROR); return; }
-    const tipoMerge: TipoContenido = src.tipo === tgt.tipo ? src.tipo : 'comida-hogar';
+    const tipoMerge: TipoContenido = unirTipos(src.tipo, tgt.tipo);
     const guia  = [src.guia, tgt.guia].filter(Boolean).join(', ');
     const valor = (src.valor || 0) + (tgt.valor || 0);
     // `...src` conserva el `pickingSlotId`, y `combinarEnLista` lo deja en la posición del primero
@@ -384,19 +393,10 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
                           ))}
                         </div>
                       </div>
-                      <div>
-                        <div className={LABEL_SM}>Contenido</div>
-                        <div className="flex gap-1">
-                          {(['comida', 'hogar', 'comida-hogar'] as TipoContenido[]).map(tp => (
-                            <button key={tp} type="button" onClick={() => setEditTipo(tp)}
-                              className={`min-h-[36px] px-2.5 rounded-btn border-[1.5px] text-apoyo font-bold cursor-pointer ${
-                                editTipo === tp ? 'bg-navy text-white border-navy' : 'bg-card text-text-2 border-border'}`}>
-                              {LABEL[tp]}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
                     </div>
+                    {(editPkg === 'pallet' || editPkg === 'box') && !esPalletWeb(item) && (
+                      <SelectorTipoCarga valor={editTipo} bloqueado={editTipoPicking != null} onCambiar={setEditTipo} />
+                    )}
                     <div className="grid grid-cols-4 gap-1.5 mb-1.5">
                       {([
                         { label: 'Peso kg', val: editPeso,  set: setEditPeso, decimal: true },
@@ -444,7 +444,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
               const clase = claseUnidad(item.pkg);
               const sinPeso = clase === 'agregado' || esPalletWeb(item);
               const detalle = [
-                LABEL[item.tipo],
+                tipoLeible(item),
                 sinPeso ? '' : formatoMedidas(item.alto, item.ancho, item.largo),
                 item.guia ? `guía ${item.guia}` : '',
                 item.valor ? formatCLPCorto(item.valor) : '',
@@ -578,7 +578,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
             <div className="flex-1 min-w-0">
               <div className="font-barlow-condensed text-[15px] font-bold uppercase tracking-wider">Copiar a tiendas</div>
               <div className="text-[11px] text-white/55 mt-0.5 truncate">
-                {item.orden} · {LABEL[item.pkg]} · {LABEL[item.tipo]} · {item.peso}kg{dims.length ? ` · ${dims.join('×')}cm` : ''}
+                {item.orden} · {LABEL[item.pkg]}{tipoLeible(item) ? ` · ${tipoLeible(item)}` : ''} · {item.peso}kg{dims.length ? ` · ${dims.join('×')}cm` : ''}
               </div>
             </div>
             <button onClick={() => setCopyModal(null)}

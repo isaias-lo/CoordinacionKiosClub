@@ -1,4 +1,7 @@
-export type TipoContenido = 'comida' | 'hogar' | 'comida-hogar' | 'chocolate';
+// Los ocho tipos de carga (ver `ClaseContenido` en despacho/shared/contenidoCarga.ts).
+export type TipoContenido =
+  | 'comida' | 'hogar' | 'aseo' | 'chocolate'
+  | 'comida-hogar' | 'comida-aseo' | 'hogar-aseo' | 'comida-hogar-aseo';
 export type TipoPaquete = 'pallet' | 'box' | 'contenedor' | 'chocolate' | 'adquisicion' | 'web-retiro';
 
 export interface Tienda {

@@ -13,7 +13,9 @@ import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy, agregarTiendaAlDia, zonaForStore } from '../../shared/tiendasAdelanto';
 import { AvisoDiaViejo } from '../../shared/AvisoDiaViejo';
 import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
-import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
+import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE, clasificarContenido, nombreContenido, tipoDesdePicking, unirTipos } from '@/features/despacho/shared/contenidoCarga';
+import { SelectorTipoCarga } from '@/features/despacho/shared/SelectorTipoCarga';
+import { tipoBloqueadoDeSlot } from '@/features/despacho/shared/tipoDeSlot';
 import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, ordenDeItem, renumerarOrden, etiquetaCard, claseSantiago, bultosSantiago } from '@/features/despacho/shared/numeroCard';
 import { leerPeso, limpiarTecleo, avisoDePeso, excedeTopeDuro } from '@/features/despacho/shared/pesoIngresado';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
@@ -125,10 +127,6 @@ function loadConsumedSlotsS(): ConsumedSlotsS { try { return JSON.parse(localSto
 function saveConsumedSlotsS(v: ConsumedSlotsS) { try { localStorage.setItem(CONSUMED_SLOTS_S_KEY, JSON.stringify(v)); } catch {} }
 
 /* ── Constants ── */
-// El pallet también puede llevar Chocolate: el tipo de carga dice QUÉ va adentro, no qué envase es.
-// El pallet sigue siendo P1/P2 y conservando sus medidas (ver `dimsAlCambiarContenido`).
-const CONTENIDO_PALLET:     ContenidoSantiago[] = ['Comida', 'Hogar', 'Mixto', 'Chocolate'];
-const CONTENIDO_BULTO:      ContenidoSantiago[] = ['Hogar', 'Chocolate'];
 
 const ESTADO_DEFAULT: EstadoItem = 'Listo para despachar';
 const ESTADOS: EstadoItem[] = [
@@ -196,6 +194,8 @@ interface ResumenEditState {
   id?: string;
   tipo: TipoCargamento;
   contenido: ContenidoSantiago;
+  /** El tipo lo marcó Picking: el editor lo muestra bloqueado, como la tarjeta. */
+  tipoPicking?: boolean;
   estado: EstadoItem;
   peso: string;
   alto: string;
@@ -1305,16 +1305,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     // Sin `currentItems` igual corre: ver `reconciliarFormRows` (38SP2, 13/10/2026).
     if (!currentTienda) return;
     const SANT_TIPO: Record<string, TipoCargamento> = { P: 'Pallet', C: 'Contenedor', B: 'Bulto', CH: 'Chocolate' };
-    const mapC = (raw: string): ContenidoSantiago => {
-      const c = (raw ?? '').toLowerCase();
-      if (c.includes('chocolate')) return 'Chocolate';
-      if (c === 'mixto' || c === 'comida-hogar') return 'Mixto';
-      const comida = c.includes('comida') || c.includes('alimento');
-      const hogar  = c.includes('hogar') || c.includes('aseo') || c.includes('limpieza');
-      if (comida && hogar) return 'Mixto';
-      if (comida) return 'Comida';
-      return 'Hogar';
-    };
+    // Era una copia propia del clasificador; ahora el mismo de contenidoCarga.ts (ocho tipos).
+    const mapC = contenidoSantiago;
     setFormRows(prev => reconciliarFormRows(
       prev, currentItems, currentSlotsFull,
       (row, it) => ({
@@ -1368,7 +1360,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     }
     const duro = excedeTopeDuro(peso, claseSantiago(src.tipo));
     if (duro) { showToast(`⚠ ${duro}`, AVISO_ERROR); return; }
-    const contenido: ContenidoSantiago = src.contenido === tgt.contenido ? src.contenido : 'Mixto';
+    const contenido: ContenidoSantiago = contenidoSantiago(unirTipos(src.contenido, tgt.contenido));
     // /6000, como en el resto del sistema (estaba en /5000 y sin decimales solo acá).
     const pesoVolumetrico = (alto * src.ancho * src.largo) / 6000;
     const merged: SantiagoItem = { ...src, id: `${tiendaCod}-${Date.now()}`, peso, alto, contenido, pesoVolumetrico, taraPallet: undefined, palletWeb: peso > 0 ? undefined : src.palletWeb };
@@ -1516,7 +1508,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       .filter(i => claseSantiago(i.tipo) === claseNueva)
       .map(i => seqDeSlot(cod, i.pickingSlotId));
     const candidato: SantiagoItem = {
-      id: `${cod}-${Date.now()}`, tiendaCod: cod, tipo: row.tipo, contenido: row.contenido,
+      id: `${cod}-${Date.now()}`, tiendaCod: cod, tipo: row.tipo,
+      // Si la armó Picking, el tipo es el de su etiqueta (la tarjeta lo muestra bloqueado).
+      contenido: tipoDesdePicking(pickingSlot) ? contenidoSantiago(pickingSlot!.contenido) : row.contenido,
       peso: p, alto: a, largo: fL, ancho: fA, taraPallet: tara,
       pesoVolumetrico: pesoV, regimen,
       // El número impreso del slot, no su posición entre los que hay ahora.
@@ -2311,6 +2305,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     if (!item) return;
     setResumenEditing({ cod, idx, id: item.id, tipo: item.tipo, contenido: item.contenido, estado: item.estado,
       peso: String(item.peso), alto: String(item.alto), largo: String(item.largo), ancho: String(item.ancho) });
+    void tipoBloqueadoDeSlot(item.pickingSlotId).then(t => {
+      if (t) setResumenEditing(prev => prev && prev.id === item.id ? { ...prev, contenido: contenidoSantiago(t), tipoPicking: true } : prev);
+    });
     setResumenExpanded(prev => { const next = new Set(prev); next.add(cod); return next; });
   };
   const rCancelEdit = () => setResumenEditing(null);
@@ -2567,19 +2564,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                                     ))}
                                   </div>
                                 </div>
-                                {/* Contenido */}
-                                <div className="mb-2.5">
-                                  <div className={LABEL_CLS}>Contenido</div>
-                                  <div className="grid grid-cols-2 gap-1.5 mt-1">
-                                    {(re.tipo === 'Pallet' ? CONTENIDO_PALLET : CONTENIDO_BULTO).map(c => (
-                                      <button key={c}
-                                        onClick={() => setResumenEditing(prev => prev ? { ...prev, contenido: c } : prev)}
-                                        className={`font-barlow-condensed text-[13px] font-bold py-2 rounded border transition-all ${
-                                          re.contenido === c ? 'bg-navy text-white border-navy' : 'bg-white text-text-2 border-border'
-                                        }`}>{c}</button>
-                                    ))}
-                                  </div>
-                                </div>
+                                {/* Tipo de carga: bloqueado si lo marcó Picking; el pallet web va sin categoría. */}
+                                {(re.tipo === 'Pallet' || re.tipo === 'Bulto') && !esPalletWeb(item) && (
+                                  <SelectorTipoCarga valor={clasificarContenido(re.contenido)} bloqueado={!!re.tipoPicking}
+                                    onCambiar={t => setResumenEditing(prev => prev ? { ...prev, contenido: contenidoSantiago(t) } : prev)} />
+                                )}
                                 {/* Estado — solo Pallet */}
                                 {re.tipo === 'Pallet' && (
                                   <div className="mb-2.5">
@@ -2653,7 +2642,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                         const esChocR = item.tipo === 'Chocolate' || (item.tipo === 'Bulto' && item.contenido === 'Chocolate');
                         const sinPesoR = etiquetaDeUnidad(item);
                         const detalleR = sinPesoR ? '' : [
-                          item.contenido === 'Chocolate' ? 'Chocolate' : item.contenido,
+                          nombreContenido(item.contenido),
                           esChocR ? formatoMedidas(CHOCOLATE_DIMS.alto, CHOCOLATE_DIMS.largo, CHOCOLATE_DIMS.ancho)
                             : item.tipo === 'Pallet' ? `${formatoMedidas(item.alto)} · 120 × 100`
                             : formatoMedidas(item.alto, item.largo, item.ancho),
@@ -2780,7 +2769,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                 const slotDeFila = row.pickingSlotId
                   ? (pickingSlotsFull[currentTienda?.cod ?? ''] ?? []).find(s => s.id === row.pickingSlotId)
                   : undefined;
-                const contenido = row.savedItem.contenido === 'Chocolate' ? 'CH' : row.savedItem.contenido;
+                // Un pallet web va sin categoría; si la armó Picking, el tipo es el de su etiqueta.
+                const contenido = esPalletWeb(row.savedItem) ? ''
+                  : row.savedItem.contenido === 'Chocolate' ? 'CH'
+                  : nombreContenido(tipoDesdePicking(slotDeFila) ? slotDeFila!.contenido : row.savedItem.contenido);
                 return (
                   // [Handheld] El ancla también en la línea pesada: escanear una unidad ya pesada
                   // tiene que llegar a ella y mostrarla, no abrir la tienda y quedarse arriba.
@@ -2952,20 +2944,15 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       {bannerReapertura(row.mergeMotivo ?? 'union')}
                     </div>
                   )}
-                  {!isContRow && !isChocTipo && (
-                  <div className="mb-2">
-                    <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">Tipo de carga</label>
-                    <div className="flex gap-0.5">
-                      {(row.tipo === 'Pallet' ? CONTENIDO_PALLET : CONTENIDO_BULTO).map(c => (
-                        <button key={c} onClick={() => updateRow(row.id, 'contenido', c)}
-                          title={c}
-                          className={`flex-1 py-1.5 rounded border text-[12px] font-bold cursor-pointer transition-all ${row.contenido === c ? 'bg-[rgba(37,99,235,0.10)] border-info text-info' : 'border-border bg-bg-2 text-text-3'}`}>
-                          {c.slice(0, 3)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  )}
+                  {/* Tipo de carga: bloqueado si lo marcó Picking; un pallet web va sin categoría. */}
+                  {!isContRow && !isChocTipo && !esPalletWeb(row.savedItem ?? {}) && (() => {
+                    const slot = row.pickingSlotId ? (pickingSlotsFull[currentTienda?.cod ?? ''] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
+                    const bloqueado = tipoDesdePicking(slot);
+                    return (
+                      <SelectorTipoCarga valor={clasificarContenido(bloqueado ? slot!.contenido : row.contenido)}
+                        bloqueado={bloqueado} onCambiar={t => updateRow(row.id, 'contenido', contenidoSantiago(t))} />
+                    );
+                  })()}
                   <div className={`grid ${row.tipo === 'Pallet' ? 'grid-cols-3' : 'grid-cols-2'} gap-1 mb-1.5`}>
                     <div>
                       <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">

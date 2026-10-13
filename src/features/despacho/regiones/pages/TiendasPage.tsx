@@ -68,7 +68,8 @@ import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiqu
          TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
 import { pesoEnTarjeta, pesoNetoDeTarjeta, pesoNetoPallet, taraDeTarjeta, taraEnTarjeta, taraParaGuardar, textoPesoConTara } from '../../shared/pesoDelPallet';
 import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
-import { abreviaturaContenido, nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE } from '@/features/despacho/shared/contenidoCarga';
+import { nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE, tipoDesdePicking, unirTipos } from '@/features/despacho/shared/contenidoCarga';
+import { SelectorTipoCarga } from '@/features/despacho/shared/SelectorTipoCarga';
 import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional, bultosNacional } from '@/features/despacho/shared/numeroCard';
 import { leerPeso, limpiarTecleo, avisoDePeso, excedeTopeDuro } from '@/features/despacho/shared/pesoIngresado';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
@@ -78,7 +79,7 @@ import type { PickingSlot } from '@/features/despacho/santiago/components/Pickin
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { combinarEnLista } from '../../shared/combinarEnLista';
-import { esSinPesar, DIMS_SIN_PESAR } from '../../shared/sinPesar';
+import { esSinPesar, esPalletWeb, DIMS_SIN_PESAR } from '../../shared/sinPesar';
 import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
 import { avisoDeUnidad, avisoEnTerminada } from '../../shared/avisoUnidadEscaneada';
 import { useEscaneoBodega } from '../../shared/useEscaneoBodega';
@@ -130,12 +131,6 @@ function loadConsumedSlots(): ConsumedSlots { try { return JSON.parse(localStora
 function saveConsumedSlots(v: ConsumedSlots) { try { localStorage.setItem(CONSUMED_SLOTS_KEY, JSON.stringify(v)); } catch {} }
 
 /* ── Styles ── */
-const TIPO_CLS: Record<TipoContenido, string> = {
-  comida:        'bg-[rgba(217,119,6,0.08)] border-warn text-warn',
-  hogar:         'bg-[rgba(124,58,237,0.08)] border-hogar text-hogar',
-  'comida-hogar':'bg-[rgba(8,145,178,0.08)] border-mixto text-mixto',
-  chocolate:     'bg-[rgba(120,53,15,0.08)] border-[#92400E] text-[#92400E]',
-};
 
 
 /* ── FormRow for multi-form (preset) mode ── */
@@ -1520,7 +1515,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const posItem = previo ? currentItems.indexOf(previo) : currentItems.length;
     const itemGuia  = hasPdf ? (pdfInfo?.guias[posItem]?.num || '') : row.guia.trim();
     const itemValor = hasPdf ? 0 : (parseFloat(row.valor) || 0);
-    const candidato: DispatchItem = { orden, tipo: row.tipo, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: slotId, taraPallet: tara };
+    // Si la armó Picking, el tipo es el de su etiqueta (la tarjeta lo muestra bloqueado).
+    const tipoGuardado: TipoContenido = tipoDesdePicking(pickingSlot) ? contenidoRegiones(pickingSlot!.contenido) : row.tipo;
+    const candidato: DispatchItem = { orden, tipo: tipoGuardado, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: slotId, taraPallet: tara };
     const item = previo ? fusionarConPrevio(previo, candidato) : candidato;
     dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item });
     if (hasPdf && pdfInfo) {
@@ -2054,7 +2051,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const tgt = items[tgtIdx];
     const mergedGuia  = [src.guia, tgt.guia].filter(Boolean).join(', ');
     const mergedValor = (src.valor ?? 0) + (tgt.valor ?? 0);
-    const mergedTipo: TipoContenido  = src.tipo === tgt.tipo ? src.tipo : 'comida-hogar';
+    const mergedTipo: TipoContenido  = unirTipos(src.tipo, tgt.tipo);
     // El fusionado CONSERVA la identidad del source: `pickingSlotId` (lo que lo ata a la unidad
     // física de Picking) y su `id`. Antes se armaba un objeto literal nuevo y los perdía: sin
     // `pickingSlotId`, la llave de merge cae al id local del dispositivo y el mismo ítem se trata
@@ -2085,7 +2082,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                 const medidas = row.savedItem.pkg === 'box' ? `${row.savedItem.ancho}×${row.savedItem.largo} cm`
                   : row.savedItem.pkg === 'contenedor' ? '80×110 cm · alto 150 cm'
                   : row.savedItem.pkg === 'chocolate' ? etiquetaSubtipo(subtipoDeCaja(slotDeFila?.subtipo))
-                  : row.savedItem.pkg === 'pallet' ? (row.savedItem.tipo === 'comida-hogar' ? 'Mixto' : row.savedItem.tipo === 'comida' ? 'Comida' : 'Hogar')
+                  // Un pallet web va sin categoría (Isaias, 13/10/2026).
+                  : row.savedItem.pkg === 'pallet' ? (esPalletWeb(row.savedItem) ? '' : nombreContenido(tipoDesdePicking(slotDeFila) ? slotDeFila!.contenido : row.savedItem.tipo))
                   : '';
                 return (
                   // [Handheld] El ancla también en la línea pesada: escanear una unidad ya pesada
@@ -2259,22 +2257,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       {bannerReapertura(row.mergeMotivo ?? 'union')}
                     </div>
                   )}
-                  {row.pkg === 'pallet' && (
-                    <div className="mb-1.5">
-                      <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">Tipo de carga</label>
-                      <div className="flex gap-1.5">
-                        {/* Chocolate también es tipo de carga de un pallet: dice QUÉ va adentro, no
-                            qué envase es. El pallet sigue siendo P1/P2 y con sus propias medidas. */}
-                        {(['comida', 'hogar', 'comida-hogar', 'chocolate'] as TipoContenido[]).map(t => (
-                          <button key={t} onClick={() => updateRow(row.id, 'tipo', t)}
-                            title={nombreContenido(t)}
-                            className={`flex-1 min-h-[44px] rounded-btn border text-apoyo font-bold cursor-pointer transition-all ${row.tipo === t ? TIPO_CLS[t] : 'border-border bg-bg-2 text-text-2'}`}>
-                            {abreviaturaContenido(t)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  {/* Tipo de carga: bloqueado si lo marcó Picking; un pallet web va sin categoría. */}
+                  {row.pkg === 'pallet' && !esPalletWeb(row.savedItem ?? {}) && (() => {
+                    const slot = row.pickingSlotId ? (pickingSlotsFull[selectedTienda ?? ''] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
+                    const bloqueado = tipoDesdePicking(slot);
+                    return (
+                      <SelectorTipoCarga valor={bloqueado ? contenidoRegiones(slot!.contenido) : contenidoRegiones(row.tipo)}
+                        bloqueado={bloqueado} onCambiar={t => updateRow(row.id, 'tipo', t)} />
+                    );
+                  })()}
                   <div className={`grid ${row.pkg === 'pallet' ? 'grid-cols-3' : 'grid-cols-2'} gap-2 mb-2`}>
                     <div>
                       <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">

@@ -90,7 +90,7 @@ export function buildRows(
         regimen,                                                           // REGIMEN
         'Luis Fica',                                                       // TRANSPORTE
         '',                                                                // PATENTE (enrutador la completa)
-        item.contenido,                                                    // CARGA
+        esPalletWeb(item) ? '' : item.contenido,                           // CARGA (pallet web: sin categoría)
         tienda.region,                                                     // REGION
         tienda.comuna,                                                     // COMUNA
         URBAN_COMMUNES.has(tienda.comuna) ? 'Urbano' : 'Extraurbano',     // TIPO_COMUNA

@@ -128,6 +128,8 @@ export default {
         comida: '#D97706',
         hogar:  '#7C3AED',
         mixto:  '#0891B2',
+        aseo:   '#0C8599',   // el mismo de Picking (COLOR_SECCION)
+        choco:  '#92400E',
 
         /* ── Sidebar ── */
         sidebar: {

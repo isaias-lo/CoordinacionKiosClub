@@ -1,6 +1,9 @@
 export type RegimenCarga = 'Seco' | 'Congelado';
 export type TipoCargamento = 'Pallet' | 'Bulto' | 'Contenedor' | 'Chocolate' | 'Adquisicion' | 'WebRetiro';
-export type ContenidoSantiago = 'Comida' | 'Hogar' | 'Mixto' | 'Chocolate';
+// 'Mixto' es comida y hogar (así quedó escrito en la planilla). Ver contenidoCarga.ts.
+export type ContenidoSantiago =
+  | 'Comida' | 'Hogar' | 'Aseo' | 'Chocolate'
+  | 'Mixto' | 'Comida-Aseo' | 'Hogar-Aseo' | 'Comida-Hogar-Aseo';
 export type EstadoItem =
   | 'Listo para despachar'
   | 'Despachado'
