@@ -26,6 +26,8 @@
 .pk-alert b{color:#A3271A}
 .pk-alert.warn{border-color:#F3D9A9;background:#FFFAF0;color:#5C3A06}
 .pk-alert.warn b{color:#8A4A06}
+.pk-alert.info{border-color:#D5DCF5;background:#F5F7FD;color:#26304F}
+.pk-alert.info b{color:#2B4BC8}
 .pk-card{background:#FFFFFF;border:1px solid #E4E7EC;border-radius:10px;overflow:hidden}
 .pk-card.tabla{overflow-x:auto}
 .pk-tabla{border-collapse:collapse;width:100%}

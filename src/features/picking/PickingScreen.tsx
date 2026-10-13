@@ -52,7 +52,7 @@ import {
 import {
   todayISO, getStoreName, isPickeableState, isFetchedToday,
   categoriesToContenido, buildCanonicalId, sanitizeForBarcode,
-  computePalletNums, claveNumeracion, esSlotDeBodega, isSinAsignar, buildPickerKeyList,
+  computePalletNums, claveNumeracion, esSlotDeBodega, avisoNumerosDeBodega, isSinAsignar, buildPickerKeyList,
   parseSavedNames, serializeSavedNames,
 } from './picking-utils';
 import type { PickingEvento } from './picking-utils';
@@ -1850,6 +1850,7 @@ export function PickingScreen() {
             onActualizar: () => void fetchOpsForStore(cod),
           }}
           otroDia={filas.filter(f => f.tarjeta.otroDia).length}
+          numerosDeBodega={avisoNumerosDeBodega(cod, seqsBodega, cong ? ['CC', 'CN'] : ['P', 'B', 'CH'])}
           formManual={renderFormManual(cod)}
           cargando={loadingCods.includes(cod)}
           filas={filas}

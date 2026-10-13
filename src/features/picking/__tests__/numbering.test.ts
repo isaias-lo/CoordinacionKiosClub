@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computePalletNums, isSinAsignar } from '../picking-utils';
+import { computePalletNums, isSinAsignar, avisoNumerosDeBodega } from '../picking-utils';
 import type { PalletSlot } from '../picking-types';
 
 // Fábrica mínima de slots para el test de numeración
@@ -120,5 +120,21 @@ describe('computePalletNums — respeta los números ya dados (06MQH, 12/10/2026
     const usados = Object.values(nums);
     expect(new Set([...usados, 1]).size).toBe(usados.length + 1);
     expect(nums).toEqual({ 1: 3, 2: 2, 3: 4, 4: 5 });
+  });
+});
+
+describe('avisoNumerosDeBodega — explica el salto en la numeración', () => {
+  it('nombra el número que tomó Bodega', () => {
+    expect(avisoNumerosDeBodega('06MQH', { '06MQH::P': [1] }, ['P', 'B', 'CH']))
+      .toBe('P1 lo creó Bodega (por ejemplo, un pallet web) y no aparece aquí. Por eso la numeración de Picking se lo salta.');
+  });
+
+  it('junta varios en orden de tipo y número', () => {
+    const t = avisoNumerosDeBodega('06MQH', { '06MQH::P': [2, 1], '06MQH::B': [1] }, ['P', 'B', 'CH']);
+    expect(t?.startsWith('P1, P2 y B1 los creó Bodega')).toBe(true);
+  });
+
+  it('no avisa por otra tienda ni por tipos que esta vista no muestra', () => {
+    expect(avisoNumerosDeBodega('06MQH', { '01TPS::P': [1], '06MQH::W': [1] }, ['P', 'B', 'CH'])).toBeNull();
   });
 });

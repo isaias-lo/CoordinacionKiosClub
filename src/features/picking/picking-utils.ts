@@ -103,6 +103,26 @@ export function esSlotDeBodega(s: { state_key?: string | null; picker_label?: st
   return String(s.state_key ?? '').endsWith('__bodega') || s.picker_label === 'Bodega';
 }
 
+/**
+ * Aviso para la vista de una tienda cuando Bodega ya usó números de los tipos que se ven ahí
+ * (un pallet web es un P creado desde Bodega). Picking no muestra esos slots, así que sin aviso la
+ * tienda parte en P2 y parece que falta el P1. `null` si no hay nada que avisar.
+ */
+export function avisoNumerosDeBodega(
+  storeCod: string, seqsBodega: Record<string, number[]>, tipos: readonly string[],
+): string | null {
+  const etiquetas: string[] = [];
+  for (const tipo of tipos) {
+    const nums = [...new Set(seqsBodega[claveNumeracion(storeCod, tipo)] ?? [])].sort((a, b) => a - b);
+    for (const n of nums) etiquetas.push(`${tipo}${n}`);
+  }
+  if (etiquetas.length === 0) return null;
+  const lista = etiquetas.length === 1 ? etiquetas[0]
+    : `${etiquetas.slice(0, -1).join(', ')} y ${etiquetas[etiquetas.length - 1]}`;
+  const uno = etiquetas.length === 1;
+  return `${lista} ${uno ? 'lo creó' : 'los creó'} Bodega (por ejemplo, un pallet web) y no ${uno ? 'aparece' : 'aparecen'} aquí. Por eso la numeración de Picking ${uno ? 'se lo salta' : 'se los salta'}.`;
+}
+
 /** La llave con que se agrupan los números: misma tienda y mismo tipo (el subtipo no cuenta). */
 export function claveNumeracion(storeCod: string, tipo: string | null | undefined): string {
   return `${storeCod}::${tipo || 'P'}`;

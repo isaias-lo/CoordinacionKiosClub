@@ -13,6 +13,8 @@ export interface VistaSecoProps {
   /** Operaciones sin responsable en Odoo: solo el aviso de arriba, nunca una fila. */
   sinAsignar: { n: number; texto: string; detalle: string; onActualizar: () => void } | null;
   otroDia: number;
+  /** Números que Bodega ya usó en esta tienda (ver avisoNumerosDeBodega). */
+  numerosDeBodega?: string | null;
   formManual: React.ReactNode;
   cargando: boolean;
   filas: FilaSeco[];
@@ -47,6 +49,11 @@ export function VistaSeco(p: VistaSecoProps) {
         {p.otroDia > 0 && (
           <div className="pk-alert warn print:hidden" role="status">
             <span><b>{p.otroDia} movimiento{p.otroDia !== 1 ? 's' : ''} con fecha de origen distinta a hoy.</b> Revísa{p.otroDia !== 1 ? 'los' : 'lo'} antes de trabajar{p.otroDia !== 1 ? 'los' : 'lo'}.</span>
+          </div>
+        )}
+        {p.numerosDeBodega && (
+          <div className="pk-alert info print:hidden" role="status">
+            <span>{p.numerosDeBodega}</span>
           </div>
         )}
         {p.cargando && p.filas.length === 0 ? (

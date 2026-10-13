@@ -63,6 +63,11 @@ export function VistaTelefono(p: Props) {
             <span><b>{p.otroDia} con fecha de origen distinta a hoy.</b> Revísa{p.otroDia !== 1 ? 'los' : 'lo'} antes de trabajar{p.otroDia !== 1 ? 'los' : 'lo'}.</span>
           </div>
         )}
+        {p.numerosDeBodega && (
+          <div className="pk-alert info print:hidden" role="status">
+            <span>{p.numerosDeBodega}</span>
+          </div>
+        )}
 
         {p.cargando && p.filas.length === 0 ? (
           <div className="pk-vacio"><span>Cargando operaciones de Odoo…</span></div>
