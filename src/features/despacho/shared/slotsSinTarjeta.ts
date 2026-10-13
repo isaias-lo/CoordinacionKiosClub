@@ -15,6 +15,8 @@ export interface SlotParaTarjeta {
   id: number;
   tipo: string;              // P | B | C | CH
   contenido: string | null;
+  /** 'Bodega' si lo creó Bodega (fn_create_bodega_slot); si no, el picker que lo armó. */
+  picker_label?: string | null;
 }
 
 /** Lo que hace falta saber de un ítem ya guardado. */
@@ -30,9 +32,11 @@ export interface ItemConSlot {
  *  1. **No representado**: si alguna fila ya declara ese `pickingSlotId`, no falta nada. Es la
  *     condición que se rompe cuando una fila guarda su ítem pero no anota el slot.
  *  2. **No congelado**: los CC/CN tienen su propio tablero; SECO no debe inventarles tarjeta.
- *  3. **CH solo si su ítem ya existe**: el slot llega ~600 ms antes que el estado, así que crear la
- *     tarjeta apenas aparece el slot hacía parpadear los chocolates. Exigir el ítem lo evita, y de
- *     paso un CH agregado por otra persona aparece sin tener que salir y volver a la tienda.
+ *  3. **CH de Bodega solo si su ítem ya existe**: el «+ Choc.» de Bodega crea el slot y el ítem a la
+ *     vez, y el slot llega ~600 ms antes que el estado, así que crear la tarjeta apenas aparece el
+ *     slot hacía parpadear los chocolates. Exigir el ítem lo evita. Un CH que arma PICKING no tiene
+ *     ítem hasta que alguien lo pesa en Bodega: con esa regla nunca aparecía con la tienda abierta,
+ *     solo al salir y volver o recargar (38SP2, 13/10/2026, «0/3 ch.» sin ninguna tarjeta).
  */
 export function slotsSinTarjeta<S extends SlotParaTarjeta>(
   slots: readonly S[],
@@ -42,7 +46,7 @@ export function slotsSinTarjeta<S extends SlotParaTarjeta>(
   return slots.filter(s =>
     !representados.has(s.id)
     && !esCongelado(s.contenido)
-    && (s.tipo !== 'CH' || itemsGuardados.some(it => it.pickingSlotId === s.id)));
+    && (s.tipo !== 'CH' || s.picker_label !== 'Bodega' || itemsGuardados.some(it => it.pickingSlotId === s.id)));
 }
 
 /** Mismo criterio que `esCongeladoContenido`; acá para que el módulo no dependa de nada. */

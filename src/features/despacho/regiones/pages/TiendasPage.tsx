@@ -561,7 +561,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     [selectedTienda, pickingSlotsFull],
   );
   useEffect(() => {
-    if (!selectedTienda || !selectedItems) return;
+    // Sin `selectedItems` igual corre: ver `reconciliarFormRows` (38SP2, 13/10/2026).
+    if (!selectedTienda) return;
     const PKG_MAP: Record<string, TipoPaquete> = { P: 'pallet', C: 'contenedor', B: 'box', CH: 'chocolate' };
     const mapCont = contenidoRegiones;
     setFormRows(prev => reconciliarFormRows(
