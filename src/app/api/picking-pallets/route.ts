@@ -133,19 +133,31 @@ export async function PATCH(request: NextRequest) {
         ancho?: number | null; peso_v?: number | null }
     | { slots: { id: number; seq: number; canonical_id: string }[] };
 
-  // Batch: asignar seq + canonical_id a múltiples slots al imprimir
+  // Batch: asignar seq + canonical_id a múltiples slots al imprimir.
+  // Responde 409 con `conflictos` si algún número ya lo tiene otro pallet activo de la tienda (índice
+  // único picking_pallets_seq_active) o si el slot ya tenía OTRO número: imprimir esa etiqueta
+  // repetiría un código de barras (06MQH, 12/10/2026). Los que sí se guardaron quedan guardados.
   if ('slots' in body) {
     const sb = supabaseServer();
-    const results = await Promise.all(
-      body.slots.map(slot =>
-        sb.from('picking_pallets')
-          .update({ seq: slot.seq, canonical_id: slot.canonical_id })
-          .eq('id', slot.id)
-          .is('canonical_id', null)
-      )
-    );
-    const errs = results.filter(r => r.error).map(r => r.error!.message);
+    const conflictos: number[] = [];
+    const errs: string[] = [];
+    await Promise.all(body.slots.map(async slot => {
+      const { data, error } = await sb.from('picking_pallets')
+        .update({ seq: slot.seq, canonical_id: slot.canonical_id })
+        .eq('id', slot.id)
+        .is('canonical_id', null)
+        .select('id');
+      if (error) {
+        if (error.code === '23505') conflictos.push(slot.id); else errs.push(error.message);
+        return;
+      }
+      if (data && data.length > 0) return;
+      // No se tocó: ya tenía código (reimpresión) o el slot no existe. Choca solo si es otro número.
+      const { data: actual } = await sb.from('picking_pallets').select('seq').eq('id', slot.id).maybeSingle();
+      if (actual && actual.seq != null && actual.seq !== slot.seq) conflictos.push(slot.id);
+    }));
     if (errs.length) return NextResponse.json({ error: errs.join('; ') }, { status: 500 });
+    if (conflictos.length) return NextResponse.json({ error: 'Número de pallet ya usado', conflictos }, { status: 409 });
     return NextResponse.json({ ok: true, updated: body.slots.length });
   }
 

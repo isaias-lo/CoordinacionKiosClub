@@ -44,22 +44,18 @@ export function dimsAlCambiarContenido(
   return null;
 }
 
-/** Abreviatura de tres letras para el botón. */
+/** Abreviatura para el botón y la línea pesada: «Com», o «Com · Hog · Ase» en una mezcla. */
 export function abreviaturaContenido(t: string): string {
-  const c = (t ?? '').toLowerCase();
-  if (c === 'comida') return 'Com';
-  if (c === 'hogar') return 'Hog';
+  const c = clasificarContenido(t);
   if (c === 'chocolate') return 'Cho';
-  return 'Mix';
+  return componentesDe(c).map(k => ABREV[k]).join(' · ');
 }
 
-/** Nombre completo, para el `title` — que es lo que se lee justo cuando la abreviatura no alcanza. */
+/** Nombre completo: «Comida», o «Comida · Hogar · Aseo» en una mezcla. */
 export function nombreContenido(t: string): string {
-  const c = (t ?? '').toLowerCase();
-  if (c === 'comida') return 'Comida';
-  if (c === 'hogar') return 'Hogar';
+  const c = clasificarContenido(t);
   if (c === 'chocolate') return 'Chocolate';
-  return 'Mixto (comida y hogar)';
+  return componentesDe(c).map(k => NOMBRE[k]).join(' · ');
 }
 
 // ── Clasificar el contenido que viene de Picking ─────────────────────────────────────────────
@@ -85,39 +81,97 @@ export function nombreContenido(t: string): string {
  */
 export const CONTENIDO_CHOCOLATE = 'chocolate';
 
-export type ClaseContenido = 'comida' | 'hogar' | 'mixto' | 'chocolate';
+/**
+ * Los ocho tipos de carga. Desde el 13/10/2026 son los mismos que marca Picking al imprimir
+ * (`categoriesToContenido`): aseo dejó de contarse como hogar y las mezclas se distinguen.
+ * 'comida-hogar' es lo que Picking llama 'mixto' y RM/Costa sigue escribiendo 'Mixto'.
+ */
+export type ClaseContenido =
+  | 'comida' | 'hogar' | 'aseo' | 'chocolate'
+  | 'comida-hogar' | 'comida-aseo' | 'hogar-aseo' | 'comida-hogar-aseo';
+
+/** Los que se ven como botón. */
+export const TIPOS_SIMPLES = ['comida', 'hogar', 'aseo', 'chocolate'] as const satisfies readonly ClaseContenido[];
+/** Los que se abren con «⋯», en este orden. */
+export const TIPOS_MEZCLA = ['comida-hogar-aseo', 'comida-aseo', 'comida-hogar', 'hogar-aseo'] as const satisfies readonly ClaseContenido[];
+
+export type ComponenteCarga = 'comida' | 'hogar' | 'aseo';
+const ABREV: Record<ComponenteCarga, string> = { comida: 'Com', hogar: 'Hog', aseo: 'Ase' };
+const NOMBRE: Record<ComponenteCarga, string> = { comida: 'Comida', hogar: 'Hogar', aseo: 'Aseo' };
+
+/** De qué está hecho un tipo (el chocolate no se mezcla: lista vacía). Da los puntos de color. */
+export function componentesDe(c: ClaseContenido): ComponenteCarga[] {
+  if (c === 'chocolate') return [];
+  return (['comida', 'hogar', 'aseo'] as const).filter(k => c.split('-').includes(k));
+}
+
+export function esMezcla(c: ClaseContenido): boolean {
+  return componentesDe(c).length > 1;
+}
 
 /**
- * Clasifica el texto libre que viene de Picking.
+ * Clasifica el texto que venga: lo que escribe Picking ('completo', 'aseo-hogar', 'mixto'…), lo
+ * que guarda Nacional ('comida-hogar') o RM/Costa ('Mixto', 'Comida-Aseo'), o texto libre.
  *
- * El chocolate se evalúa PRIMERO: un "chocolate hogar" es chocolate, no hogar.
- * "aseo" y "limpieza" cuentan como hogar; "alimento" como comida. Los dos juntos, mixto.
+ * El chocolate se evalúa PRIMERO: un "chocolate hogar" es chocolate, no hogar. «limpieza» cuenta
+ * como aseo y «alimento» como comida. Sin nada reconocible cae en hogar, el default histórico.
  */
 export function clasificarContenido(raw?: string | null): ClaseContenido {
   const c = String(raw ?? '').toLowerCase();
   if (c.includes('chocolate')) return 'chocolate';
-  if (c === 'mixto' || c === 'comida-hogar') return 'mixto';
-  const comida = c.includes('comida') || c.includes('alimento');
-  const hogar  = c.includes('hogar') || c.includes('aseo') || c.includes('limpieza');
-  if (comida && hogar) return 'mixto';
-  if (comida) return 'comida';
-  return 'hogar';
+  if (c === 'mixto') return 'comida-hogar';
+  if (c === 'completo') return 'comida-hogar-aseo';
+  const tiene = {
+    comida: c.includes('comida') || c.includes('alimento'),
+    hogar:  c.includes('hogar'),
+    aseo:   c.includes('aseo') || c.includes('limpieza'),
+  };
+  const partes = (['comida', 'hogar', 'aseo'] as const).filter(k => tiene[k]);
+  if (partes.length === 0) return 'hogar';
+  return partes.join('-') as ClaseContenido;
 }
 
 const A_SANTIAGO: Record<ClaseContenido, ContenidoSantiago> = {
-  comida: 'Comida', hogar: 'Hogar', mixto: 'Mixto', chocolate: 'Chocolate',
+  comida: 'Comida', hogar: 'Hogar', aseo: 'Aseo', chocolate: 'Chocolate',
+  'comida-hogar': 'Mixto', 'comida-aseo': 'Comida-Aseo', 'hogar-aseo': 'Hogar-Aseo',
+  'comida-hogar-aseo': 'Comida-Hogar-Aseo',
 };
 
-const A_REGIONES: Record<ClaseContenido, TipoContenido> = {
-  comida: 'comida', hogar: 'hogar', mixto: 'comida-hogar', chocolate: 'chocolate',
-};
-
-/** Para Bodega RM/Costa, que rotula en mayúscula inicial. */
+/** Para Bodega RM/Costa, que rotula en mayúscula inicial ('Mixto' es comida y hogar). */
 export function contenidoSantiago(raw?: string | null): ContenidoSantiago {
   return A_SANTIAGO[clasificarContenido(raw)];
 }
 
-/** Para Bodega Nacional, que usa los códigos en minúscula ('comida-hogar' en vez de 'mixto'). */
+/** Para Bodega Nacional, que guarda el código en minúscula ('comida-hogar' en vez de 'mixto'). */
 export function contenidoRegiones(raw?: string | null): TipoContenido {
-  return A_REGIONES[clasificarContenido(raw)];
+  return clasificarContenido(raw);
+}
+
+/**
+ * ¿El tipo de carga de esta unidad lo marcó Picking? Entonces se muestra bloqueado: lo decidió
+ * quien armó el pallet y lo imprimió en la etiqueta. Los slots creados en Bodega llevan
+ * `picker_label = 'Bodega'` (fn_create_bodega_slot); sin slot tampoco hay de dónde sacarlo.
+ */
+export function tipoDesdePicking(slot?: { picker_label?: string | null } | null): boolean {
+  return !!slot && !!slot.picker_label && slot.picker_label !== 'Bodega';
+}
+
+/**
+ * El tipo que queda al unir dos unidades: lo que traían las dos. Comida + Aseo = Comida · Aseo.
+ * El chocolate no entra en una mezcla: si las dos son chocolate sigue siéndolo, y si solo una lo
+ * es manda la otra. Antes cualquier diferencia daba «Mixto» (comida y hogar) aunque no hubiera hogar.
+ */
+export function unirTipos(a: string, b: string): ClaseContenido {
+  const ca = clasificarContenido(a), cb = clasificarContenido(b);
+  const partes = new Set([...componentesDe(ca), ...componentesDe(cb)]);
+  if (partes.size === 0) return 'chocolate';
+  return (['comida', 'hogar', 'aseo'] as const).filter(k => partes.has(k)).join('-') as ClaseContenido;
+}
+
+/** Lo que va en la columna CARGA de la planilla. Un pallet web va sin categoría (Isaias, 13/10). */
+export function cargaParaPlanilla(t: string, palletWeb?: boolean | null): string {
+  if (palletWeb) return '';
+  const c = clasificarContenido(t);
+  if (c === 'chocolate') return 'Chocolate';
+  return componentesDe(c).map(k => NOMBRE[k]).join('-');
 }

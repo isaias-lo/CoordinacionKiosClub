@@ -187,6 +187,20 @@ describe('reconciliarFormRows', () => {
       ? { id: `bk-saved-${s.id}`, peso: String(guardado.peso), saved: true, savedItem: guardado, pickingSlotId: s.id }
       : { id: `bk-pick-${s.id}`, peso: '', pickingSlotId: s.id };
 
+  // 38SP2, 13/10/2026: la tienda sin nada guardado no tenía ítems en el estado y el efecto
+  // cortaba antes de todo. El pallet que Picking creó con la tienda abierta quedaba como la
+  // tarjeta «¿Con cuál fue unificado?» hasta recargar.
+  it('tienda sin ítems todavía: igual crea la tarjeta del slot nuevo', () => {
+    const out = reconciliarFormRows<RegItem, AdoptableRow<RegItem>>([], undefined, [slot(7)], aplicarItem, construirFila);
+    expect(out.map(r => r.id)).toEqual(['bk-pick-7']);
+  });
+
+  it('tienda sin ítems pero con filas guardadas: no toca nada (estado a medio llegar)', () => {
+    const item: RegItem = { pkg: 'pallet', orden: 'pallet1', peso: 10, pickingSlotId: 5 };
+    const rows: AdoptableRow<RegItem>[] = [{ id: 'r', saved: true, savedItem: item, pickingSlotId: 5 }];
+    expect(reconciliarFormRows(rows, undefined, [slot(5), slot(6)], aplicarItem, construirFila)).toBe(rows);
+  });
+
   it('sin cambios en ningún paso → misma referencia (no fuerza re-render)', () => {
     const item: RegItem = { pkg: 'pallet', orden: 'pallet1', peso: 10, pickingSlotId: 5 };
     const rows: AdoptableRow<RegItem>[] = [{ id: 'r', saved: true, savedItem: item, pickingSlotId: 5 }];

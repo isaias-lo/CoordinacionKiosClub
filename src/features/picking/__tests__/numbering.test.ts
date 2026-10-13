@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computePalletNums, isSinAsignar } from '../picking-utils';
+import { computePalletNums, isSinAsignar, avisoNumerosDeBodega } from '../picking-utils';
 import type { PalletSlot } from '../picking-types';
 
 // Fábrica mínima de slots para el test de numeración
@@ -66,5 +66,75 @@ describe('computePalletNums — [P6] excluye "Sin asignar"', () => {
     expect(nums[10]).toBe(1);
     expect(nums[20]).toBe(2);
     expect(nums[30]).toBe(3);
+  });
+});
+
+describe('computePalletNums — respeta los números ya dados (06MQH, 12/10/2026)', () => {
+  const MQH = '06MQH';
+  // 2362 es el pallet web de Bodega (seq 1, Picking no lo muestra). 2365 y 2377 son de Picking.
+  const picking: PalletSlot[] = [
+    slot({ id: 2365, store_cod: MQH, tipo: 'P', picker_label: 'Martin Barraza', created_at: '2026-10-12T19:42:00.000Z' }),
+    slot({ id: 2377, store_cod: MQH, tipo: 'P', picker_label: 'Maria Camila',   created_at: '2026-10-12T20:37:00.000Z' }),
+  ];
+
+  it('no repite el número que Bodega ya dio al pallet web', () => {
+    const nums = computePalletNums(picking, { [`${MQH}::P`]: [1] });
+    expect(nums[2365]).toBe(2);
+    expect(nums[2377]).toBe(3);
+  });
+
+  it('el reservado de otro tipo o tienda no corre la numeración', () => {
+    const nums = computePalletNums(picking, { [`${MQH}::B`]: [1], ['01TPS::P']: [1] });
+    expect(nums[2365]).toBe(1);
+    expect(nums[2377]).toBe(2);
+  });
+
+  it('un slot ya impreso conserva su número aunque su rango cambie', () => {
+    const conSeq = [
+      slot({ id: 1, store_cod: MQH, tipo: 'P', picker_label: 'Ana', created_at: '2026-10-12T10:00:00.000Z' }),
+      slot({ id: 2, store_cod: MQH, tipo: 'P', picker_label: 'Ana', created_at: '2026-10-12T10:00:01.000Z', seq: 1 }),
+    ];
+    const nums = computePalletNums(conSeq);
+    expect(nums[2]).toBe(1);
+    expect(nums[1]).toBe(2);
+  });
+
+  it('los sin número toman los huecos más bajos, así un impreso no corre a los que faltan', () => {
+    const huecos = [
+      slot({ id: 1, store_cod: MQH, tipo: 'P', picker_label: 'Ana', created_at: '2026-10-12T10:00:00.000Z' }),
+      slot({ id: 2, store_cod: MQH, tipo: 'P', picker_label: 'Ana', created_at: '2026-10-12T10:00:01.000Z', seq: 2 }),
+      slot({ id: 3, store_cod: MQH, tipo: 'P', picker_label: 'Ana', created_at: '2026-10-12T10:00:02.000Z' }),
+    ];
+    const nums = computePalletNums(huecos);
+    expect(nums).toEqual({ 1: 1, 2: 2, 3: 3 });
+  });
+
+  it('nunca da dos veces el mismo número dentro de tienda y tipo', () => {
+    const varios = [
+      slot({ id: 1, store_cod: MQH, tipo: 'P', picker_label: 'Ana', created_at: '2026-10-12T10:00:00.000Z', seq: 3 }),
+      slot({ id: 2, store_cod: MQH, tipo: 'P', picker_label: 'Ana', created_at: '2026-10-12T10:00:01.000Z' }),
+      slot({ id: 3, store_cod: MQH, tipo: 'P', picker_label: 'Ana', created_at: '2026-10-12T10:00:02.000Z' }),
+      slot({ id: 4, store_cod: MQH, tipo: 'P', picker_label: 'Ana', created_at: '2026-10-12T10:00:03.000Z' }),
+    ];
+    const nums = computePalletNums(varios, { [`${MQH}::P`]: [1] });
+    const usados = Object.values(nums);
+    expect(new Set([...usados, 1]).size).toBe(usados.length + 1);
+    expect(nums).toEqual({ 1: 3, 2: 2, 3: 4, 4: 5 });
+  });
+});
+
+describe('avisoNumerosDeBodega — explica el salto en la numeración', () => {
+  it('nombra el número que tomó Bodega', () => {
+    expect(avisoNumerosDeBodega('06MQH', { '06MQH::P': [1] }, ['P', 'B', 'CH']))
+      .toBe('P1 lo creó Bodega (por ejemplo, un pallet web) y no aparece aquí. Por eso la numeración de Picking se lo salta.');
+  });
+
+  it('junta varios en orden de tipo y número', () => {
+    const t = avisoNumerosDeBodega('06MQH', { '06MQH::P': [2, 1], '06MQH::B': [1] }, ['P', 'B', 'CH']);
+    expect(t?.startsWith('P1, P2 y B1 los creó Bodega')).toBe(true);
+  });
+
+  it('no avisa por otra tienda ni por tipos que esta vista no muestra', () => {
+    expect(avisoNumerosDeBodega('06MQH', { '01TPS::P': [1], '06MQH::W': [1] }, ['P', 'B', 'CH'])).toBeNull();
   });
 });

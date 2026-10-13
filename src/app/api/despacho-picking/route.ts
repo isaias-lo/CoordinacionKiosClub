@@ -12,6 +12,10 @@ const CARGA_LABEL: Record<string, string> = {
   mixto:      'Mixto',
   chocolate:  'Chocolate',
   aseo:       'Aseo',
+  // Las mezclas que escribe Picking (categoriesToContenido).
+  'comida-aseo': 'Comida-Aseo',
+  'aseo-hogar':  'Hogar-Aseo',
+  completo:      'Comida-Hogar-Aseo',
   congelados: 'Congelados',
 };
 

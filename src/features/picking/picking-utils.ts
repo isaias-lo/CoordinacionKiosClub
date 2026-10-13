@@ -59,27 +59,73 @@ export function isSinAsignar(pickerLabel: string | null | undefined): boolean {
 }
 
 /**
- * Numeración de etiquetas: rank 1-based dentro de (store_cod, tipo), en orden de creación
- * (created_at, luego id — determinista e independiente del orden del array, lo que evita que
- * dos equipos numeren distinto → P7). EXCLUYE el bucket "Sin asignar", cuyos slots fantasma
- * nunca se imprimen e inflaban el conteo (los CH del picker real salían 4,5,6 en vez de 1,2,3 → P6).
- * Devuelve { [slotId]: pallet_num }; los slots "Sin asignar" quedan sin entrada.
+ * Numeración de etiquetas, dentro de (store_cod, tipo):
+ * - Un slot que ya tiene `seq` (se imprimió, o lo creó Bodega) CONSERVA ese número. Su etiqueta ya
+ *   salió con él, y el índice único `picking_pallets_seq_active` no deja repetirlo.
+ * - Los que no tienen `seq` toman, en orden de creación (created_at, luego id: determinista e
+ *   independiente del orden del array → P7), los números libres más bajos. Libre es que no lo tenga
+ *   otro slot ni esté en `reservados`: los números que Bodega ya dio a sus slots (pallet web,
+ *   adquisiciones), que Picking no muestra pero sí ocupan número.
+ * - EXCLUYE el bucket "Sin asignar", cuyos slots fantasma nunca se imprimen e inflaban el conteo
+ *   (los CH del picker real salían 4,5,6 en vez de 1,2,3 → P6). Quedan sin entrada.
+ *
+ * Antes era solo el rango por fecha de creación y no veía a Bodega: en 06MQH (12/10/2026) Bodega
+ * creó un pallet web con seq 1, Picking numeró P1 al pallet de su picker, la base rechazó ese 1 sin
+ * que nadie se enterara y la etiqueta salió con el mismo código de barras que el pallet web.
  */
 export function computePalletNums(
-  slots: Pick<PalletSlot, 'id' | 'store_cod' | 'tipo' | 'picker_label' | 'created_at'>[],
+  slots: Pick<PalletSlot, 'id' | 'store_cod' | 'tipo' | 'picker_label' | 'created_at' | 'seq'>[],
+  reservados: Record<string, Iterable<number>> = {},
 ): Record<number, number> {
   const result: Record<number, number> = {};
   const byStoreTipo: Record<string, typeof slots> = {};
   for (const s of slots) {
     if (isSinAsignar(s.picker_label)) continue;
-    const key = `${s.store_cod}::${s.tipo || 'P'}`;
-    (byStoreTipo[key] ??= []).push(s);
+    (byStoreTipo[claveNumeracion(s.store_cod, s.tipo)] ??= []).push(s);
   }
-  for (const group of Object.values(byStoreTipo)) {
+  for (const [key, group] of Object.entries(byStoreTipo)) {
+    const ocupados = new Set<number>(reservados[key] ?? []);
+    for (const s of group) if (s.seq != null && s.seq > 0) ocupados.add(s.seq);
     group.sort((a, b) => (a.created_at !== b.created_at ? (a.created_at < b.created_at ? -1 : 1) : a.id - b.id));
-    group.forEach((s, idx) => { result[s.id] = idx + 1; });
+    let siguiente = 1;
+    for (const s of group) {
+      if (s.seq != null && s.seq > 0) { result[s.id] = s.seq; continue; }
+      while (ocupados.has(siguiente)) siguiente++;
+      result[s.id] = siguiente;
+      ocupados.add(siguiente);
+    }
   }
   return result;
+}
+
+/** Slot creado desde Bodega (origen "<cod>__bodega"): Picking no lo muestra, pero su número cuenta. */
+export function esSlotDeBodega(s: { state_key?: string | null; picker_label?: string | null }): boolean {
+  return String(s.state_key ?? '').endsWith('__bodega') || s.picker_label === 'Bodega';
+}
+
+/**
+ * Aviso para la vista de una tienda cuando Bodega ya usó números de los tipos que se ven ahí
+ * (un pallet web es un P creado desde Bodega). Picking no muestra esos slots, así que sin aviso la
+ * tienda parte en P2 y parece que falta el P1. `null` si no hay nada que avisar.
+ */
+export function avisoNumerosDeBodega(
+  storeCod: string, seqsBodega: Record<string, number[]>, tipos: readonly string[],
+): string | null {
+  const etiquetas: string[] = [];
+  for (const tipo of tipos) {
+    const nums = [...new Set(seqsBodega[claveNumeracion(storeCod, tipo)] ?? [])].sort((a, b) => a - b);
+    for (const n of nums) etiquetas.push(`${tipo}${n}`);
+  }
+  if (etiquetas.length === 0) return null;
+  const lista = etiquetas.length === 1 ? etiquetas[0]
+    : `${etiquetas.slice(0, -1).join(', ')} y ${etiquetas[etiquetas.length - 1]}`;
+  const uno = etiquetas.length === 1;
+  return `${lista} ${uno ? 'lo creó' : 'los creó'} Bodega (por ejemplo, un pallet web) y no ${uno ? 'aparece' : 'aparecen'} aquí. Por eso la numeración de Picking ${uno ? 'se lo salta' : 'se los salta'}.`;
+}
+
+/** La llave con que se agrupan los números: misma tienda y mismo tipo (el subtipo no cuenta). */
+export function claveNumeracion(storeCod: string, tipo: string | null | undefined): string {
+  return `${storeCod}::${tipo || 'P'}`;
 }
 
 export function buildCanonicalId(tipo: string, seq: number, cod: string, isoDate: string): string {

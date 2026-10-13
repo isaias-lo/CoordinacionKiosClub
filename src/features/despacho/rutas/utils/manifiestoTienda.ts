@@ -39,6 +39,9 @@ const TIPO_LABEL: Record<string, string> = { P: 'Pallet', B: 'Bulto', C: 'Conten
 const CONTENIDO_LABEL: Record<string, string> = {
   hogar: 'Hogar', comida: 'Comida', 'comida-hogar': 'Mixto', 'comida-aseo': 'Comida/Aseo',
   aseo: 'Aseo', chocolate: 'Chocolate', mixto: 'Mixto', congelados: 'Congelados',
+  // Las otras mezclas: las de Picking ('aseo-hogar', 'completo') y las de Bodega.
+  'aseo-hogar': 'Hogar/Aseo', 'hogar-aseo': 'Hogar/Aseo',
+  completo: 'Comida/Hogar/Aseo', 'comida-hogar-aseo': 'Comida/Hogar/Aseo',
 };
 
 export function guiasDeItems(items: ItemDetalle[]): string[] {

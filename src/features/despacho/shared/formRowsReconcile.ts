@@ -157,6 +157,13 @@ export function sameStableItem(
  * ninguno de los tres, `reconciliarFormRows` devuelve la MISMA referencia que recibió — quien
  * llame con `setFormRows(prev => reconciliarFormRows(prev, ...))` no fuerza un re-render de más.
  *
+ * `items` puede venir `undefined`: la tienda todavía no tiene ningún ítem en el estado (nada
+ * guardado hoy). Antes los dos espejos cortaban ahí y no corría NADA, tampoco el backfill: un
+ * pallet que Picking creaba con la tienda ya abierta se quedaba como la tarjeta «¿Con cuál fue
+ * unificado?» hasta recargar (38SP2, 13/10/2026). Sin ítems se
+ * hace solo el backfill. Si ya hay filas guardadas no se toca nada: que falte la tienda entera es
+ * un estado a medio llegar, y el paso 1 las soltaría.
+ *
  * `aplicarItem` y `construirFila` quedan a cargo de quien llama porque ahí SÍ difieren los dos
  * espejos: Santiago describe una fila con `tipo`+`contenido`, Regiones con `pkg`+`tipo`+`guia`+
  * `valor`. Esta función no sabe ni necesita saber esa diferencia.
@@ -167,13 +174,15 @@ export function reconciliarFormRows<
   Slot extends SlotParaTarjeta = SlotParaTarjeta,
 >(
   rows: Row[],
-  items: Item[],
+  itemsDeTienda: Item[] | undefined,
   slots: readonly Slot[],
   aplicarItem: (row: Row, item: Item) => Row,
   construirFila: (slot: Slot, itemGuardado?: Item) => Row,
   /** Deja adoptar también una fila tocada que dice lo mismo que el ítem. Ver `adopcionesPendientes`. */
   mismaCarga?: (row: Row, item: Item) => boolean,
 ): Row[] {
+  if (!itemsDeTienda && rows.some(r => r.saved)) return rows;
+  const items = itemsDeTienda ?? [];
   let next = reconcileSavedRows(rows, items);
 
   const adopciones = adopcionesPendientes(next, items, mismaCarga);
