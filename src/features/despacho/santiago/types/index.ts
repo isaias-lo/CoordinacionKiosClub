@@ -48,4 +48,7 @@ export interface SantiagoState {
   registrado?: boolean;    // DERIVADO de `registros` para la fecha activa; los componentes lo leen así
   /** Qué días quedaron registrados. Fuente de verdad. Ver shared/registroPorFecha. */
   registros?: Record<string, boolean>;
+  /** La última decisión explícita por día —registrar o REABRIR— con su hora, para que reabrir
+   *  aguante el merge. Ver shared/registroPorFecha. */
+  decisiones?: Record<string, { registrado: boolean; ts: number }>;
 }

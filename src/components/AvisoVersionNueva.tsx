@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw, X } from 'lucide-react';
-import { hayVersionNueva, debeMostrarAviso, resumenDeVersiones, VERSION_DESCONOCIDA, POSPONER_MS } from '@/lib/versionApp';
-import { registrarSW, activarVersionNueva } from '@/lib/sw/registrarSW';
+import { hayVersionNueva, debeMostrarAviso, resumenDeVersiones, queHacerConElWorkerEsperando, VERSION_DESCONOCIDA, POSPONER_MS } from '@/lib/versionApp';
+import { registrarSW, activarVersionNueva, cederElPasoEnSilencio } from '@/lib/sw/registrarSW';
 
 /** Cada cuánto se le pregunta al servidor qué versión está publicada. */
 const CADA_MS = 5 * 60_000;
@@ -30,17 +30,13 @@ export function AvisoVersionNueva() {
   const [tic, setTic] = useState(0);
   // Una vez detectada, no se vuelve a preguntar: la respuesta ya no puede cambiar sin recargar.
   const yaDetectada = useRef(false);
-  // El sondeo vive en su propio efecto; el service worker necesita poder dispararlo.
-  const revisarRef = useRef<((forzar?: boolean) => Promise<void>) | null>(null);
 
   useEffect(() => {
     if (!local || local === VERSION_DESCONOCIDA) return; // en desarrollo no hay con qué comparar
     let vivo = true;
 
-    // `forzar` lo usa el service worker: ya decidió que hay versión nueva, pero hace falta
-    // preguntar igual para saber CUÁL está publicada y poder nombrarla en el aviso.
-    const revisar = async (forzar = false) => {
-      if ((yaDetectada.current && !forzar) || document.visibilityState === 'hidden') return;
+    const revisar = async () => {
+      if (yaDetectada.current || document.visibilityState === 'hidden') return;
       try {
         const res = await fetch('/api/version', { cache: 'no-store' });
         if (!res.ok || !vivo) return;
@@ -55,7 +51,6 @@ export function AvisoVersionNueva() {
       }
     };
 
-    revisarRef.current = revisar;
     const alVolver = () => { if (document.visibilityState === 'visible') void revisar(); };
     document.addEventListener('visibilitychange', alVolver);
     const id = setInterval(() => { void revisar(); }, CADA_MS);
@@ -73,10 +68,26 @@ export function AvisoVersionNueva() {
   // esperando. Por eso pide la publicada aparte — si resulta ser la MISMA que la cargada, el aviso
   // lo dice, y eso explica un botón Recargar que no trae nada nuevo.
   useEffect(() => registrarSW(() => {
-    yaDetectada.current = true;
-    setHayNueva(true);
-    void revisarRef.current?.(true);
-  }), []);
+    // ANTES de avisar, se pregunta QUÉ versión hay publicada. Esta rama no compara nada por su
+    // cuenta —avisa con que haya algo descargado esperando—, y el 12/10/2026 eso dejó un aviso
+    // que no se iba ni recargando ni cerrando sesión, con las dos versiones IGUALES: un worker
+    // trabado en una sola máquina. Ver `queHacerConElWorkerEsperando`.
+    void (async () => {
+      let publicada: string | null = null;
+      try {
+        const res = await fetch('/api/version', { cache: 'no-store' });
+        if (res.ok) publicada = ((await res.json()) as { version?: string }).version ?? null;
+      } catch { /* sin respuesta: se avisa igual, como hasta ahora */ }
+      if (publicada) setRemota(publicada);
+      if (queHacerConElWorkerEsperando(local, publicada) === 'activar-en-silencio') {
+        // Misma versión: no hay nada que traer. Se lo destraba y no se molesta a nadie.
+        void cederElPasoEnSilencio();
+        return;
+      }
+      yaDetectada.current = true;
+      setHayNueva(true);
+    })();
+  }), [local]);
 
   // Mientras está pospuesto, un temporizador lo trae de vuelta al vencer.
   useEffect(() => {

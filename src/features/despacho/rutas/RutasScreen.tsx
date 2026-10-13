@@ -3582,6 +3582,12 @@ export default function RutasScreen() {
                     <ManualDispatch
                       vistaA={vista === 'nueva'}
                       vuelta={v2Fecha ? { poolTitulo: `Del ${diaSemana(v2Fecha)} ${Number(v2Fecha.slice(8, 10))}`, poolNota: 'No salieron en su día' } : undefined}
+                      // EL SELECTOR DE POOL. Sin estas dos props `poolScope` caia en su valor por
+                      // defecto —'rm-costa'— y el selector no se dibujaba (`{onPool && …}`), asi
+                      // que esta pestana quedaba CLAVADA en RM/Costa y ninguna tienda de Regiones
+                      // pendiente se podia alcanzar. Lo unico que se veia era «2 pendientes en el
+                      // otro», sin forma de llegar al otro. Ver `poolsSeparados.ts`.
+                      pool={pool} onPool={setPool}
                       calT={calTV2}
                       flota={flota}
                       gps={gps}

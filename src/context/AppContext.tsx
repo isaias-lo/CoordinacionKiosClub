@@ -14,7 +14,7 @@ import { fechaChile } from '@/lib/fechaChile';
 import { stableItemKey } from '@/features/despacho/shared/formRowsReconcile';
 import { serializarBase } from '@/features/despacho/shared/syncBase';
 import { tieneLapida, lapidasComoLista, absorberLapidas } from '@/features/despacho/shared/lapidasBorrado';
-import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, traeRegistrosNuevos, type RegistroPorFecha } from '@/features/despacho/shared/registroPorFecha';
+import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, traeRegistrosNuevos, decidir, fusionarDecisiones, aplicarDecisiones, type RegistroPorFecha, type DecisionPorFecha } from '@/features/despacho/shared/registroPorFecha';
 import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
 
 const today = new Date();
@@ -56,7 +56,7 @@ type Action =
   | { type: 'SET_SHEETS_URL'; payload: string }
   | { type: 'SHOW_TOAST'; msg: string; color?: string }
   | { type: 'HIDE_TOAST' }
-  | { type: 'LOAD_STATE'; payload: { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData>; registrado?: boolean; registros?: RegistroPorFecha; fechaDespacho?: string } }
+  | { type: 'LOAD_STATE'; payload: { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData>; registrado?: boolean; registros?: RegistroPorFecha; decisiones?: DecisionPorFecha; fechaDespacho?: string } }
   | { type: 'SET_FECHA_DESPACHO'; payload: string }
   | { type: 'SET_REGISTRADO'; payload: boolean };
 
@@ -171,10 +171,14 @@ function reducer(state: AppState, action: Action): AppState {
     case 'LOAD_STATE': {
       // Se ADOPTAN los registros del otro equipo (un `true` nunca se pierde) y se conserva el
       // booleano viejo que traen los estados ya guardados. Ver shared/registroPorFecha.
-      const registros = migrarRegistroViejo(
+      // Las decisiones explícitas se unen por hora —gana la más nueva— y se aplican DESPUÉS de
+      // todo lo demás: si fueran antes, el booleano viejo que migra del remoto volvería a marcar
+      // el día que se acaba de reabrir. Ver shared/registroPorFecha.
+      const decisiones = fusionarDecisiones(state.decisiones, action.payload.decisiones);
+      const registros = aplicarDecisiones(migrarRegistroViejo(
         fusionarRegistros(state.registros, action.payload.registros),
         action.payload.registrado, action.payload.fechaDespacho,
-      );
+      ), decisiones);
       return {
         ...state,
         dispatch:   action.payload.dispatch
@@ -182,6 +186,7 @@ function reducer(state: AppState, action: Action): AppState {
           : state.dispatch,
         pdfData:    action.payload.pdfData     ?? state.pdfData,
         registros,
+        decisiones,
         // `registrado` pasa a ser DERIVADO del mapa: los componentes lo siguen leyendo igual.
         registrado: estaRegistrado(registros, fechaDespachoBodega(state.fechaDespacho)),
       };
@@ -208,8 +213,15 @@ function reducer(state: AppState, action: Action): AppState {
       // había registrado — que es lo que el #643 creyó arreglar y no arregló.
       //
       // `fechaDespachoBodega` es la MISMA función que usan el selector y la escritura de la planilla.
-      const registros = marcarRegistro(state.registros, fechaDespachoBodega(state.fechaDespacho), action.payload);
-      return { ...state, registros, registrado: action.payload };
+      //
+      // REABRIR TAMBIÉN SE ASIENTA. Borrar la fecha del mapa no alcanzaba: la fila compartida
+      // seguía con el `true` y el merge lo re-adoptaba al primer evento (12/10/2026, el botón
+      // volvía solo a Completado). La hora sale de acá y no de la acción para no tocar los seis
+      // sitios que despachan esto; la parte decidible es pura y está testeada (`decidir`).
+      const fecha = fechaDespachoBodega(state.fechaDespacho);
+      const registros  = marcarRegistro(state.registros, fecha, action.payload);
+      const decisiones = decidir(state.decisiones, fecha, action.payload, Date.now());
+      return { ...state, registros, decisiones, registrado: action.payload };
     }
     default:
       return state;
@@ -355,7 +367,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       // Block for 30 s after an intentional CLEAR_ALL to prevent remote from restoring cleared data
       if (Date.now() - clearedAtRef.current < 30_000) return;
-      const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData>; sessionDate?: string; pushedAt?: number; registrado?: boolean; registros?: RegistroPorFecha; fechaDespacho?: string };
+      const remote = remoteState as { dispatch?: Record<string, DispatchItem[]>; pdfData?: Record<string, PdfData>; sessionDate?: string; pushedAt?: number; registrado?: boolean; registros?: RegistroPorFecha; decisiones?: DecisionPorFecha; fechaDespacho?: string };
       // Reject data from a different calendar day — prevents stale sessions from other devices
       // from pushing yesterday's guides into today's view. Old records without sessionDate are also rejected.
       if (remote.sessionDate !== SESSION_DATE) return;
@@ -372,8 +384,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (remoteStr === lastPushedRef.current) {
         // Mismos ítems, pero el otro equipo puede haber REGISTRADO el día. Eso sí se adopta: ver
         // `traeRegistrosNuevos`.
-        if (traeRegistrosNuevos(stateRef.current.registros, remote.registros)) {
-          dispatch({ type: 'LOAD_STATE', payload: { registros: remote.registros } });
+        if (traeRegistrosNuevos(stateRef.current.registros, remote.registros, stateRef.current.decisiones)) {
+          dispatch({ type: 'LOAD_STATE', payload: { registros: remote.registros, decisiones: remote.decisiones } });
         }
         return; // already in sync
       }
@@ -428,7 +440,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // des-registrar localmente con un remoto viejo).
       // Los registros del otro equipo se adoptan enteros: el merge es una unión donde un `true`
       // nunca se pierde, así que no hace falta el filtro que sí necesitaba el booleano suelto.
-      dispatch({ type: 'LOAD_STATE', payload: { dispatch: mergedDispatch, pdfData: mergedPdf, registrado: remote.registrado === true ? true : undefined, registros: remote.registros, fechaDespacho: remote.fechaDespacho } });
+      dispatch({ type: 'LOAD_STATE', payload: { dispatch: mergedDispatch, pdfData: mergedPdf, registrado: remote.registrado === true ? true : undefined, registros: remote.registros, decisiones: remote.decisiones, fechaDespacho: remote.fechaDespacho } });
     };
 
     // [P9] Catch-up: re-consulta el estado y lo aplica (usado al volver a la pestaña/app y tras un push)
@@ -492,7 +504,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // el cleanup solo hacía clearTimeout, sin guardar nada.)
   useEffect(() => {
     if (!isInitializedRef.current) return;
-    const payload = { dispatch: state.dispatch, pdfData: state.pdfData, fechaDespacho: state.fechaDespacho, registrado: state.registrado, registros: state.registros, borrados: lapidasComoLista() };
+    const payload = { dispatch: state.dispatch, pdfData: state.pdfData, fechaDespacho: state.fechaDespacho, registrado: state.registrado, registros: state.registros, decisiones: state.decisiones, borrados: lapidasComoLista() };
     // [P5] "¿Hay algo que empujar?" mira el payload COMPLETO (incluye fechaDespacho/registrado);
     // la BASE del merge y del corta-ecos se guarda aparte con `serializarBase`.
     const current = JSON.stringify(payload);
@@ -540,7 +552,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         try { localStorage.setItem(REGIONES_KEY, JSON.stringify(stateRef.current)); } catch {}
       }
     };
-  }, [state.dispatch, state.pdfData, state.fechaDespacho, state.registrado]);
+  }, [state.dispatch, state.pdfData, state.fechaDespacho, state.registrado, state.decisiones]);
 
   const showToast = useCallback((msg: string, color?: string) => {
     dispatch({ type: 'SHOW_TOAST', msg, color });
@@ -576,7 +588,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
    */
   const flushPending = useCallback((extra?: { registrado?: boolean; registros?: RegistroPorFecha }) => {
     if (!isInitializedRef.current) return;
-    const payload = { dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData, fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado, registros: stateRef.current.registros, borrados: lapidasComoLista(), ...extra };
+    const payload = { dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData, fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado, registros: stateRef.current.registros, decisiones: stateRef.current.decisiones, borrados: lapidasComoLista(), ...extra };
     const current = JSON.stringify(payload);
     if (current === lastPushedFullRef.current) return;
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }

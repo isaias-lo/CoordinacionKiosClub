@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo,
-  type RegistroPorFecha,
+  estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, traeRegistrosNuevos,
+  decidir, fusionarDecisiones, aplicarDecisiones,
+  type RegistroPorFecha, type DecisionPorFecha,
 } from '../registroPorFecha';
 import { fechaDespachoBodega } from '../fechaLocal';
 
@@ -162,5 +163,121 @@ describe('marcar con la fecha CALCULADA, no con la cruda', () => {
   it('si alguien SÍ tocó el selector, manda esa fecha', () => {
     const elegida = fechaDespachoBodega('2026-10-05', alMediodia('2026-10-01'));
     expect(estaRegistrado(marcarRegistro({}, elegida, true), '2026-10-05')).toBe(true);
+  });
+});
+
+
+// ── Reabrir un día ya registrado ──────────────────────────────────────────────────────────────
+//
+// El caso del 12/10/2026: Reabrir pasaba el botón a REGISTRAR y volvía solo a Completado, porque
+// la fila compartida seguía con el `true` y la regla «un true nunca se pierde» lo re-adoptaba.
+
+const DESPACHO = '2026-10-13';
+const T1 = 1_760_000_000_000;   // una hora cualquiera
+const T2 = T1 + 60_000;         // un minuto después
+const T3 = T2 + 60_000;
+
+describe('decidir', () => {
+  it('asienta la decisión con su hora', () => {
+    expect(decidir({}, DESPACHO, false, T1)).toEqual({ [DESPACHO]: { registrado: false, ts: T1 } });
+    expect(decidir({}, DESPACHO, true, T2)).toEqual({ [DESPACHO]: { registrado: true, ts: T2 } });
+  });
+
+  it('sin fecha o con hora inválida no inventa nada', () => {
+    expect(decidir({}, '', false, T1)).toEqual({});
+    expect(decidir({}, DESPACHO, false, NaN)).toEqual({});
+  });
+
+  it('no pisa los otros días', () => {
+    const antes = decidir({}, '2026-10-12', true, T1);
+    expect(decidir(antes, DESPACHO, false, T2)).toEqual({
+      '2026-10-12': { registrado: true, ts: T1 },
+      [DESPACHO]:   { registrado: false, ts: T2 },
+    });
+  });
+});
+
+describe('fusionarDecisiones', () => {
+  it('gana la más nueva, venga de donde venga', () => {
+    const mia   = { [DESPACHO]: { registrado: false, ts: T2 } };
+    const otra  = { [DESPACHO]: { registrado: true,  ts: T1 } };
+    expect(fusionarDecisiones(mia, otra)[DESPACHO]).toEqual({ registrado: false, ts: T2 });
+    expect(fusionarDecisiones(otra, mia)[DESPACHO]).toEqual({ registrado: false, ts: T2 });
+  });
+
+  it('un registro POSTERIOR a la reapertura vuelve a ganar', () => {
+    const reabierto = { [DESPACHO]: { registrado: false, ts: T2 } };
+    const registrado = { [DESPACHO]: { registrado: true, ts: T3 } };
+    expect(fusionarDecisiones(reabierto, registrado)[DESPACHO]).toEqual({ registrado: true, ts: T3 });
+  });
+
+  it('empate: se queda el local', () => {
+    const mia  = { [DESPACHO]: { registrado: false, ts: T1 } };
+    const otra = { [DESPACHO]: { registrado: true,  ts: T1 } };
+    expect(fusionarDecisiones(mia, otra)[DESPACHO]).toEqual({ registrado: false, ts: T1 });
+  });
+
+  it('descarta basura de la red sin tumbar el resto', () => {
+    const basura = {
+      [DESPACHO]: { registrado: false, ts: T1 },
+      malo1: { registrado: 'si', ts: T1 }, malo2: { registrado: false, ts: 'ayer' },
+      malo3: null, malo4: { registrado: false },
+    } as unknown as DecisionPorFecha;
+    expect(fusionarDecisiones({}, basura)).toEqual({ [DESPACHO]: { registrado: false, ts: T1 } });
+    expect(fusionarDecisiones(basura, {})).toEqual({ [DESPACHO]: { registrado: false, ts: T1 } });
+  });
+});
+
+describe('aplicarDecisiones', () => {
+  it('EL CASO DEL 12/10: el `true` de la fila vieja ya no revive el día reabierto', () => {
+    const fusionado = fusionarRegistros({}, { [DESPACHO]: true });   // lo remoto gana, como siempre
+    expect(fusionado[DESPACHO]).toBe(true);
+    const decisiones = decidir({}, DESPACHO, false, T2);
+    expect(aplicarDecisiones(fusionado, decisiones)).toEqual({});
+    expect(estaRegistrado(aplicarDecisiones(fusionado, decisiones), DESPACHO)).toBe(false);
+  });
+
+  it('también le gana al booleano viejo que migra desde el estado remoto', () => {
+    const migrado = migrarRegistroViejo({}, true, DESPACHO);
+    expect(migrado[DESPACHO]).toBe(true);
+    expect(aplicarDecisiones(migrado, decidir({}, DESPACHO, false, T2))).toEqual({});
+  });
+
+  it('registrar de nuevo después de reabrir vuelve a marcarlo', () => {
+    const decisiones = decidir(decidir({}, DESPACHO, false, T2), DESPACHO, true, T3);
+    expect(aplicarDecisiones({}, decisiones)).toEqual({ [DESPACHO]: true });
+  });
+
+  it('no toca los días sobre los que nadie decidió nada', () => {
+    const registros: RegistroPorFecha = { '2026-10-12': true, [DESPACHO]: true };
+    expect(aplicarDecisiones(registros, decidir({}, DESPACHO, false, T2))).toEqual({ '2026-10-12': true });
+  });
+
+  it('sin decisiones devuelve el mapa igual', () => {
+    const registros: RegistroPorFecha = { [DESPACHO]: true };
+    expect(aplicarDecisiones(registros, undefined)).toEqual(registros);
+    expect(aplicarDecisiones(registros, {})).toEqual(registros);
+  });
+});
+
+describe('traeRegistrosNuevos con una reapertura', () => {
+  it('el `true` remoto del día reabierto NO es una novedad — si no, se re-adopta en bucle', () => {
+    expect(traeRegistrosNuevos({}, { [DESPACHO]: true })).toBe(true);
+    expect(traeRegistrosNuevos({}, { [DESPACHO]: true }, decidir({}, DESPACHO, false, T2))).toBe(false);
+  });
+
+  it('otro día registrado por el compañero sí sigue llegando', () => {
+    const decisiones = decidir({}, DESPACHO, false, T2);
+    expect(traeRegistrosNuevos({}, { '2026-10-14': true }, decisiones)).toBe(true);
+  });
+});
+
+describe('lo que NO cambia: un equipo que no registró no desregistra al que sí', () => {
+  it('ausencia sigue sin ser borrado', () => {
+    // B nunca registró: su mapa vacío y sin decisiones no puede apagar el día de A.
+    const deA: RegistroPorFecha = { [DESPACHO]: true };
+    const fusionado = fusionarRegistros(deA, {});
+    expect(aplicarDecisiones(fusionado, {})).toEqual({ [DESPACHO]: true });
+    expect(estaRegistrado(aplicarDecisiones(fusionado, undefined), DESPACHO)).toBe(true);
   });
 });

@@ -51,6 +51,14 @@
   --uni-contenedor:   #6D28D9;  --uni-contenedor-suave: rgba(109,40,217,0.10);
   --uni-chocolate:    #7C2D12;  --uni-chocolate-suave:  rgba(124,45,18,0.10);
 
+  /* Aviso sobre la PANTALLA, no sobre la carga: la barra de «esta pantalla es de otro día».
+     Familia aparte a propósito — no es `est-*` (estado) ni `uni-*` (tipo de unidad), y el ocre
+     oscuro tiene que distinguirse del azul del aviso de versión nueva, porque los dos pueden
+     salir juntos abajo. Un solo valor para claro y oscuro, igual que ese azul: es su propia
+     superficie y tiene que leerse igual en los dos temas. Blanco sobre este ocre da 6,4:1. */
+  --aviso-pantalla:        #92400E;
+  --aviso-pantalla-letra:  #FFFFFF;
+
   /* Sidebar (always dark — independent of theme) */
   --sidebar-bg:       #0D1829;
   --sidebar-border:   rgba(255,255,255,0.07);

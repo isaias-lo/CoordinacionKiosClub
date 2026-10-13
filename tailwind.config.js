@@ -118,6 +118,12 @@ export default {
           'chocolate-suave':  'var(--uni-chocolate-suave)',
         },
 
+        /* ── Aviso sobre la pantalla (variables en index.css) ── */
+        'aviso-pantalla': {
+          DEFAULT: 'var(--aviso-pantalla)',
+          letra:   'var(--aviso-pantalla-letra)',
+        },
+
         /* ── Logistics categories ── */
         comida: '#D97706',
         hogar:  '#7C3AED',

@@ -11,7 +11,8 @@ import { avisoSendu } from '../data/senduCompletitud';
 import { ZONAS_DEFAULT, type ConfigZonas } from '../../rutas/utils/zonasTransporte';
 import { formatCod, matchCodArchivo } from '../../rutas/utils/helpers';
 import { getTiendasDelDia, subscribeToCalendarChanges } from '../../utils/useCalendario';
-import { getTiendasAdelantoHoy } from '../../shared/tiendasAdelanto';
+import { getTiendasAdelantoHoy, agregarTiendaAlDia, zonaForStore } from '../../shared/tiendasAdelanto';
+import { AvisoDiaViejo } from '../../shared/AvisoDiaViejo';
 import { tipoBadge } from '../../santiago/tipoTienda';
 import { useOdooProgress } from '../../shared/useOdooProgress';
 import { SectionCount } from '../../shared/SectionCount';
@@ -522,7 +523,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const todayKey = fechaChile();
     const counts: Record<string, { p: number; b: number; c: number; ch: number }> = {};
     // [P5] Tiendas que ESTE cliente tiene en pantalla (con o sin carga): acota el borrado de
     // `despacho_sesion` a su propio universo, para no borrar las cargadas por otra persona.
@@ -538,8 +538,14 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       const ch = items.filter(i => i.pkg === 'chocolate').length;
       if (p > 0 || b > 0 || c > 0 || ch > 0) counts[tienda.cod] = { p, b, c, ch };
     });
-    localStorage.setItem('regionesCounts', JSON.stringify({ date: todayKey, counts }));
-    pushCounts('regiones', counts, conocidas).catch(() => {});
+    // EL DÍA DE LA SESIÓN, no el de hoy. Esta pantalla cargó el estado de ese día y muestra sus
+    // tiendas: lo que haya acá le pertenece. Una pestaña abierta desde el viernes escribía la
+    // carga del viernes con la fecha de hoy — 19 pallets y 6 bultos fantasma en el Manual del
+    // lunes 12/10/2026. El sello del caché va igual, porque el Enrutador lo descarta si no es de
+    // hoy: así los conteos del viernes tampoco entran al tablero del lunes. Ver `diaDeLaSesion`.
+    // `_localDate` es la constante de MÓDULO (línea 116): se fija al cargar la página.
+    localStorage.setItem('regionesCounts', JSON.stringify({ date: _localDate, counts }));
+    pushCounts('regiones', counts, conocidas, _localDate).catch(() => {});
   }, [dispatchData]);
 
   /* Mantiene formRows al día mientras la tienda ya está abierta (todo lo que NO es "reconstruir
@@ -1049,7 +1055,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   /* Calendar add/remove */
   const addToToday = (name: string) => {
     const t = TIENDAS[name]; if (!t) return;
+    // El `localStorage` se conserva: la lista responde al instante y sigue andando sin señal.
     const next = [...extraCods, t.cod]; setExtraCods(next); saveExtraCods(next);
+    // Y ADEMAS queda escrito donde todos lo ven. Ver `agregarTiendaAlDia`.
+    void agregarTiendaAlDia({ cod: t.cod, fecha: fechaChile(), zona: zonaForStore(t.cod), creadoPor: profile?.full_name ?? undefined })
+      .then(r => { if (!r.ok) showToast(`${t.name} se agrego solo en este equipo: ${r.error ?? 'sin conexion'}`, '#D97706'); });
     showToast(`✓ ${t.name} agregada a hoy`, '#16A34A');
   };
   const removeFromToday = (name: string) => {
@@ -2687,6 +2697,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   /* ── RENDER ── */
   return (
     <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+
+      {/* La pantalla quedó abierta de un día para otro. Ver `diaDeLaSesion.ts`. */}
+      <AvisoDiaViejo diaDeLaSesion={_localDate} />
 
       {/* Wrapper: on mobile = top/bottom stack, on desktop = transparent via contents */}
       <div className="flex flex-col lg:contents flex-1 min-h-0 overflow-hidden">
