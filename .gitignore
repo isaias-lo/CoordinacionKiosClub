@@ -50,7 +50,6 @@ next-env.d.ts
 .env.example
 
 # Archivos internos de operación del equipo — no se publican
-CLAUDE.md
 FLUJO.md
 TRABAJO.md
 TRABAJO.md.local
