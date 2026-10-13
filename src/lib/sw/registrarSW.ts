@@ -126,6 +126,25 @@ export function registrarSW(alHaberVersionNueva: () => void): () => void {
  * viejo, el aviso aparece de nuevo y la persona queda apretando Recargar sin que pase nada. Hay que
  * pedirle al que espera que tome el control, y recargar cuando eso ocurrió.
  */
+/**
+ * Le cede el paso al worker que espera, SIN recargar ni avisarle a nadie.
+ *
+ * Para el worker que quedó trabado sin tener nada nuevo que traer: si no se lo destraba, sigue en
+ * `waiting` para siempre y el aviso vuelve después de cada recarga. Ver `queHacerConElWorkerEsperando`.
+ *
+ * No recarga a propósito: no hay código nuevo que cargar, y recargarle la pantalla a alguien que
+ * está trabajando sin motivo es justo lo que el aviso existe para evitar.
+ */
+export async function cederElPasoEnSilencio(): Promise<void> {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    reg?.waiting?.postMessage({ type: 'SKIP_WAITING' });
+  } catch {
+    // Sin permisos o con el almacenamiento bloqueado. No hay nada que rescatar acá.
+  }
+}
+
 export async function activarVersionNueva(): Promise<void> {
   const recargar = () => { window.location.reload(); };
 
