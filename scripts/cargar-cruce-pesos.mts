@@ -110,7 +110,7 @@ async function deLaBase() {
   // escribe igual: es informativa, no vale tumbar la carga por ella.
   const [calFilas, adeFilas] = await Promise.all([
     rest<{ data: CalendarioSemanal }>('calendario_central?select=data&id=eq.current').catch(() => []),
-    rest<{ store_cod: string }>(`tiendas_adelanto?select=store_cod&fecha_despacho=eq.${fecha}`).catch(() => []),
+    rest<{ store_cod: string }>(`tiendas_adelanto?select=store_cod&or=(fecha.eq.${fecha},fecha_despacho.eq.${fecha})`).catch(() => []),
   ]);
   const planificadas = tiendasPlanificadas(calFilas[0]?.data ?? null, fecha, adeFilas.map(r => r.store_cod));
   const [rm, reg] = await Promise.all([
