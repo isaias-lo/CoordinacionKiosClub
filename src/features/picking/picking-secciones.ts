@@ -167,3 +167,50 @@ export function categoriasDelGrupo(
   if (opsCompletas.length === 0) return categoriasDeSlotsManual(slots);
   return [...new Set(opsCompletas.flatMap(o => o.categories))];
 }
+
+// ── UN PALLET HECHO DENTRO DE UNA SECCIÓN ES DE ESA SECCIÓN ───────────────────────────────────
+//
+// 14/10/2026, tienda 20CTC: Josue Suazo tenía una operación de Aseo y una de Hogar. Entró a la
+// pestaña ASEO, armó un pallet (slot #2622, `section = 'aseo'`) y la etiqueta salió «Hogar · Aseo»,
+// con `contenido = 'aseo-hogar'` y las dos referencias. Cuando la misma persona hace las dos
+// categorías por separado, cada pallet tiene que decir la suya.
+//
+// Esto acota el caso 41ANA de arriba, no lo deshace: lo que importa sigue siendo el PALLET y no la
+// pestaña desde donde se imprime. Lo que cambia es de dónde sale lo que lleva: si se creó dentro
+// de Comida, Aseo u Hogar, lleva eso —su `section` quedó guardada y es la misma desde cualquier
+// pestaña—. Un pallet que junta dos categorías se arma en «Todas» (sin sección) y ahí la etiqueta
+// sigue nombrando todo el grupo.
+
+const SECCIONES_SECO: readonly Seccion[] = ['comida', 'aseo', 'hogar'];
+
+/** La sección seca (Comida, Aseo u Hogar) en la que se creó el pallet, o `null`. PURA. */
+export function seccionSecaDelPallet(slot: Pick<PalletSlot, 'section'>): Seccion | null {
+  const s = normalizarSeccion(slot.section);
+  return s && SECCIONES_SECO.includes(s) ? s : null;
+}
+
+/**
+ * Las categorías que se imprimen en la etiqueta de UN pallet. PURA.
+ * Creado dentro de Comida, Aseo u Hogar → solo esa. Si no → las del grupo (`categoriasDelGrupo`).
+ */
+export function categoriasDelPallet(slot: Pick<PalletSlot, 'section'> | undefined, catsDelGrupo: string[]): string[] {
+  const s = slot ? seccionSecaDelPallet(slot) : null;
+  return s ? SECCION_A_CATEGORIAS[s] : catsDelGrupo;
+}
+
+/**
+ * `contenido` y operaciones de un pallet NUEVO. PURA. Dentro de Comida, Aseo u Hogar: esa sección y
+ * solo sus operaciones. En otra parte (Todas, o una sección sin nada propio) el grupo completo,
+ * como antes. Chocolates y Congelados los resuelve el llamador antes.
+ */
+export function cargaDePalletNuevo<T extends OperacionConCategorias>(
+  seccion: Seccion | null,
+  opsCompletas: readonly T[],
+  contenidoDelGrupo: string,
+): { contenido: string; ops: readonly T[] } {
+  if (seccion && SECCIONES_SECO.includes(seccion)) {
+    const propias = opsCompletas.filter(o => opEnSeccion(o.categories, seccion));
+    if (propias.length > 0 || opsCompletas.length === 0) return { contenido: seccion, ops: propias };
+  }
+  return { contenido: contenidoDelGrupo, ops: opsCompletas };
+}
