@@ -30,7 +30,7 @@ export function BarraSuperior({ tab, online, pendientes, onVolverATiendas }: Pro
         <span className="max-lg:hidden">{textoConexion(online, pendientes)}</span>
         <span className="lg:hidden">{textoConexionCorto(online, pendientes)}</span>
       </span>
-      <Ayudita tema="conexion" lado="der" />
+      <Ayudita tema="conexion" />
       <span className="pk-fecha max-lg:hidden">{fechaCorta(new Date())}</span>
     </header>
   );

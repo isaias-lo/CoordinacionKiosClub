@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AYUDITAS, textoFranja, claveFranjaCerrada } from '../marco/ayudaContexto';
+import { AYUDITAS, textoFranja, claveFranjaCerrada, posicionBurbuja } from '../marco/ayudaContexto';
 
 describe('franja de la pestaña', () => {
   it('en Aseo dice que sale como Aseo y que el mixto va en Todas (caso 20CTC)', () => {
@@ -42,5 +42,39 @@ describe('los «?»', () => {
       expect(a.lineas.length).toBeGreaterThanOrEqual(1);
       expect(a.lineas.length).toBeLessThanOrEqual(3);
     }
+  });
+});
+
+describe('la burbuja del «?» cabe en la pantalla', () => {
+  const pantalla = { ancho: 1440, alto: 860 };
+  const burbuja = { ancho: 300, alto: 140 };
+  const boton = (left: number, top: number) => ({ left, top, right: left + 18, bottom: top + 18 });
+
+  it('con espacio, queda debajo del botón', () => {
+    const p = posicionBurbuja(boton(400, 200), pantalla, burbuja);
+    expect(p).toMatchObject({ x: 390, y: 226, arriba: false });
+  });
+
+  it('EL CASO del Batch: pegado al borde derecho, se corre hacia adentro y no se corta', () => {
+    const p = posicionBurbuja(boton(1390, 300), pantalla, burbuja);
+    expect(p.x + burbuja.ancho).toBeLessThanOrEqual(pantalla.ancho - 12);
+    // La flecha sigue apuntando al «?».
+    expect(p.x + p.flecha + 6).toBeCloseTo(1399, 0);
+  });
+
+  it('al borde izquierdo no se sale', () => {
+    expect(posicionBurbuja(boton(2, 200), pantalla, burbuja).x).toBe(12);
+  });
+
+  it('abajo de la pantalla, se abre hacia arriba', () => {
+    const p = posicionBurbuja(boton(400, 800), pantalla, burbuja);
+    expect(p.arriba).toBe(true);
+    expect(p.y + burbuja.alto).toBeLessThanOrEqual(800);
+  });
+
+  it('pantalla más angosta que la burbuja: pegada al margen, sin valores negativos', () => {
+    const p = posicionBurbuja(boton(100, 100), { ancho: 280, alto: 600 }, burbuja);
+    expect(p.x).toBe(12);
+    expect(p.flecha).toBeGreaterThanOrEqual(10);
   });
 });
