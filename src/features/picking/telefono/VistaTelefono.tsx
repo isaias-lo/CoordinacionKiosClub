@@ -9,6 +9,7 @@ import { RefreshCw, UserPlus, ChevronRight } from 'lucide-react';
 import type { VistaSecoProps } from '../seco/VistaSeco';
 import { PanelEncargado } from '../seco/PanelEncargado';
 import { TarjetaTelefono } from './TarjetaTelefono';
+import { FranjaSeccion } from '../marco/FranjaSeccion';
 
 interface Props extends VistaSecoProps {
   /** Volver a la lista para elegir otras tiendas. */
@@ -51,6 +52,7 @@ export function VistaTelefono(p: Props) {
       </div>
 
       <div className="pk-tel-content">
+        <FranjaSeccion seccion={e.seccion} />
         {p.formManual && <div className="pk-card">{p.formManual}</div>}
         {p.sinAsignar && (
           <div className="pk-alert print:hidden" role="status">

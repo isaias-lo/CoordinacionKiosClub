@@ -440,6 +440,8 @@ export function ActivityTab({ live, today, escritorio = false, nombreTienda = c 
   const [storeFilter,  setStoreFilter]  = useState<string | null>(null);
   const [pickerFilter, setPickerFilter] = useState<string | null>(null);
   const [typeFilter,   setTypeFilter]   = useState<Set<FilterCat>>(() => new Set());
+  // Teléfono: cuenta, tienda y picker van detrás de «Filtros» para que la lista tenga espacio.
+  const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
 
   useEffect(() => {
     if (isToday) { setHisto(null); return; }
@@ -506,6 +508,7 @@ export function ActivityTab({ live, today, escritorio = false, nombreTienda = c 
     return next;
   });
   const hasFilters = userFilters.size > 0 || !!storeFilter || !!pickerFilter || typeFilter.size > 0;
+  const filtrosActivos = userFilters.size + (storeFilter ? 1 : 0) + (pickerFilter ? 1 : 0);
   const clearFilters = () => { setUserFilters(new Set()); setStoreFilter(null); setPickerFilter(null); setTypeFilter(new Set()); };
   const toggleUser = (u: string) => setUserFilters(prev => {
     const next = new Set(prev);
@@ -551,10 +554,17 @@ export function ActivityTab({ live, today, escritorio = false, nombreTienda = c 
               Día anterior (histórico)
             </span>
           )}
+          <span className="flex-1" />
+          <button type="button" onClick={() => setFiltrosAbiertos(v => !v)} aria-expanded={filtrosAbiertos}
+            className="text-[12px] font-semibold px-2.5 py-1 rounded border inline-flex items-center gap-1"
+            style={filtrosActivos > 0 ? { background: '#EEF2FF', borderColor: '#1E40AF', color: '#1E40AF' } : { background: '#fff', borderColor: '#CBD5E1', color: '#334155' }}>
+            Filtros{filtrosActivos > 0 ? ` · ${filtrosActivos}` : ''}
+            <ChevronDown size={13} style={{ transform: filtrosAbiertos ? 'rotate(180deg)' : undefined }} />
+          </button>
         </div>
 
         {/* Fila 2: resumen = botones-toggle de tipo (combinables). El conteo es del día completo. */}
-        <div className="flex items-center gap-2 mt-2 flex-wrap">
+        <div className="flex items-center gap-2 mt-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           <ResumenChip icon={<Printer size={12} />} label="impresiones" value={resumen.impresiones} color="#1E40AF"
             active={typeFilter.has('print')} onClick={() => toggleType('print')} />
           <ResumenChip icon={<PlusCircle size={12} />} label="creados" value={resumen.creados} color="#15803D"
@@ -566,8 +576,8 @@ export function ActivityTab({ live, today, escritorio = false, nombreTienda = c 
             onClick={() => toggleType('error')} />
         </div>
 
-        {/* Fila 3: filtros por cuenta (multi) y tienda/picker (buscables) */}
-        <div className="flex items-center gap-2 mt-2 flex-wrap">
+        {/* Fila 3: filtros por cuenta (multi) y tienda/picker (buscables), detrás de «Filtros» */}
+        {filtrosAbiertos && <div className="flex items-center gap-2 mt-2 flex-wrap">
           <span className="text-[11px] font-semibold" style={{ color: '#64748B' }}>Ver:</span>
           <MultiSelect values={userFilters} onToggle={toggleUser} onClear={() => setUserFilters(new Set())}
             options={users} allLabel="Todas las cuentas" />
@@ -583,7 +593,7 @@ export function ActivityTab({ live, today, escritorio = false, nombreTienda = c 
               style={{ background: '#FEE2E2', color: '#B91C1C' }}
             >Limpiar filtros</button>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* ── Listado ── */}
@@ -617,7 +627,7 @@ function ResumenChip({ icon, label, value, color, active = false, highlight = fa
   const style = active
     ? { background: color, border: `1px solid ${color}`, color: '#fff' }
     : { background: highlight ? '#FEF2F2' : '#fff', border: `1px solid ${highlight ? '#FECACA' : '#E2E8F0'}`, color };
-  const cls = 'inline-flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1 rounded transition'
+  const cls = 'inline-flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1 rounded transition shrink-0 whitespace-nowrap'
     + (onClick ? ' cursor-pointer' : '');
   const inner = (
     <>

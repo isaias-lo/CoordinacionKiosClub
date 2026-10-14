@@ -2,6 +2,7 @@
 
 import React, { useCallback } from 'react';
 import { EncabezadoTienda } from './EncabezadoTienda';
+import { FranjaSeccion } from '../marco/FranjaSeccion';
 import { TablaEncargados, type FilaSeco } from './TablaEncargados';
 import { PanelEncargado } from './PanelEncargado';
 
@@ -37,6 +38,7 @@ export function VistaSeco(p: VistaSecoProps) {
     <div className="pk-main">
       <EncabezadoTienda {...p.encabezado} />
       <div className="pk-content">
+        <FranjaSeccion seccion={p.encabezado.seccion} />
         {p.formManual && <div className="pk-card">{p.formManual}</div>}
         {p.sinAsignar && (
           <div className="pk-alert print:hidden" role="status">

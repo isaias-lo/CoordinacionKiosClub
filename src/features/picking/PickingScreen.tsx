@@ -74,6 +74,7 @@ import { StoreListPanel }     from './components/StoreListPanel';
 import { BarraSuperior }      from './marco/BarraSuperior';
 import { MenuLateral }        from './marco/MenuLateral';
 import { AyudaPanel }         from './marco/AyudaPanel';
+import { EVENTO_ABRIR_GUIA }  from './marco/ayudaContexto';
 import { accionDeTecla, estaEscribiendo } from './marco/ayuda';
 import { VistaSeco }          from './seco/VistaSeco';
 import { VistaTelefono }      from './telefono/VistaTelefono';
@@ -1976,6 +1977,13 @@ export function PickingScreen() {
     };
   };
 
+  // Un «?» (marco/Ayudita.tsx) pide la guía completa con un evento: así no hay que pasarle nada.
+  useEffect(() => {
+    const abrir = () => setAyudaAbierta(true);
+    window.addEventListener(EVENTO_ABRIR_GUIA, abrir);
+    return () => window.removeEventListener(EVENTO_ABRIR_GUIA, abrir);
+  }, []);
+
   // Atajos de teclado (ver marco/ayuda.ts). No actúan mientras se escribe ni con un diálogo abierto.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -2164,7 +2172,10 @@ export function PickingScreen() {
 
           {/* ── Tab content: Actividad ── */}
           {rightTab === 'actividad' && (
-            <div className="flex-1 overflow-hidden min-h-0">
+            // En escritorio tiene que ser flex: VistaActividad (.pk-main, flex:1) solo queda del alto
+            // de la pantalla —y su lista puede bajar— si este contenedor la estira. Sin flex crecía al
+            // alto de todas las filas y este overflow-hidden cortaba las últimas (14 oct 2026).
+            <div className={`flex-1 overflow-hidden min-h-0${isDesktop ? ' flex flex-col' : ''}`}>
               <ActivityTab
                 live={{ printRecords, nameChanges, palletSlots, eventos: pickingEventos, supervisors: otherSupervisors }}
                 today={todayISO()}

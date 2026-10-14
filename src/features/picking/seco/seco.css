@@ -107,5 +107,13 @@
 .pk-prev:focus-visible{outline-color:#3B5BDB}
 .pk-pie-hint{flex:1;min-width:0;line-height:1.3}
 .pk-pd-b .pk-trunc{max-width:190px}
+/* Operaciones en Odoo: la tabla no se corta, se desliza de lado (14 oct 2026). Con overflow:hidden
+   de .pk-card el estado y el batch quedaban fuera y el origen salía con «…». La primera columna
+   ya es fija (.pk-tabla td:first-child), y la sombra del borde avisa que hay más a la derecha. */
+.pk-card.pk-ops{overflow-x:auto;
+  background:linear-gradient(270deg,#FFFFFF 30%,rgba(255,255,255,0)) right/24px 100% no-repeat local,
+    linear-gradient(270deg,rgba(16,24,40,.10),rgba(16,24,40,0)) right/12px 100% no-repeat scroll,#FFFFFF}
+.pk-ops .pk-tabla{width:max-content;min-width:100%}
+.pk-ops .pk-tabla td{white-space:nowrap}
 .pk-kg{width:96px;padding:5px 8px;min-height:0;justify-content:flex-end;font-family:'IBM Plex Mono',monospace}
 .pk-kg input{text-align:right}

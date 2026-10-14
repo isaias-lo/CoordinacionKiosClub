@@ -10,6 +10,7 @@ import { AlertTriangle, Printer } from 'lucide-react';
 import type { PanelDetalleProps } from './PanelDetalle';
 import { mensajeReimpresion } from '../reimpresion';
 import { fmtHoraChile } from '@/lib/fechaChile';
+import { Ayudita } from '../marco/Ayudita';
 
 export function CuerpoTelefono(p: PanelDetalleProps) {
   const { group, palletsByTipo, lastPrint } = p;
@@ -25,11 +26,11 @@ export function CuerpoTelefono(p: PanelDetalleProps) {
         </div>
       )}
 
-      {p.unidadesVisibles.map(({ tipo, label }) => {
+      {p.unidadesVisibles.map(({ tipo, label }, i) => {
         const count = palletsByTipo[tipo] ?? 0;
         return (
           <div key={tipo} className="pk-tel-cont">
-            <span className="l">{label}</span>
+            <span className="l">{label} {i === 0 && <Ayudita tema="unidades" />}</span>
             <button type="button" className="menos" onClick={() => p.bajar(tipo)} aria-label={`Quitar ${label}`}>−</button>
             <span className={`n${count === 0 ? ' z' : ''}`} aria-live="polite">{count}</span>
             <button type="button" className="mas" onClick={() => p.onTipoPalletsChange(tipo, count + 1)} aria-label={`Agregar ${label}`}>+</button>
