@@ -17,7 +17,7 @@ import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTEN
 import { SelectorTipoCarga } from '@/features/despacho/shared/SelectorTipoCarga';
 import { tipoBloqueadoDeSlot } from '@/features/despacho/shared/tipoDeSlot';
 import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, ordenDeItem, renumerarOrden, etiquetaCard, claseSantiago, bultosSantiago } from '@/features/despacho/shared/numeroCard';
-import { leerPeso, limpiarTecleo, avisoDePeso, excedeTopeDuro } from '@/features/despacho/shared/pesoIngresado';
+import { leerPeso, limpiarTecleo, avisoDePeso, pesoFueraDeRango } from '@/features/despacho/shared/pesoIngresado';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
 import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
@@ -1367,7 +1367,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       setCombineModal(null);
       return;
     }
-    const duro = excedeTopeDuro(peso, claseSantiago(src.tipo));
+    const duro = pesoFueraDeRango(peso, claseSantiago(src.tipo));
     if (duro) { showToast(`⚠ ${duro}`, AVISO_ERROR); return; }
     const contenido: ContenidoSantiago = contenidoSantiago(unirTipos(src.contenido, tgt.contenido));
     // /6000, como en el resto del sistema (estaba en /5000 y sin decimales solo acá).
@@ -1477,7 +1477,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       // Un peso imposible se ataja ACÁ, con la balanza todavía al lado y el bulto todavía arriba.
       // El 28/09 un «353,7» al que se le perdió la coma quedó registrado como 9.357 kg y nadie lo
       // vio hasta cruzarlo contra Odoo al día siguiente. Ver `shared/pesoIngresado.ts`.
-      const duro = excedeTopeDuro(p, claseSantiago(row.tipo));
+      const duro = pesoFueraDeRango(p, claseSantiago(row.tipo));
       if (duro) { showToast(`⚠ ${duro}`, '#D32F2F'); return; }
       const aviso = avisoDePeso(p, claseSantiago(row.tipo));
       if (aviso && !window.confirm(`⚠ ${aviso.titulo}\n\n${aviso.detalle}\n\n¿Guardar así?`)) return;
@@ -2333,7 +2333,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     // Las mismas guardias que la tarjeta: sin peso no se guarda y un peso imposible se ataja acá.
     const pesoR = esAgregado(item.tipo) || esPalletWeb(item) ? (leerPeso(resumenEditing.peso) ?? 0) : leerPeso(resumenEditing.peso);
     if (pesoR == null) { showToast('Ingresa el peso', '#D97706'); return; }
-    const duroR = excedeTopeDuro(pesoR, claseSantiago(rTipo));
+    const duroR = pesoFueraDeRango(pesoR, claseSantiago(rTipo));
     if (duroR) { showToast(`⚠ ${duroR}`, '#D32F2F'); return; }
     const isChoc       = rTipo === 'Bulto'      && rContenido === 'Chocolate';
     const isContenedor = rTipo === 'Contenedor';

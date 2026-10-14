@@ -3,7 +3,7 @@ import { canonicalDeSlot } from '@/lib/canonicalSlot';
 import { pkgCodeNacional } from '@/features/despacho/shared/tipoCode';
 import { etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
 import type { DispatchItem } from '../../../../types';
-import { desempatarOrdenNacional } from '../../shared/numeroCard';
+import { desempatarOrdenNacional, rotuloDeUnidad, claseNacional } from '../../shared/numeroCard';
 import { esSinPesar, esPalletWeb } from '../../shared/sinPesar';
 import { escribirPlanilla, type ResultadoPlanilla } from '../../shared/escribirPlanilla';
 import { cargaParaPlanilla } from '../../shared/contenidoCarga';
@@ -107,7 +107,7 @@ export function buildRows(
         pesoV,                                          // PESO_V
         '',                                             // VENTANA
         'Listo para despachar',                         // ESTADO
-        ordenSeq(item.orden),                           // N_PALLET_BULTO
+        rotuloDeUnidad(claseNacional(item.pkg), item.orden), // N_PALLET_BULTO
         '',                                             // FECHA_LLEGADA
         '',                                             // CONDUCTOR
         '',                                             // RUTA
