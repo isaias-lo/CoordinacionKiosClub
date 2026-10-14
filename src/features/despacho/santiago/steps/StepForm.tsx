@@ -87,8 +87,8 @@ import { actualizarSlotPicking, camposDePeso, AVISO_SLOT_BORRADO } from '../../s
 import { sincronizarYCruzar } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { esSinPesar, esPalletWeb, DIMS_SIN_PESAR } from '../../shared/sinPesar';
-import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo,
-         TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
+import { subtipoDeCaja, medidasDeCaja, pesoNetoDeCaja, pesoParaMostrar, etiquetaSubtipo, taraDeCaja,
+         type SubtipoCaja } from '../../shared/subtipoCaja';
 import { pesoEnTarjeta, pesoNetoDeTarjeta, pesoNetoPallet, taraDeTarjeta, taraEnTarjeta, taraParaGuardar, taraTrasCorregir, textoPesoConTara } from '../../shared/pesoDelPallet';
 import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
 import { itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
@@ -1453,10 +1453,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       p = DIMS_SIN_PESAR.peso; a = DIMS_SIN_PESAR.alto; fL = DIMS_SIN_PESAR.largo; fA = DIMS_SIN_PESAR.ancho;
       pesoV = DIMS_SIN_PESAR.pesoVolumetrico;
     } else {
-      if (caja === 'negra') {
-        // La caja negra se pesa ENTERA y vuelve al CD: se descuenta lo que pesa vacía. Se rechaza
-        // lo que no llega a la tara en vez de recortarlo a cero (ver `pesoNetoCajaNegra`).
-        const neto = pesoNetoCajaNegra(row.peso);
+      if (caja) {
+        // La caja se pesa ENTERA —no hay forma de pesar el contenido solo— y no es mercadería: se
+        // descuenta lo que pesa vacía. Las DOS cajas tienen tara (negra 3,3 · cartón 0,4). Se
+        // rechaza lo que no llega a la tara en vez de recortarlo a cero. Ver `pesoNetoDeCaja`.
+        const neto = pesoNetoDeCaja(row.peso, caja);
         if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
         p = neto.neto;
       } else if (row.tipo === 'Pallet') {
@@ -2965,7 +2966,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   <div className={`grid ${row.tipo === 'Pallet' ? 'grid-cols-3' : 'grid-cols-2'} gap-1 mb-1.5`}>
                     <div>
                       <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">
-                        peso{cajaDeFila === 'negra' && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(TARA_CAJA_NEGRA).replace('.', ',')} kg de caja</span>}
+                        peso{cajaDeFila && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(taraDeCaja(cajaDeFila)).replace('.', ',')} kg de caja</span>}
                       </label>
                       <input type="text" value={row.peso} onChange={e => updateRow(row.id, 'peso', limpiarTecleo(e.target.value))}
                         onFocus={marcarEnFoco} onBlur={quitarFoco}
