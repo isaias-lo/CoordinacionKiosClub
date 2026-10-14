@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  leerPeso, limpiarTecleo, avisoDePeso, excedeTopeDuro, TOPE_AVISO_KG, TOPE_DURO_KG,
+  leerPeso, limpiarTecleo, avisoDePeso, pesoFueraDeRango, TOPE_AVISO_KG, TOPE_DURO_KG,
 } from '../pesoIngresado';
 import { LIMITES } from '../../regiones/data/tiendas';
 
@@ -148,18 +148,18 @@ describe('avisoDePeso — atrapa lo imposible sin molestar a nadie', () => {
   });
 });
 
-describe('excedeTopeDuro — el techo que no se puede confirmar', () => {
+describe('pesoFueraDeRango — el techo que no se puede confirmar', () => {
   it('9.357 kg no se guarda ni confirmando', () => {
     // Lo que de verdad faltaba: RM/Costa no tenía NINGÚN tope de peso, y 55ITA es RM. El aviso
     // pregunta a los 800; esto no deja pasar de 1.000 aunque alguien toque "sí" sin leer.
-    expect(excedeTopeDuro(9357, 'pallet')).not.toBeNull();
-    expect(excedeTopeDuro(9357, 'pallet')).toContain('coma');
+    expect(pesoFueraDeRango(9357, 'pallet')).not.toBeNull();
+    expect(pesoFueraDeRango(9357, 'pallet')).toContain('coma');
   });
 
   it('deja pasar el pallet más pesado que existió de verdad', () => {
     // El máximo legítimo del histórico son 704,5 kg. Un techo que lo rechazara sería inservible.
-    expect(excedeTopeDuro(704.5, 'pallet')).toBeNull();
-    expect(excedeTopeDuro(999, 'pallet')).toBeNull();
+    expect(pesoFueraDeRango(704.5, 'pallet')).toBeNull();
+    expect(pesoFueraDeRango(999, 'pallet')).toBeNull();
   });
 
   it('avisa antes de bloquear: los dos topes en orden', () => {
@@ -170,8 +170,8 @@ describe('excedeTopeDuro — el techo que no se puede confirmar', () => {
   });
 
   it('sin peso no bloquea nada', () => {
-    expect(excedeTopeDuro(null, 'pallet')).toBeNull();
-    expect(excedeTopeDuro(0, 'pallet')).toBeNull();
+    expect(pesoFueraDeRango(null, 'pallet')).toBeNull();
+    expect(pesoFueraDeRango(0, 'pallet')).toBeNull();
   });
 });
 
@@ -192,5 +192,59 @@ describe('el par leerPeso + avisoDePeso, que es como se usa', () => {
     // pelea, y el tope atrapa justo el caso en que la coma faltó.
     expect(avisoDePeso(leerPeso('353,7'), 'pallet')).toBeNull();
     expect(avisoDePeso(leerPeso('3537'), 'pallet')).not.toBeNull();
+  });
+});
+
+// ── El otro extremo: un pallet de 1 kg (14/10/2026) ────────────────────────────────────────────
+//
+// El P2 de 06MQH quedó en 1 kg a las 15:51 y otra persona lo corrigió a 368 kg a las 16:12. El
+// techo de 800 no lo podía atajar: 1 está por debajo, no por encima.
+
+describe('el piso: solo el pallet lo tiene', () => {
+  it('EL CASO: 1 kg en un pallet no se guarda ni confirmando', () => {
+    expect(pesoFueraDeRango(1, 'pallet')).toContain('mínimo');
+    expect(pesoFueraDeRango(9.9, 'pallet')).toContain('mínimo');
+  });
+
+  it('entre el piso duro y el aviso, se PREGUNTA', () => {
+    const a = avisoDePeso(25, 'pallet');
+    expect(a?.lado).toBe('bajo');
+    expect(a?.tope).toBe(40);
+    expect(pesoFueraDeRango(25, 'pallet')).toBeNull();   // se puede guardar confirmando
+  });
+
+  it('un pallet normal no molesta a nadie', () => {
+    for (const kg of [40, 85, 214, 490, 692, 800]) {
+      expect(avisoDePeso(kg, 'pallet')).toBeNull();
+      expect(pesoFueraDeRango(kg, 'pallet')).toBeNull();
+    }
+  });
+
+  it('EL BULTO DE 1 KG ES NORMAL: no se le pone piso', () => {
+    // 112 de 187 bultos del histórico pesan menos de 20 kg.
+    expect(pesoFueraDeRango(1, 'bulto')).toBeNull();
+    expect(avisoDePeso(1, 'bulto')).toBeNull();
+  });
+
+  it('el chocolate tampoco: el más liviano real pesó 1,7', () => {
+    expect(pesoFueraDeRango(1.7, 'chocolate')).toBeNull();
+    expect(avisoDePeso(1.7, 'chocolate')).toBeNull();
+  });
+
+  it('al contenedor no se le inventa un piso: 16 unidades es muy poco', () => {
+    expect(pesoFueraDeRango(5, 'contenedor')).toBeNull();
+    expect(avisoDePeso(5, 'contenedor')).toBeNull();
+  });
+
+  it('el techo sigue funcionando igual, y dice de qué lado se fue', () => {
+    expect(pesoFueraDeRango(9357, 'pallet')).toContain('máximo');
+    expect(avisoDePeso(900, 'pallet')?.lado).toBe('alto');
+  });
+
+  it('sin peso no hay aviso de ningún lado', () => {
+    for (const v of [null, 0, -5, NaN]) {
+      expect(avisoDePeso(v, 'pallet')).toBeNull();
+      expect(pesoFueraDeRango(v, 'pallet')).toBeNull();
+    }
   });
 });

@@ -74,7 +74,7 @@ import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
 import { nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE, tipoDesdePicking, unirTipos } from '@/features/despacho/shared/contenidoCarga';
 import { SelectorTipoCarga } from '@/features/despacho/shared/SelectorTipoCarga';
 import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional, bultosNacional } from '@/features/despacho/shared/numeroCard';
-import { leerPeso, limpiarTecleo, avisoDePeso, excedeTopeDuro } from '@/features/despacho/shared/pesoIngresado';
+import { leerPeso, limpiarTecleo, avisoDePeso, pesoFueraDeRango } from '@/features/despacho/shared/pesoIngresado';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
 import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
@@ -1492,7 +1492,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       // Un peso imposible se ataja ACÁ, con la balanza todavía al lado y el bulto todavía arriba.
       // El 28/09 un «353,7» al que se le perdió la coma quedó registrado como 9.357 kg y nadie lo
       // vio hasta cruzarlo contra Odoo al día siguiente. Ver `shared/pesoIngresado.ts`.
-      const duro = excedeTopeDuro(p, claseNacional(row.pkg));
+      const duro = pesoFueraDeRango(p, claseNacional(row.pkg));
       if (duro) { showToast(`⚠ ${duro}`, '#D32F2F'); return; }
       const aviso = avisoDePeso(p, claseNacional(row.pkg));
       if (aviso && !window.confirm(`⚠ ${aviso.titulo}\n\n${aviso.detalle}\n\n¿Guardar así?`)) return;

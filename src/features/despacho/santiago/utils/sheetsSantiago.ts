@@ -1,6 +1,6 @@
 import type { SantiagoItem } from '../types';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
-import { desempatarOrdenSantiago } from '../../shared/numeroCard';
+import { desempatarOrdenSantiago, rotuloDeUnidad, claseSantiago } from '../../shared/numeroCard';
 import { esSinPesar, esPalletWeb } from '../../shared/sinPesar';
 import { PREFIJO_ADQUISICION, PREFIJO_WEB_RETIRO, etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
 import { escribirPlanilla, type ResultadoPlanilla } from '../../shared/escribirPlanilla';
@@ -101,7 +101,7 @@ export function buildRows(
         sinPesar ? 0 : (item.pesoVolumetrico || ''),                       // PESO_V
         tienda.ventanaHoraria || '',                                       // VENTANA
         item.estado,                                                       // ESTADO
-        item.orden,                                                        // N_PALLET_BULTO
+        rotuloDeUnidad(claseSantiago(item.tipo), item.orden),              // N_PALLET_BULTO
         '',                                                                // FECHA_LLEGADA
         '',                                                                // CONDUCTOR
         '',                                                                // RUTA
