@@ -56,7 +56,7 @@ import {
   parseSavedNames, serializeSavedNames,
 } from './picking-utils';
 import type { PickingEvento } from './picking-utils';
-import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, categoriasDeSlotsManual, categoriasDelGrupo, type Seccion } from './picking-secciones';
+import { seccionDeSlot, seccionDeGrupo, filtrarOpsPorSeccion, categoriasDeSlotsManual, categoriasDelGrupo, categoriasDelPallet, cargaDePalletNuevo, type Seccion } from './picking-secciones';
 import { palletsDeOtraSeccion, textoDelAviso, destinoDelAviso, textoDelBoton } from './palletEnOtraSeccion';
 import { unidadAQuitar } from './quitarUnidad';
 import { pideSeccion, seccionYContenidoManual, normalizarBatch } from './encargadoManual';
@@ -1630,7 +1630,9 @@ export function PickingScreen() {
           // [Req 1] Un slot de chocolate (CH, o pallet con contenido chocolate) muestra "Chocolate"
           // como contenido en la etiqueta, aunque las categorías del grupo no lo incluyan.
           const esChoc   = tipo === 'CH' || String((slot as { contenido?: string }).contenido ?? '').toLowerCase().includes('chocolate');
-          const slotCats = esChoc && !allCategories.some(c => /chocolate/i.test(c)) ? ['Chocolate', ...allCategories] : allCategories;
+          // Un pallet creado dentro de Comida, Aseo u Hogar dice solo esa (caso 20CTC, `categoriasDelPallet`).
+          const delPallet = categoriasDelPallet(slot, allCategories);
+          const slotCats = esChoc && !delPallet.some(c => /chocolate/i.test(c)) ? ['Chocolate', ...delPallet] : delPallet;
           labels.push({
             value: `${group.storeCod};${sanitizeForBarcode(label)};${refs};${tipo}${pNum};${cats}`,
             palletNum: pNum,
@@ -1937,13 +1939,16 @@ export function PickingScreen() {
                                 // no cambia; solo el contenido, que en la card de bodega se ve como "CH".
                                 // `contenido`/refs se derivan del grupo COMPLETO (fullGroupCats/fullOps) para
                                 // NO cambiar lo que Bodega/Sheets ve; la sección va aparte, en `section`.
+                                // Dentro de Comida, Aseo u Hogar el pallet es de esa sección: lleva su
+                                // contenido y solo sus operaciones (caso 20CTC, ver `cargaDePalletNuevo`).
+                                const carga = cargaDePalletNuevo(seccionActiva, fullOps, categoriesToContenido(fullGroupCats));
                                 const contenido = sectionFilter === 'chocolates' ? 'chocolate'
                                   : sectionFilter === 'congelados' || fullIsCongelados ? 'congelados'
-                                  : categoriesToContenido(fullGroupCats);
+                                  : carga.contenido;
                                 // Sección a etiquetar en el pallet nuevo: la del filtro activo, o (en "Todas")
                                 // la del grupo (null si es mixto → solo suma en "Todas").
                                 const seccionSlot: string | null = seccionActiva ?? (fullIsCongelados ? 'congelados' : seccionDeGrupo(fullGroupCats));
-                                const groupRefs = fullOps.map(o => o.name).join('+');
+                                const groupRefs = carga.ops.map(o => o.name).join('+');
                                 if (delta > 0) {
                                   // Una caja nueva nace SIN peso: el total ya pesado era para las que
                                   // había, y repartirlo entre más sería inventar. La tarjeta avisa que

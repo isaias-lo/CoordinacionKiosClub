@@ -9,7 +9,7 @@ import { tiposDeUnidad, type ClaveUnidad } from '../tiposUnidad';
 import { mensajeReimpresion } from '../reimpresion';
 import { idsDeSeleccion } from '../seleccionImpresion';
 import { STATE_INFO, sanitizeForBarcode, buildCanonicalId, todayISO } from '../picking-utils';
-import { categoriasDeSlotsManual } from '../picking-secciones';
+import { categoriasDeSlotsManual, categoriasDelPallet } from '../picking-secciones';
 import { fmtHoraChile } from '@/lib/fechaChile';
 import { PanelDetalle, type PanelDetalleProps } from './PanelDetalle';
 import { CuerpoTelefono } from './CuerpoTelefono';
@@ -563,7 +563,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                           value={`${group.storeCod};${barcodePickerName};${refs};${slotTipo}${pNum};${cats}`}
                           palletNum={pNum} total={tipoTotal}
                           storeCod={group.storeCod} pickerLabel={pickerLabel}
-                          responsibleKey={group.key} allCategories={allCategories}
+                          responsibleKey={group.key} allCategories={categoriasDelPallet(slot, allCategories)}
                           totalPickers={totalPickers} tipo={slotTipo}
                           slotId={slot?.id}
                           canonicalId={buildCanonicalId(slotTipo, pNum, group.storeCod, todayISO())}

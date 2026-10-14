@@ -13,6 +13,7 @@ import { pesoTotalValido, avisoCantidad, type TipoCaja, type PesoTotalGuardado }
 import { mensajeReimpresion } from '../reimpresion';
 import { STATE_INFO, buildCanonicalId, todayISO } from '../picking-utils';
 import { fmtHoraChile } from '@/lib/fechaChile';
+import { categoriasDelPallet } from '../picking-secciones';
 
 const TONO_ESTADO: Record<string, string> = { done: 'ok', cancel: 'bad', draft: 'mute' };
 
@@ -271,7 +272,7 @@ export function PanelDetalle(p: PanelDetalleProps) {
                         value={`${group.storeCod};${p.barcodePickerName};${p.refs};${slotTipo}${pNum};${p.cats}`}
                         palletNum={pNum} total={tipoTotal}
                         storeCod={group.storeCod} pickerLabel={p.pickerLabel}
-                        responsibleKey={group.key} allCategories={p.allCategories}
+                        responsibleKey={group.key} allCategories={categoriasDelPallet(slot, p.allCategories)}
                         totalPickers={p.totalPickers} tipo={slotTipo}
                         slotId={slot?.id}
                         canonicalId={buildCanonicalId(slotTipo, pNum, group.storeCod, todayISO())}
