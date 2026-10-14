@@ -13,6 +13,7 @@ import {
   filasActividad, pasaFiltros, opciones, aCsv, descargarCsv,
   NOMBRE_ACCION, TONO_ACCION, SIN_FILTROS, type Filtros, type FiltroAccion,
 } from './actividad';
+import { Ayudita } from '../marco/Ayudita';
 
 const POR_PAGINA = 50;
 
@@ -84,6 +85,7 @@ export function VistaActividad({ datos, dia, hoy, onDia, cargando, nombreTienda 
               </button>
             )}
           </span>
+          {errores > 0 && <Ayudita tema="errores" />}
           <span className="pk-sp" />
           <span className="pk-sub">
             {cargando ? 'Cargando…' : `Mostrando ${Math.min(visibles, filtradas.length)} de ${filtradas.length}`}
@@ -112,7 +114,7 @@ export function VistaActividad({ datos, dia, hoy, onDia, cargando, nombreTienda 
             )}
           </div>
         ) : (
-          <div className="pk-card tabla">
+          <div className="pk-card tabla pk-act">
             <table className="pk-tabla" aria-label="Actividad del día">
               <thead>
                 <tr>

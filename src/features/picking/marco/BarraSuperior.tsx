@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { fechaCorta, pestana, textoConexion, textoConexionCorto, type PestanaPicking } from './pestanas';
+import { Ayudita } from './Ayudita';
 
 interface Props {
   tab: PestanaPicking;
@@ -29,6 +30,7 @@ export function BarraSuperior({ tab, online, pendientes, onVolverATiendas }: Pro
         <span className="max-lg:hidden">{textoConexion(online, pendientes)}</span>
         <span className="lg:hidden">{textoConexionCorto(online, pendientes)}</span>
       </span>
+      <Ayudita tema="conexion" lado="der" />
       <span className="pk-fecha max-lg:hidden">{fechaCorta(new Date())}</span>
     </header>
   );

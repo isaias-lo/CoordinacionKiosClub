@@ -43,3 +43,9 @@
 .pk-orden .f{color:#3B5BDB}
 
 .pk-mas{display:flex;justify-content:center}
+
+/* Actividad: los títulos de columna quedan fijos al bajar. El que corre es .pk-content, así que la
+   tarjeta no puede ser contenedor de scroll: `clip` recorta las esquinas igual que `hidden`, sin
+   crear uno (con `hidden` el sticky se pegaba a la tarjeta y no hacía nada). */
+.pk-card.pk-act{overflow:clip}
+.pk-card.pk-act thead th{position:sticky;top:-16px;z-index:2}

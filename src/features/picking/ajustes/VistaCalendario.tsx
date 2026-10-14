@@ -11,6 +11,7 @@ import {
   DIAS, NOMBRE_DIA, NOMBRE_GRUPO, diaDe, filasCalendario, tiendasDelDia, textoPorGrupo, usaDomingo,
   type CalRecord, type Grupo,
 } from './calendario';
+import { Ayudita } from '../marco/Ayudita';
 
 export type FuenteCalendario = 'despacho' | 'congelados';
 
@@ -61,6 +62,7 @@ export function VistaCalendario({ fuente, onFuente, nombreTienda, onUsarHoy, vis
       <div className="pk-head">
         <div className="pk-hrow">
           <span className="pk-h1">Calendario de picking</span>
+          <Ayudita tema="calendario" />
           <span className="pk-seg" role="group" aria-label="Calendario" style={{ marginLeft: 10 }}>
             {([['despacho', 'Seco'], ['congelados', 'Congelados']] as const).map(([k, l]) => (
               <button key={k} type="button" className={fuente === k ? 'on' : ''} aria-pressed={fuente === k} onClick={() => onFuente(k)}>{l}</button>

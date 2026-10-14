@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import { LabelConfig, DEFAULT_LABEL_CONFIG, BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import { InlineConfirm } from '../components/InlineConfirm';
+import { Ayudita } from '../marco/Ayudita';
 
 type Pestana = 'etiqueta' | 'nombres' | 'pantalla';
 type Numero = { [K in keyof LabelConfig]: LabelConfig[K] extends number ? K : never }[keyof LabelConfig];
@@ -83,6 +84,7 @@ export function VistaConfiguracion(p: Props) {
       <div className="pk-head" style={{ paddingBottom: 0 }}>
         <div className="pk-hrow">
           <span className="pk-h1">Configuración</span>
+          <Ayudita tema="configuracion" />
           <span className="pk-sp" />
           <span className="pk-sub">Los cambios se guardan solos.</span>
           {pestana === 'etiqueta' && (

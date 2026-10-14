@@ -33,6 +33,8 @@ export const GUIA: TemaAyuda[] = [
       'Escribe el nombre real del picker: va impreso en la etiqueta. Si lo dejas vacío se usa el nombre de Odoo.',
       'Con − y + cuentas pallets, bultos y cajas. Cada unidad sale con su propio número.',
       'Las unidades que no corresponden a una sección no se ofrecen (por ejemplo, Aseo y Hogar no llevan chocolate).',
+      'Lo que cuentas dentro de Comida, Aseo u Hogar sale con la etiqueta de esa sección. Un pallet que lleva dos categorías juntas se cuenta en Todas.',
+      'El signo ? al lado de cada parte de la pantalla explica para qué sirve.',
       'Las cajas de chocolate y congelado se pesan juntas: anota el peso total y se reparte entre las cajas.',
       '«Imprimir» saca las etiquetas de ese encargado. El botón azul de arriba imprime las etiquetas de todas las tiendas elegidas.',
     ],

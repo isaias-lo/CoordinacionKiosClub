@@ -14,6 +14,7 @@ import { mensajeReimpresion } from '../reimpresion';
 import { STATE_INFO, buildCanonicalId, todayISO } from '../picking-utils';
 import { fmtHoraChile } from '@/lib/fechaChile';
 import { categoriasDelPallet } from '../picking-secciones';
+import { Ayudita } from '../marco/Ayudita';
 
 const TONO_ESTADO: Record<string, string> = { done: 'ok', cancel: 'bad', draft: 'mute' };
 
@@ -78,8 +79,8 @@ export function PanelDetalle(p: PanelDetalleProps) {
 
         {group.operations.length > 0 && (
           <div className="pk-col6">
-            <span className="pk-lbl">OPERACIONES EN ODOO</span>
-            <div className="pk-card">
+            <span className="pk-lbl">OPERACIONES EN ODOO <Ayudita tema="operaciones" /></span>
+            <div className="pk-card pk-ops">
               <table className="pk-tabla">
                 <tbody>
                   {group.operations.map(op => (
@@ -88,7 +89,7 @@ export function PanelDetalle(p: PanelDetalleProps) {
                       <td>
                         {[op.categories.join(' · '), op.lineCount > 0 ? `${op.lineCount} línea${op.lineCount !== 1 ? 's' : ''}` : '']
                           .filter(Boolean).join(' · ')}
-                        {op.origin && <div className="pk-sub pk-trunc" title={op.origin}>{op.origin}</div>}
+                        {op.origin && <div className="pk-sub">{op.origin}</div>}
                       </td>
                       <td className="nw"><span className={`pk-pill ${TONO_ESTADO[op.state] ?? 'warn'}`}>{STATE_INFO[op.state]?.label ?? op.state}</span></td>
                       <td className="pk-mono pk-sub">{op.batch ?? ''}</td>
@@ -111,7 +112,7 @@ export function PanelDetalle(p: PanelDetalleProps) {
 
         <div className="pk-pd-campos">
           <label className="pk-col5">
-            <span className="pk-lbl2">Nombre en la etiqueta</span>
+            <span className="pk-lbl2">Nombre en la etiqueta <Ayudita tema="nombre" /></span>
             <span className="pk-field">
               <input type="text" value={p.displayName} onChange={e => p.onNameChange(e.target.value)}
                 placeholder={group.key} />
@@ -119,7 +120,7 @@ export function PanelDetalle(p: PanelDetalleProps) {
             </span>
           </label>
           <label className="pk-col5">
-            <span className="pk-lbl2">Batch</span>
+            <span className="pk-lbl2">Batch <Ayudita tema="batch" /></span>
             {batchDeOdoo ? (
               <span className="pk-field pk-mono" title="Transferir Agrupación (Odoo)">{batchDeOdoo}</span>
             ) : p.onBatchChange ? (
@@ -149,7 +150,7 @@ export function PanelDetalle(p: PanelDetalleProps) {
           const titulo = cajas === 1 ? `Peso de la caja ${t === 'CH' ? 'de chocolate' : t === 'CC' ? 'cartón' : 'negra'}` : `Peso total de las ${cajas} cajas ${nombre}`;
           return (
             <label key={t} className="pk-col5">
-              <span className="pk-lbl2">{titulo} <span className="pk-sub">(kg, opcional)</span></span>
+              <span className="pk-lbl2">{titulo} <span className="pk-sub">(kg, opcional)</span> <Ayudita tema="peso" /></span>
               <span className="pk-field" style={{ borderColor: v && !v.ok ? '#A3271A' : aviso ? '#B45309' : undefined }}>
                 <input type="text" inputMode="decimal" value={raw} aria-label={titulo}
                   onChange={e => p.onPesoTotalChange!(t, e.target.value)}
@@ -172,7 +173,7 @@ export function PanelDetalle(p: PanelDetalleProps) {
         })}
 
         <div className="pk-col8">
-          <span className="pk-lbl">UNIDADES A DESPACHAR</span>
+          <span className="pk-lbl">UNIDADES A DESPACHAR <Ayudita tema="unidades" /></span>
           {p.unidadesVisibles.map(({ tipo, sigla, label }) => {
             const count = palletsByTipo[tipo] ?? 0;
             return (
@@ -214,7 +215,7 @@ export function PanelDetalle(p: PanelDetalleProps) {
 
         <div className="pk-col8">
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-            <span className="pk-lbl">VISTA PREVIA · {n} ETIQUETA{n !== 1 ? 'S' : ''}</span>
+            <span className="pk-lbl">VISTA PREVIA · {n} ETIQUETA{n !== 1 ? 'S' : ''} <Ayudita tema="vistaPrevia" /></span>
             {selectedIndices.size > 0 && (
               <span className="pk-sub" style={{ color: '#1F3FA8' }}>{selectedIndices.size} seleccionada{selectedIndices.size !== 1 ? 's' : ''}</span>
             )}
