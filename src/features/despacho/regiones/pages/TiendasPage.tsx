@@ -57,7 +57,10 @@ import { reconciliarFormRows, findItemForRow, sameStableItem } from '../../share
 import { mismaCargaEscrita } from '../../shared/adoptarItemRemoto';
 import { buscarPallet } from '../../shared/buscarPallet';
 import { esDeOtroEspejo, espejoDeTienda, avisoDeOtroEspejo } from '../../shared/duenoDeTienda';
-import { fechaISOLocal } from '../../shared/fechaLocal';
+import { mediodiaDe } from '../../shared/fechaLocal';
+import { diaDeTrabajoActual, diaDeTrabajoEsDeliberado } from '@/features/despacho/shared/diaDeTrabajoActual';
+import { claveDelDia } from '@/features/despacho/shared/calendarioDelDia';
+import { soloSeco } from '@/features/despacho/shared/unidadDeCongelados';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
@@ -114,7 +117,10 @@ function codToTiendaName(): Record<string, string> {
 }
 
 /* ── Per-day calendar overrides ── */
-const _localDate = fechaChile();
+// El día que esta pantalla trabaja: hoy, o el que venga en `?dia=` (ver `diaDeTrabajo.ts`).
+const _localDate = diaDeTrabajoActual();
+/** El día lo eligió alguien (no es una pestaña que quedó abierta). Ver `diaDeTrabajoActual`. */
+const diaElegido = diaDeTrabajoEsDeliberado();
 const todayDateKey   = `calendarExtra_${_localDate}`;
 const todayRemoveKey = `calendarRemoved_${_localDate}`;
 function loadExtraCods(): string[]  { try { return JSON.parse(localStorage.getItem(todayDateKey)   || '[]'); } catch { return []; } }
@@ -311,9 +317,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const registrarSoloTienda = async (nombre: string, cod: string): Promise<boolean> => {
     const lista = state.dispatch[nombre] ?? [];
     if (!lista.length) return false;
-    const hoyISO = fechaChile();
+    const hoyISO = _localDate;
     try {
-      await sheetsRegionesWrite({ [nombre]: lista }, 'Luis Fica', fechaDespachoBodega(state.fechaDespacho), hoyISO);
+      await sheetsRegionesWrite({ [nombre]: lista }, 'Luis Fica', fechaDespachoBodega(state.fechaDespacho, mediodiaDe(_localDate)), hoyISO);
       // Volcar la hoja a la base y rehacer el cruce del día. Ver `sincronizarYCruzar`.
       const avisoCruce = await sincronizarYCruzar(hoyISO);
       registroTiendas.marcar(cod);
@@ -332,7 +338,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const router = useRouter();
   const odooProgress = useOdooProgress();  // progreso de Odoo (punto gris/naranja/verde) — igual que Santiago
-  const { terminadas, marcarTerminada } = useTiendaTerminada();
+  const { terminadas, marcarTerminada } = useTiendaTerminada(_localDate);
   // Una tienda terminada no se edita: para cambiar algo hay que reabrirla desde ⋯ (pedido de Isaias, 5 oct 2026).
   const tiendaTerminada = (cod?: string | null) => !!cod && terminadas.get(cod)?.terminada === true;
   useDayRollover();  // recarga al cruzar medianoche → evita guías/estado fantasma del día anterior
@@ -427,8 +433,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   // Tiendas de adelanto de hoy con destino Regiones (zona 'fal'), sin tocar el calendario de abastecimiento.
   const [adelantoCods, setAdelantoCods] = useState<string[]>([]);
   useEffect(() => {
-    const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
-    const todayCode = DAY_CODES[new Date().getDay()];
+    // El día de la semana del DÍA DE TRABAJO, no el de hoy. Ver `diaDeTrabajo.ts`.
+    const todayCode = claveDelDia(_localDate) ?? '';
 
     // [P7] Hidratar el catálogo con las tiendas de Regiones de la BD (Config. Tiendas). Sin esto,
     // una tienda nueva quedaba en el calendario pero NO se renderizaba acá (la lista sale de
@@ -454,12 +460,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       .catch(() => {});
 
     // Initial fetch (checks localStorage cache first, then Sheets)
-    getTiendasDelDia('fal')
+    getTiendasDelDia('fal', _localDate)
       .then(cods => { if (cods.length > 0) setSheetsTodayCods(cods); })
       .catch(() => {});
 
     // Tiendas de adelanto de hoy (solo zona Regiones / 'fal')
-    getTiendasAdelantoHoy()
+    getTiendasAdelantoHoy(_localDate)
       .then(list => setAdelantoCods(list.filter(a => a.zona === 'fal').map(a => a.store_cod)))
       .catch(() => {});
 
@@ -620,19 +626,22 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
   /* ── Load picking slots from picking_pallets (today) ── */
   useEffect(() => {
-    const dateStr = fechaChile();
+    const dateStr = _localDate;
 
     const load = async () => {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('id,store_cod,tipo,subtipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,picker_label,is_active')
+        .select('id,store_cod,tipo,subtipo,contenido,section,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,picker_label,is_active')
         .eq('date', dateStr)
         .eq('is_active', true)
         .order('id', { ascending: true });
       if (!data) return;
+      // Las cajas de congelados se pesan en SU pestaña. Acá solo hacían que la tienda no cerrara
+      // nunca, aunque la marcaran terminada. Ver `unidadDeCongelados.ts`.
+      const filas = soloSeco(data);
       const codToName = codToTiendaName();  // fresco: TIENDAS puede haber crecido desde el último load()
       const full:  Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]> = {};
-      for (const row of data) {
+      for (const row of filas) {
         if (fueRecienBorrado(row.id as number)) continue; // [RC-3] no revivir un slot recién borrado
         const name = codToName[row.store_cod as string];
         if (!name) continue;
@@ -1172,7 +1181,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const addFormRowInner = async (pkg: TipoPaquete, existingSlot?: PickingSlot, countOffset = 0) => {
     const cod = selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? '') : '';
     const PKG_CODE: Record<TipoPaquete, string> = { pallet: 'P', box: 'B', contenedor: 'C', chocolate: 'CH', adquisicion: 'A', 'web-retiro': 'W' };
-    const date = fechaISOLocal();
+    const date = _localDate;
 
     // Chocolate: se agrega AGREGADO al instante con peso por defecto (sin formulario)
     if (pkg === 'chocolate') {
@@ -1316,7 +1325,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     if (addingSlotRef.current.has(key)) { showToast('Agregando… espera un segundo', AVISO_ESPERA); return; }
     addingSlotRef.current.add(key);
     try {
-      const { slot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: 'P', contenido: 'hogar' });
+      const { slot, error } = await crearSlotBodega({ date: _localDate, store_cod: cod, tipo: 'P', contenido: 'hogar' });
       if (!slot) { showToast(`⚠ No se pudo agregar el pallet web (${error}) — reintenta`, AVISO_ERROR); return; }
       setPickingSlotsFull(prev => ({ ...prev, [tiendaSel]: [...(prev[tiendaSel] ?? []), slot] }));
       // El número sale del `seq` del slot, igual que al guardar un pallet pesado (`saveRow`).
@@ -1347,7 +1356,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const src = row.savedItem;
     if (!src || !selectedTienda) return;
     const cod  = TIENDAS[selectedTienda]?.cod ?? '';
-    const date = fechaISOLocal();
+    const date = _localDate;
     const baseCount = (dispatchData[selectedTienda] || []).filter(i => i.pkg === 'box').length;
     let creados = 0;
     for (let k = 0; k < cantidad; k++) {
@@ -1494,7 +1503,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // para Seguimiento/Enrutador/Conteo de Flota. Último intento acá, igual que Santiago.
     let slotId = row.pickingSlotId;
     if (!slotId) {
-      const { slot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: TIENDAS[selectedTienda]?.cod ?? '', tipo: pkgCodeNacional(row.pkg), contenido: 'hogar' });
+      const { slot, error } = await crearSlotBodega({ date: _localDate, store_cod: TIENDAS[selectedTienda]?.cod ?? '', tipo: pkgCodeNacional(row.pkg), contenido: 'hogar' });
       if (!slot) { showToast(`⚠ No se pudo guardar (${error}) — reintenta`, '#D32F2F'); return; }
       slotId = slot.id;
       setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), slot] }));
@@ -1664,7 +1673,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // Vuelve con su número de antes si nadie lo tomó (ver recrearSlotConNumero); las medidas y el
     // peso se le escriben en el mismo update.
     const { slot, conservoNumero, error } = await recrearSlotConNumero({
-      date: fechaISOLocal(), store_cod: cod,
+      date: _localDate, store_cod: cod,
       tipo: slotAntes?.tipo ?? pkgCodeNacional(item.pkg), contenido: slotAntes?.contenido ?? 'hogar',
       seqOriginal: slotAntes?.seq, canonicalOriginal: slotAntes?.canonical_id ?? item.canonical_id,
       peso: item.peso, alto: item.alto, largo: item.largo, ancho: item.ancho,
@@ -1743,7 +1752,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     let sinSlot = 0, conCodigoNuevo = 0;
     for (const o of snap.origenes) {
       const r = await recrearSlotConNumero({
-        date: fechaISOLocal(), store_cod: snap.cod, tipo: o.tipo, contenido: o.contenido,
+        date: _localDate, store_cod: snap.cod, tipo: o.tipo, contenido: o.contenido,
         seqOriginal: o.seq, canonicalOriginal: o.canonical,
         peso: o.peso, alto: o.alto, largo: o.largo, ancho: o.ancho,
       });
@@ -1789,7 +1798,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const { name, itemsAntes, sourceItem, oldSrcSlot, tgtSlot, tgtPeso } = snap;
     const cod = TIENDAS[name]?.cod ?? '';
     let newSrcSlotId: number | undefined;
-    const { slot: nuevoSlot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: pkgCodeNacional(sourceItem.pkg), contenido: 'hogar' });
+    const { slot: nuevoSlot, error } = await crearSlotBodega({ date: _localDate, store_cod: cod, tipo: pkgCodeNacional(sourceItem.pkg), contenido: 'hogar' });
     if (nuevoSlot) newSrcSlotId = nuevoSlot.id;
     // El source queda sin # si falla — ahora AVISA en vez de fallar en silencio.
     else showToast(`⚠ Revertido sin # de bodega para el source (${error})`, '#D97706');
@@ -2662,7 +2671,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             <AgregarPalletDialog
               tipoLabel={PKG_LABEL[dialogPkg]}
               storeCod={TIENDAS[selectedTienda]?.cod ?? ''}
-              date={fechaISOLocal()}
+              date={_localDate}
               refInicial={dialogRef ?? undefined}
               comprobarAlAbrir={dialogBorrado}
               onClose={() => setDialogPkg(null)}
@@ -2690,8 +2699,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   return (
     <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
 
-      {/* La pantalla quedó abierta de un día para otro. Ver `diaDeLaSesion.ts`. */}
-      <AvisoDiaViejo diaDeLaSesion={_localDate} />
+      {/* La banda del día elegido va en `AppScreen`, arriba de todo: este contenedor es una FILA
+          en escritorio. Acá queda solo el aviso de pestaña vieja, que es `fixed` y no estorba.
+          Las dos señales son opuestas y nunca salen juntas. Ver `diaDeTrabajoEsDeliberado`. */}
+      {!diaElegido && <AvisoDiaViejo diaDeLaSesion={_localDate} />}
 
       {/* Wrapper: on mobile = top/bottom stack, on desktop = transparent via contents */}
       <div className="flex flex-col lg:contents flex-1 min-h-0 overflow-hidden">
