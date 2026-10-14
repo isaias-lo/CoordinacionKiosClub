@@ -631,7 +631,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const load = async () => {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('id,store_cod,tipo,subtipo,contenido,section,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,picker_label,is_active')
+        .select('id,store_cod,tipo,subtipo,contenido,section,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,picker_label,is_active,refs,batch')
         .eq('date', dateStr)
         .eq('is_active', true)
         .order('id', { ascending: true });
@@ -655,6 +655,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           largo: row.largo as number | null, ancho: row.ancho as number | null,
           peso_v: row.peso_v as number | null,
           picker_label: row.picker_label as string | null,
+          refs:         row.refs  as string | null,
+          batch:        row.batch as string | null,
         });
       }
       // [RC-5] Lo recién creado que esta consulta todavía no ve. Sin esto, `load` reemplaza el
@@ -1535,7 +1537,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       const perItem = Math.round(pdfInfo.totalSum / newItems.length);
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: newItems.map((it, i) => ({ ...it, guia: pdfInfo.guias[i]?.num || '', valor: perItem })) });
     }
-    const savedItem: DispatchItem = { ...item, id: previo?.id ?? crypto.randomUUID(), canonical_id: pickingSlot?.canonical_id ?? undefined };
+    const savedItem: DispatchItem = { ...item, id: previo?.id ?? crypto.randomUUID(),
+      canonical_id: pickingSlot?.canonical_id ?? undefined,
+      refs:  pickingSlot?.refs  ?? undefined,
+      batch: pickingSlot?.batch ?? undefined };
     // `pickingSlotId` va SIEMPRE en la fila, no solo en el ítem: cuando el slot se creó recién acá
     // (el reintento de arriba), la fila se quedaba sin él. El backfill pregunta por los slots que
     // las filas declaran (`slotsRepresentados`), no encontraba este, y agregaba una SEGUNDA tarjeta

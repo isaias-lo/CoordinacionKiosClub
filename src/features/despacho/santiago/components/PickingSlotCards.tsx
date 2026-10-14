@@ -20,6 +20,11 @@ export interface PickingSlot {
   ancho:        number | null;
   peso_v:       number | null;
   picker_label: string | null; // quién armó este pallet/bulto en Picking
+  /** La REFERENCIA de Odoo (`stock.picking.name`): `99REC/DT/138597`. Varias van unidas con `+`
+   *  cuando un pallet lleva carga de más de un movimiento. Ver `hojaDespacho.ts`. */
+  refs?:        string | null;
+  /** El batch de Odoo. Se llena desde que Picking lo guarda; lo anterior queda vacío. */
+  batch?:       string | null;
 }
 
 export interface CombineResult {

@@ -44,6 +44,9 @@ export const COLUMNAS_DESPACHO = [
   'COMUNA', 'TIPO_COMUNA', 'PESO_KG', 'ALTO', 'LARGO', 'ANCHO', 'PESO_V', 'VENTANA', 'ESTADO',
   'N_PALLET_BULTO', 'FECHA_LLEGADA', 'CONDUCTOR', 'RUTA', 'SUPERVISOR', 'GUIA', 'VALOR',
   'PIONETA 1', 'PIONETA 2', 'FECHA ARMADO', 'CÓDIGO',
+  // Estrenadas el 14/10/2026. La hoja las agrega sola la primera vez que se registra: eso es
+  // justo lo que destrabó escribir por nombre. Ver `appendPorNombre`.
+  'REFERENCIA', 'BATCH',
 ] as const;
 
 /**
@@ -131,4 +134,18 @@ export function leerColumna(
   const canonica = COLUMNAS_DESPACHO.indexOf(nombre as typeof COLUMNAS_DESPACHO[number]);
   const pos = i !== undefined ? i : canonica;
   return pos < 0 ? '' : String(fila[pos] ?? '');
+}
+
+/**
+ * La referencia de Odoo, como se lee en la planilla.
+ *
+ * `picking_pallets.refs` guarda varias unidas con `+` —`99REC/DT/138540+99REC/DT/138568`— porque
+ * un pallet puede llevar carga de más de un movimiento. En una celda eso se lee como una sola
+ * cosa larga; separadas por coma y espacio se ven las dos que son.
+ *
+ * No se deduplica ni se ordena: lo que Picking guardó es lo que hubo, y cambiarlo acá escondería
+ * una repetición que puede querer mirarse.
+ */
+export function referenciaParaPlanilla(refs?: string | null): string {
+  return String(refs ?? '').split('+').map(r => r.trim()).filter(Boolean).join(', ');
 }

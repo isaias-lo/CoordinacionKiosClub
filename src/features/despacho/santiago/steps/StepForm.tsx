@@ -830,7 +830,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const load = async () => {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('id,store_cod,tipo,subtipo,contenido,section,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,picker_label,is_active')
+        .select('id,store_cod,tipo,subtipo,contenido,section,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,picker_label,is_active,refs,batch')
         .eq('date', dateStr)
         .eq('is_active', true)
         .order('id', { ascending: true });
@@ -856,6 +856,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
           ancho:        row.ancho as number | null,
           peso_v:       row.peso_v as number | null,
           picker_label: row.picker_label as string | null,
+          refs:         row.refs  as string | null,
+          batch:        row.batch as string | null,
         });
       }
       // [RC-5] Lo recién creado que esta consulta todavía no ve. Sin esto, `load` reemplaza el
@@ -1528,6 +1530,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       estado: ESTADO_DEFAULT,
       pickingSlotId: slotId,
       canonical_id: pickingSlot?.canonical_id ?? undefined,
+      refs:  pickingSlot?.refs  ?? undefined,
+      batch: pickingSlot?.batch ?? undefined,
     };
     // Esta unidad ya puede tener ítem aunque la tarjeta diga "sin guardar": lo guardó otro equipo
     // mientras esta tarjeta estaba abierta. Entonces se completa ese ítem, no se agrega otro.

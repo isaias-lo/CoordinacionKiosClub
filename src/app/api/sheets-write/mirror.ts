@@ -23,11 +23,11 @@
 
 /** Columnas reales de despacho_rm y despacho_regiones (el mismo conjunto en las dos). */
 export const COLUMNAS_DESPACHO: ReadonlySet<string> = new Set([
-  'alto', 'ancho', 'auditado', 'auditado_at', 'auditado_canonical_id', 'canonical_id',
+  'alto', 'ancho', 'auditado', 'auditado_at', 'auditado_canonical_id', 'batch', 'canonical_id',
   'carga', 'cod', 'comuna', 'conductor', 'conductor_modificado', 'conductor_original',
   'created_at', 'estado', 'fecha', 'fecha_armado', 'fecha_llegada', 'fuente', 'guia', 'id', 'largo',
   'modificado_at', 'n_pallet_bulto', 'patente', 'peso_kg', 'peso_v', 'picking_slot_id',
-  'pioneta_1', 'pioneta_2', 'regimen', 'region', 'ruta', 'seguimiento', 'supervisor',
+  'pioneta_1', 'pioneta_2', 'referencia', 'regimen', 'region', 'ruta', 'seguimiento', 'supervisor',
   'tienda', 'tipo', 'tipo_comuna', 'transporte', 'valor', 'ventana', 'vuelta',
 ]);
 

@@ -194,6 +194,10 @@ function toRmRecord(row: (string | number)[]) {
     valor:            n(row[25] ?? ''),
     fecha_armado:     row[28] ? parseSheetDate(String(row[28])) : null,
     picking_slot_id:  row[29] ? Number(row[29]) || null : null,  // col AD = #488 (id del pallet). El canonical va en `id` (col A).
+    // Estrenadas el 14/10/2026. La fila llega SIEMPRE en el orden canónico de `COLUMNAS_DESPACHO`;
+    // dónde terminan en la hoja lo decide el nombre, al escribir. Ver `hojaDespacho.ts`.
+    referencia:       String(row[30] ?? ''),
+    batch:            String(row[31] ?? ''),
     seguimiento: 'Registrado',
   };
 }
@@ -228,6 +232,10 @@ function toRegionesRecord(row: (string | number)[]) {
     valor:            n(row[25] ?? ''),
     fecha_armado:     row[28] ? parseSheetDate(String(row[28])) : null,
     picking_slot_id:  row[29] ? Number(row[29]) || null : null,  // col AD = #488 (id del pallet). El canonical va en `id` (col A).
+    // Estrenadas el 14/10/2026. La fila llega SIEMPRE en el orden canónico de `COLUMNAS_DESPACHO`;
+    // dónde terminan en la hoja lo decide el nombre, al escribir. Ver `hojaDespacho.ts`.
+    referencia:       String(row[30] ?? ''),
+    batch:            String(row[31] ?? ''),
     seguimiento: 'Registrado',
   };
 }
