@@ -1,6 +1,7 @@
 import type { SantiagoItem } from '../types';
 import { getTiendaSantiagoByCod } from '../data/tiendasSantiago';
 import { desempatarOrdenSantiago, rotuloDeUnidad, claseSantiago } from '../../shared/numeroCard';
+import { referenciaParaPlanilla } from '../../shared/hojaDespacho';
 import { esSinPesar, esPalletWeb } from '../../shared/sinPesar';
 import { PREFIJO_ADQUISICION, PREFIJO_WEB_RETIRO, etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
 import { escribirPlanilla, type ResultadoPlanilla } from '../../shared/escribirPlanilla';
@@ -111,7 +112,9 @@ export function buildRows(
         '',                                                                // PIONETA 1 (col AA — Enrutador lo llena)
         '',                                                                // PIONETA 2 (col AB — Enrutador lo llena)
         fechaArmadoFmt,                                                    // FECHA_ARMADO (col AC)
-        item.pickingSlotId ?? '',                                          // CÓDIGO (col AD — #488 = id del pallet en la etiqueta)
+        item.pickingSlotId ?? '',                                          // CÓDIGO (#488 — id del pallet en la etiqueta)
+        referenciaParaPlanilla(item.refs),                                 // REFERENCIA (la de Odoo)
+        item.batch ?? '',                                                  // BATCH (vacío hasta que Picking lo guarde)
       ]);
     }
   }

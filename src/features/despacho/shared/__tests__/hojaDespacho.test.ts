@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   COLUMNAS_DESPACHO, indicesDeEncabezado, columnasQueFaltan, encabezadoCompleto,
-  alinearFila, leerColumna, normalizarColumna,
+  alinearFila, leerColumna, normalizarColumna, referenciaParaPlanilla,
 } from '../hojaDespacho';
 
 /** El encabezado real de las dos hojas hoy: A..AD, en orden canónico. */
@@ -115,5 +115,42 @@ describe('leerColumna', () => {
 
   it('una columna que no existe en ningún lado devuelve vacío', () => {
     expect(leerColumna(['ID'], ['x'], 'NO EXISTE')).toBe('');
+  });
+});
+
+// ── La referencia de Odoo (14/10/2026) ─────────────────────────────────────────────────────────
+
+describe('referenciaParaPlanilla', () => {
+  it('una sola se escribe tal cual', () => {
+    expect(referenciaParaPlanilla('99REC/DT/138597')).toBe('99REC/DT/138597');
+  });
+
+  it('varias se separan con coma: en una celda el `+` se lee como una sola cosa larga', () => {
+    expect(referenciaParaPlanilla('99REC/DT/138540+99REC/DT/138568'))
+      .toBe('99REC/DT/138540, 99REC/DT/138568');
+  });
+
+  it('sin referencia, celda vacía', () => {
+    for (const v of ['', null, undefined, '+', '  +  ']) {
+      expect(referenciaParaPlanilla(v)).toBe('');
+    }
+  });
+
+  it('no deduplica ni ordena: lo que Picking guardó es lo que hubo', () => {
+    expect(referenciaParaPlanilla('B+A+B')).toBe('B, A, B');
+  });
+});
+
+describe('las dos columnas nuevas', () => {
+  it('están al final del orden canónico', () => {
+    expect(COLUMNAS_DESPACHO.slice(-2)).toEqual(['REFERENCIA', 'BATCH']);
+  });
+
+  it('una hoja sin ellas las estrena al final, sin mover nada', () => {
+    const vieja = (COLUMNAS_DESPACHO as readonly string[]).slice(0, 30);
+    expect(columnasQueFaltan(vieja)).toEqual(['REFERENCIA', 'BATCH']);
+    const r = encabezadoCompleto(vieja);
+    expect(r.slice(0, 30)).toEqual(vieja);
+    expect(r.slice(-2)).toEqual(['REFERENCIA', 'BATCH']);
   });
 });
