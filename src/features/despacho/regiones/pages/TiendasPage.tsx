@@ -67,8 +67,8 @@ import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
-import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo,
-         TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
+import { subtipoDeCaja, medidasDeCaja, pesoNetoDeCaja, pesoParaMostrar, etiquetaSubtipo, taraDeCaja,
+         type SubtipoCaja } from '../../shared/subtipoCaja';
 import { pesoEnTarjeta, pesoNetoDeTarjeta, pesoNetoPallet, taraDeTarjeta, taraEnTarjeta, taraParaGuardar, textoPesoConTara } from '../../shared/pesoDelPallet';
 import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
 import { nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE, tipoDesdePicking, unirTipos } from '@/features/despacho/shared/contenidoCarga';
@@ -1460,10 +1460,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       // peso/alto/largo/ancho ni pasar por validarDimensiones.
       p = DIMS_SIN_PESAR.peso; a = DIMS_SIN_PESAR.alto; aw = DIMS_SIN_PESAR.ancho; l = DIMS_SIN_PESAR.largo;
     } else {
-      if (caja === 'negra') {
-        // Se pesa ENTERA y vuelve al CD: se descuenta lo que pesa vacía. Se rechaza lo que no
-        // llega a la tara en vez de recortarlo a cero (ver `pesoNetoCajaNegra`).
-        const neto = pesoNetoCajaNegra(row.peso);
+      if (caja) {
+        // La caja se pesa ENTERA —no hay forma de pesar el contenido solo— y no es mercadería: se
+        // descuenta lo que pesa vacía. Las DOS cajas tienen tara (negra 3,3 · cartón 0,4). Se
+        // rechaza lo que no llega a la tara en vez de recortarlo a cero. Ver `pesoNetoDeCaja`.
+        const neto = pesoNetoDeCaja(row.peso, caja);
         if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
         p = neto.neto;
       } else if (row.pkg === 'pallet') {
@@ -2278,7 +2279,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   <div className={`grid ${row.pkg === 'pallet' ? 'grid-cols-3' : 'grid-cols-2'} gap-2 mb-2`}>
                     <div>
                       <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">
-                        Peso{cajaDeFila === 'negra' && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(TARA_CAJA_NEGRA).replace('.', ',')} kg de caja</span>}
+                        Peso{cajaDeFila && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(taraDeCaja(cajaDeFila)).replace('.', ',')} kg de caja</span>}
                       </label>
                       <input type="text" value={row.peso} onChange={e => updateRow(row.id, 'peso', limpiarTecleo(e.target.value))}
                         onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="kg" inputMode="decimal" data-campo="peso"
