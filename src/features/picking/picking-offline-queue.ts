@@ -16,7 +16,7 @@ export type OfflineQueueItem =
   | {
       op: 'add';
       stateKey: string; storeCod: string; pickerLabel: string;
-      tipo: string; contenido: string; section?: string | null; refs: string; date: string;
+      tipo: string; contenido: string; section?: string | null; refs: string; batch?: string; date: string;
       // La caja del chocolate (negra/cartón). Sin esto, un CH agregado sin señal llegaba sin caja.
       subtipo?: string | null;
       clientOpId?: string;  // idempotencia: el replay reusa el mismo id ⇒ no duplica
@@ -138,7 +138,7 @@ function cuerpo(op: OfflineQueueItem, clientOpId: string): { url: string; body: 
       body: JSON.stringify({
         date: op.date, store_cod: op.storeCod, state_key: op.stateKey,
         picker_label: op.pickerLabel, tipo: op.tipo, subtipo: op.subtipo ?? null,
-        contenido: op.contenido, section: op.section ?? null, refs: op.refs,
+        contenido: op.contenido, section: op.section ?? null, refs: op.refs, batch: op.batch ?? '',
         client_op_id: clientOpId, actor_name: op.actorName,
         ...(op.medidas ?? {}),
       }),
