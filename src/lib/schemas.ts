@@ -212,6 +212,9 @@ export const CreatePickingPalletSchema = z.object({
   subtipo:      z.enum(['negra', 'carton']).nullish(),
   section:      z.string().max(30).nullish(), // sección de Picking (aseo-comida/hogar/…); null/omitida = sin clasificar
   refs:         z.string().max(500).nullish(),
+  // El batch de Odoo del grupo que armó la unidad (`BATCH/DT/60925`). Varios van unidos con `+`,
+  // igual que `refs`: un pallet puede llevar movimientos de más de un batch.
+  batch:        z.string().max(500).nullish(),
   actor_name:   z.string().max(100).nullish(),
   client_op_id: z.string().uuid().optional(), // idempotencia: mismo id ⇒ no duplica
   // Peso y medidas desde Picking, que es quien tiene la balanza delante. Las columnas ya existían

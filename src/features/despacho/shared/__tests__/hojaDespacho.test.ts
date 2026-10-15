@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   COLUMNAS_DESPACHO, indicesDeEncabezado, columnasQueFaltan, encabezadoCompleto,
-  alinearFila, leerColumna, normalizarColumna, referenciaParaPlanilla,
+  alinearFila, leerColumna, normalizarColumna, referenciaParaPlanilla, unirBatches,
 } from '../hojaDespacho';
 
 /** El encabezado real de las dos hojas hoy: A..AD, en orden canónico. */
@@ -152,5 +152,31 @@ describe('las dos columnas nuevas', () => {
     const r = encabezadoCompleto(vieja);
     expect(r.slice(0, 30)).toEqual(vieja);
     expect(r.slice(-2)).toEqual(['REFERENCIA', 'BATCH']);
+  });
+});
+
+describe('unirBatches', () => {
+  it('varios movimientos del mismo batch se escriben UNA vez', () => {
+    expect(unirBatches(['BATCH/DT/60925', 'BATCH/DT/60925', 'BATCH/DT/60925'])).toBe('BATCH/DT/60925');
+  });
+
+  it('batches distintos se unen con +', () => {
+    expect(unirBatches(['BATCH/DT/60925', 'BATCH/DT/60924'])).toBe('BATCH/DT/60925+BATCH/DT/60924');
+  });
+
+  it('conserva el orden de aparición', () => {
+    expect(unirBatches(['B', 'A', 'B', 'C'])).toBe('B+A+C');
+  });
+
+  it('los movimientos sin batch no dejan huecos', () => {
+    // El 14/10 el 16% de los movimientos no traía batch.
+    expect(unirBatches([null, 'BATCH/DT/1', undefined, '', '   '])).toBe('BATCH/DT/1');
+    expect(unirBatches([])).toBe('');
+    expect(unirBatches([null, undefined, ''])).toBe('');
+  });
+
+  it('a diferencia de la referencia, que SÍ conserva las repeticiones', () => {
+    expect(unirBatches(['X', 'X'])).toBe('X');
+    expect(referenciaParaPlanilla('X+X')).toBe('X, X');
   });
 });

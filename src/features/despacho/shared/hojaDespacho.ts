@@ -149,3 +149,23 @@ export function leerColumna(
 export function referenciaParaPlanilla(refs?: string | null): string {
   return String(refs ?? '').split('+').map(r => r.trim()).filter(Boolean).join(', ');
 }
+
+/**
+ * El BATCH de un grupo de movimientos de Odoo (`BATCH/DT/60925`).
+ *
+ * Se unen con `+` como las referencias, pero **sin repetir**: que varios movimientos del mismo
+ * grupo compartan batch es lo normal —el 14/10/2026 había 84 batches distintos entre 126
+ * movimientos— y escribirlo tres veces no agrega nada, solo alarga la celda.
+ *
+ * Es la diferencia con `referenciaParaPlanilla`, que sí conserva las repeticiones: una referencia
+ * repetida dice que el mismo documento entró dos veces y eso puede querer mirarse. Un batch
+ * repetido no dice nada.
+ */
+export function unirBatches(valores: readonly (string | null | undefined)[]): string {
+  const vistos = new Set<string>();
+  for (const v of valores) {
+    const s = String(v ?? '').trim();
+    if (s) vistos.add(s);
+  }
+  return [...vistos].join('+');
+}
