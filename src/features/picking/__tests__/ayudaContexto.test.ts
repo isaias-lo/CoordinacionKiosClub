@@ -77,4 +77,24 @@ describe('la burbuja del «?» cabe en la pantalla', () => {
     expect(p.x).toBe(12);
     expect(p.flecha).toBeGreaterThanOrEqual(10);
   });
+
+  it('si no cabe ni arriba ni abajo, va donde hay más espacio y su alto se limita a ese espacio', () => {
+    const alta = { ancho: 300, alto: 500 };
+    const baja = { ancho: 1280, alto: 600 };
+    // «?» un poco arriba de la mitad: hay más espacio abajo.
+    const p = posicionBurbuja(boton(400, 250), baja, alta);
+    expect(p.arriba).toBe(false);
+    expect(p.y).toBe(276);
+    expect(p.altoMax).toBe(600 - 12 - 276);
+    // «?» abajo: va arriba, sin pasarse del borde de arriba.
+    const q = posicionBurbuja(boton(400, 400), baja, alta);
+    expect(q.arriba).toBe(true);
+    expect(q.y).toBeGreaterThanOrEqual(12);
+    expect(q.y + Math.min(alta.alto, q.altoMax)).toBeLessThanOrEqual(400);
+  });
+
+  it('cuando cabe, el alto máximo no la recorta', () => {
+    const p = posicionBurbuja(boton(400, 200), pantalla, burbuja);
+    expect(p.altoMax).toBeGreaterThanOrEqual(burbuja.alto);
+  });
 });

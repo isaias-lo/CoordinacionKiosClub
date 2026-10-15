@@ -102,7 +102,7 @@ button.pk-sg:hover .acc{color:#2B4BC8}
 .pk-q:hover,.pk-q.on{background:#2B4BC8;border-color:#2B4BC8;color:#FFFFFF}
 .pk-q:focus-visible{outline:2px solid #3B5BDB;outline-offset:2px}
 .pk-q-velo{display:none}
-.pk-q-burbuja{position:fixed;top:var(--q-y,0);left:var(--q-x,0);z-index:70;width:300px;max-width:min(300px,calc(100vw - 32px));background:#14161B;color:#EDEFF4;border-radius:10px;padding:12px 14px;box-shadow:0 8px 24px rgba(16,24,40,.25);display:flex;flex-direction:column;gap:6px;font:400 13px/1.45 'IBM Plex Sans',system-ui,sans-serif;text-align:left;white-space:normal;cursor:default}
+.pk-q-burbuja{position:fixed;top:var(--q-y,0);left:var(--q-x,0);z-index:70;width:300px;max-width:min(300px,calc(100vw - 32px));background:#14161B;color:#EDEFF4;border-radius:10px;padding:12px 14px;box-shadow:0 8px 24px rgba(16,24,40,.25);display:flex;flex-direction:column;gap:6px;max-height:var(--q-alto,80vh);overflow-y:auto;font:400 13px/1.45 'IBM Plex Sans',system-ui,sans-serif;text-align:left;white-space:normal;cursor:default}
 .pk-q-burbuja::before{content:"";position:absolute;top:-6px;left:var(--q-flecha,14px);border:6px solid transparent;border-top:0;border-bottom-color:#14161B}
 .pk-q-burbuja.arriba::before{top:auto;bottom:-6px;border-bottom:0;border-top:6px solid #14161B}
 .pk-q-burbuja b{color:#FFFFFF;font-size:13px}
@@ -113,7 +113,7 @@ button.pk-sg:hover .acc{color:#2B4BC8}
 @media (max-width:1023px){
   .pk-q{width:22px;height:22px;font-size:12px}
   .pk-q-velo{display:block;position:fixed;inset:0;z-index:69;background:rgba(20,22,27,.42)}
-  .pk-q-burbuja{position:fixed;top:auto;left:0;right:0;bottom:0;width:auto;max-width:none;background:#FFFFFF;color:#2B303B;border-radius:16px 16px 0 0;padding:16px 18px calc(18px + env(safe-area-inset-bottom));font-size:14px;gap:10px;box-shadow:0 -8px 24px rgba(16,24,40,.18)}
+  .pk-q-burbuja{position:fixed;top:auto;left:0;right:0;bottom:0;width:auto;max-width:none;background:#FFFFFF;color:#2B303B;border-radius:16px 16px 0 0;padding:16px 18px calc(18px + env(safe-area-inset-bottom));font-size:14px;gap:10px;box-shadow:0 -8px 24px rgba(16,24,40,.18);max-height:calc(100dvh - 24px)}
   .pk-q-burbuja::before{content:"";position:static;width:38px;height:4px;border:0;border-radius:2px;background:#D7DBE3;align-self:center}
   .pk-q-burbuja.arriba::before{border:0}
   .pk-q-burbuja b{color:#14161B;font-size:15px}
