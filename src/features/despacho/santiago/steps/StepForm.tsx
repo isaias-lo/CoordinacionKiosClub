@@ -2290,6 +2290,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     deOtraBodega: cod => (esDeOtroEspejo(cod, 'rmcosta', isRegionesCod)
       ? avisoDeOtroEspejo(cod, espejoDeTienda(cod, isRegionesCod))
       : null),
+    // Una etiqueta del otro espejo lleva a la persona a su pestaña, que la abre allá. Se guarda lo
+    // pendiente antes de salir, igual que el botón Enrutador. Ver `saltoEntreBodegas.ts`.
+    espejo: 'rmcosta',
+    navegar: ruta => { flushPending(); router.push(ruta); },
     irA: p => {
       const tienda = tiendaByCod[p.claveTienda];
       if (!tienda) return false;

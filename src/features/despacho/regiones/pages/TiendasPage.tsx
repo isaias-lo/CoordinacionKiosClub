@@ -1415,6 +1415,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     deOtraBodega: cod => (esDeOtroEspejo(cod, 'nacional', isRegionesCod)
       ? avisoDeOtroEspejo(cod, espejoDeTienda(cod, isRegionesCod))
       : null),
+    // Una etiqueta del otro espejo lleva a la persona a su pestaña, que la abre allá. Se guarda lo
+    // pendiente antes de salir, igual que el botón Enrutador. Ver `saltoEntreBodegas.ts`.
+    espejo: 'nacional',
+    navegar: ruta => { flushPending(); router.push(ruta); },
     irA: p => {
       const tienda = TIENDAS[p.claveTienda];
       if (!tienda) return false;
