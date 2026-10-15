@@ -164,3 +164,28 @@ describe('accionesPedidas — lo que se le pide al servidor', () => {
     expect(accionesPedidas(ACCIONES_ACTIVIDAD, true)).toHaveLength(ACCIONES_ACTIVIDAD.length);
   });
 });
+
+// ── La instrumentación del conteo borrado (15/10/2026) ─────────────────────────────────────────
+//
+// «Aparecen y desaparecen palets y bultos» en el Enrutador. La sospecha es `pushCounts`: un equipo
+// que tiene una tienda en pantalla SIN unidades borra su fila aunque otro la haya escrito con
+// carga. Esto lo registra para saber si pasa, antes de tocar el borrado.
+
+describe('conteo_borrado es diagnóstico, no trabajo de una persona', () => {
+  it('no entra al feed por defecto', () => {
+    expect(esDiagnostico('conteo_borrado')).toBe(true);
+    expect(esTrabajoDePersona('conteo_borrado')).toBe(false);
+  });
+
+  it('convive con merge_descarte sin desplazarlo', () => {
+    expect(esDiagnostico('merge_descarte')).toBe(true);
+    expect(ACCIONES_DIAGNOSTICO).toContain('conteo_borrado');
+    expect(ACCIONES_DIAGNOSTICO).toContain('merge_descarte');
+  });
+
+  it('las acciones de persona siguen entrando solas', () => {
+    for (const a of ['registrar_item', 'eliminar_item', 'unificar', 'registrar_dia']) {
+      expect(esTrabajoDePersona(a)).toBe(true);
+    }
+  });
+});

@@ -39,7 +39,7 @@ import type { AccionActividad, ActividadRow } from '@/lib/actividad';
  * Se listan por nombre y no por descarte: así, una acción nueva de persona entra al feed sola, y
  * una de diagnóstico hay que agregarla acá a propósito. El olvido barato es el correcto.
  */
-export const ACCIONES_DIAGNOSTICO: readonly string[] = ['merge_descarte'];
+export const ACCIONES_DIAGNOSTICO: readonly string[] = ['merge_descarte', 'conteo_borrado'];
 
 export function esDiagnostico(accion: string): boolean {
   return ACCIONES_DIAGNOSTICO.includes(accion);
