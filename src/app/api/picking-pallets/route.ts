@@ -7,7 +7,7 @@ import { fechaChile } from '@/lib/fechaChile';
 
 // peso_kg/alto/largo/ancho/peso_v: las columnas ya existían, pero solo las escribía Bodega. Ahora
 // también viajan desde Picking, así que el cliente necesita verlas de vuelta al crear un slot.
-const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, subtipo, contenido, section, refs, batch, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v';
+const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, subtipo, contenido, section, refs, batch, created_at, date, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v';
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
 // Auditoría de altas/bajas de pallets (fire-and-forget — no debe bloquear la respuesta).
@@ -44,7 +44,9 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: 'ID no encontrado' }, { status: 404 });
     // If refs is empty, look for sibling pallets in the same group (same state_key + date) that have refs
     if (data && !data.refs) {
-      const slotDate = (data.created_at as string).slice(0, 10);
+      // El día del despacho (`date`), no el de `created_at`: ese está en UTC y después de las ~21:00
+      // de Chile ya es mañana, así que no encontraba a los hermanos y la guía salía vacía.
+      const slotDate = (data.date as string | null) ?? (data.created_at as string).slice(0, 10);
       const { data: sibling } = await supabaseServer()
         .from('picking_pallets')
         .select('refs')
@@ -172,11 +174,15 @@ export async function PATCH(request: NextRequest) {
     if (body[campo] !== undefined) update[campo] = body[campo];
   }
   if (Object.keys(update).length === 0) return NextResponse.json({ error: 'Nada que actualizar' }, { status: 400 });
-  const { error } = await supabaseServer()
+  const { data: cambiados, error } = await supabaseServer()
     .from('picking_pallets')
     .update(update)
-    .eq('id', body.id);
+    .eq('id', body.id)
+    .select('id');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // Un update que no encuentra la fila no da error en Postgres. Antes respondía ok y quien llamaba
+  // creía haber corregido un slot que ya no existía (lo había borrado o unido otro equipo).
+  if (!cambiados?.length) return NextResponse.json({ error: 'El pallet ya no existe' }, { status: 404 });
   return NextResponse.json({ ok: true });
 }
 
