@@ -92,7 +92,9 @@ import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBo
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaChile } from '@/lib/fechaChile';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
-import { levantarLapidasDeSlotsVivos } from '../../shared/lapidasBorrado';
+import { levantarLapidasDeSlotsVivos, marcarLapidaDeItem } from '../../shared/lapidasBorrado';
+import { camposParaEditar } from '../../shared/camposParaEditar';
+import { asignarSlotSinGemelas } from '../../shared/asignarSlotSinGemelas';
 import { actualizarSlotPicking, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
 import { sincronizarYCruzar } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
@@ -509,6 +511,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const sheetDrag    = useRef({ start: 0, delta: 0 });
 
   const { dispatch: dispatchData, selectedTienda, fechaDespacho: _fechaDespacho, registrado } = state;
+  // Los ítems de AHORA, para lo que corre después de un `await`: la variable del render en que
+  // empezó la acción puede ser vieja, y reemplazar la lista de la tienda con ella pisa lo que otro
+  // equipo cambió mientras tanto (unir, guardar).
+  const itemsVivosRef = useRef(dispatchData);
+  itemsVivosRef.current = dispatchData;
   // [Presencia] Quién más tiene cada tienda abierta AHORA — pedido 2026-09-09: "no saben quién
   // está haciendo qué". Efímero (Realtime Presence, no tabla): se resetea cuando todos se van.
   // [Presencia por pallet] `slotEnFoco` es la tarjeta cuyo peso/alto/etc. se está escribiendo
@@ -1293,7 +1300,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       next[selectedTienda] = [...(next[selectedTienda] ?? []), slot];
       return next;
     });
-    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
+    // Si la recarga de Picking trajo este slot antes que la respuesta, ya hay otra tarjeta para él.
+    setFormRows(prev => asignarSlotSinGemelas(prev, rowId, slot.id));
   };
 
   // [P5] Guarda anti doble-tap: crear un slot NO es idempotente, así que dos toques seguidos (o un
@@ -1520,7 +1528,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       slotRecienCreado = true;
       setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), slot] }));
     }
-    let currentItems = dispatchData[selectedTienda] || [];
+    // La lista de ahora, no la del render en que se tocó Guardar: entre medio hubo un `await`.
+    let currentItems = itemsVivosRef.current[selectedTienda] || [];
     // Edición de un ítem que no tenía slot: queda enlazado al slot recién creado, y así
     // `itemDeLaUnidad` lo encuentra y el guardado lo completa en vez de agregar otro.
     if (row.reemplaza && slotRecienCreado) {
@@ -1528,6 +1537,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       if (enlazados) {
         currentItems = enlazados;
         dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: currentItems });
+        // Su llave pasa de `id:` a `slot:`: los otros equipos tienen que soltar la de antes, o se
+        // quedan con los dos. Ver `marcarLapidaDeItem`.
+        marcarLapidaDeItem(row.reemplaza.id);
       }
     }
     // El número sale del `seq` —el que quedó IMPRESO en la etiqueta—, no de la posición. Se pasan
@@ -1603,7 +1615,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // Sin slot de Picking tampoco se borra (15/10/2026): antes sí, y salir sin guardar lo perdía.
     // La fila recuerda cuál es (`reemplaza`) y el guardado lo enlaza al slot nuevo.
     const reemplaza = row.savedItem.pickingSlotId == null ? { id: row.savedItem.id, orden: row.savedItem.orden } : undefined;
-    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, saved: false, savedItem: undefined, editando: true, reemplaza } : r));
+    // Los campos salen del ítem que la tarjeta muestra, no de lo que quedó escrito en la fila, y la
+    // fila pasa a ser la de «Ahora». Sin las dos cosas, el 14/10 en 06MQH se editó el P2 (sin pesar)
+    // viendo los 237 kg del P1, y se guardó eso. Ver `camposParaEditar`.
+    const slot = (pickingSlotsFull[selectedTienda] ?? []).find(s => s.id === (row.pickingSlotId ?? row.savedItem!.pickingSlotId));
+    const campos = camposParaEditar(row.savedItem, row.savedItem.pkg === 'chocolate' ? subtipoDeCaja(slot?.subtipo) : null, row);
+    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, ...campos, saved: false, savedItem: undefined, editando: true, reemplaza } : r));
+    elegirActiva(rowId);
   };
 
   // Borra el slot de picking_pallets vinculado y lo quita de pickingSlotsFull.
@@ -1981,8 +1999,6 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
      NO aparezca el fantasma "¿Con cuál fue unificado?" (gP usa el light). Navegación-safe. */
   // Una unión a la vez: con la espera de la base, un doble toque mandaría la misma dos veces.
   const uniendoRef = useRef(false);
-  const itemsVivosRef = useRef(dispatchData);
-  itemsVivosRef.current = dispatchData;
   const iniciarUnionInline = async (sourceRow: FormRow, targetRow: FormRow, srcLabel?: string, tgtLabel?: string) => {
     if (!selectedTienda) return;
     const name      = selectedTienda;

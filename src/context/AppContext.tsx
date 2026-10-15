@@ -12,7 +12,7 @@ import { mergeEntriesByKey, mergeItemsByTienda } from '@/features/despacho/santi
 import { agregarSinDuplicar } from '@/features/despacho/shared/itemPorUnidad';
 import { stableItemKey } from '@/features/despacho/shared/formRowsReconcile';
 import { serializarBase } from '@/features/despacho/shared/syncBase';
-import { tieneLapida, lapidasComoLista, absorberLapidas } from '@/features/despacho/shared/lapidasBorrado';
+import { tieneLapida, lapidasComoLista, absorberLapidas, anotarItemSinUnidad } from '@/features/despacho/shared/lapidasBorrado';
 import { elegirVersion, sellarCambios } from '@/features/despacho/shared/versionDeItem';
 import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, traeRegistrosNuevos, decidir, fusionarDecisiones, aplicarDecisiones, type RegistroPorFecha, type DecisionPorFecha } from '@/features/despacho/shared/registroPorFecha';
 import { diaDeTrabajoActual } from '@/features/despacho/shared/diaDeTrabajoActual';
@@ -106,6 +106,7 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, currentPkg: action.payload };
     case 'ADD_ITEM': {
       const prev = state.dispatch[action.tienda] || [];
+      anotarItemSinUnidad(action.item, 'vivo');
       // Si la unidad de Picking ya tiene ítem (lo guardó otro equipo), se reemplaza: no se suma otro.
       const updated = sellar(prev, renumber(agregarSinDuplicar(prev, action.item)));
       const pos = updated.findIndex(i => action.item.pickingSlotId != null && i.pickingSlotId === action.item.pickingSlotId);
@@ -118,6 +119,8 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
     case 'DELETE_ITEM': {
+      // Sin unidad de Picking no hay slot que deje lápida: la deja el ítem. Ver `anotarItemSinUnidad`.
+      anotarItemSinUnidad((state.dispatch[action.tienda] || [])[action.idx], 'borrado');
       const items = (state.dispatch[action.tienda] || []).filter((_, i) => i !== action.idx);
       const updated = renumber(items);
       const sel = new Set<number>();

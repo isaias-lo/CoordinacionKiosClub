@@ -112,11 +112,11 @@ describe('lapidasBorrado — compartidas entre equipos (29/09)', () => {
     expect(merged).toEqual({ TLC: [ch(1)] });
   });
 
-  it('ignora basura: solo acepta llaves de slot', () => {
+  it('ignora basura: solo acepta llaves de slot y de id de ítem (15/10), no de orden', () => {
     absorberLapidas(['id:x', 'orden:P1', 42, null, 'slot:9']);
     absorberLapidas(undefined);
     absorberLapidas('slot:3');
-    expect(lapidasComoLista()).toEqual(['slot:9']);
+    expect(lapidasComoLista().sort()).toEqual(['id:x', 'slot:9']);
   });
 });
 
@@ -204,5 +204,50 @@ describe('ver viva una unidad antes de que llegue su lápida no la inmuniza', ()
     expect(tieneLapida('slot:484')).toBe(false);
     absorberLapidas(['slot:484']);
     expect(tieneLapida('slot:484')).toBe(false);
+  });
+});
+
+describe('ítems sin unidad de Picking también dejan lápida (15/10)', () => {
+  it('borrar un ítem sin slot deja lápida de su id, y viaja', async () => {
+    const { anotarItemSinUnidad } = await import('../lapidasBorrado');
+    anotarItemSinUnidad({ id: 'abc' }, 'borrado');
+    expect(tieneLapida('id:abc')).toBe(true);
+    expect(lapidasComoLista()).toContain('id:abc');
+  });
+
+  it('un ítem con slot no deja lápida de id (la deja su slot)', async () => {
+    const { anotarItemSinUnidad } = await import('../lapidasBorrado');
+    anotarItemSinUnidad({ id: 'abc', pickingSlotId: 7 }, 'borrado');
+    expect(tieneLapida('id:abc')).toBe(false);
+  });
+
+  it('el Revertir que lo devuelve sin slot le levanta la lápida, y un remoto no se la reinyecta', async () => {
+    const { anotarItemSinUnidad } = await import('../lapidasBorrado');
+    anotarItemSinUnidad({ id: 'abc' }, 'borrado');
+    anotarItemSinUnidad({ id: 'abc' }, 'vivo');
+    expect(tieneLapida('id:abc')).toBe(false);
+    absorberLapidas(['id:abc']);
+    expect(tieneLapida('id:abc')).toBe(false);
+  });
+
+  it('absorbe lápidas de id de otro equipo, pero no las de orden', () => {
+    absorberLapidas(['id:xyz', 'orden:pallet1']);
+    expect(tieneLapida('id:xyz')).toBe(true);
+    expect(tieneLapida('orden:pallet1')).toBe(false);
+  });
+
+  it('B2: editar un ítem sin slot lo enlaza y el otro equipo no queda con dos', async () => {
+    const { marcarLapidaDeItem } = await import('../lapidasBorrado');
+    type I = { id: string; pickingSlotId?: number; peso: number };
+    // Equipo B tiene el ítem viejo, sin slot. Equipo A lo editó: mismo id, ahora con slot 50.
+    const localB: Record<string, I[]> = { T1: [{ id: 'X', peso: 0 }] };
+    const remotoA: Record<string, I[]> = { T1: [{ id: 'X', pickingSlotId: 50, peso: 72 }] };
+    // Sin la lápida, B suma los dos.
+    const sin = mergeItemsByTienda(remotoA, localB, localB, stableItemKey);
+    expect(sin.T1).toHaveLength(2);
+    // A marca la lápida de `id:X` al enlazar; viaja en el mismo push.
+    marcarLapidaDeItem('X');
+    const con = mergeItemsByTienda(remotoA, localB, localB, stableItemKey, undefined, tieneLapida);
+    expect(con.T1).toEqual([{ id: 'X', pickingSlotId: 50, peso: 72 }]);
   });
 });

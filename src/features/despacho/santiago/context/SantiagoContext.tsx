@@ -10,7 +10,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { pushSessionStateResult, REINTENTO_PUSH_MS, fetchSessionStateMeta, subscribeToSessionState, remotoEsMasViejo } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { mergeItemsByTienda, itemsFromSnapshot } from './mergeItems';
-import { tieneLapida, lapidasComoLista, absorberLapidas } from '../../shared/lapidasBorrado';
+import { tieneLapida, lapidasComoLista, absorberLapidas, anotarItemSinUnidad } from '../../shared/lapidasBorrado';
 import { agregarSinDuplicar } from '../../shared/itemPorUnidad';
 import { stableItemKey } from '../../shared/formRowsReconcile';
 import { elegirVersion, sellarCambios } from '../../shared/versionDeItem';
@@ -128,6 +128,7 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
 
     case 'ADD_ITEM': {
       const cod = action.item.tiendaCod;
+      anotarItemSinUnidad(action.item, 'vivo');
       // Si la unidad de Picking ya tiene ítem (lo guardó otro equipo), se reemplaza: no se suma otro.
       return {
         ...state,
@@ -136,6 +137,8 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
     }
 
     case 'DELETE_ITEM': {
+      // Sin unidad de Picking no hay slot que deje lápida: la deja el ítem. Ver `anotarItemSinUnidad`.
+      anotarItemSinUnidad((state.items[action.tiendaCod] || [])[action.idx], 'borrado');
       const list = (state.items[action.tiendaCod] || []).filter((_, i) => i !== action.idx);
       return { ...state, items: { ...state.items, [action.tiendaCod]: list } };
     }
