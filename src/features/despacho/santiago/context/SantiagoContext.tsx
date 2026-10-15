@@ -13,6 +13,7 @@ import { mergeItemsByTienda, itemsFromSnapshot } from './mergeItems';
 import { tieneLapida, lapidasComoLista, absorberLapidas } from '../../shared/lapidasBorrado';
 import { agregarSinDuplicar } from '../../shared/itemPorUnidad';
 import { stableItemKey } from '../../shared/formRowsReconcile';
+import { elegirVersion, sellarCambios } from '../../shared/versionDeItem';
 import { serializarBaseSantiago } from '../../shared/syncBase';
 import { fechaChile, fechaChileDe } from '@/lib/fechaChile';
 import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, traeRegistrosNuevos, decidir, fusionarDecisiones, aplicarDecisiones, type RegistroPorFecha, type DecisionPorFecha } from '@/features/despacho/shared/registroPorFecha';
@@ -104,6 +105,11 @@ type SantiagoAction =
   | { type: 'SET_FECHA_DESPACHO'; payload: string }
   | { type: 'SET_REGISTRADO'; payload: boolean };
 
+/** Sella los ítems cuya carga cambió en esta acción LOCAL. Ver `shared/versionDeItem.ts`. */
+function sellar(antes: SantiagoItem[] | undefined, despues: SantiagoItem[]): SantiagoItem[] {
+  return sellarCambios(antes ?? [], despues, stableItemKey, Date.now());
+}
+
 function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
   switch (action.type) {
     case '__ESTADO':
@@ -125,7 +131,7 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
       // Si la unidad de Picking ya tiene ítem (lo guardó otro equipo), se reemplaza: no se suma otro.
       return {
         ...state,
-        items: { ...state.items, [cod]: agregarSinDuplicar(state.items[cod] || [], action.item) },
+        items: { ...state.items, [cod]: sellar(state.items[cod], agregarSinDuplicar(state.items[cod] || [], action.item)) },
       };
     }
 
@@ -137,11 +143,11 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
     case 'EDIT_ITEM': {
       const list = [...(state.items[action.tiendaCod] || [])];
       list[action.idx] = action.item;
-      return { ...state, items: { ...state.items, [action.tiendaCod]: list } };
+      return { ...state, items: { ...state.items, [action.tiendaCod]: sellar(state.items[action.tiendaCod], list) } };
     }
 
     case 'SET_ITEMS':
-      return { ...state, items: { ...state.items, [action.tiendaCod]: action.items } };
+      return { ...state, items: { ...state.items, [action.tiendaCod]: sellar(state.items[action.tiendaCod], action.items) } };
 
     case 'RESET':
       return { ...defaultState };
@@ -349,7 +355,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
             window.dispatchEvent(new CustomEvent('bodega-conflicto-edicion', { detail: { cod, orden: item.orden } }));
           },
           // [Lápidas] Lo que se borró (acá o en otro equipo) no vuelve. Ver `shared/lapidasBorrado.ts`.
-          tieneLapida);
+          tieneLapida, elegirVersion);
         // Con los registros del remoto: en esta rama se descartaban, y un día registrado en otro
         // equipo mientras este tenía cambios sin empujar se perdía al empujar.
         dispatch({ type: 'LOAD_STATE', payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: merged, registros: remote.registros, decisiones: remote.decisiones } });
@@ -363,7 +369,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
         lastPushedRef.current = remoteStr;
         const localItems = stateRef.current.items ?? {};
         const items = remote.items
-          ? mergeItemsByTienda(remote.items, localItems, localItems, stableItemKey, undefined, tieneLapida)
+          ? mergeItemsByTienda(remote.items, localItems, localItems, stableItemKey, undefined, tieneLapida, elegirVersion)
           : remote.items;
         dispatch({ type: 'LOAD_STATE', payload: { ...remote, items } });
       }
@@ -392,7 +398,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
         // Si queda algo que el remoto no tenía, la base (= remoto) difiere → el próximo push lo sube.
         const localItems = stateRef.current.items ?? {};
         const items = s.items
-          ? mergeItemsByTienda(s.items, localItems, localItems, stableItemKey, undefined, tieneLapida)
+          ? mergeItemsByTienda(s.items, localItems, localItems, stableItemKey, undefined, tieneLapida, elegirVersion)
           : s.items;
         dispatch({ type: 'LOAD_STATE', payload: { ...s, items } });
       })

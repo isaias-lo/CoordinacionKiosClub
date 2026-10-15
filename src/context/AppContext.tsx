@@ -13,6 +13,7 @@ import { agregarSinDuplicar } from '@/features/despacho/shared/itemPorUnidad';
 import { stableItemKey } from '@/features/despacho/shared/formRowsReconcile';
 import { serializarBase } from '@/features/despacho/shared/syncBase';
 import { tieneLapida, lapidasComoLista, absorberLapidas } from '@/features/despacho/shared/lapidasBorrado';
+import { elegirVersion, sellarCambios } from '@/features/despacho/shared/versionDeItem';
 import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, traeRegistrosNuevos, decidir, fusionarDecisiones, aplicarDecisiones, type RegistroPorFecha, type DecisionPorFecha } from '@/features/despacho/shared/registroPorFecha';
 import { diaDeTrabajoActual } from '@/features/despacho/shared/diaDeTrabajoActual';
 import { fechaDespachoBodega, mediodiaDe } from '@/features/despacho/shared/fechaLocal';
@@ -84,6 +85,11 @@ function renumber(items: DispatchItem[]): DispatchItem[] {
   return renumerarSoloSinOrden(items).map(conId);
 }
 
+/** Sella los ítems cuya carga cambió en esta acción LOCAL. Ver `shared/versionDeItem.ts`. */
+function sellar(antes: DispatchItem[] | undefined, despues: DispatchItem[]): DispatchItem[] {
+  return sellarCambios(antes ?? [], despues, stableItemKey, Date.now());
+}
+
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case '__ESTADO':
@@ -101,7 +107,7 @@ function reducer(state: AppState, action: Action): AppState {
     case 'ADD_ITEM': {
       const prev = state.dispatch[action.tienda] || [];
       // Si la unidad de Picking ya tiene ítem (lo guardó otro equipo), se reemplaza: no se suma otro.
-      const updated = renumber(agregarSinDuplicar(prev, action.item));
+      const updated = sellar(prev, renumber(agregarSinDuplicar(prev, action.item)));
       const pos = updated.findIndex(i => action.item.pickingSlotId != null && i.pickingSlotId === action.item.pickingSlotId);
       const sel = new Set(state.selection[action.tienda] || []);
       sel.add(pos >= 0 ? pos : updated.length - 1);
@@ -126,7 +132,7 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
     case 'UPDATE_ITEMS':
-      return { ...state, dispatch: { ...state.dispatch, [action.tienda]: action.items.map(conId) } };
+      return { ...state, dispatch: { ...state.dispatch, [action.tienda]: sellar(state.dispatch[action.tienda], action.items.map(conId)) } };
     case 'CLEAR_TIENDA': {
       const d = { ...state.dispatch }; delete d[action.tienda];
       const p = { ...state.pdfData }; delete p[action.tienda];
@@ -419,7 +425,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
         // [Lápidas] Lo que se borró (acá o en otro equipo) no vuelve. Es la única señal de borrado
         // que respeta el merge: desde el 29/09 la ausencia en el remoto ya no borra nada.
-        tieneLapida);
+        // [Versión] Y entre dos versiones del mismo ítem gana la buena, no la del último que
+        // escribió la fila. Ver `shared/versionDeItem.ts`.
+        tieneLapida, elegirVersion);
 
       // ── pdfData merge ── mismo criterio por-clave que las guías de RM/Costa (mergeEntriesByKey):
       // dirty ⇒ gana la local (subida/borrado sin empujar); limpia ⇒ manda la remota; y si el remoto
