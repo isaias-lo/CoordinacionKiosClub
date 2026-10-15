@@ -3,7 +3,9 @@ import { verifyAuth } from '@/lib/apiAuth';
 import { google } from 'googleapis';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { pickFaltantesIdx, faltanteId } from '@/features/despacho/rutas/utils/registroFaltantes';
-import { esRespaldoEnrutador, reconciliarRespaldo, aplicarRuteoAFila, aplicarRuteoARecord, COL_RUTEO, type FilaRespaldo } from '@/features/despacho/rutas/utils/reconciliarRespaldo';
+import { esRespaldoEnrutador, reconciliarRespaldo, aplicarRuteoAFila, aplicarRuteoARecord, type FilaRespaldo } from '@/features/despacho/rutas/utils/reconciliarRespaldo';
+import { alinearFila, columnasQueFaltan, encabezadoCompleto, indicesDeEncabezado, leerColumna } from '@/features/despacho/shared/hojaDespacho';
+import { letraDeColumna } from '@/features/despacho/shared/hojaCrucePesos';
 import { clavesConPatente } from './asignacion';
 import { paraMirror, camposDescartados, idsRepetidos } from './mirror';
 import { planRuteoCongelados } from '@/features/despacho/congelados/utils/ruteoControlCong';
@@ -99,6 +101,42 @@ async function applyDateFormat(
   });
 }
 
+/**
+ * Escribe filas en una hoja de DESPACHO colocando cada valor en la columna que lleva su NOMBRE.
+ *
+ * Las filas llegan en el orden canónico de `COLUMNAS_DESPACHO` —así las arma `buildRows` y así
+ * viajan por todo el código— y acá, en el último paso, se acomodan al encabezado REAL. Por eso el
+ * coordinador puede mover una columna de lugar, insertar una propia en el medio o renombrarla con
+ * un alias conocido, y el sistema la sigue encontrando. Ver `hojaDespacho.ts`.
+ *
+ * Si falta alguna columna del sistema se agrega AL FINAL del encabezado antes de escribir: una
+ * columna nueva se estrena sola, sin que nadie la cree a mano y sin que el día quede sin su dato.
+ */
+async function appendPorNombre(
+  gs: ReturnType<typeof google.sheets>, sheet: string, encabezado: string[],
+  filas: (string | number)[][],
+): Promise<{ updatedRange?: string | null; encabezado: string[] }> {
+  let cabecera = encabezado;
+  const faltan = columnasQueFaltan(cabecera);
+  if (faltan.length > 0) {
+    cabecera = encabezadoCompleto(cabecera);
+    await gs.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${sheet}!A1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [cabecera] },
+    });
+  }
+  const res = await gs.spreadsheets.values.append({
+    spreadsheetId:    SPREADSHEET_ID,
+    range:            `${sheet}!A1`,
+    valueInputOption: 'USER_ENTERED',
+    insertDataOption: 'INSERT_ROWS',
+    requestBody:      { values: filas.map(f => alinearFila(cabecera, f)) },
+  });
+  return { updatedRange: res.data.updates?.updatedRange, encabezado: cabecera };
+}
+
 function getCredentials() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON no configurado');
@@ -156,6 +194,10 @@ function toRmRecord(row: (string | number)[]) {
     valor:            n(row[25] ?? ''),
     fecha_armado:     row[28] ? parseSheetDate(String(row[28])) : null,
     picking_slot_id:  row[29] ? Number(row[29]) || null : null,  // col AD = #488 (id del pallet). El canonical va en `id` (col A).
+    // Estrenadas el 14/10/2026. La fila llega SIEMPRE en el orden canónico de `COLUMNAS_DESPACHO`;
+    // dónde terminan en la hoja lo decide el nombre, al escribir. Ver `hojaDespacho.ts`.
+    referencia:       String(row[30] ?? ''),
+    batch:            String(row[31] ?? ''),
     seguimiento: 'Registrado',
   };
 }
@@ -190,6 +232,10 @@ function toRegionesRecord(row: (string | number)[]) {
     valor:            n(row[25] ?? ''),
     fecha_armado:     row[28] ? parseSheetDate(String(row[28])) : null,
     picking_slot_id:  row[29] ? Number(row[29]) || null : null,  // col AD = #488 (id del pallet). El canonical va en `id` (col A).
+    // Estrenadas el 14/10/2026. La fila llega SIEMPRE en el orden canónico de `COLUMNAS_DESPACHO`;
+    // dónde terminan en la hoja lo decide el nombre, al escribir. Ver `hojaDespacho.ts`.
+    referencia:       String(row[30] ?? ''),
+    batch:            String(row[31] ?? ''),
     seguimiento: 'Registrado',
   };
 }
@@ -284,17 +330,22 @@ export async function POST(request: NextRequest) {
         // 1. Read sheet to map (fecha::cod) → sheet row numbers (1-indexed)
         const readRes = await gs.spreadsheets.values.get({
           spreadsheetId: SPREADSHEET_ID,
-          range:         `${sheet}!A:X`,
+          range:         `${sheet}!A:AZ`,
         });
         const sheetRows = readRes.data.values || [];
+        // La fila 1 es el encabezado REAL: desde acá todo se ubica por nombre. Ver `hojaDespacho`.
+        const cabecera  = (sheetRows[0] ?? []).map(c => String(c ?? ''));
 
         const rowMap = new Map<string, number[]>();
         for (let i = 0; i < sheetRows.length; i++) {
           const r = sheetRows[i];
-          if (!r || !r[1] || !r[2]) continue;
+          if (!r) continue;
+          const fechaFila = leerColumna(cabecera, r, 'FECHA');
+          const codFila   = leerColumna(cabecera, r, 'COD');
+          if (!fechaFila || !codFila) continue;
           // Skip header-like rows (fecha column should look like DD/MM/YYYY)
-          if (!/^\d{2}\/\d{2}\/\d{4}$/.test(String(r[1]))) continue;
-          const key = `${String(r[1])}::${String(r[2])}`;
+          if (!/^\d{2}\/\d{2}\/\d{4}$/.test(fechaFila)) continue;
+          const key = `${fechaFila}::${codFila}`;
           if (!rowMap.has(key)) rowMap.set(key, []);
           rowMap.get(key)!.push(i + 1); // Sheets rows are 1-indexed
         }
@@ -309,12 +360,17 @@ export async function POST(request: NextRequest) {
           seenSheets.add(key);
           const rm = r as Record<string, string | null>;
           for (const rowNum of rowMap.get(key) ?? []) {
-            // G:H = transporte, patente
-            updateData.push({ range: `${sheet}!G${rowNum}:H${rowNum}`, values: [[rm.transporte ?? '', rm.patente ?? '']] });
-            // S = estado
-            updateData.push({ range: `${sheet}!S${rowNum}`, values: [[rm.estado ?? '']] });
-            // V:X = conductor, ruta, supervisor
-            updateData.push({ range: `${sheet}!V${rowNum}:X${rowNum}`, values: [[rm.conductor ?? '', rm.ruta ?? '', rm.supervisor ?? '']] });
+            // Una celda por columna, ubicada por NOMBRE. Antes eran rangos con letra fija
+            // (`G:H`, `S`, `V:X`): mover una columna de lugar escribía el ruteo encima de otra
+            // cosa, sin dar error. Ver `hojaDespacho.ts`.
+            for (const [columna, valor] of [
+              ['TRANSPORTE', rm.transporte], ['PATENTE', rm.patente], ['ESTADO', rm.estado],
+              ['CONDUCTOR', rm.conductor],   ['RUTA', rm.ruta],       ['SUPERVISOR', rm.supervisor],
+            ] as const) {
+              const i = indicesDeEncabezado(cabecera)[columna];
+              if (i === undefined) continue;      // la hoja no tiene esa columna
+              updateData.push({ range: `${sheet}!${letraDeColumna(i)}${rowNum}`, values: [[valor ?? '']] });
+            }
           }
         }
 
@@ -363,16 +419,11 @@ export async function POST(request: NextRequest) {
             faltaRecords.push({ ...rec, id: rec.id || genId });
             appended.push(String(rec.cod ?? ''));
           }
-          const faltaAppendRes = await gs.spreadsheets.values.append({
-            spreadsheetId:    SPREADSHEET_ID,
-            range:            `${sheet}!A1`,
-            valueInputOption: 'USER_ENTERED',
-            insertDataOption: 'INSERT_ROWS',
-            requestBody:      { values: faltaRows },
-          });
-          // Fix: USER_ENTERED convierte "DD/MM/YYYY" a serial de fecha (p.ej. 46206).
-          // DESPACHO RM/REGIONES escribe la fecha en col B (índice 1). Aplicar formato post-append.
-          await applyDateFormat(gs, sheet, faltaAppendRes.data.updates?.updatedRange, 1);
+          const puesto = await appendPorNombre(gs, sheet, cabecera, faltaRows);
+          // Fix: USER_ENTERED convierte "DD/MM/YYYY" a serial de fecha (p.ej. 46206). La columna
+          // de la fecha se busca por NOMBRE: si alguien la movió, el formato la sigue.
+          const colFecha = indicesDeEncabezado(puesto.encabezado)['FECHA'];
+          if (colFecha !== undefined) await applyDateFormat(gs, sheet, puesto.updatedRange, colFecha);
           const limpios = faltaRecords.map(r => paraMirror(fuente ? { ...r, fuente } : r));
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { error } = await sb.from(table).upsert(limpios as any[], { onConflict: 'id' });
@@ -400,22 +451,26 @@ export async function POST(request: NextRequest) {
         // despacho (el bug de "registros dobles").
         const readRes = await gs.spreadsheets.values.get({
           spreadsheetId: SPREADSHEET_ID,
-          range:         `${sheet}!A:X`,
+          range:         `${sheet}!A:AZ`,
         });
         const sheetRows  = readRes.data.values || [];
+        // La fila 1 es el encabezado REAL: a partir de acá todo se ubica por nombre de columna.
+        const cabecera   = (sheetRows[0] ?? []).map(c => String(c ?? ''));
         const sheetIdSet = new Set<string>();
         const respaldo: FilaRespaldo[] = [];
         for (let i = 0; i < sheetRows.length; i++) {
           const r = sheetRows[i]; if (!r) continue;
           const id = String(r[0] ?? '');
           if (id) sheetIdSet.add(id);
-          if (!/^\d{2}\/\d{2}\/\d{4}$/.test(String(r[1] ?? ''))) continue; // solo filas de datos
+          if (!/^\d{2}\/\d{2}\/\d{4}$/.test(leerColumna(cabecera, r, 'FECHA'))) continue; // solo filas de datos
           if (!esRespaldoEnrutador(id)) continue;
           respaldo.push({
-            fila: i + 1, id, fecha: String(r[1] ?? ''), cod: String(r[2] ?? ''),
-            transporte: String(r[COL_RUTEO.transporte] ?? ''), patente: String(r[COL_RUTEO.patente] ?? ''),
-            estado: String(r[COL_RUTEO.estado] ?? ''), conductor: String(r[COL_RUTEO.conductor] ?? ''),
-            ruta: String(r[COL_RUTEO.ruta] ?? ''), supervisor: String(r[COL_RUTEO.supervisor] ?? ''),
+            fila: i + 1, id, fecha: leerColumna(cabecera, r, 'FECHA'), cod: leerColumna(cabecera, r, 'COD'),
+            // Por NOMBRE: si alguien movió TRANSPORTE o ESTADO de lugar, el ruteo se sigue
+            // heredando. Con índices fijos se heredaba lo que hubiera en esa posición.
+            transporte: leerColumna(cabecera, r, 'TRANSPORTE'), patente: leerColumna(cabecera, r, 'PATENTE'),
+            estado: leerColumna(cabecera, r, 'ESTADO'), conductor: leerColumna(cabecera, r, 'CONDUCTOR'),
+            ruta: leerColumna(cabecera, r, 'RUTA'), supervisor: leerColumna(cabecera, r, 'SUPERVISOR'),
           });
         }
 
@@ -435,13 +490,7 @@ export async function POST(request: NextRequest) {
         // Append SOLO filas nuevas (idempotente por id), ya con el ruteo heredado.
         const newSheetRows = rows.filter(r => !sheetIdSet.has(String(r[0]))).map(rutRow);
         if (newSheetRows.length > 0) {
-          await gs.spreadsheets.values.append({
-            spreadsheetId:    SPREADSHEET_ID,
-            range:            `${sheet}!A1`,
-            valueInputOption: 'USER_ENTERED',
-            insertDataOption: 'INSERT_ROWS',
-            requestBody:      { values: newSheetRows },
-          });
+          await appendPorNombre(gs, sheet, cabecera, newSheetRows);
         }
 
         // Borrar de la HOJA las filas de respaldo (deleteDimension, ya vienen en orden descendente).

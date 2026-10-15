@@ -66,24 +66,56 @@ function seqUsable(seq: unknown): seq is number {
 }
 
 /**
- * Reparte los números de UNA clase: cada unidad se queda con su `seq` impreso, y la que no lo
- * tiene recibe **el menor número que nadie haya tomado**.
+ * Reparte los números de UNA clase, en tres pasos y en este orden:
  *
- * Lo segundo no es un detalle. Darle su posición a la unidad sin `seq` era lo que podía hacerle
- * escupir el número de otra: con `[seq 1, seq 3, sin seq]` la tercera caía en posición 3 y salía
- * `P3`, el mismo id de fila que la segunda — y en la planilla una pisaba a la otra sin avisar.
- * Empezando por el 1 y salteando lo ocupado, sale `P2`, que es un hueco libre de verdad.
+ *   1. su `seq` impreso, si lo tiene — es lo que dice la etiqueta pegada al pallet;
+ *   2. el número que YA está mostrando, si nadie se lo quitó;
+ *   3. el menor número que nadie haya tomado.
  *
- * El orden de la lista NO influye en el número de quien trae `seq`; solo decide, entre las que no
- * lo traen, cuál se lleva el primer hueco. Esa es toda la dependencia del orden que queda.
+ * ── POR QUÉ HIZO FALTA EL PASO 2 (14/10/2026) ────────────────────────────────────────────────
+ *
+ * Reportado en bodega: «si se elimina por ejemplo el pallet uno, se cambian los consecutivos de
+ * los demás, y eso contra lo que vemos en físico no coincide».
+ *
+ * Con todas las etiquetas impresas no pasaba: cada unidad trae su `seq` y se lo queda. El caso
+ * era el de la unidad cuya etiqueta TODAVÍA no se imprimió — Picking escribe el `seq` recién al
+ * imprimir, así que hay una ventana en que la unidad no tiene número propio:
+ *
+ *     P1 (seq 1)   P2 (seq 2)   P3 (sin seq, mostrada como P3)
+ *              ↓  se borra P1
+ *     P2 se queda en 2 ✓        la tercera buscaba el menor hueco libre → 1 → pasaba a ser «P1»
+ *
+ * El paso 2 lo corta: ya mostraba 3, nadie más tiene el 3, se queda con el 3. Y la autocorrección
+ * se conserva, porque el `seq` sigue ganando: cuando Picking imprime, la tarjeta se acomoda sola
+ * al número de la etiqueta.
+ *
+ * El orden de la lista NO influye en el número de quien trae `seq` ni en el de quien ya mostraba
+ * uno libre; solo decide, entre las que no tienen ninguna de las dos cosas, cuál se lleva el
+ * primer hueco.
  */
-export function repartirNumeros(seqs: readonly (number | null | undefined)[]): number[] {
+export function repartirNumeros(
+  seqs: readonly (number | null | undefined)[],
+  /** El número que cada unidad ya está mostrando, si alguno. Ver el paso 2. */
+  actuales: readonly (number | null | undefined)[] = [],
+): number[] {
   const propio = seqs.map(s => (seqUsable(s) ? s : null));
   const tomados = new Set<number>();
   for (const s of propio) if (s !== null) tomados.add(s);
+
+  // Paso 2: se reserva ANTES de repartir huecos, y solo si está libre. Un número que choca con el
+  // `seq` de otra unidad no se conserva: la etiqueta impresa manda.
+  const conservado = propio.map((s, i) => {
+    if (s !== null) return null;
+    const actual = actuales[i];
+    if (!seqUsable(actual) || tomados.has(actual)) return null;
+    tomados.add(actual);
+    return actual;
+  });
+
   let libre = 1;
-  return propio.map(s => {
+  return propio.map((s, i) => {
     if (s !== null) return s;
+    if (conservado[i] !== null) return conservado[i] as number;
     while (tomados.has(libre)) libre += 1;
     tomados.add(libre);
     return libre;
@@ -137,6 +169,36 @@ export function etiquetaCard(tipo: string, numero: number): string {
   if (esWebRetiro(tipo))   return `${PREFIJO_WEB_RETIRO}${numero}`;
   return `B${numero}`;
 }
+
+/**
+ * Lo que va en la columna N_PALLET_BULTO de la planilla: `P1` · `B1` · `CH1` · `C1` · `A1` · `W1`.
+ *
+ * ── POR QUÉ NO SE ESCRIBE EL `orden` TAL CUAL (14/10/2026) ───────────────────────────────────
+ *
+ * El coordinador pidió que la planilla diga qué número es cada unidad, «tal como sale en la
+ * etiqueta». El dato YA estaba en esa columna, pero cada espejo escribía algo distinto:
+ *
+ *     RM/Costa    P1 · 1B · CH1     el `orden` crudo: el bulto lleva el número ADELANTE
+ *     Nacional    1 · 2 · 3         solo los dígitos, sin decir de qué es
+ *
+ * Los dos formatos son históricos y ninguno se lee bien al lado de la columna TIPO. Acá se usa el
+ * mismo rótulo que muestra la tarjeta en pantalla (`etiquetaCard`), para que la planilla, la
+ * pantalla y la etiqueta digan las tres lo mismo.
+ *
+ * El `orden` NO se toca: con él se arma el ID de la fila (`${orden}${cod}${stamp}${prefijo}`), que
+ * es la clave de idempotencia del registro. Cambiarlo duplicaría filas.
+ */
+export function rotuloDeUnidad(clase: ClaseEnvase, orden?: string | null): string {
+  const n = numeroDeOrden(orden);
+  if (n === null) return String(orden ?? '');
+  return `${LETRA_DE_CLASE[clase]}${n}`;
+}
+
+/** La letra de cada clase en el rótulo. Es la misma que muestra la tarjeta. */
+const LETRA_DE_CLASE: Record<ClaseEnvase, string> = {
+  pallet: 'P', bulto: 'B', contenedor: 'C', chocolate: 'CH',
+  adquisicion: PREFIJO_ADQUISICION, webretiro: PREFIJO_WEB_RETIRO,
+};
 
 /**
  * Las cuatro clases de envase, en el vocabulario neutro del módulo. Cada formulario habla el suyo
@@ -222,6 +284,8 @@ export function ordenNacional(clase: ClaseEnvase, numero: number): string {
  */
 export function numerarPorClase<T>(
   items: T[], claseDe: (item: T) => ClaseEnvase, seqDe: (item: T) => number | null | undefined,
+  /** El número que la unidad ya muestra. Sin esto, borrar una corre a las que no tienen `seq`. */
+  actualDe: (item: T) => number | null | undefined = () => null,
 ): { item: T; clase: ClaseEnvase; numero: number }[] {
   const clases = items.map(claseDe);
   const indicesPorClase = new Map<ClaseEnvase, number[]>();
@@ -231,7 +295,7 @@ export function numerarPorClase<T>(
   });
   const numero = new Array<number>(items.length);
   for (const indices of indicesPorClase.values()) {
-    const repartidos = repartirNumeros(indices.map(i => seqDe(items[i])));
+    const repartidos = repartirNumeros(indices.map(i => seqDe(items[i])), indices.map(i => actualDe(items[i])));
     indices.forEach((i, k) => { numero[i] = repartidos[k]; });
   }
   return items.map((item, i) => ({ item, clase: clases[i], numero: numero[i] }));
@@ -241,7 +305,8 @@ export function numerarPorClase<T>(
 export function renumerarOrden<T extends { tipo: string }>(
   items: T[], seqDe: (item: T) => number | null | undefined,
 ): (T & { orden: string })[] {
-  return numerarPorClase(items, i => claseSantiago(i.tipo), seqDe)
+  return numerarPorClase(items, i => claseSantiago(i.tipo), seqDe,
+                         i => numeroDeOrden((i as { orden?: string | null }).orden))
     .map(({ item, numero }) => ({ ...item, orden: ordenDeItem(item.tipo, numero) }));
 }
 
@@ -249,7 +314,8 @@ export function renumerarOrden<T extends { tipo: string }>(
 export function renumerarOrdenNacional<T extends { pkg: string }>(
   items: T[], seqDe: (item: T) => number | null | undefined,
 ): (T & { orden: string })[] {
-  return numerarPorClase(items, i => claseNacional(i.pkg), seqDe)
+  return numerarPorClase(items, i => claseNacional(i.pkg), seqDe,
+                         i => numeroDeOrden((i as { orden?: string | null }).orden))
     .map(({ item, clase, numero }) => ({ ...item, orden: ordenNacional(clase, numero) }));
 }
 

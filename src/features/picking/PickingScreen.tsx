@@ -96,6 +96,7 @@ import { avisoOdoo, motivoOdoo } from './avisoOdoo';
 import { textoSinConexion } from './avisoSinConexion';
 import { ocultarSinAsignar } from './sinAsignar';
 import { usaSelectorDeTiendas, seleccionVencida } from './selectorTiendas';
+import { unirBatches } from '@/features/despacho/shared/hojaDespacho';
 
 
 // ─── Session helpers ──────────────────────────────────────────────────────────
@@ -676,7 +677,7 @@ export function PickingScreen() {
     try {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('id, store_cod, state_key, picker_label, tipo, subtipo, contenido, section, refs, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v')
+        .select('id, store_cod, state_key, picker_label, tipo, subtipo, contenido, section, refs, batch, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v')
         .eq('date', todayISO())
         .eq('is_active', true)
         .order('created_at', { ascending: true })
@@ -744,6 +745,7 @@ export function PickingScreen() {
           contenido:    (r.contenido as string) ?? 'hogar',
           section:      (r.section as string | null) ?? null,
           refs:         (r.refs as string) ?? '',
+          batch:        (r.batch as string) ?? '',
           created_at:   r.created_at as string,
           // Sin estas cinco, el evento de Realtime PISABA el peso recién guardado con undefined:
           // el slot local volvía a quedar sin pesar hasta la próxima recarga completa.
@@ -788,7 +790,7 @@ export function PickingScreen() {
     return unsub;
   }, [loadPalletSlots]);
 
-  const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '', section: string | null = null, medidas?: MedidasPallet, subtipo: string | null = null) => {
+  const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '', section: string | null = null, medidas?: MedidasPallet, subtipo: string | null = null, batch = '') => {
     const date = todayISO();
     // Idempotencia: id de operación único por click. Si el POST se reintenta (red,
     // doble-click, replay de cola offline), el server deduplica por client_op_id.
@@ -800,7 +802,7 @@ export function PickingScreen() {
     const tempId = tempIdRef.current--;
     const tempSlot: PalletSlot = {
       id: tempId, store_cod: storeCod, state_key: stateKey,
-      picker_label: pickerLabel, tipo, subtipo, contenido, section, refs,
+      picker_label: pickerLabel, tipo, subtipo, contenido, section, refs, batch,
       created_at: new Date().toISOString(),
       ...(medidas ?? {}),
     };
@@ -815,7 +817,7 @@ export function PickingScreen() {
     try {
       const res = await pickingFetch('/api/picking-pallets', {
         method: 'POST',
-        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, subtipo, contenido, section, refs, actor_name: actorName, client_op_id: clientOpId, ...(medidas ?? {}) }),
+        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, subtipo, contenido, section, refs, batch, actor_name: actorName, client_op_id: clientOpId, ...(medidas ?? {}) }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
@@ -1989,11 +1991,17 @@ export function PickingScreen() {
                                 // la del grupo (null si es mixto → solo suma en "Todas").
                                 const seccionSlot: string | null = seccionActiva ?? (fullIsCongelados ? 'congelados' : seccionDeGrupo(fullGroupCats));
                                 const groupRefs = carga.ops.map(o => o.name).join('+');
+                                // El batch de Odoo del grupo. Se unen igual que las referencias,
+                                // pero SIN repetir: varios movimientos del mismo batch son lo
+                                // normal y escribirlo tres veces no agrega nada. Ver
+                                // `hojaDespacho.ts`. Medido el 14/10: 84% de los movimientos
+                                // traen batch, 84 distintos entre 126.
+                                const groupBatch = unirBatches(carga.ops.map(o => o.batch));
                                 if (delta > 0) {
                                   // Una caja nueva nace SIN peso: el total ya pesado era para las que
                                   // había, y repartirlo entre más sería inventar. La tarjeta avisa que
                                   // cambió la cantidad y pide volver a pesar (ver avisoCantidad).
-                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs, seccionSlot, undefined, subtipo);
+                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs, seccionSlot, undefined, subtipo, groupBatch);
                                 } else if (delta < 0) {
                                   for (let i = 0; i < -delta; i++) void removePalletSlot(group.stateKey, tipo, seccionActiva, subtipo);
                                 }

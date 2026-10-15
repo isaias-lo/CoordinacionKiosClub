@@ -139,6 +139,11 @@ function baseRecord(get: (row: (string | number)[], header: string, pos: number)
     // Ese vínculo es lo que permite sacar la fila del despacho cuando la unidad se borra en
     // Picking; sin él, un pallet borrado seguía viajando en el papel (51SER, 11/09/2026).
     picking_slot_id: idUnidad(get(row, 'CÓDIGO', 29)),
+    // Estrenadas el 14/10/2026. NO van en `*_HEADERS`: esa lista avisa de una columna cuya
+    // ausencia rompe algo, y estas dos degradan a vacío. Hasta el primer registro después del
+    // despliegue la hoja no las tiene, y avisar de eso sería ruido que se arregla solo.
+    referencia:      get(row, 'REFERENCIA', 30),
+    batch:           get(row, 'BATCH', 31),
   };
 }
 

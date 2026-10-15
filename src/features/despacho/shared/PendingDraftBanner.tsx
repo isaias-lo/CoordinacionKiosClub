@@ -10,6 +10,7 @@ import { sheetsRegionesWrite } from '../regiones/utils/sheetsRegiones';
 import { getTiendaSantiagoByCod } from '../santiago/data/tiendasSantiago';
 import { fechaChile } from '@/lib/fechaChile';
 import { avisoNoRegistrado } from './escribirPlanilla';
+import { urlConDia } from './diaDeTrabajo';
 
 type Fuente = 'santiago' | 'regiones';
 
@@ -222,9 +223,18 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
                 {d.contenedores > 0 ? ` · ${d.contenedores} cont.` : ''}
                 {d.chocolates > 0 ? ` · ${d.chocolates} choc.` : ''}
               </div>
-              <div className="text-[11px] text-amber-600 mt-0.5">Ya es un nuevo día. Regístralo para no perderlo.</div>
+              <div className="text-[11px] text-amber-600 mt-0.5">
+                Ya es un nuevo día. Si quedó algo sin pesar, termínalo en SU día antes de registrar.
+              </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => { window.location.href = urlConDia(fuente === 'santiago' ? '/despacho/santiago' : '/despacho/regiones', d.fecha); }}
+                className="px-3 py-2 rounded-btn text-apoyo font-bold cursor-pointer transition-all active:scale-95 min-h-[44px] bg-navy text-white"
+                title="Abrir Bodega en ese día para terminar de pesar"
+              >
+                Terminar ese día
+              </button>
               <button
                 onClick={() => registrar(d)}
                 disabled={busy === d.fecha}

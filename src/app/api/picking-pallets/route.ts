@@ -7,7 +7,7 @@ import { fechaChile } from '@/lib/fechaChile';
 
 // peso_kg/alto/largo/ancho/peso_v: las columnas ya existían, pero solo las escribía Bodega. Ahora
 // también viajan desde Picking, así que el cliente necesita verlas de vuelta al crear un slot.
-const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, subtipo, contenido, section, refs, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v';
+const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, subtipo, contenido, section, refs, batch, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v';
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
 // Auditoría de altas/bajas de pallets (fire-and-forget — no debe bloquear la respuesta).
@@ -92,6 +92,8 @@ export async function POST(request: NextRequest) {
       contenido:    body.contenido ?? 'hogar',
       section:      body.section ?? null,
       refs:         body.refs ?? '',
+      // El batch de Odoo del grupo que armó esta unidad. Viaja igual que `refs`.
+      batch:        body.batch ?? '',
       client_op_id: body.client_op_id ?? null,
       // Null cuando no vienen: un slot sin pesar queda igual que siempre.
       peso_kg:      body.peso_kg ?? null,

@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   subtipoDeCaja, etiquetaSubtipo, tieneMedidasFijas, medidasDeCaja,
-  MEDIDAS_CAJA_NEGRA, SUBTIPOS_CAJA, claveUnidad, partirClave, pesoNetoCajaNegra, pesoParaGuardar, pesoParaMostrar,
+  MEDIDAS_CAJA_NEGRA, SUBTIPOS_CAJA, claveUnidad, partirClave, pesoNetoDeCaja, pesoParaGuardar, pesoParaMostrar,
+  TARA_CAJA_NEGRA, TARA_CAJA_CARTON, taraDeCaja,
 } from '../subtipoCaja';
 import { CHOCOLATE_DIMS } from '../chocolate';
 
@@ -95,77 +96,99 @@ describe('la clave de conteo: dos botones, un solo tipo en la base', () => {
   });
 });
 
-describe('la tara de la caja negra: se resta lo que la caja pesa vacía', () => {
-  it('el caso que se pidió: 20,5 en la balanza quedan 17', () => {
-    expect(pesoNetoCajaNegra(20.5)).toEqual({ ok: true, neto: 17, bruto: 20.5, tara: 3.5 });
+describe('la tara: se resta lo que la caja pesa vacía', () => {
+  it('LAS DOS CAJAS TIENEN TARA (14/10/2026): negra 3,3 · cartón 0,4', () => {
+    expect(TARA_CAJA_NEGRA).toBe(3.3);
+    expect(TARA_CAJA_CARTON).toBe(0.4);
+    expect(taraDeCaja('negra')).toBe(3.3);
+    expect(taraDeCaja('carton')).toBe(0.4);
+  });
+
+  it('la negra: 20,5 en la balanza quedan 17,2', () => {
+    expect(pesoNetoDeCaja(20.5, 'negra')).toEqual({ ok: true, neto: 17.2, bruto: 20.5, tara: 3.3 });
+  });
+
+  it('el cartón: 13,25 en la balanza quedan 12,85 → 12,9', () => {
+    expect(pesoNetoDeCaja(13.25, 'carton')).toMatchObject({ ok: true, neto: 12.9, tara: 0.4 });
+    expect(pesoNetoDeCaja(5, 'carton')).toMatchObject({ ok: true, neto: 4.6 });
   });
 
   it('acepta coma decimal, que es lo que escribe un teclado en español', () => {
-    expect(pesoNetoCajaNegra('20,5')).toMatchObject({ ok: true, neto: 17 });
-    expect(pesoNetoCajaNegra('20.5')).toMatchObject({ ok: true, neto: 17 });
+    expect(pesoNetoDeCaja('20,5', 'negra')).toMatchObject({ ok: true, neto: 17.2 });
+    expect(pesoNetoDeCaja('20.5', 'negra')).toMatchObject({ ok: true, neto: 17.2 });
   });
 
   it('no arrastra coma flotante', () => {
-    // 20.6 - 3.5 da 17.099999999999998 en coma flotante.
-    expect(pesoNetoCajaNegra(20.6)).toMatchObject({ neto: 17.1 });
-    expect(pesoNetoCajaNegra(10.1)).toMatchObject({ neto: 6.6 });
+    // 20.6 - 3.3 da 17.299999999999997 en coma flotante; 5.1 - 0.4 da 4.699999999999999.
+    expect(pesoNetoDeCaja(20.6, 'negra')).toMatchObject({ neto: 17.3 });
+    expect(pesoNetoDeCaja(5.1, 'carton')).toMatchObject({ neto: 4.7 });
   });
 
   it('un peso alto se acepta: el tope de 25 kg ya no existe', () => {
-    expect(pesoNetoCajaNegra(48)).toMatchObject({ ok: true, neto: 44.5 });
+    expect(pesoNetoDeCaja(48, 'negra')).toMatchObject({ ok: true, neto: 44.7 });
   });
 });
 
 describe('la tara rechaza, no recorta', () => {
   it('menos que la caja vacía se rechaza con un aviso, no se guarda 0', () => {
-    const r = pesoNetoCajaNegra(2);
+    const r = pesoNetoDeCaja(2, 'negra');
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toContain('3,5');
+    if (!r.ok) expect(r.error).toContain('3,3');
+  });
+
+  it('el aviso nombra LA CAJA que es, no siempre la negra', () => {
+    const r = pesoNetoDeCaja(0.2, 'carton');
+    expect(r.ok).toBe(false);
+    if (!r.ok) { expect(r.error.toLowerCase()).toContain('cartón'); expect(r.error).toContain('0,4'); }
   });
 
   it('exactamente la tara también se rechaza: una caja vacía no se despacha', () => {
-    expect(pesoNetoCajaNegra(3.5).ok).toBe(false);
+    expect(pesoNetoDeCaja(3.3, 'negra').ok).toBe(false);
+    expect(pesoNetoDeCaja(0.4, 'carton').ok).toBe(false);
   });
 
   it('cero, vacío y basura se rechazan pidiendo el peso', () => {
     for (const v of [0, '', '  ', 'abc', null, undefined, NaN]) {
-      expect(pesoNetoCajaNegra(v).ok).toBe(false);
+      expect(pesoNetoDeCaja(v, 'negra').ok).toBe(false);
+      expect(pesoNetoDeCaja(v, 'carton').ok).toBe(false);
     }
   });
 
   it('un negativo no pasa', () => {
-    expect(pesoNetoCajaNegra(-5).ok).toBe(false);
+    expect(pesoNetoDeCaja(-5, 'negra').ok).toBe(false);
   });
 
   it('justo por encima de la tara pasa', () => {
-    expect(pesoNetoCajaNegra(3.6)).toMatchObject({ ok: true, neto: 0.1 });
+    expect(pesoNetoDeCaja(3.4, 'negra')).toMatchObject({ ok: true, neto: 0.1 });
+    expect(pesoNetoDeCaja(0.5, 'carton')).toMatchObject({ ok: true, neto: 0.1 });
   });
 });
 
 describe('ida y vuelta: la resta ocurre UNA sola vez', () => {
   it('guardar resta la tara; reconstruir la devuelve', () => {
-    expect(pesoParaGuardar(20.5, 'negra')).toBe(17);
-    expect(pesoParaMostrar(17, 'negra')).toBe(20.5);
+    expect(pesoParaGuardar(20.5, 'negra')).toBe(17.2);
+    expect(pesoParaMostrar(17.2, 'negra')).toBe(20.5);
+    expect(pesoParaGuardar(13.3, 'carton')).toBe(12.9);
+    expect(pesoParaMostrar(12.9, 'carton')).toBe(13.3);
   });
 
   it('el ciclo completo no corre el peso, por más veces que se repita', () => {
-    // Entrar a la tienda, guardar, salir, entrar, guardar… sin esto sería 17 → 13,5 → 10.
-    let enFormulario = 20.5;
-    for (let i = 0; i < 5; i++) {
-      const guardado = pesoParaGuardar(enFormulario, 'negra');
-      expect(guardado).toBe(17);
-      enFormulario = pesoParaMostrar(guardado, 'negra');
-      expect(enFormulario).toBe(20.5);
+    // Entrar a la tienda, guardar, salir, entrar, guardar… sin esto sería 17,2 → 13,9 → 10,6.
+    for (const [caja, bruto, neto] of [['negra', 20.5, 17.2], ['carton', 13.3, 12.9]] as const) {
+      let enFormulario: number = bruto;
+      for (let i = 0; i < 5; i++) {
+        const guardado = pesoParaGuardar(enFormulario, caja);
+        expect(guardado).toBe(neto);
+        enFormulario = pesoParaMostrar(guardado, caja);
+        expect(enFormulario).toBe(bruto);
+      }
     }
   });
 
-  it('la caja de cartón no se toca en ninguna dirección', () => {
-    expect(pesoParaGuardar(20.5, 'carton')).toBe(20.5);
-    expect(pesoParaMostrar(20.5, 'carton')).toBe(20.5);
-  });
-
   it('no arrastra coma flotante en ninguna de las dos', () => {
-    expect(pesoParaGuardar(20.6, 'negra')).toBe(17.1);
-    expect(pesoParaMostrar(17.1, 'negra')).toBe(20.6);
+    expect(pesoParaGuardar(20.6, 'negra')).toBe(17.3);
+    expect(pesoParaMostrar(17.3, 'negra')).toBe(20.6);
+    expect(pesoParaGuardar(5.1, 'carton')).toBe(4.7);
+    expect(pesoParaMostrar(4.7, 'carton')).toBe(5.1);
   });
 });

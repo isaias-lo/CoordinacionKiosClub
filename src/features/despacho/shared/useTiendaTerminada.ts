@@ -23,7 +23,7 @@ const TIPO = 'tienda-terminada';
  * nueva): `tipo='tienda-terminada'`, `state_key=store_cod`, `date=fechaISOLocal()`, y el valor
  * (terminada/por/at) va serializado en `picker_label` como ya hace 'odoo-progress'.
  */
-export function useTiendaTerminada(): {
+export function useTiendaTerminada(dia?: string): {
   terminadas: Map<string, TerminadaInfo>;
   marcarTerminada: (cod: string, terminada: boolean, por?: string) => Promise<void>;
 } {
@@ -31,7 +31,7 @@ export function useTiendaTerminada(): {
 
   const load = useCallback(async () => {
     try {
-      const date = fechaISOLocal();
+      const date = dia ?? fechaISOLocal();
       const res = await fetch(`/api/picking-session-state?date=${date}&tipo=${TIPO}`);
       if (!res.ok) return;
       const json = await res.json() as { data?: Array<{ state_key: string; picker_label: string }> };
@@ -44,7 +44,7 @@ export function useTiendaTerminada(): {
       }
       setMap(next);
     } catch { /* silent */ }
-  }, []);
+  }, [dia]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -75,10 +75,10 @@ export function useTiendaTerminada(): {
         // terminada y el progreso de Odoo se borrarían entre sí. Hoy no pasa solo porque Odoo
         // está desconectado desde el 04/09 y esta marca nació el 07/09 — nunca convivieron.
         // Se desactiva antes de que reconecten Odoo.
-        body: JSON.stringify({ state_key: claveSesion(cod, TIPO), date: fechaISOLocal(), tipo: TIPO, picker_label: JSON.stringify(payload) }),
+        body: JSON.stringify({ state_key: claveSesion(cod, TIPO), date: dia ?? fechaISOLocal(), tipo: TIPO, picker_label: JSON.stringify(payload) }),
       });
     } catch { /* best-effort — ver comentario arriba */ }
-  }, []);
+  }, [dia]);
 
   return { terminadas: map, marcarTerminada };
 }
