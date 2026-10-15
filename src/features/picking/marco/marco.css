@@ -42,6 +42,12 @@
 .pk-sg{font-size:11px;font-weight:700;letter-spacing:.08em;color:#8A91A1;padding:10px 14px 4px;display:flex;justify-content:space-between;text-transform:uppercase;width:100%;background:#FFFFFF;border:0;position:sticky;top:0;z-index:1}
 button.pk-sg{cursor:pointer}
 button.pk-sg:hover .acc{color:#2B4BC8}
+/* Elegidas que la lista de hoy no muestra (StoreListPanel): arriba y en ámbar, para poder quitarlas. */
+.pk-fuera{border-bottom:1px solid #F1E3C4}
+.pk-fuera .pk-sg{color:#9A5B00;background:#FFF8EC}
+.pk-fuera .pk-sg .acc{border:0;background:transparent;font:inherit;color:#9A5B00;cursor:pointer;text-decoration:underline;padding:0}
+.pk-fuera .pk-sr.sel{background:#FFFBF3;border-left-color:#D97706}
+.pk-fuera .pk-sr.sel .ck{background:#D97706;border-color:#D97706}
 .pk-sr{display:grid;grid-template-columns:16px 52px minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 14px;font-size:13px;border-left:3px solid transparent;width:100%;background:transparent;border-top:0;border-right:0;border-bottom:0;text-align:left;color:#14161B;cursor:pointer}
 .pk-sr:hover{background:#F8F9FB}
 .pk-sr:disabled{cursor:wait}

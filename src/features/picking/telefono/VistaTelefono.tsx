@@ -14,9 +14,13 @@ import { FranjaSeccion } from '../marco/FranjaSeccion';
 interface Props extends VistaSecoProps {
   /** Volver a la lista para elegir otras tiendas. */
   onElegirTiendas: () => void;
+  /** Sacar la tienda de arriba de las elegidas. Es la salida directa: sin ella, una tienda que no
+   *  está en la lista de hoy (ver elegidasFueraDeLista) solo se podía quitar desde esa lista. */
+  onQuitarTienda: (cod: string) => void;
 }
 
 const OTRAS = '__otras__';
+const QUITAR = '__quitar__';
 
 export function VistaTelefono(p: Props) {
   const e = p.encabezado;
@@ -34,9 +38,15 @@ export function VistaTelefono(p: Props) {
           <span className="pk-sp" />
           <span className="pk-sub">{otras > 0 ? `+${otras} tienda${otras !== 1 ? 's' : ''} ▾` : 'Cambiar ▾'}</span>
           <select value={e.cod} aria-label="Tienda"
-            onChange={ev => { if (ev.target.value === OTRAS) p.onElegirTiendas(); else e.onElegirTienda(ev.target.value); }}>
+            onChange={ev => {
+              const v = ev.target.value;
+              if (v === OTRAS) p.onElegirTiendas();
+              else if (v === QUITAR) p.onQuitarTienda(e.cod);
+              else e.onElegirTienda(v);
+            }}>
             {e.tiendas.map(t => <option key={t.cod} value={t.cod}>{t.cod} {t.nombre}</option>)}
             <option value={OTRAS}>Elegir otras tiendas…</option>
+            <option value={QUITAR}>Quitar {e.cod} de las elegidas</option>
           </select>
         </label>
         {e.secciones && e.secciones.length > 1 && (
