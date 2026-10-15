@@ -109,7 +109,8 @@ export function claveFranjaCerrada(seccion: string, fecha: string): string {
 export const EVENTO_ABRIR_GUIA = 'pk-abrir-guia';
 
 export interface Caja { left: number; top: number; right: number; bottom: number }
-export interface PosBurbuja { x: number; y: number; flecha: number; arriba: boolean }
+/** `altoMax`: lo más alta que puede ser sin salirse; si el texto es más largo, se desliza adentro. */
+export interface PosBurbuja { x: number; y: number; flecha: number; arriba: boolean; altoMax: number }
 
 /**
  * Dónde va la burbuja del «?» en computador, para que quepa entera en la pantalla. PURA.
@@ -117,6 +118,9 @@ export interface PosBurbuja { x: number; y: number; flecha: number; arriba: bool
  * 14/10/2026: en el panel del encargado, la del Batch (a la derecha) se salía del panel y quedaba
  * cortada a la mitad. Ahora se pone fija sobre la pantalla: debajo del botón, corrida hacia adentro
  * si no cabe a lo ancho, y arriba del botón si no cabe abajo. La flecha sigue apuntando al «?».
+ *
+ * 15/10/2026: en una pantalla baja no cabía ni arriba ni abajo y quedaba colgando bajo el borde.
+ * Ahora va al lado con más espacio y su alto se limita a ese espacio (el resto se desliza).
  */
 export function posicionBurbuja(
   boton: Caja, pantalla: { ancho: number; alto: number }, burbuja: { ancho: number; alto: number }, margen = 12,
@@ -124,10 +128,14 @@ export function posicionBurbuja(
   const centro = (boton.left + boton.right) / 2;
   const maxX = Math.max(margen, pantalla.ancho - burbuja.ancho - margen);
   const x = Math.min(Math.max(boton.left - 10, margen), maxX);
-  const cabeAbajo = boton.bottom + 8 + burbuja.alto + margen <= pantalla.alto;
-  const cabeArriba = boton.top - 8 - burbuja.alto >= margen;
-  const arriba = !cabeAbajo && cabeArriba;
-  const y = arriba ? boton.top - 8 - burbuja.alto : boton.bottom + 8;
+  const espacioAbajo = pantalla.alto - margen - (boton.bottom + 8);
+  const espacioArriba = boton.top - 8 - margen;
+  const cabeAbajo = burbuja.alto <= espacioAbajo;
+  const cabeArriba = burbuja.alto <= espacioArriba;
+  const arriba = !cabeAbajo && (cabeArriba || espacioArriba > espacioAbajo);
+  const altoMax = Math.max(0, arriba ? espacioArriba : espacioAbajo);
+  const alto = Math.min(burbuja.alto, altoMax);
+  const y = arriba ? boton.top - 8 - alto : boton.bottom + 8;
   const flecha = Math.min(Math.max(centro - x - 6, 10), burbuja.ancho - 22);
-  return { x: Math.round(x), y: Math.round(y), flecha: Math.round(flecha), arriba };
+  return { x: Math.round(x), y: Math.round(y), flecha: Math.round(flecha), arriba, altoMax: Math.floor(altoMax) };
 }

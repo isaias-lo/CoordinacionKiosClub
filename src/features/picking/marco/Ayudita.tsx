@@ -4,8 +4,15 @@
 // con `posicionBurbuja` para que nunca se corte (antes colgaba del botón y se salía del panel); en
 // teléfono y handheld la misma burbuja se ve como hoja desde abajo (lo decide marco.css, que ahí no
 // usa la posición calculada). El texto vive en ayudaContexto.ts.
+//
+// La burbuja se dibuja en <body> con un portal. Dentro de la app, `#main-content` (AppShell) lleva
+// `transform: translateZ(0)` a propósito, para que las pantallas `fixed` queden dentro del área
+// sin el menú. Eso vuelve a `#main-content` la referencia de todo `position: fixed`: la burbuja se
+// corría a la derecha el ancho del menú lateral y el `overflow: hidden` la cortaba, aunque las
+// coordenadas (medidas contra la ventana) estuvieran bien.
 
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AYUDITAS, EVENTO_ABRIR_GUIA, posicionBurbuja, type PosBurbuja, type TemaAyudita } from './ayudaContexto';
 
 export function Ayudita({ tema }: { tema: TemaAyudita }) {
@@ -20,7 +27,10 @@ export function Ayudita({ tema }: { tema: TemaAyudita }) {
   useEffect(() => {
     if (!abierta) return;
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setAbierta(false); } };
-    const fuera = (e: PointerEvent) => { if (!caja.current?.contains(e.target as Node)) setAbierta(false); };
+    const fuera = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!caja.current?.contains(t) && !globo.current?.contains(t)) setAbierta(false);
+    };
     window.addEventListener('keydown', esc, true);
     window.addEventListener('pointerdown', fuera);
     return () => { window.removeEventListener('keydown', esc, true); window.removeEventListener('pointerdown', fuera); };
@@ -45,7 +55,7 @@ export function Ayudita({ tema }: { tema: TemaAyudita }) {
   const parar = (e: React.SyntheticEvent) => { e.preventDefault(); e.stopPropagation(); };
 
   const estilo = pos
-    ? { '--q-x': `${pos.x}px`, '--q-y': `${pos.y}px`, '--q-flecha': `${pos.flecha}px` } as React.CSSProperties
+    ? { '--q-x': `${pos.x}px`, '--q-y': `${pos.y}px`, '--q-flecha': `${pos.flecha}px`, '--q-alto': `${pos.altoMax}px` } as React.CSSProperties
     : { visibility: 'hidden' as const };
 
   return (
@@ -53,7 +63,7 @@ export function Ayudita({ tema }: { tema: TemaAyudita }) {
       <button ref={boton} type="button" className={`pk-q${abierta ? ' on' : ''}`}
         aria-label={`Ayuda: ${a.titulo}`} aria-expanded={abierta} aria-controls={id}
         onClick={e => { parar(e); setAbierta(v => !v); }}>?</button>
-      {abierta && (
+      {abierta && createPortal(
         <>
           <span className="pk-q-velo" aria-hidden="true" onClick={e => { parar(e); setAbierta(false); }} />
           <span ref={globo} id={id} role="dialog" aria-label={a.titulo}
@@ -67,7 +77,8 @@ export function Ayudita({ tema }: { tema: TemaAyudita }) {
               <button type="button" className="pk-btn pri pk-q-ok" onClick={e => { parar(e); setAbierta(false); }}>Entendido</button>
             </span>
           </span>
-        </>
+        </>,
+        document.body,
       )}
     </span>
   );
