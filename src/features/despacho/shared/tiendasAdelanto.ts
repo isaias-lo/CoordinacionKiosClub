@@ -55,8 +55,9 @@ export async function getTiendasAdelanto(fecha: string): Promise<TiendaAdelanto[
 }
 
 /** Tiendas de adelanto de HOY (las que deben aparecer en el flujo). */
-export function getTiendasAdelantoHoy(): Promise<TiendaAdelanto[]> {
-  return getTiendasAdelanto(todayISO());
+export function getTiendasAdelantoHoy(dia?: string): Promise<TiendaAdelanto[]> {
+  // `dia` es el DÍA DE TRABAJO: volviendo al martes, sus adelantos son los del martes.
+  return getTiendasAdelanto(dia ?? todayISO());
 }
 
 export async function addTiendaAdelanto(input: {

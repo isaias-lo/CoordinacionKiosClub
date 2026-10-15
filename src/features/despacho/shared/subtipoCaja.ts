@@ -90,25 +90,41 @@ export function partirClave(clave: string): { tipo: string; subtipo: SubtipoCaja
   return t === 'CH' ? { tipo: 'CH', subtipo: subtipoDeCaja(sub) } : { tipo: t, subtipo: null };
 }
 
-// ── La tara de la caja negra ───────────────────────────────────────────────────────────────────
+// ── La tara de la caja ─────────────────────────────────────────────────────────────────────────
 //
-// La caja negra es RETORNABLE: vuelve al CD. Su peso no es mercadería, así que lo que tiene que
-// quedar registrado es lo que va adentro, no lo que marca la balanza.
+// La caja no es mercadería: lo que tiene que quedar registrado es lo que va adentro, no lo que
+// marca la balanza. Quien pesa pone la caja entera —no hay forma de pesar el contenido solo— así
+// que la resta la hace el sistema: se teclea 20,5 y queda 17,2.
 //
-// Quien pesa pone la caja entera en la balanza —no hay forma de pesar el contenido solo— así que
-// la resta la hace el sistema: se teclea 20,5 y queda 17.
+// LAS DOS CAJAS TIENEN TARA, y el coordinador dio los dos pesos (14/10/2026):
 //
-// La caja de cartón NO tiene tara. No es un olvido: su tamaño varía, y con él su peso. Restarle
-// una constante sería inventar un número distinto para cada caja.
+//     caja negra    3,30 kg     retornable, vuelve al CD
+//     caja cartón   0,40 kg
+//
+// Hasta ese día acá decía que la de cartón no tenía tara «porque su tamaño varía, y con él su
+// peso». El tamaño varía, sí; el peso de la caja vacía no: son 400 g. Y la negra estaba en 3,50,
+// que era una medida provisoria del 22/09.
 //
 // ── Por qué la resta va al TECLEAR y no al guardar ─────────────────────────────────────────────
 //
 // Una tarjeta ya guardada se puede editar con el ✎. Si la resta viviera en el guardado, corregir
 // cualquier cosa volvería a restar: 17 → 13,5 → 10. La resta tiene que ocurrir exactamente una
 // vez, en el único momento en que existe un peso bruto: cuando la persona lo escribe.
+//
+// ── Lo que ya estaba guardado ──────────────────────────────────────────────────────────────────
+//
+// Cambiar una tara NO mueve ningún peso guardado: `pesoParaMostrar` suma y `pesoParaGuardar`
+// resta la MISMA constante, así que la ida y vuelta conserva el neto. Lo único que cambia es el
+// bruto que se ve al reabrir una tarjeta vieja, y por la diferencia entre las dos taras.
 
-/** Lo que pesa la caja negra vacía, en kg. Es retornable: no cuenta como mercadería. */
-export const TARA_CAJA_NEGRA = 3.5;
+/** Lo que pesa cada caja vacía, en kg. Dato del coordinador, 14/10/2026. */
+export const TARA_CAJA_NEGRA = 3.3;
+export const TARA_CAJA_CARTON = 0.4;
+
+/** La tara que le corresponde a cada caja. */
+export function taraDeCaja(s: SubtipoCaja): number {
+  return s === 'carton' ? TARA_CAJA_CARTON : TARA_CAJA_NEGRA;
+}
 
 export type PesoNeto =
   | { ok: true; neto: number; bruto: number; tara: number }
@@ -124,7 +140,8 @@ export type PesoNeto =
  *
  * El redondeo a una décima evita que 20,6 − 3,5 quede en 17.099999999999998.
  */
-export function pesoNetoCajaNegra(bruto: unknown, tara = TARA_CAJA_NEGRA): PesoNeto {
+export function pesoNetoDeCaja(bruto: unknown, subtipo: SubtipoCaja): PesoNeto {
+  const tara = taraDeCaja(subtipo);
   const n = typeof bruto === 'number' ? bruto : parseFloat(String(bruto ?? '').replace(',', '.'));
   if (!Number.isFinite(n) || n <= 0) {
     return { ok: false, error: 'Escribe el peso que marcó la balanza (ej. 20,5).' };
@@ -132,7 +149,7 @@ export function pesoNetoCajaNegra(bruto: unknown, tara = TARA_CAJA_NEGRA): PesoN
   if (n <= tara) {
     return {
       ok: false,
-      error: `La caja negra vacía ya pesa ${String(tara).replace('.', ',')} kg. `
+      error: `La ${etiquetaSubtipo(subtipo).toLowerCase()} vacía ya pesa ${String(tara).replace('.', ',')} kg. `
            + `¿Son ${String(n).replace('.', ',')} kg lo que marcó la balanza?`,
     };
   }
@@ -152,13 +169,11 @@ export function pesoNetoCajaNegra(bruto: unknown, tara = TARA_CAJA_NEGRA): PesoN
 // lo que pasa cada vez que alguien entra a la tienda.
 
 /** Lo que se guarda en el ítem, a partir de lo que hay en el formulario. */
-export function pesoParaGuardar(bruto: number, subtipo: SubtipoCaja, tara = TARA_CAJA_NEGRA): number {
-  if (subtipo !== 'negra') return bruto;
-  return Math.round((bruto - tara) * 10) / 10;
+export function pesoParaGuardar(bruto: number, subtipo: SubtipoCaja): number {
+  return Math.round((bruto - taraDeCaja(subtipo)) * 10) / 10;
 }
 
 /** Lo que se muestra en el formulario, a partir de lo guardado. El inverso exacto del anterior. */
-export function pesoParaMostrar(neto: number, subtipo: SubtipoCaja, tara = TARA_CAJA_NEGRA): number {
-  if (subtipo !== 'negra') return neto;
-  return Math.round((neto + tara) * 10) / 10;
+export function pesoParaMostrar(neto: number, subtipo: SubtipoCaja): number {
+  return Math.round((neto + taraDeCaja(subtipo)) * 10) / 10;
 }
