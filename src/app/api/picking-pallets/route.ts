@@ -185,6 +185,26 @@ export async function DELETE(request: NextRequest) {
   if (!actor) return UNAUTH();
   const body = await request.json() as { id: number; actor_name?: string };
   const sb = supabaseServer();
+  // ── LO QUE BODEGA YA REGISTRÓ NO SE BORRA DESDE ACÁ (15/10/2026) ───────────────────────────────
+  // Por esta ruta borra Picking (el «−» del contador, que saca la ÚLTIMA unidad sin confirmar).
+  // Bodega borra por su cuenta, con confirmación y bitácora (`eliminarSlotPicking`). Antes nada
+  // impedía que un «−» en Picking se llevara un pallet que Bodega ya había pesado y guardado: se
+  // iba de la base, del despacho y de la planilla. Ahora, si Bodega lo registró, se rechaza y
+  // Picking lo dice; para sacarlo, se borra en Bodega.
+  const { data: unidad } = await sb.from('picking_pallets').select('id, date').eq('id', body.id).maybeSingle();
+  if (unidad?.date) {
+    const { data: registro } = await sb.from('actividad_bodega').select('id')
+      .eq('accion', 'registrar_item')
+      .gte('fecha', unidad.date as string).lte('fecha', unidad.date as string)
+      .eq('detalle->>slotId', String(body.id))
+      .limit(1).maybeSingle();
+    if (registro) {
+      return NextResponse.json(
+        { error: 'Bodega ya registró esta unidad', reason: 'registrado_en_bodega' },
+        { status: 409 },
+      );
+    }
+  }
   // Sacar la unidad del registro de despacho antes de borrarla — base Y planilla, RM Y Nacional.
   // Si no, el pallet borrado sigue viajando en el papel (51SER, 11/09/2026). Ver limpiarDespacho.ts.
   const limpieza = await sacarUnidadDelDespacho(sb, body.id);

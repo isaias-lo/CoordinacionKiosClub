@@ -21,6 +21,7 @@ export type MotivoClaim =
   | 'otra_tienda'    // existe, pero es de otra tienda
   | 'ya_en_carga'    // ya está en la carga de HOY de esta misma tienda
   | 'no_encontrado'  // no existe y tampoco hay rastro de borrado: el número está mal
+  | 'de_dia_posterior' // vivo en la carga de un día POSTERIOR: reclamarlo lo sacaría de ahí
   | 'desconocido';   // cualquier otra cosa
 
 export interface ContextoClaim {
@@ -85,6 +86,19 @@ function comoRecrear(boton?: string | null): string {
  * El texto que ve la persona. Siempre dice qué pasó Y qué hacer: un mensaje que solo diagnostica
  * deja a alguien parado frente a una pantalla con un pallet en la mano.
  */
+/**
+ * ¿Reclamar este pallet lo SACARÍA de una carga más nueva? (15/10/2026)
+ *
+ * Reclamar re-data el pallet al día que manda el equipo. Eso está bien para un pallet adelantado
+ * (de un día anterior), pero una pestaña que quedó abierta desde ayer —o una que mira otro día—
+ * le cambiaba la fecha a un pallet vivo de HOY y lo hacía desaparecer de la carga de hoy, sin
+ * dejar rastro en la bitácora. Las fechas van como `YYYY-MM-DD`, así que se comparan como texto.
+ */
+export function reclamoRetrocede(fechaDelPallet: string | null | undefined, fechaPedida: string, activo: boolean): boolean {
+  const del = String(fechaDelPallet ?? '').slice(0, 10);
+  return activo && /^\d{4}-\d{2}-\d{2}$/.test(del) && del > String(fechaPedida ?? '').slice(0, 10);
+}
+
 export function mensajeClaim(motivo: MotivoClaim, ctx: ContextoClaim): string {
   const ref = String(ctx.ref ?? '').trim().replace(/^#/, '');
   const num = ref ? `#${ref}` : 'ese pallet';
@@ -119,6 +133,9 @@ export function mensajeClaim(motivo: MotivoClaim, ctx: ContextoClaim): string {
 
     case 'no_encontrado':
       return `No existe ningún pallet ${num}. Revisa el número de la etiqueta.`;
+
+    case 'de_dia_posterior':
+      return `El pallet ${num} ya está en la carga de un día más reciente que el que tienes abierto. No se movió. Recarga la página para trabajar en el día de hoy.`;
 
     default:
       return `No se pudo agregar el pallet ${num}. Intenta de nuevo.`;
