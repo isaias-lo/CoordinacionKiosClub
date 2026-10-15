@@ -95,7 +95,7 @@ import { tipoTienda } from '@/features/despacho/rutas/utils/tipoTienda';
 import { avisoOdoo, motivoOdoo } from './avisoOdoo';
 import { textoSinConexion } from './avisoSinConexion';
 import { ocultarSinAsignar } from './sinAsignar';
-import { usaSelectorDeTiendas } from './selectorTiendas';
+import { usaSelectorDeTiendas, seleccionVencida } from './selectorTiendas';
 import { unirBatches } from '@/features/despacho/shared/hojaDespacho';
 
 
@@ -268,6 +268,16 @@ export function PickingScreen() {
   const session = useMemo(() => loadSession(), []);
 
   const [selectedCods, setSelectedCods] = useState<string[]>([]);
+  // Día al que pertenecen las tiendas elegidas. La sesión se guarda con ESTE día y no con el de
+  // cada guardado: antes se re-sellaba con hoy en cada cambio, así que una pestaña abierta de un
+  // día para otro arrastraba las tiendas de ayer para siempre (caso 59EGN, 14/10/2026).
+  const diaSeleccionRef = useRef<string>(todayISO());
+  const selectedCodsRef = useRef(selectedCods);
+  selectedCodsRef.current = selectedCods;
+  // El reloj del cambio de día se arma una sola vez: si dependiera de showToast, cada render que
+  // cambie su identidad lo rearmaría y el intervalo de un minuto nunca llegaría a sonar.
+  const avisarRef = useRef(showToast);
+  avisarRef.current = showToast;
   // Modo manual: tienda con el campo "+ Encargado manual" abierto + lo que se está escribiendo.
   const [addingManualCod, setAddingManualCod] = useState<string | null>(null);
   const [manualName, setManualName]           = useState('');
@@ -1042,7 +1052,7 @@ export function PickingScreen() {
   // opsMapFetchedAt = hora real del último fetch a Odoo (lastRefresh), para que loadSession
   // pueda descartar un opsMap de otro día aunque la sesión se re-guarde con la fecha de hoy.
   useEffect(() => {
-    saveSession({ date: todayISO(), selectedCods, opsMap, pickerDisplayNames, opsMapFetchedAt: lastRefresh?.toISOString() });
+    saveSession({ date: diaSeleccionRef.current, selectedCods, opsMap, pickerDisplayNames, opsMapFetchedAt: lastRefresh?.toISOString() });
   }, [selectedCods, opsMap, pickerDisplayNames, lastRefresh]);
 
   // Disparar impresión después del re-render:
@@ -1188,6 +1198,30 @@ export function PickingScreen() {
       void fetchBatchOps(guardadas); // un solo request en vez de N paralelos
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cambio de día con la pestaña abierta: las tiendas elegidas son del día en que se eligieron, y
+  // las de ayer no están en la lista de hoy (no se podrían quitar). Se sueltan y se vuelve a la
+  // lista. Revisa cada minuto y al volver a la app; el picking se hace entre 9 y 20 h (medido en
+  // picking_pallets, 28/09–14/10/2026), así que la medianoche nunca cae a mitad de una carga.
+  useEffect(() => {
+    const revisar = () => {
+      const hoy = todayISO();
+      if (diaSeleccionRef.current === hoy) return;
+      const vencida = seleccionVencida(diaSeleccionRef.current, hoy, selectedCodsRef.current.length);
+      diaSeleccionRef.current = hoy;
+      if (!vencida) return;
+      setSelectedCods([]);
+      setTiendaActiva(null);
+      setEncargadoAbierto(null);
+      setPanelView('stores');
+      avisarRef.current('Empezó un día nuevo: se quitaron las tiendas de ayer', '#2B4BC8');
+    };
+    const alVolver = () => { if (document.visibilityState === 'visible') revisar(); };
+    const t = setInterval(revisar, 60_000);
+    document.addEventListener('visibilitychange', alVolver);
+    window.addEventListener('focus', revisar);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', alVolver); window.removeEventListener('focus', revisar); };
+  }, []);
 
   const allGroups = useMemo((): PickerGroup[] => {
     const result: PickerGroup[] = [];
@@ -1815,6 +1849,11 @@ export function PickingScreen() {
         </datalist>
         <Vista
           onElegirTiendas={() => setPanelView('stores')}
+          onQuitarTienda={c => {
+            void handleToggleStore(c);
+            setEncargadoAbierto(null);
+            if (selectedCods.length <= 1) setPanelView('stores'); // era la última: volver a elegir
+          }}
           modo={cong ? 'congelados' : 'seco'}
           encabezado={{
             cod, nombre: nameFor(cod), tipo: tipoFor(cod),

@@ -6,6 +6,7 @@ import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import type { PickingOperation, TodayStore, StoreGroupKey } from '../picking-types';
 import { getStoreGroup, GROUP_LABELS } from '../picking-utils';
 import { estadoTienda, pasaFiltro, FILTROS, type FiltroTiendas } from '../filtroTiendas';
+import { elegidasFueraDeLista } from '../selectorTiendas';
 import { InlineConfirm } from './InlineConfirm';
 
 // Santiago arriba, como en el diseño: es el grupo con más tiendas cada día.
@@ -81,6 +82,13 @@ export const StoreListPanel = React.memo(function StoreListPanel({
     return { grouped: groups, isFallback: fallback };
   }, [q, todayStores, tiendaOverrides]);
 
+  // Elegidas que ninguna fila de abajo muestra (de otro día, o del calendario de la otra pestaña).
+  // Sin este bloque no había forma de quitarlas: ver elegidasFueraDeLista.
+  const fuera = useMemo(
+    () => filtro === 'sin-elegir' ? [] : elegidasFueraDeLista(selectedCods, GROUP_ORDER.flatMap(g => grouped[g])),
+    [selectedCods, grouped, filtro]);
+  const nombreDe = (cod: string) => tiendaOverrides[cod] || TIENDAS_INICIAL[cod]?.n || cod;
+
   return (
     <div className="pk-stores">
       <div className="pk-sh">
@@ -137,7 +145,28 @@ export const StoreListPanel = React.memo(function StoreListPanel({
 
       <div className="flex-1 overflow-y-auto">
         {storesLoading && <div className="px-4 py-6 text-center" style={{ fontSize: 13, color: '#6B7280' }}>Cargando despachos de hoy…</div>}
-        {!storesLoading && filtro !== 'todas' && GROUP_ORDER.every(g => !grouped[g].some(st => pasaFiltro(filtro, st, selectedCods.includes(st.cod), opsMap[st.cod] ?? []))) && (
+        {!storesLoading && fuera.length > 0 && (
+          <div className="pk-fuera">
+            <div className="pk-sg" role="note">
+              <span>No {fuera.length === 1 ? 'está' : 'están'} en esta lista hoy · {fuera.length}</span>
+              {fuera.length > 1 && onToggleGrupo && (
+                <button type="button" className="acc" onClick={() => onToggleGrupo(fuera, false)}>Quitar todas</button>
+              )}
+            </div>
+            {fuera.map(cod => (
+              <button key={cod} type="button" onClick={() => onToggleStore(cod)} aria-pressed={true}
+                className="pk-sr sel" aria-label={`Quitar ${cod}`} title={`Quitar ${cod}`}>
+                <span className="ck" aria-hidden="true">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </span>
+                <span className="c">{cod}</span>
+                <span className="nm">{nombreDe(cod)}</span>
+                <span className="fin"><span className="pk-pill warn">Quitar</span></span>
+              </button>
+            ))}
+          </div>
+        )}
+        {!storesLoading && fuera.length === 0 && filtro !== 'todas' && GROUP_ORDER.every(g => !grouped[g].some(st => pasaFiltro(filtro, st, selectedCods.includes(st.cod), opsMap[st.cod] ?? []))) && (
           <div className="px-4 py-6 text-center" style={{ fontSize: 13, color: '#6B7280' }}>
             Ninguna tienda con este filtro.{' '}
             <button type="button" className="border-none bg-transparent cursor-pointer underline" style={{ color: '#2B4BC8', font: 'inherit' }}
