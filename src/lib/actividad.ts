@@ -26,6 +26,15 @@ export const ACCIONES_ACTIVIDAD = [
   // el remoto no lo traía. Es una sospecha con evidencia a medias, y esto la confirma o la mata:
   // ver `mergeItems.ts`. No es una acción de la persona — es el sistema contándose a sí mismo.
   'merge_descarte',
+  // [Instrumentación, 15/10] Este equipo borró la fila de conteo de una tienda en
+  // `despacho_sesion` porque la tenía en pantalla SIN unidades. Si otro equipo la había escrito
+  // con carga, desaparece del Enrutador hasta que ese otro vuelva a empujar — y es la mejor
+  // explicación que tengo de «aparecen y desaparecen palets y bultos». Ver `pushCounts`.
+  //
+  // Se registra ANTES de borrar y sin cambiar la conducta: primero hay que saber si pasa, y con
+  // qué frecuencia. Tocar un borrado por una teoría es exactamente lo que este repositorio ya
+  // pagó caro.
+  'conteo_borrado',
 ] as const;
 
 export type AccionActividad = typeof ACCIONES_ACTIVIDAD[number];
@@ -121,6 +130,9 @@ export function buildActividadMensaje(accion: AccionActividad, ctx: ActividadCtx
       const kgs = ctx.peso != null ? ` · ${ctx.peso}kg` : '';
       return `El sync quitó ${ctx.label ?? 'un ítem'}${kgs}${en} — lo tenía este equipo y no vino en el remoto`;
     }
+    case 'conteo_borrado':
+      return `Se borró el conteo de ${ctx.tiendas ?? 0} tienda${ctx.tiendas === 1 ? '' : 's'}`
+           + `${ctx.label ? ` (${ctx.label})` : ''} — este equipo las tenía en pantalla sin unidades`;
   }
 }
 
