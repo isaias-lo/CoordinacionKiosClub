@@ -131,6 +131,17 @@ export async function migrarColaVieja(): Promise<number> {
   return migrados;
 }
 
+/**
+ * Como `clasificarEstado`, salvo el 401: en Picking es la sesión que todavía no está lista (la app
+ * recién abierta o el equipo que despierta vacía la cola antes de tener el token) o que venció, no
+ * un rechazo del pallet. Bloquearlo dejaba la unidad «rechazada» para siempre. Vive acá y no en la
+ * regla común porque Recepción y el conductor también la usan, y en esas colas no se revisó qué
+ * significa un 401.
+ */
+export function veredictoPicking(status: number): ReturnType<typeof clasificarEstado> {
+  return status === 401 ? 'reintentar' : clasificarEstado(status);
+}
+
 function cuerpo(op: OfflineQueueItem, clientOpId: string): { url: string; body: string } {
   if (op.op === 'add') {
     return {
@@ -175,7 +186,21 @@ export async function flushPickingQueue(
     async item => {
       const { url, body } = cuerpo(item.payload, item.clientOpId);
       const res = await authedFetch(url, { method: 'POST', body });
-      return { veredicto: clasificarEstado(res.status), mensaje: `HTTP ${res.status}` };
+      const veredicto = veredictoPicking(res.status);
+      // La fila «En picking» del despacho: el camino con señal la crea al volver el POST, y la cola
+      // se la saltaba. Sin ella, una unidad agregada sin conexión no aparecía en el despacho hasta
+      // que Bodega la registrara. Si falla, no se reintenta la unidad: ya está guardada.
+      if (veredicto === 'ok' && item.payload.op === 'add') {
+        const op = item.payload;
+        void res.json().then((j: { data?: { id?: number } }) => {
+          if (!j.data?.id) return;
+          return authedFetch('/api/despacho-picking', {
+            method: 'POST',
+            body: JSON.stringify({ slot_id: j.data.id, store_cod: op.storeCod, tipo: op.tipo, contenido: op.contenido, date: op.date }),
+          });
+        }).catch(() => { /* best-effort, igual que con señal */ });
+      }
+      return { veredicto, mensaje: `HTTP ${res.status}` };
     },
     { guardar: item => guardar(item, OPCIONES), eliminar },
   );

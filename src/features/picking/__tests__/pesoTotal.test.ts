@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { repartirPeso, pesoTotalValido, leerPesoTotal, serializarPesoTotal, avisoCantidad } from '../pesoTotal';
+import { repartirPeso, pesoTotalValido, leerPesoTotal, serializarPesoTotal, avisoCantidad, cajasDelTipo } from '../pesoTotal';
 
 describe('repartirPeso — el total se reparte entre las cajas', () => {
   it('reparte en partes iguales cuando da justo', () => {
@@ -95,5 +95,19 @@ describe('avisoCantidad — si cambió la cantidad después de pesar', () => {
 
   it('sin total guardado, nada que avisar', () => {
     expect(avisoCantidad(null, 4)).toBeNull();
+  });
+});
+
+describe('cajasDelTipo', () => {
+  it('suma las cajas de chocolate de las dos clases (negra y cartón)', () => {
+    expect(cajasDelTipo({ 'CH:negra': 3, 'CH:carton': 2, P: 4 }, 'CH')).toBe(5);
+  });
+  it('sin chocolate da 0, aunque haya otras unidades', () => {
+    expect(cajasDelTipo({ P: 2, B: 1 }, 'CH')).toBe(0);
+  });
+  it('las cajas de congelado se cuentan por su tipo, tal cual', () => {
+    expect(cajasDelTipo({ CC: 2, CN: 1, 'CH:negra': 4 }, 'CC')).toBe(2);
+    expect(cajasDelTipo({ CC: 2, CN: 1 }, 'CN')).toBe(1);
+    expect(cajasDelTipo({}, 'CN')).toBe(0);
   });
 });

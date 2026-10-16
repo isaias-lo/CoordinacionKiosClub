@@ -102,24 +102,34 @@ export function HistorialTab({
     return map;
   }, [palletSlots]);
 
-  const totalPallets  = useMemo(() => Object.values(unitsByKey).reduce((s, u) => s + u.pallets, 0), [unitsByKey]);
-  const totalBultos   = useMemo(() => Object.values(unitsByKey).reduce((s, u) => s + u.bultos,  0), [unitsByKey]);
   const uniquePickers = new Set(records.map(r => r.picker_label)).size;
   const uniqueStores  = new Set(records.map(r => r.state_key.split('__')[0])).size;
 
   // Resumen por tienda
   const byStore = useMemo(() => {
     const map: Record<string, { pallets: number; bultos: number; cats: Set<string> }> = {};
+    // Un encargado impreso dos veces tiene las mismas etiquetas: se cuenta una vez, como en el
+    // Historial de escritorio (`resumenHistorial`). Antes cada reimpresión volvía a sumarlas.
+    const contadas = new Set<string>();
     for (const r of records) {
       const cod = r.state_key.split('__')[0];
       if (!map[cod]) map[cod] = { pallets: 0, bultos: 0, cats: new Set() };
-      const u = unitsByKey[r.state_key];
-      map[cod].pallets += u?.pallets ?? 0;
-      map[cod].bultos  += u?.bultos  ?? 0;
+      if (!contadas.has(r.state_key)) {
+        contadas.add(r.state_key);
+        const u = unitsByKey[r.state_key];
+        map[cod].pallets += u?.pallets ?? 0;
+        map[cod].bultos  += u?.bultos  ?? 0;
+      }
       (catsByKey[r.state_key] ?? []).forEach(c => map[cod].cats.add(c));
     }
     return map;
   }, [records, catsByKey, unitsByKey]);
+
+  // Los totales son la suma de la tabla por tienda: solo encargados impresos. Antes sumaban
+  // también las unidades de encargados sin imprimir, y no calzaban con la tabla de abajo ni con
+  // el Historial de escritorio.
+  const totalPallets = useMemo(() => Object.values(byStore).reduce((s, u) => s + u.pallets, 0), [byStore]);
+  const totalBultos  = useMemo(() => Object.values(byStore).reduce((s, u) => s + u.bultos,  0), [byStore]);
 
   function exportHistorial() {
     if (!records.length) return;

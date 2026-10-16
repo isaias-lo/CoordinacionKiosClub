@@ -43,7 +43,9 @@ export function PanelEncargado({ fila, nombreTienda, onCerrar, onAnterior, onSig
             <X size={15} />
           </button>
         </div>
-        <PickerGroupCard {...fila.tarjeta} variante="panel" unidades={fila.unidades} notaUnidades={fila.nota}
+        {/* `key`: con Anterior/Siguiente React reusaba la misma tarjeta, y la selección o un
+            «¿Eliminar igual?» abierto pasaban al encargado siguiente (y borraban ahí). */}
+        <PickerGroupCard key={fila.group.stateKey} {...fila.tarjeta} variante="panel" unidades={fila.unidades} notaUnidades={fila.nota}
           pie={<>
             <button type="button" className="pk-btn" onClick={onAnterior} disabled={!onAnterior}>Anterior</button>
             <button type="button" className="pk-btn" onClick={onSiguiente} disabled={!onSiguiente}>Siguiente</button>

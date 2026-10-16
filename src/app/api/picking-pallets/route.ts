@@ -160,8 +160,10 @@ export async function PATCH(request: NextRequest) {
       const { data: actual } = await sb.from('picking_pallets').select('seq').eq('id', slot.id).maybeSingle();
       if (actual && actual.seq != null && actual.seq !== slot.seq) conflictos.push(slot.id);
     }));
-    if (errs.length) return NextResponse.json({ error: errs.join('; ') }, { status: 500 });
+    // El 409 primero: el cliente imprime igual ante cualquier otro error (sin red se imprime), así
+    // que un 500 que tapara un número repetido terminaba en una etiqueta con código duplicado.
     if (conflictos.length) return NextResponse.json({ error: 'Número de pallet ya usado', conflictos }, { status: 409 });
+    if (errs.length) return NextResponse.json({ error: errs.join('; ') }, { status: 500 });
     return NextResponse.json({ ok: true, updated: body.slots.length });
   }
 
@@ -198,12 +200,21 @@ export async function DELETE(request: NextRequest) {
   // iba de la base, del despacho y de la planilla. Ahora, si Bodega lo registró, se rechaza y
   // Picking lo dice; para sacarlo, se borra en Bodega.
   const { data: unidad } = await sb.from('picking_pallets').select('id, date').eq('id', body.id).maybeSingle();
-  if (unidad?.date) {
-    const { data: registro } = await sb.from('actividad_bodega').select('id')
+  // Ya no está (la quitó otro equipo a la vez): antes respondía ok y cada «−» creía haber quitado una.
+  if (!unidad) return NextResponse.json({ error: 'La unidad ya no existe', reason: 'no_existe' }, { status: 404 });
+  if (unidad.date) {
+    // Bodega puede registrar DÍAS después del día del pallet (pesado pasada la medianoche, o un
+    // adelanto): `fecha` de la bitácora es el día en que se registró. Antes se buscaba solo el
+    // mismo día y el registro de la madrugada no se veía. Una semana de margen, con tope.
+    const hasta = new Date(`${unidad.date as string}T12:00:00Z`);
+    hasta.setUTCDate(hasta.getUTCDate() + 7);
+    const { data: registro, error: errRegistro } = await sb.from('actividad_bodega').select('id')
       .eq('accion', 'registrar_item')
-      .gte('fecha', unidad.date as string).lte('fecha', unidad.date as string)
+      .gte('fecha', unidad.date as string).lte('fecha', hasta.toISOString().slice(0, 10))
       .eq('detalle->>slotId', String(body.id))
       .limit(1).maybeSingle();
+    // Si no se pudo mirar, no se borra: es preferible un «inténtalo de nuevo» a llevarse un pallet pesado.
+    if (errRegistro) return NextResponse.json({ error: 'No se pudo verificar Bodega, intenta de nuevo' }, { status: 503 });
     if (registro) {
       return NextResponse.json(
         { error: 'Bodega ya registró esta unidad', reason: 'registrado_en_bodega' },

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fechaChile, fechaChileDe, fmtHoraChile, fmtFechaChile, fmtFechaHoraChile, odooDateToISO } from '@/lib/fechaChile';
+import { fechaChile, fechaChileDe, fmtHoraChile, fmtFechaChile, fmtFechaHoraChile, odooDateToISO, limitesDiaChile } from '@/lib/fechaChile';
 
 // Instantes escritos en UTC: el resultado no puede depender del huso donde corra el test.
 describe('fechaChileDe — el día del CD de un instante', () => {
@@ -111,5 +111,28 @@ describe('odooDateToISO', () => {
 
   it('formato ya ISO se pasa tal cual (no lo toca)', () => {
     expect(odooDateToISO('2026-07-29T14:32:11Z')).toBe('2026-07-29T14:32:11Z');
+  });
+});
+
+describe('limitesDiaChile', () => {
+  it('invierno (UTC−4): el día va de 04:00Z a 04:00Z del siguiente', () => {
+    expect(limitesDiaChile('2026-06-15')).toEqual({ desde: '2026-06-15T04:00:00.000Z', hasta: '2026-06-16T04:00:00.000Z' });
+  });
+  it('verano (UTC−3): el día va de 03:00Z a 03:00Z del siguiente', () => {
+    expect(limitesDiaChile('2026-10-16')).toEqual({ desde: '2026-10-16T03:00:00.000Z', hasta: '2026-10-17T03:00:00.000Z' });
+  });
+  it('un cambio a las 21:30 de Chile (00:30Z del día siguiente) cae dentro de su día', () => {
+    const { desde, hasta } = limitesDiaChile('2026-10-16');
+    const t = '2026-10-17T00:30:00.000Z';
+    expect(t >= desde && t < hasta).toBe(true);
+  });
+  it('cada instante del rango es ese día en Chile, y el borde de afuera ya no', () => {
+    for (const f of ['2026-04-04', '2026-04-05', '2026-09-05', '2026-09-06', '2026-12-31']) {
+      const { desde, hasta } = limitesDiaChile(f);
+      expect(fechaChileDe(desde)).toBe(f);
+      expect(fechaChileDe(new Date(new Date(hasta).getTime() - 1))).toBe(f);
+      expect(fechaChileDe(hasta)).not.toBe(f);
+      expect(fechaChileDe(new Date(new Date(desde).getTime() - 1))).not.toBe(f);
+    }
   });
 });
