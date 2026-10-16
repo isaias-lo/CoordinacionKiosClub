@@ -1,4 +1,5 @@
 -- Reportes de Picking: «Reportar un problema» y «Empezar de cero» (Ayuda › ¿Algo se trabó?).
+-- Aplicado en producción (epiwlmegimfftivqzzup) el 16/10/2026, con OK de Isaias.
 --
 -- El 14/10/2026 un bug llegó como «atrapada en egn» y hubo que reconstruir qué veía la persona.
 -- Cada fila guarda la foto del estado de la pantalla (pestaña, tiendas elegidas, sección, versión).
@@ -23,8 +24,13 @@ COMMENT ON TABLE public.picking_reportes IS
 
 ALTER TABLE public.picking_reportes ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS picking_reportes_insert ON public.picking_reportes;
-CREATE POLICY picking_reportes_insert ON public.picking_reportes
-  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+-- Sin DROP POLICY: el conector de Supabase se cuelga con DROP (ver 2026-10-15_cerrar_acceso_anonimo.sql).
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'picking_reportes' AND policyname = 'picking_reportes_insert') THEN
+    CREATE POLICY picking_reportes_insert ON public.picking_reportes
+      FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS picking_reportes_created ON public.picking_reportes (created_at DESC);
