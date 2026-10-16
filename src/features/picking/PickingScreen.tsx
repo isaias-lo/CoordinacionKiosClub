@@ -2155,7 +2155,13 @@ export function PickingScreen() {
           />
         </div>
 
-        {ayudaAbierta && <AyudaPanel onClose={() => setAyudaAbierta(false)} />}
+        {ayudaAbierta && (
+          <AyudaPanel onClose={() => setAyudaAbierta(false)} nombre={profile?.full_name}
+            estado={() => ({
+              pestana: rightTab, seccion: sectionFilter, tiendasElegidas: selectedCods, tiendaActiva,
+              encargadoAbierto, vista: panelView, escritorio: isDesktop, enLinea: isOnline,
+            })} />
+        )}
 
         {adelantoDialogOpen && (
           <AgregarAdelantoDialog

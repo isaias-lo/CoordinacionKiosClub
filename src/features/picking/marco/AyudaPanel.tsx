@@ -3,9 +3,12 @@
 import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { ATAJOS, GUIA } from './ayuda';
+import { AlgoSeTrabo } from './AlgoSeTrabo';
+import type { EstadoPicking } from './salidaYReporte';
 
-/** Panel lateral «Ayuda y atajos»: cómo se usa Picking y qué teclas tiene. */
-export function AyudaPanel({ onClose }: { onClose: () => void }) {
+/** Panel lateral «Ayuda y atajos»: cómo se usa Picking y qué teclas tiene. Arriba, la salida
+ *  para cuando algo se traba (AlgoSeTrabo). */
+export function AyudaPanel({ onClose, estado, nombre }: { onClose: () => void; estado: () => EstadoPicking; nombre?: string | null }) {
   const cerrar = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     cerrar.current?.focus();
@@ -26,6 +29,7 @@ export function AyudaPanel({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <div className="pk-drawer-b">
+          <AlgoSeTrabo estado={estado} nombre={nombre} />
           {GUIA.map(t => (
             <section key={t.titulo} className="pk-ayuda-tema">
               <h3>{t.titulo}</h3>
