@@ -106,7 +106,9 @@ export interface PickerStatRow {
   units: number; lineCount: number; avgSecondsPerLine: number; cph: number;
 }
 
-export interface StatsCache { cachedAt: string; rows: PickerStatRow[]; }
+// `desde`/`hasta`: el período de esas filas. Sin él, al volver a la pestaña se mostraban los números
+// de «Hoy» bajo el título del mes (el período se reiniciaba y las filas no).
+export interface StatsCache { cachedAt: string; rows: PickerStatRow[]; desde?: string; hasta?: string; }
 
 export type PickerType = 'P' | 'C' | 'B' | 'CH' | 'CC' | 'CN';
 // COMIDA y ASEO son DOS secciones, no una.

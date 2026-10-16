@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { fechaChileDe } from '@/lib/fechaChile';
+import { fechaChileDe, limitesDiaChile } from '@/lib/fechaChile';
+import { verifyAuth } from '@/lib/apiAuth';
 
 // Credentials are read from server-side env vars only — never from the request body.
 // Prefer ODOO_* (no NEXT_PUBLIC_) so the API key is not compiled into the browser bundle.
@@ -155,13 +156,14 @@ async function _fetchDayPickings(
     } catch { /* usa caché anterior */ }
   }
 
-  const desde = todayStr + ' 00:00:00';
-  const hasta = todayStr + ' 23:59:59';
+  // Odoo guarda las fechas en UTC sin zona: el día de Chile va de ~03:00/04:00 a la misma hora del
+  // día siguiente, no de 00:00 a 23:59 (eso dejaba fuera lo validado después de las ~21:00).
+  const { desde, hasta } = diaChileParaOdoo(todayStr);
   const dateCond: unknown[] = includeDoneToday
     ? ['|',
-        '&', ['scheduled_date', '>=', desde], ['scheduled_date', '<=', hasta],
-        '&', ['date_done',      '>=', desde], ['date_done',      '<=', hasta]]
-    : [['scheduled_date', '>=', desde], ['scheduled_date', '<=', hasta]];
+        '&', ['scheduled_date', '>=', desde], ['scheduled_date', '<', hasta],
+        '&', ['date_done',      '>=', desde], ['date_done',      '<', hasta]]
+    : [['scheduled_date', '>=', desde], ['scheduled_date', '<', hasta]];
 
   const domain: unknown[] = [
     ['state', 'not in', ['draft', 'cancel']],
@@ -276,7 +278,27 @@ async function getDayPickings(todayStr: string, includeDoneToday: boolean): Prom
   }
 }
 
+/** Un día de Chile en el formato de Odoo ('YYYY-MM-DD HH:MM:SS', UTC sin zona). `hasta` excluido. */
+function diaChileParaOdoo(fecha: string): { desde: string; hasta: string } {
+  const { desde, hasta } = limitesDiaChile(fecha);
+  const odoo = (iso: string) => iso.slice(0, 19).replace('T', ' ');
+  return { desde: odoo(desde), hasta: odoo(hasta) };
+}
+
+/** El cron de Control Cruce llama server-a-server con el secreto de cron, sin sesión. */
+function esLlamadaDeCron(req: NextRequest): boolean {
+  const secreto = process.env.CRON_SECRET;
+  return !!secreto && req.headers.get('authorization') === `Bearer ${secreto}`;
+}
+
 export async function POST(req: NextRequest) {
+  // ── CON SESIÓN (16/10/2026) ──────────────────────────────────────────────────────────────────
+  // Antes esta ruta no pedía nada: el middleware no mira /api, así que cualquiera sin cuenta
+  // podía leer pickings, nombres de encargados y operaciones de Odoo. Los navegadores mandan la
+  // cookie de sesión solos; los dos llamados server-a-server reenvían la del usuario
+  // (picking-store-progress) o el secreto del cron (control-cruce/auto-export).
+  if (!esLlamadaDeCron(req) && !await verifyAuth(req))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   if (!checkRateLimit(`odoo:${getClientIp(req)}`, { max: 30, windowMs: 60_000 }))
     return tooManyRequests();
 
@@ -298,7 +320,7 @@ export async function POST(req: NextRequest) {
     /** [CRUCE PESOS] Día a cruzar, YYYY-MM-DD. Sin él, hoy. */
     fecha?: string;
       includeDoneToday?: boolean;
-      // config.url accepted only for list_databases; all auth credentials ignored from client
+      // Se ignora: la URL del servidor sale siempre del entorno (ver list_databases).
       config?: { url?: string };
     };
     const { action, query = '', pickings = [] } = body;
@@ -316,12 +338,12 @@ export async function POST(req: NextRequest) {
       url = 'https://' + url;
     }
 
-    /* ── list_databases: allow URL override, no auth needed ── */
+    /* ── list_databases ── */
+    // Solo contra el servidor del entorno. Antes aceptaba una URL del cuerpo, y el servidor iba
+    // a buscarla y devolvía parte de la respuesta en el error: servía para que alguien hiciera
+    // que el servidor consultara direcciones internas. Ninguna pantalla manda esa URL.
     if (action === 'list_databases') {
-      let targetUrl = (body.config?.url ?? url);
-      if (targetUrl && !targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-        targetUrl = 'https://' + targetUrl;
-      }
+      const targetUrl = url;
       if (!targetUrl) return NextResponse.json({ error: 'Ingresa la URL del servidor primero.' }, { status: 400 });
       const dbs = (await odooRpc(targetUrl, { service: 'db', method: 'list', args: [] })) as string[];
       return NextResponse.json({ databases: dbs });
@@ -1282,8 +1304,8 @@ export async function POST(req: NextRequest) {
 
       const domain: unknown[] = [
         ['state', 'not in', ['draft', 'cancel']],
-        ['scheduled_date', '>=', todayStr + ' 00:00:00'],
-        ['scheduled_date', '<=', todayStr + ' 23:59:59'],
+        ['scheduled_date', '>=', diaChileParaOdoo(todayStr).desde],
+        ['scheduled_date', '<',  diaChileParaOdoo(todayStr).hasta],
         ['origin', 'not ilike', 'AUDITORIA'],
       ];
       if (pickingTypeIds.length > 0) {

@@ -41,12 +41,18 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded, yaHoy
   const searchInputRef = useRef<HTMLInputElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
-  // Foco atrapado dentro del diálogo + cierre con Escape + foco inicial en el buscador.
+  // `onClose` por ref: la pantalla lo pasa como función nueva en cada render (y re-renderiza cada
+  // 60 s con la recarga de unidades). Con `onClose` en las dependencias, el efecto se rearmaba y su
+  // limpieza devolvía el foco al botón de atrás: quien estaba escribiendo la fecha lo perdía.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Foco atrapado dentro del diálogo + cierre con Escape + foco inicial en el buscador. Una vez.
   useEffect(() => {
     previouslyFocused.current = document.activeElement as HTMLElement;
     searchInputRef.current?.focus();
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key === 'Escape') { onCloseRef.current(); return; }
       if (e.key !== 'Tab' || !panelRef.current) return;
       const focusables = panelRef.current.querySelectorAll<HTMLElement>(
         'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
@@ -62,7 +68,7 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded, yaHoy
       document.removeEventListener('keydown', onKeyDown);
       previouslyFocused.current?.focus?.();
     };
-  }, [onClose]);
+  }, []);
 
   // Catálogo = estático + tiendas de la BD (Config), para que las nuevas sean buscables.
   const [dbRows, setDbRows] = useState<DbTiendaRow[]>([]);

@@ -67,21 +67,23 @@ const COLS: {
 ];
 
 export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames, escritorio = false }: Props) {
-  const [cache, setCache] = useState<StatsCache | null>(() => {
+  const [cacheInicial] = useState<StatsCache | null>(() => {
     if (typeof window === 'undefined') return null;
     try { return JSON.parse(localStorage.getItem(STATS_CACHE_KEY) ?? 'null') as StatsCache | null; }
     catch { return null; }
   });
+  const [cache, setCache] = useState<StatsCache | null>(cacheInicial);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortColId, setSortColId] = useState<string>('name');
   const [sortAsc, setSortAsc] = useState(true);
 
-  const [dateFrom,     setDateFrom]     = useState(STATS_DATE_FROM);
-  const [dateTo,       setDateTo]       = useState(STATS_DATE_TO);
-  const [pendingFrom,  setPendingFrom]  = useState(STATS_DATE_FROM);
-  const [pendingTo,    setPendingTo]    = useState(STATS_DATE_TO);
+  // El período arranca en el de las filas guardadas, para que título y números digan lo mismo.
+  const [dateFrom,     setDateFrom]     = useState(cacheInicial?.desde ?? STATS_DATE_FROM);
+  const [dateTo,       setDateTo]       = useState(cacheInicial?.hasta ?? STATS_DATE_TO);
+  const [pendingFrom,  setPendingFrom]  = useState(cacheInicial?.desde ?? STATS_DATE_FROM);
+  const [pendingTo,    setPendingTo]    = useState(cacheInicial?.hasta ?? STATS_DATE_TO);
   const [showDateConfirm, setShowDateConfirm] = useState(false);
   const datesChanged = pendingFrom !== dateFrom || pendingTo !== dateTo;
 
@@ -99,7 +101,7 @@ export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames, esc
       });
       const data = (await res.json()) as { stats?: PickerStatRow[]; error?: string };
       if (!res.ok || data.error) throw new Error(data.error ?? 'Error Odoo');
-      const newCache: StatsCache = { cachedAt: new Date().toISOString(), rows: data.stats ?? [] };
+      const newCache: StatsCache = { cachedAt: new Date().toISOString(), rows: data.stats ?? [], desde: from, hasta: to };
       setCache(newCache);
       localStorage.setItem(STATS_CACHE_KEY, JSON.stringify(newCache));
     } catch (e) {

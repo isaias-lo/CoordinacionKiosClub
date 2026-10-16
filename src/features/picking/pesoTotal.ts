@@ -79,3 +79,14 @@ export function avisoCantidad(guardado: PesoTotalGuardado | null, nActual: numbe
   if (!guardado || guardado.n === nActual) return null;
   return `El total de ${fmt(guardado.total)} kg era para ${guardado.n} cajas y ahora hay ${nActual}. Vuelve a pesar y escribe el total.`;
 }
+
+/**
+ * Cuántas cajas de un tipo tiene el encargado, a partir de sus contadores.
+ *
+ * Los contadores de chocolate van por caja (`CH:negra`, `CH:carton`, ver `claveUnidad`), nunca
+ * `CH` a secas. Mirar `CH` daba siempre 0 y el campo de peso total del chocolate no aparecía nunca.
+ */
+export function cajasDelTipo(porClave: Record<string, number | undefined>, tipo: TipoCaja): number {
+  if (tipo !== 'CH') return porClave[tipo] ?? 0;
+  return Object.entries(porClave).reduce((n, [k, v]) => (k === 'CH' || k.startsWith('CH:') ? n + (v ?? 0) : n), 0);
+}

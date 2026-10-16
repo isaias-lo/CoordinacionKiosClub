@@ -83,7 +83,7 @@ import { VistaCalendario }    from './ajustes/VistaCalendario';
 import type { FilaSeco }      from './seco/TablaEncargados';
 import { seccionesDeFila, unidadesDeFila, notaUnidades, totalesPorTipo, sinImprimir, formatoKg, COLOR_SECCION } from './seco/filaEncargado';
 import { AgregarAdelantoDialog } from './components/AgregarAdelantoDialog';
-import { enqueuePickingItem, flushPickingQueue, migrarColaVieja, contarPendientesPicking, altasEnCola, sacarAltaDeLaCola } from './picking-offline-queue';
+import { enqueuePickingItem, flushPickingQueue, migrarColaVieja, contarPendientesPicking, altasEnCola, sacarAltaDeLaCola, loadPickingQueue } from './picking-offline-queue';
 import type { MedidasPallet } from '@/features/despacho/shared/medidasPallet';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import {
@@ -97,6 +97,7 @@ import { textoSinConexion } from './avisoSinConexion';
 import { ocultarSinAsignar } from './sinAsignar';
 import { usaSelectorDeTiendas, seleccionVencida } from './selectorTiendas';
 import { unirBatches } from '@/features/despacho/shared/hojaDespacho';
+import { limitesDiaChile } from '@/lib/fechaChile';
 
 
 // ─── Session helpers ──────────────────────────────────────────────────────────
@@ -487,9 +488,15 @@ export function PickingScreen() {
         // batch borraba el nombre del encargado. El nombre conserva su clave pelada para no
         // mover las cientos de filas que ya existen (ver sessionStateKeys.ts).
         body: JSON.stringify({ state_key: claveSesion(stateKey, tipo), date: todayISO(), picker_label: pickerLabel, tipo }),
-      }).then(() => { dirtyStateKeys.current.delete(dirtyKey); });
+      })
+        // Antes no miraba la respuesta: sin red la promesa fallaba, la clave quedaba «sucia» para
+        // siempre y ese encargado dejaba de recibir lo que escribían los otros equipos. Y un error
+        // del servidor pasaba callado: el nombre o el batch parecían guardados y no lo estaban.
+        .then(res => { if (!res.ok) showToast('⚠ No se pudo guardar el nombre/batch/peso — vuelve a escribirlo', '#D97706'); })
+        .catch(() => showToast('⚠ Sin conexión: el nombre/batch/peso no se guardó en el servidor', '#D97706'))
+        .finally(() => { dirtyStateKeys.current.delete(dirtyKey); });
     }, 500);
-  }, []);
+  }, [pickingFetch, showToast]);
 
   // Setea el batch manual de un encargado y lo persiste — mismo patrón que onNameChange.
   // Solo dígitos: se guarda el número crudo, el formato "BATCH/N" se aplica al mostrarlo.
@@ -529,17 +536,22 @@ export function PickingScreen() {
       const partes = repartirPeso(v.total, cajas.length);
       // Las medidas fijas son de la CAJA NEGRA. La de cartón varía de tamaño, así que no se le
       // escribe ninguna — inventarlas sería peor que no tenerlas. Las de congelado, solo peso.
-      const cajaDeEstas = tipo === 'CH' ? subtipoDeCaja(cajas[0]?.subtipo) : null;
-      const dims = cajaDeEstas ? medidasDeCaja(cajaDeEstas) : null;
-      const extra = dims
-        ? { ...dims, peso_v: pesoVolumetrico(dims.alto, dims.largo, dims.ancho) }
-        : {};
-      cajas.forEach((sl, i) => {
-        supabase.from('picking_pallets').update({ peso_kg: partes[i], ...extra }).eq('id', sl.id)
-          .then(({ error }) => { if (error) console.error('[peso-total]', error.message); });
+      // Caja por caja: antes se miraba solo la primera, y con negras y de cartón mezcladas las de
+      // cartón quedaban con las medidas de la negra.
+      const extraDe = (sl: PalletSlot) => {
+        const dims = tipo === 'CH' ? medidasDeCaja(subtipoDeCaja(sl.subtipo)) : null;
+        return dims ? { ...dims, peso_v: pesoVolumetrico(dims.alto, dims.largo, dims.ancho) } : {};
+      };
+      // Antes un error solo iba a la consola: la tarjeta mostraba el peso como guardado y Bodega
+      // nunca lo veía. Ahora se avisa una vez.
+      void Promise.all(cajas.map((sl, i) =>
+        supabase.from('picking_pallets').update({ peso_kg: partes[i], ...extraDe(sl) }).eq('id', sl.id)
+          .then(({ error }) => { if (error) console.error('[peso-total]', error.message); return !error; }, () => false),
+      )).then(oks => {
+        if (oks.some(ok => !ok)) showToast('⚠ El peso no llegó a todas las cajas — vuelve a escribirlo con conexión', '#D97706');
       });
     }, 700);
-  }, [upsertSessionState]);
+  }, [upsertSessionState, showToast]);
 
   // Al renombrar un picker, propaga el nombre a los slots YA creados de ese grupo. Su
   // picker_label queda congelado al crearse; sin esto, un equipo sin el nombre en sesión
@@ -637,8 +649,9 @@ export function PickingScreen() {
       const { data } = await supabase
         .from('picker_name_changes')
         .select('id, picker_key, old_name, new_name, changed_by_name, changed_at')
-        .gte('changed_at', `${date}T00:00:00.000Z`)
-        .lte('changed_at', `${date}T23:59:59.999Z`)
+        // Límites del día en Chile, no UTC (ver limitesDiaChile).
+        .gte('changed_at', limitesDiaChile(date).desde)
+        .lt('changed_at', limitesDiaChile(date).hasta)
         .order('changed_at', { ascending: false });
       if (data) setNameChanges(data as PickerNameChange[]);
     } catch { /* silent */ }
@@ -692,7 +705,13 @@ export function PickingScreen() {
           if (s.seq != null) (deBodega[claveNumeracion(s.store_cod, s.tipo)] ??= []).push(s.seq);
         }
         setSeqsBodega(deBodega);
-        setPalletSlots(prev => [...slots, ...prev.filter(s => encoladas.current.has(s.id))]);
+        // Una recarga mientras algo viaja no puede deshacerlo en pantalla: la unidad que se está
+        // quitando no vuelve (si volvía, el siguiente «−» se llevaba OTRA), y la provisoria que
+        // todavía no tiene respuesta sigue contando (si se iba, invitaba a apretar «+» de nuevo).
+        setPalletSlots(prev => [
+          ...slots.filter(s => !pendingDeleteIds.current.has(s.id)),
+          ...prev.filter(s => s.id < 0 && (encoladas.current.has(s.id) || !cancelarAltas.current.has(s.id))),
+        ]);
       }
     } catch { /* silent */ }
   }, []);
@@ -715,6 +734,33 @@ export function PickingScreen() {
   }, [vueltasCola, loadPalletSlots]);
 
   useEffect(() => { void loadPalletSlots(); }, [loadPalletSlots]);
+  // Al abrir, lo que quedó en la cola de este equipo vuelve a la pantalla como provisorio. Las
+  // unidades encoladas vivían solo en memoria: tras recargar seguían en la cola pero no se veían, el
+  // contador bajaba (invitando a un «+» de más) y el «−» no podía cancelarlas. La vuelta de la cola
+  // las suelta cuando salen, igual que a las de antes de recargar.
+  useEffect(() => {
+    let vivo = true;
+    void loadPickingQueue().then(items => {
+      if (!vivo) return;
+      const hoy = todayISO();
+      const nuevas: PalletSlot[] = [];
+      for (const it of items) {
+        const op = it.payload;
+        if (op.op !== 'add' || it.bloqueado || op.date !== hoy) continue;
+        if ([...encoladas.current.values()].includes(it.clientOpId)) continue;
+        const tempId = tempIdRef.current--;
+        encoladas.current.set(tempId, it.clientOpId);
+        nuevas.push({
+          id: tempId, store_cod: op.storeCod, state_key: op.stateKey, picker_label: op.pickerLabel,
+          tipo: op.tipo, subtipo: op.subtipo ?? null, contenido: op.contenido, section: op.section ?? null,
+          refs: op.refs, batch: op.batch ?? '', created_at: new Date(it.createdAt).toISOString(),
+          ...(op.medidas ?? {}),
+        } as PalletSlot);
+      }
+      if (nuevas.length) setPalletSlots(prev => [...prev, ...nuevas]);
+    }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
   // Polling fallback: si algún evento de INSERT fue perdido por el WebSocket
   // (corte breve, throttle de Supabase), el ciclo de 60 s lo recupera.
   useEffect(() => {
@@ -809,10 +855,10 @@ export function PickingScreen() {
     setPalletSlots(prev => [...prev, tempSlot]);
     // Sin señal (o con el servidor fallando) la unidad queda en pantalla como provisoria y viaja
     // por la cola. Las dos salidas antes se olvidaban de algo: una no llevaba el peso y ninguna la
-    // caja del chocolate.
+    // caja del chocolate. Tampoco el batch (16/10/2026): la unidad llegaba con batch vacío.
     const encolarAlta = () => {
       encoladas.current.set(tempId, clientOpId);
-      void enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, subtipo, contenido, section, refs, date, clientOpId, actorName, medidas });
+      void enqueuePickingItem({ op: 'add', stateKey, storeCod, pickerLabel, tipo, subtipo, contenido, section, refs, batch, date, clientOpId, actorName, medidas });
     };
     try {
       const res = await pickingFetch('/api/picking-pallets', {
@@ -900,7 +946,8 @@ export function PickingScreen() {
     // `manualTipo` es una CLAVE (puede traer la caja del chocolate): se parte antes de crear.
     const { tipo: tipoManual, subtipo: subManual } = partirClave(manualTipo);
     const { seccion, contenido } = seccionYContenidoManual(manualSeccion, tipoManual);
-    void addPalletSlot(stateKey, cod, nombre, tipoManual, contenido, '', seccion, undefined, subManual);
+    // El batch del formulario va también en la primera unidad, no solo en la sesión.
+    void addPalletSlot(stateKey, cod, nombre, tipoManual, contenido, '', seccion, undefined, subManual, normalizarBatch(manualBatch));
     // BUG 1/2 corregido: sin esto, el campo "Nombre del picker" del card recién creado
     // aparecía vacío (solo el placeholder mostraba el nombre) y la advertencia de fallback
     // salía de entrada aunque el encargado ya tuviera nombre real. Al sembrar el nombre acá
@@ -957,7 +1004,11 @@ export function PickingScreen() {
         method: 'DELETE',
         body: JSON.stringify({ id: slot.id, actor_name: presenceRef.current.name }),
       });
-      if (!res.ok) {
+      if (res.status === 404) {
+        // Ya la había quitado otro equipo: no se devuelve a la pantalla; la recarga muestra lo real.
+        void loadPalletSlots();
+        showToast('Esa unidad ya la había quitado otro equipo', '#D97706');
+      } else if (!res.ok) {
         setPalletSlots(prev => [...prev, slot].sort((a, b) => a.id - b.id));
         // Bodega ya la pesó y guardó: desde acá no se borra (ver DELETE /api/picking-pallets).
         if (res.status === 409) showToast('⚠ Bodega ya registró esa unidad: si sobra, se elimina desde Bodega', '#D97706');
@@ -1207,12 +1258,28 @@ export function PickingScreen() {
   // las de ayer no están en la lista de hoy (no se podrían quitar). Se sueltan y se vuelve a la
   // lista. Revisa cada minuto y al volver a la app; el picking se hace entre 9 y 20 h (medido en
   // picking_pallets, 28/09–14/10/2026), así que la medianoche nunca cae a mitad de una carga.
+  // Lo de un encargado (nombre, batch, peso total) es DEL DÍA: las claves se repiten cada día, así
+  // que con la pestaña abierta cruzando la medianoche el nombre o el BATCH/N de ayer salía en la
+  // etiqueta de hoy. Al cambiar de día se suelta y se vuelve a pedir todo lo del día nuevo.
+  const recargarDiaRef = useRef<() => void>(() => {});
+  recargarDiaRef.current = () => {
+    setPickerDisplayNames({});
+    setPickerBatch({});
+    setPesoTotalRaw({});
+    setPesoTotalGuardado({});
+    setSessionStateRows([]);
+    void loadSessionState();
+    void loadPalletSlots();
+    void loadPrintRecords();
+    void loadNameChanges();
+  };
   useEffect(() => {
     const revisar = () => {
       const hoy = todayISO();
       if (diaSeleccionRef.current === hoy) return;
       const vencida = seleccionVencida(diaSeleccionRef.current, hoy, selectedCodsRef.current.length);
       diaSeleccionRef.current = hoy;
+      recargarDiaRef.current();
       if (!vencida) return;
       setSelectedCods([]);
       setTiendaActiva(null);
@@ -1508,6 +1575,14 @@ export function PickingScreen() {
     return failures;
   }, [pickerDisplayNames, getCanonicalName, pickingFetch, slotsByStateKey, isOnline, loadPrintRecords, pickerBatch]);
 
+  // Las provisorias no se imprimen (ver printableLabels): se avisa cuántas quedaron fuera.
+  const avisarProvisorias = useCallback((stateKeys: Set<string> | null, cods: string[] | null) => {
+    const n = palletSlots.filter(s => s.id < 0
+      && (stateKeys == null || stateKeys.has(s.state_key))
+      && (cods == null || cods.includes(s.store_cod))).length;
+    if (n > 0) showToast(`⚠ ${n} unidad${n !== 1 ? 'es' : ''} todavía no llega${n !== 1 ? 'n' : ''} al servidor: su etiqueta sale cuando llegue${n !== 1 ? 'n' : ''}`, '#D97706');
+  }, [palletSlots, showToast]);
+
   // Imprime y registra SOLO los labels de un picker específico.
   // Evita que un supervisor "reclame" los pickers de otro al hacer click en su propia card.
   const printGroupLabels = useCallback(async (group: PickerGroup) => {
@@ -1528,10 +1603,11 @@ export function PickingScreen() {
     // 1) Asignar seq + canonical ANTES de registrar/imprimir → la etiqueta lleva código y queda en BD.
     if (!await assignCanonicalIds([group])) return;
     setSlotsCopia(slotsYaImpresos(palletSlots));
+    avisarProvisorias(new Set([group.stateKey]), null);
     // 2) Registrar la impresión y disparar el print del navegador.
     pendingPrintRef.current = recordPrints([group], section);
     setDoPrint(true);
-  }, [slotsByStateKey, showToast, recordPrints, assignCanonicalIds, sectionFilter, palletSlots]);
+  }, [slotsByStateKey, showToast, recordPrints, assignCanonicalIds, sectionFilter, palletSlots, avisarProvisorias]);
 
   const printStoreLabels = useCallback(async (cod: string) => {
     setSlotsCopia(slotsYaImpresos(palletSlots));
@@ -1543,9 +1619,10 @@ export function PickingScreen() {
     // Igual que al imprimir un encargado: el código va a la base ANTES de imprimir. Sin el await,
     // la impresión de la tienda corría contra el guardado del código.
     if (!await assignCanonicalIds(groups)) return;
+    avisarProvisorias(null, [cod]);
     pendingPrintRef.current = recordPrints(groups);
     setDoPrint(true);
-  }, [groupedByStore, recordPrints, assignCanonicalIds, palletSlots]);
+  }, [groupedByStore, recordPrints, assignCanonicalIds, palletSlots, avisarProvisorias]);
 
   const printSelectedLabels = useCallback(async (stateKey: string, slotIds: Set<number>) => {
     if (slotIds.size === 0) return;             // nunca imprimir "todas" por una selección vacía
@@ -1566,6 +1643,7 @@ export function PickingScreen() {
     const asignados = await Promise.all(selectedCods.map(cod => assignCanonicalIds(groupedByStore[cod] ?? [])));
     if (asignados.includes(false)) return;
     setSlotsCopia(slotsYaImpresos(palletSlots));
+    avisarProvisorias(null, selectedCods);
     setPrintOnlyStore(null);
     setPrintOnlyStateKey(null);
     setPrintOnlySection(null);
@@ -1573,7 +1651,7 @@ export function PickingScreen() {
       selectedCods.map(cod => recordPrints(groupedByStore[cod] ?? []))
     ).then(counts => counts.reduce((s, n) => s + n, 0));
     setDoPrint(true);
-  }, [selectedCods, groupedByStore, recordPrints, assignCanonicalIds, palletSlots]);
+  }, [selectedCods, groupedByStore, recordPrints, assignCanonicalIds, palletSlots, avisarProvisorias]);
 
   // EL TIPO Y LA ZONA DE CADA TIENDA, PARA LA ETIQUETA.
   //
@@ -1629,6 +1707,11 @@ export function PickingScreen() {
         if (isSinAsignar(s.picker_label)) continue;
         totalByTipo[s.tipo || 'P'] = (totalByTipo[s.tipo || 'P'] ?? 0) + 1;
       }
+      const maxNumByTipo: Record<string, number> = {};
+      for (const s of storeSlots) {
+        const n = palletNumsBySlotId[s.id];
+        if (n !== undefined) maxNumByTipo[s.tipo || 'P'] = Math.max(maxNumByTipo[s.tipo || 'P'] ?? 0, n);
+      }
 
       const firstSlotTime: Record<string, number> = {};
       for (const s of storeSlots) {
@@ -1664,10 +1747,15 @@ export function PickingScreen() {
           ? group.operations.reduce<string | null>((max, o) => (o.dateDone && (!max || o.dateDone > max) ? o.dateDone : max), null)
           : null;
         for (const slot of groupSlots) {
+          // Provisoria (todavía no llega al servidor): su número no queda guardado, y otro equipo
+          // puede tomarlo mientras tanto — dos pallets con la misma etiqueta. Se imprime cuando llegue.
+          if (slot.id < 0) continue;
           const pNum  = palletNumsBySlotId[slot.id];
           if (pNum === undefined) continue; // slot sin numerar (bucket "Sin asignar") — no se imprime [P6]
           const tipo  = (slot.tipo as PickerType) ?? 'P';
-          const total = totalByTipo[tipo] ?? 1;
+          // Nunca «P2 de 1»: si Bodega ya usó un número (un pallet web), la numeración lo salta y
+          // el total tiene que alcanzar al número más alto.
+          const total = Math.max(totalByTipo[tipo] ?? 1, maxNumByTipo[tipo] ?? 0);
           // [Req 1] Un slot de chocolate (CH, o pallet con contenido chocolate) muestra "Chocolate"
           // como contenido en la etiqueta, aunque las categorías del grupo no lo incluyan.
           const esChoc   = tipo === 'CH' || String((slot as { contenido?: string }).contenido ?? '').toLowerCase().includes('chocolate');

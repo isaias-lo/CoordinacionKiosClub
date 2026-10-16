@@ -53,17 +53,20 @@ export async function POST(request: NextRequest) {
     // This rank becomes the sequence number in the canonical ID.
     const { data: slots } = await sb
       .from('picking_pallets')
-      .select('id')
+      .select('id, seq')
       .eq('date', date)
       .eq('store_cod', store_cod)
       .eq('tipo', tipo)
       .order('id', { ascending: true });
 
-    const slotList = slots ?? [];
-    const rank = slotList.findIndex(s => s.id === slot_id) + 1;
-    if (rank === 0) {
+    const slotList = (slots ?? []) as { id: number; seq: number | null }[];
+    const pos = slotList.findIndex(s => s.id === slot_id);
+    if (pos === -1) {
       return NextResponse.json({ error: 'slot_id not found for this store/tipo/date' }, { status: 404 });
     }
+    // El número impreso (`seq`) cuando ya lo tiene; si no, la posición. Solo con la posición, al
+    // borrarse un pallet el siguiente repetía el id de otro y el upsert lo descartaba en silencio.
+    const rank = slotList[pos].seq ?? pos + 1;
 
     const stamp  = stampDesdeISO(date);
     const fecha  = fechaFromISO(date);
@@ -94,6 +97,13 @@ export async function POST(request: NextRequest) {
       fuente:          'picking',
       picking_slot_id: slot_id,
     };
+
+    // Si el id ya es de OTRA unidad, el upsert de abajo no escribiría nada y respondería ok.
+    const { data: yaEsta } = await sb.from(destino.tabla).select('picking_slot_id').eq('id', id).maybeSingle();
+    if (yaEsta && yaEsta.picking_slot_id != null && Number(yaEsta.picking_slot_id) !== slot_id) {
+      console.error(`[despacho-picking] ${id} ya es de la unidad ${yaEsta.picking_slot_id}, no de ${slot_id}`);
+      return NextResponse.json({ error: 'Ese número ya es de otra unidad', id }, { status: 409 });
+    }
 
     // Insert only if ID doesn't already exist — never overwrite Bodega/Enrutador data
     const { error } = await sb

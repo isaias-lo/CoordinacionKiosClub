@@ -2,6 +2,7 @@
 // Para hoy se usan los datos en vivo que ya tiene PickingScreen.
 
 import { supabase } from '@/lib/supabase';
+import { limitesDiaChile } from '@/lib/fechaChile';
 import type { PrintRecord, PickerNameChange, PalletSlot } from '../picking-types';
 import type { PickingEvento } from '../picking-utils';
 
@@ -29,12 +30,13 @@ export async function fetchActivity(date: string): Promise<ActivityData> {
     supabase.from('picking_pallets')
       .select('id, store_cod, state_key, picker_label, tipo, contenido, refs, created_at, seq, canonical_id')
       .eq('date', date).eq('is_active', true).order('created_at', { ascending: true }),
-    // picker_name_changes no tiene columna `date`: filtramos por día UTC, igual que
-    // el resto del módulo de Picking (las columnas `date` se escriben con todayISO UTC).
+    // picker_name_changes no tiene columna `date`: se filtra por los límites del día EN CHILE.
+    // (Antes por día UTC, cuando `todayISO` era UTC; hoy es `fechaChile`, y el día UTC dejaba
+    // fuera los cambios de después de las ~21:00.)
     supabase.from('picker_name_changes')
       .select('id, picker_key, old_name, new_name, changed_by_name, changed_at')
-      .gte('changed_at', `${date}T00:00:00.000Z`)
-      .lte('changed_at', `${date}T23:59:59.999Z`)
+      .gte('changed_at', limitesDiaChile(date).desde)
+      .lt('changed_at', limitesDiaChile(date).hasta)
       .order('changed_at', { ascending: false }),
   ]);
 

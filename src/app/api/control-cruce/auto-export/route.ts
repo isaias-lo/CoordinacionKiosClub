@@ -61,9 +61,10 @@ async function runExport(
 ) {
   // 1. Fetch Odoo data (COMPLETADO para fechaArmado = targetDate.iso,
   //    más VENCIDA/PLANIFICADO con scheduled_date en ese rango)
+  // Con el secreto del cron que llegó: /api/odoo pide sesión o ese secreto desde el 16/10/2026.
   const odooRes = await fetch(`${baseUrl}/api/odoo`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...forwardHeaders },
     body: JSON.stringify({
       action:            'get_control_activities',
       query:             '',          // todos los usuarios

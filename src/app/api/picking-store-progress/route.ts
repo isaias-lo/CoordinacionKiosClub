@@ -22,9 +22,16 @@ const TTL_MS   = 60_000;               // refresco batch automático: como máxi
  */
 async function fetchOdooProgress(request: NextRequest): Promise<Record<string, { total: number; done: number; congTotal: number; congDone: number }> | null> {
   try {
+    // Reenvía la sesión de quien pregunta: /api/odoo pide sesión desde el 16/10/2026.
+    const cookie = request.headers.get('cookie');
+    const authorization = request.headers.get('authorization');
     const res = await fetch(new URL('/api/odoo', request.url), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(cookie ? { cookie } : {}),
+        ...(authorization ? { authorization } : {}),
+      },
       // query vacío = TODAS las tiendas del día en una sola llamada batch.
       // includeDoneToday: cuenta también los pickings TERMINADOS hoy aunque su
       // scheduled_date sea de otro día (adelantados) → no quedan grises en el semáforo.
