@@ -270,6 +270,8 @@ export function validarDimensiones(pkg: string, peso: number, alto: number, anch
   const lim = LIMITES[pkg as 'pallet' | 'box' | 'chocolate'];
   if (!lim) return [];
   const errores: string[] = [];
+  // Solo se revisaba el máximo: un «-150» pasaba y se guardaba un alto negativo.
+  if (alto < 0 || ancho < 0 || largo < 0) errores.push('Las medidas no pueden ser negativas');
   if (peso > lim.pesoMax) errores.push(`Peso máximo ${lim.pesoMax} kg para ${pkg}`);
   if (alto  && alto  > lim.altoMax)  errores.push(`Alto máximo ${lim.altoMax} cm`);
   if (ancho && ancho > lim.anchoMax) errores.push(`Ancho máximo ${lim.anchoMax} cm`);

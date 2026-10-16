@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase';
  *                    e.g. "picking_pallets:date=eq.2026-06-08,despacho_rm"
  * @param onRefresh   Callback invoked on any data change. Keep it stable (useCallback).
  * @param enabled     Pass false to pause the subscription.
- * @param pollMs      Polling fallback interval in ms (default 15 000). Only fires when WebSocket is disconnected.
+ * @param pollMs      Polling fallback interval in ms (default 15 000). Disconnected: every pollMs. Connected: every max(4×pollMs, 60 s) while visible.
  * @param debounceMs  Debounce realtime events in ms (default 0 = no debounce).
  */
 export function useRealtimeRefresh(
@@ -61,9 +61,20 @@ export function useRealtimeRefresh(
       if (!wasConnected && connectedRef.current) fire();
     });
 
-    // Polling fallback — only fires when WebSocket is disconnected
+    // Polling fallback: cada `pollMs` con el canal caído, y también con el canal «conectado» pero
+    // cada 4× (mínimo 1 min) y solo con la pestaña a la vista. Un canal SUBSCRIBED no garantiza
+    // que lleguen cambios: si la tabla no está en la publicación de Realtime (así quedó producción
+    // tras la migración del 28/09), el canal se conecta y nunca avisa nada, y sin esto la pantalla
+    // no se enteraba jamás de lo que hacían los otros equipos.
+    const lentoMs = Math.max(pollMs * 4, 60_000);
+    let ultimo = Date.now();
     const pollId = setInterval(() => {
-      if (!connectedRef.current) cbRef.current();
+      const ahora = Date.now();
+      const visible = typeof document === 'undefined' || document.visibilityState === 'visible';
+      if (!connectedRef.current || (visible && ahora - ultimo >= lentoMs)) {
+        ultimo = ahora;
+        cbRef.current();
+      }
     }, pollMs);
 
     return () => {

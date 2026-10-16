@@ -11,6 +11,7 @@ import {
   migrarColaVieja,
   bloqueadasPicking,
   contarPendientesPicking,
+  veredictoPicking,
 } from '../picking-offline-queue';
 import type { OfflineQueueItem } from '../picking-offline-queue';
 
@@ -209,5 +210,17 @@ describe('migrarColaVieja', () => {
     expect(await migrarColaVieja()).toBe(0);
     vi.restoreAllMocks();
     expect(localStorage.getItem(CLAVE_VIEJA)).not.toBeNull();
+  });
+});
+
+describe('veredictoPicking — el 401 se reintenta', () => {
+  it('401 (sesión no lista o vencida) se reintenta en vez de bloquear la unidad', () => {
+    expect(veredictoPicking(401)).toBe('reintentar');
+  });
+  it('el resto sigue la regla común', () => {
+    expect(veredictoPicking(200)).toBe('ok');
+    expect(veredictoPicking(403)).toBe('bloqueado');
+    expect(veredictoPicking(409)).toBe('bloqueado');
+    expect(veredictoPicking(503)).toBe('reintentar');
   });
 });

@@ -81,6 +81,12 @@ button.pk-sg:hover .acc{color:#2B4BC8}
 .pk-ayuda-tema:last-child{border-bottom:0}
 .pk-ayuda-tema h3{font-size:11px;font-weight:700;letter-spacing:.08em;color:#8A91A1;text-transform:uppercase;margin:0 0 8px}
 .pk-ayuda-tema ol{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:13px;color:#3D4350;line-height:1.45}
+.pk-trabo-bot{display:flex;gap:8px;flex-wrap:wrap}
+.pk-trabo-bot .pk-btn{flex:1;min-height:40px;justify-content:center}
+.pk-trabo-form{display:flex;flex-direction:column;gap:8px}
+.pk-trabo-form textarea{width:100%;border:1px solid #D5D9E0;border-radius:8px;padding:8px 10px;font:inherit;font-size:16px;resize:vertical}
+.pk-trabo-aviso{margin:8px 0 0;font-size:13px;color:#A3271A}
+.pk-trabo-aviso.ok{color:#1B7A3D}
 .pk-atajos{border-collapse:collapse;width:100%;font-size:13px;margin-bottom:8px}
 .pk-atajos td{padding:6px 0;border-bottom:1px solid #EEF0F3;color:#3D4350}
 .pk-atajos td:first-child{width:72px}

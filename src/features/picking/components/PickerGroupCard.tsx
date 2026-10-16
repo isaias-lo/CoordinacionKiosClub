@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Printer, RotateCcw, AlertTriangle, Package } from 'lucide-react';
-import { pesoTotalValido, avisoCantidad, type TipoCaja, type PesoTotalGuardado } from '../pesoTotal';
+import { pesoTotalValido, avisoCantidad, cajasDelTipo, type TipoCaja, type PesoTotalGuardado } from '../pesoTotal';
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord, SectionFilter } from '../picking-types';
 import { tiposDeUnidad, type ClaveUnidad } from '../tiposUnidad';
@@ -127,14 +127,21 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
   const pickerLabel   = displayName || group.key;
   const barcodePickerName = sanitizeForBarcode(pickerLabel);
 
-  const [selectedIndices, setSelectedIndices]             = useState<Set<number>>(new Set());
+  // La selección se guarda por ID de pallet, no por posición: la lista se reordena sola (llega un
+  // B2 de otro equipo, o se agrega uno acá) y una posición guardada pasaba a señalar OTRO pallet,
+  // que era el que se imprimía. Los índices se derivan de los ids en cada render.
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const selectedIndices = new Set(slots.flatMap((sl, i) => selectedIds.has(sl.id) ? [i] : []));
+  const setSelectedIndices = (idx: Set<number>) => setSelectedIds(new Set([...idx].map(i => slots[i]?.id).filter((id): id is number => typeof id === 'number')));
   // Confirm inline al decrementar un pallet que ya fue impreso
   const [pendingDecrementTipo, setPendingDecrementTipo]   = useState<ClaveUnidad | null>(null);
 
   const toggleIndex = (i: number) => {
-    setSelectedIndices(prev => {
+    const id = slots[i]?.id;
+    if (typeof id !== 'number') return;
+    setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(i)) next.delete(i); else next.add(i);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   };
@@ -310,8 +317,8 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
           )}
 
           {/* Peso TOTAL de las cajas — uno por tipo de caja que tenga este encargado */}
-          {onPesoTotalChange && (['CH', 'CC', 'CN'] as TipoCaja[]).filter(t => (palletsByTipo[t] ?? 0) > 0).map(t => {
-            const n = palletsByTipo[t] ?? 0;
+          {onPesoTotalChange && (['CH', 'CC', 'CN'] as TipoCaja[]).filter(t => cajasDelTipo(palletsByTipo, t) > 0).map(t => {
+            const n = cajasDelTipo(palletsByTipo, t);
             const st = pesoTotal?.[t];
             const raw = st?.raw ?? '';
             const v = raw.trim() ? pesoTotalValido(raw, n, t) : null;

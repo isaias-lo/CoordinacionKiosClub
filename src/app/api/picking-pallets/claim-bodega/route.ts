@@ -47,7 +47,12 @@ export async function POST(request: NextRequest) {
     }
     if (!slot) {
       // `variantesDeCodigo`: la etiqueta de 23PEÑ/37VIÑ llega como PEN/VIN o sin la Ñ.
-      const { data } = await sb.from('picking_pallets').select(SLOT_FIELDS).in('canonical_id', variantesDeCodigo(ref)).limit(1).maybeSingle();
+      // Con orden: un código puede estar en más de una fila (un pallet unificado queda inactivo con
+      // su código, y el número se calcula solo sobre los activos). Sin orden, la base devolvía
+      // cualquiera y el escaneo podía revivir el inactivo en vez del pallet que está en el piso.
+      const { data } = await sb.from('picking_pallets').select(SLOT_FIELDS).in('canonical_id', variantesDeCodigo(ref))
+        .order('is_active', { ascending: false }).order('id', { ascending: false })
+        .limit(1).maybeSingle();
       slot = data ?? null;
     }
 

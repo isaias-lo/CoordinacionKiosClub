@@ -9,7 +9,7 @@ import { Printer, RotateCcw, AlertTriangle } from 'lucide-react';
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord } from '../picking-types';
 import type { ClaveUnidad } from '../tiposUnidad';
-import { pesoTotalValido, avisoCantidad, type TipoCaja, type PesoTotalGuardado } from '../pesoTotal';
+import { pesoTotalValido, avisoCantidad, cajasDelTipo, type TipoCaja, type PesoTotalGuardado } from '../pesoTotal';
 import { mensajeReimpresion } from '../reimpresion';
 import { STATE_INFO, buildCanonicalId, todayISO } from '../picking-utils';
 import { fmtHoraChile } from '@/lib/fechaChile';
@@ -140,8 +140,8 @@ export function PanelDetalle(p: PanelDetalleProps) {
           <span className="pk-sub" style={{ marginTop: -8 }}>Se imprimirá como <span className="pk-mono">BATCH/{p.batchValue}</span></span>
         )}
 
-        {p.onPesoTotalChange && (['CH', 'CC', 'CN'] as TipoCaja[]).filter(t => (palletsByTipo[t] ?? 0) > 0).map(t => {
-          const cajas = palletsByTipo[t] ?? 0;
+        {p.onPesoTotalChange && (['CH', 'CC', 'CN'] as TipoCaja[]).filter(t => cajasDelTipo(palletsByTipo, t) > 0).map(t => {
+          const cajas = cajasDelTipo(palletsByTipo, t);
           const st = p.pesoTotal?.[t];
           const raw = st?.raw ?? '';
           const v = raw.trim() ? pesoTotalValido(raw, cajas, t) : null;

@@ -58,7 +58,8 @@ function avanzarCampo(el: EventTarget | null): boolean {
   const tarjeta = el.closest('[data-tarjeta-bodega]');
   if (!campo || !tarjeta) return false;
   const campos = [...tarjeta.querySelectorAll<HTMLInputElement>('input[data-campo]')];
-  const sig = siguienteCampo(campos.map(c => c.dataset.campo ?? ''), campo);
+  const vacios = new Set(campos.filter(c => c.value.trim() === '').map(c => c.dataset.campo ?? ''));
+  const sig = siguienteCampo(campos.map(c => c.dataset.campo ?? ''), campo, vacios);
   if (sig === null) return false;
   if (sig === 'guardar') {
     // Soltar el foco primero: la tarjeta se vuelve "guardada" y el campo desaparece, y así el

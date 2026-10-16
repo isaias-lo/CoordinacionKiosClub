@@ -29,9 +29,13 @@ export function pestana(key: PestanaPicking): Pestana {
 
 /** «Miércoles 8 oct», como la franja superior del diseño. */
 export function fechaCorta(d: Date): string {
-  const dia = d.toLocaleDateString('es-CL', { weekday: 'long' });
-  const mes = d.toLocaleDateString('es-CL', { month: 'short' }).replace('.', '');
-  return `${dia.charAt(0).toUpperCase()}${dia.slice(1)} ${d.getDate()} ${mes}`;
+  // En hora de Chile, no la del equipo: el servidor (UTC) dibujaba mañana pasadas las ~21:00 y el
+  // navegador hoy, y React se quejaba de que no calzaban.
+  const tz = { timeZone: 'America/Santiago' } as const;
+  const dia = d.toLocaleDateString('es-CL', { ...tz, weekday: 'long' });
+  const mes = d.toLocaleDateString('es-CL', { ...tz, month: 'short' }).replace('.', '');
+  const num = d.toLocaleDateString('es-CL', { ...tz, day: 'numeric' });
+  return `${dia.charAt(0).toUpperCase()}${dia.slice(1)} ${num} ${mes}`;
 }
 
 /** Texto de la píldora de conexión. Con señal y sin nada en la cola, «todo guardado». */

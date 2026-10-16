@@ -59,6 +59,18 @@
   --aviso-pantalla:        #92400E;
   --aviso-pantalla-letra:  #FFFFFF;
 
+  /* De qué CAJA es un chocolate. Negra (retornable, tara 3,3) y cartón (tara 0,4): el dato ya
+     estaba en la tarjeta, pero en 11 px café sobre café claro y nadie lo leía.
+     Se distinguen por LUMINOSIDAD, no solo por tono —oscura contra clara— así funciona a
+     contraluz, con la pantalla sucia y para quien confunde colores. Blanco sobre #262626 da 15:1.
+     No chocan con las franjas de la lista de tiendas (azul/verde/celeste), que significan otra
+     cosa. Ver `shared/ChipCaja.tsx` y `shared/subtipoCaja.ts`. */
+  --caja-negra:         #262626;
+  --caja-negra-letra:   #FFFFFF;
+  --caja-carton:        #FDF0DC;
+  --caja-carton-letra:  #6B3A08;
+  --caja-carton-borde:  #D9A441;
+
   /* Sidebar (always dark — independent of theme) */
   --sidebar-bg:       #0D1829;
   --sidebar-border:   rgba(255,255,255,0.07);

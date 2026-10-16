@@ -32,6 +32,35 @@ export function fechaChileDe(value: string | number | Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(d);
 }
 
+/** El primer instante (ms) en que en Chile ya es `fecha` (YYYY-MM-DD). */
+function inicioDiaChileMs(fecha: string): number {
+  const [y, m, d] = fecha.split('-').map(Number);
+  const medianocheUTC = Date.UTC(y, m - 1, d);
+  // Chile está a UTC−3 o UTC−4 (y algún día pudo ser −5): se prueba de menor a mayor y se queda
+  // con la primera hora que ya es ese día en Chile y cuyo milisegundo anterior todavía no lo era.
+  for (let h = 2; h <= 6; h++) {
+    const t = medianocheUTC + h * 3_600_000;
+    if (fechaChileDe(t) === fecha && fechaChileDe(t - 1) !== fecha) return t;
+  }
+  return medianocheUTC + 3 * 3_600_000;
+}
+
+/**
+ * Los límites de un día de Chile como instantes ISO, para filtrar columnas `timestamptz`:
+ * `desde` incluido, `hasta` EXCLUIDO (es el comienzo del día siguiente).
+ *
+ * Filtrar con `${fecha}T00:00Z … T23:59Z` toma el día UTC: deja fuera lo que pasó después de las
+ * ~21:00 de Chile y mete lo de la noche anterior.
+ */
+export function limitesDiaChile(fecha: string): { desde: string; hasta: string } {
+  const [y, m, d] = fecha.split('-').map(Number);
+  const siguiente = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  return {
+    desde: new Date(inicioDiaChileMs(fecha)).toISOString(),
+    hasta: new Date(inicioDiaChileMs(siguiente)).toISOString(),
+  };
+}
+
 // ── Formato de timestamps para mostrar SIEMPRE en hora de Chile ──────────────
 // Los timestamptz se guardan en UTC (correcto). Estos helpers convierten al
 // mostrar, forzando timeZone America/Santiago para que la hora sea la real de

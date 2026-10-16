@@ -7,7 +7,7 @@ import { fechaChile } from '@/lib/fechaChile';
 
 // peso_kg/alto/largo/ancho/peso_v: las columnas ya existían, pero solo las escribía Bodega. Ahora
 // también viajan desde Picking, así que el cliente necesita verlas de vuelta al crear un slot.
-const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, subtipo, contenido, section, refs, batch, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v';
+const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, subtipo, contenido, section, refs, batch, created_at, date, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v';
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
 // Auditoría de altas/bajas de pallets (fire-and-forget — no debe bloquear la respuesta).
@@ -44,7 +44,9 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: 'ID no encontrado' }, { status: 404 });
     // If refs is empty, look for sibling pallets in the same group (same state_key + date) that have refs
     if (data && !data.refs) {
-      const slotDate = (data.created_at as string).slice(0, 10);
+      // El día del despacho (`date`), no el de `created_at`: ese está en UTC y después de las ~21:00
+      // de Chile ya es mañana, así que no encontraba a los hermanos y la guía salía vacía.
+      const slotDate = (data.date as string | null) ?? (data.created_at as string).slice(0, 10);
       const { data: sibling } = await supabaseServer()
         .from('picking_pallets')
         .select('refs')
@@ -158,8 +160,10 @@ export async function PATCH(request: NextRequest) {
       const { data: actual } = await sb.from('picking_pallets').select('seq').eq('id', slot.id).maybeSingle();
       if (actual && actual.seq != null && actual.seq !== slot.seq) conflictos.push(slot.id);
     }));
-    if (errs.length) return NextResponse.json({ error: errs.join('; ') }, { status: 500 });
+    // El 409 primero: el cliente imprime igual ante cualquier otro error (sin red se imprime), así
+    // que un 500 que tapara un número repetido terminaba en una etiqueta con código duplicado.
     if (conflictos.length) return NextResponse.json({ error: 'Número de pallet ya usado', conflictos }, { status: 409 });
+    if (errs.length) return NextResponse.json({ error: errs.join('; ') }, { status: 500 });
     return NextResponse.json({ ok: true, updated: body.slots.length });
   }
 
@@ -172,11 +176,15 @@ export async function PATCH(request: NextRequest) {
     if (body[campo] !== undefined) update[campo] = body[campo];
   }
   if (Object.keys(update).length === 0) return NextResponse.json({ error: 'Nada que actualizar' }, { status: 400 });
-  const { error } = await supabaseServer()
+  const { data: cambiados, error } = await supabaseServer()
     .from('picking_pallets')
     .update(update)
-    .eq('id', body.id);
+    .eq('id', body.id)
+    .select('id');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // Un update que no encuentra la fila no da error en Postgres. Antes respondía ok y quien llamaba
+  // creía haber corregido un slot que ya no existía (lo había borrado o unido otro equipo).
+  if (!cambiados?.length) return NextResponse.json({ error: 'El pallet ya no existe' }, { status: 404 });
   return NextResponse.json({ ok: true });
 }
 
@@ -192,12 +200,21 @@ export async function DELETE(request: NextRequest) {
   // iba de la base, del despacho y de la planilla. Ahora, si Bodega lo registró, se rechaza y
   // Picking lo dice; para sacarlo, se borra en Bodega.
   const { data: unidad } = await sb.from('picking_pallets').select('id, date').eq('id', body.id).maybeSingle();
-  if (unidad?.date) {
-    const { data: registro } = await sb.from('actividad_bodega').select('id')
+  // Ya no está (la quitó otro equipo a la vez): antes respondía ok y cada «−» creía haber quitado una.
+  if (!unidad) return NextResponse.json({ error: 'La unidad ya no existe', reason: 'no_existe' }, { status: 404 });
+  if (unidad.date) {
+    // Bodega puede registrar DÍAS después del día del pallet (pesado pasada la medianoche, o un
+    // adelanto): `fecha` de la bitácora es el día en que se registró. Antes se buscaba solo el
+    // mismo día y el registro de la madrugada no se veía. Una semana de margen, con tope.
+    const hasta = new Date(`${unidad.date as string}T12:00:00Z`);
+    hasta.setUTCDate(hasta.getUTCDate() + 7);
+    const { data: registro, error: errRegistro } = await sb.from('actividad_bodega').select('id')
       .eq('accion', 'registrar_item')
-      .gte('fecha', unidad.date as string).lte('fecha', unidad.date as string)
+      .gte('fecha', unidad.date as string).lte('fecha', hasta.toISOString().slice(0, 10))
       .eq('detalle->>slotId', String(body.id))
       .limit(1).maybeSingle();
+    // Si no se pudo mirar, no se borra: es preferible un «inténtalo de nuevo» a llevarse un pallet pesado.
+    if (errRegistro) return NextResponse.json({ error: 'No se pudo verificar Bodega, intenta de nuevo' }, { status: 503 });
     if (registro) {
       return NextResponse.json(
         { error: 'Bodega ya registró esta unidad', reason: 'registrado_en_bodega' },

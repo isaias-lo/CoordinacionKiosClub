@@ -20,7 +20,11 @@ describe('pestañas de Picking', () => {
 
 describe('fechaCorta', () => {
   it('día con mayúscula, número y mes corto sin punto', () => {
-    expect(fechaCorta(new Date(2026, 9, 8))).toBe('Jueves 8 oct');
+    expect(fechaCorta(new Date('2026-10-08T15:00:00Z'))).toBe('Jueves 8 oct');
+  });
+  it('es el día de Chile, no el del reloj del equipo: 23:30 en Chile sigue siendo ese día', () => {
+    // 23:30 del jueves en Chile (UTC−3) = 02:30Z del viernes.
+    expect(fechaCorta(new Date('2026-10-09T02:30:00Z'))).toBe('Jueves 8 oct');
   });
 });
 

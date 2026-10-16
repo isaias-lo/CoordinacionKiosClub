@@ -118,6 +118,11 @@ export default {
           'chocolate-suave':  'var(--uni-chocolate-suave)',
         },
 
+        /* ── La caja de un chocolate (variables en index.css) ── */
+        'caja-negra':  { DEFAULT: 'var(--caja-negra)',  letra: 'var(--caja-negra-letra)' },
+        'caja-carton': { DEFAULT: 'var(--caja-carton)', letra: 'var(--caja-carton-letra)',
+                         borde: 'var(--caja-carton-borde)' },
+
         /* ── Aviso sobre la pantalla (variables en index.css) ── */
         'aviso-pantalla': {
           DEFAULT: 'var(--aviso-pantalla)',
