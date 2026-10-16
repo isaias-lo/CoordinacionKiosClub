@@ -89,7 +89,7 @@ import { actualizarSlotPicking, camposDePeso, AVISO_SLOT_BORRADO } from '../../s
 import { sincronizarYCruzar } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
 import { esSinPesar, esPalletWeb, DIMS_SIN_PESAR } from '../../shared/sinPesar';
-import { subtipoDeCaja, medidasDeCaja, pesoNetoDeCaja, pesoParaMostrar, etiquetaSubtipo, taraDeCaja,
+import { subtipoDeCaja, medidasDeCaja, pesoNetoDeCaja, pesoParaMostrar,
          type SubtipoCaja } from '../../shared/subtipoCaja';
 import { pesoEnTarjeta, pesoNetoDeTarjeta, pesoNetoPallet, taraDeTarjeta, taraEnTarjeta, taraParaGuardar, taraTrasCorregir, textoPesoConTara } from '../../shared/pesoDelPallet';
 import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
@@ -102,6 +102,8 @@ import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } f
 import { fechaChile } from '@/lib/fechaChile';
 import { diaDeTrabajoActual, diaDeTrabajoEsDeliberado } from '@/features/despacho/shared/diaDeTrabajoActual';
 import { claveDelDia } from '@/features/despacho/shared/calendarioDelDia';
+import { ChipCaja } from '@/features/despacho/shared/ChipCaja';
+import { franjaDeCaja } from '@/features/despacho/shared/cajaEnLaTarjeta';
 import { soloSeco } from '@/features/despacho/shared/unidadDeCongelados';
 import { accionReclamo, avisoYaVisible, avisoRecuperado } from '@/features/despacho/shared/reclamoPreexistente';
 import { camposDeSlot } from '@/features/despacho/shared/camposDeSlot';
@@ -2992,11 +2994,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               return (
                 <div key={row.id} id={row.pickingSlotId != null ? `pallet-card-${row.pickingSlotId}` : undefined}
                   data-tarjeta-bodega="" data-slot={row.pickingSlotId ?? undefined}
-                  className={`relative bg-card rounded-kios border-2 px-3 py-3 shadow-kios ${ESTILO_ACTIVA[claseUnidad(row.tipo)]} ${esResaltada ? 'tarjeta-escaneada' : ''}`}>
+                  className={`relative bg-card rounded-kios border-2 px-3 py-3 shadow-kios ${ESTILO_ACTIVA[claseUnidad(row.tipo)]} ${franjaDeCaja(cajaDeFila)} ${esResaltada ? 'tarjeta-escaneada' : ''}`}>
                   {row.pickingSlotId != null && <PresenciaBadge viendo={viendoPorSlot.get(row.pickingSlotId)} contexto="tarjeta" />}
                   <div className="flex items-center gap-2 mb-2.5">
                     <EtiquetaUnidad clase={claseUnidad(row.tipo)} grande>{rowLabel}</EtiquetaUnidad>
                     {row.pickingSlotId ? <span className="font-mono text-cuerpo text-text">#{row.pickingSlotId}</span> : null}
+                    {cajaDeFila && <ChipCaja caja={cajaDeFila} />}
                     <button onClick={() => removeUnsavedRow(row.id)} aria-label={`Quitar ${rowLabel}`}
                       className="ml-auto w-10 h-10 -mr-1 flex items-center justify-center rounded-btn text-text-sub bg-bg-2 active:bg-bg-3 cursor-pointer border-none text-cuerpo">✕</button>
                   </div>
@@ -3027,12 +3030,24 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   <div className={`grid ${row.tipo === 'Pallet' ? 'grid-cols-3' : 'grid-cols-2'} gap-1 mb-1.5`}>
                     <div>
                       <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">
-                        peso{cajaDeFila && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(taraDeCaja(cajaDeFila)).replace('.', ',')} kg de caja</span>}
+                        {cajaDeFila ? 'peso en la balanza' : 'peso'}
                       </label>
                       <input type="text" value={row.peso} onChange={e => updateRow(row.id, 'peso', limpiarTecleo(e.target.value))}
                         onFocus={marcarEnFoco} onBlur={quitarFoco}
                         placeholder="kg" inputMode="decimal" data-campo="peso"
                         className={CAMPO_GRANDE} />
+                      {/* Lo que queda después de descontar la caja. Hasta ahora el sistema restaba
+                          la tara y no lo mostraba: quien pesaba no tenía cómo confirmar que había
+                          descontado bien, ni cuánto. Ver `pesoNetoDeCaja`. */}
+                      {cajaDeFila && (() => {
+                        const neto = pesoNetoDeCaja(row.peso, cajaDeFila);
+                        if (!neto.ok) return null;
+                        return (
+                          <div className="mt-1 text-rotulo text-text-2 tracking-normal normal-case">
+                            Queda <span className="font-barlow-condensed text-cuerpo font-extrabold text-text tabular-nums">{String(neto.neto).replace('.', ',')} kg</span> de producto
+                          </div>
+                        );
+                      })()}
                     </div>
                     {!isChocRow && !isContRow && !isChocTipo && (
                       <div>
@@ -3078,8 +3093,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     </div>
                   )}
                   {isChocTipo && (
-                    <div className="mb-1.5 text-[11px] bg-[rgba(146,64,14,0.06)] border border-[rgba(146,64,14,0.15)] rounded px-1.5 py-1" style={{ color: '#92400E' }}>
-                      {cajaDeFila ? etiquetaSubtipo(cajaDeFila) : 'Chocolate'}{cajaDeFila === 'negra' ? ` · ${CHOCOLATE_DIMS.largo}×${CHOCOLATE_DIMS.ancho}×${CHOCOLATE_DIMS.alto} cm fijas` : ' · sin medidas'}
+                    // La CAJA la dice la píldora de arriba. Acá queda solo lo que ella no dice:
+                    // por qué este formulario no pide medidas. Ver `ChipCaja.tsx`.
+                    <div className="mb-1.5 text-rotulo text-text-sub tracking-normal normal-case">
+                      {cajaDeFila === 'negra'
+                        ? `${CHOCOLATE_DIMS.largo}×${CHOCOLATE_DIMS.ancho}×${CHOCOLATE_DIMS.alto} cm fijas`
+                        : 'Sin medidas: el tamaño varía'}
                     </div>
                   )}
                   {/* UN solo botón: con peso guarda normal; sin peso ofrece "agregar sin pesar"
