@@ -93,3 +93,21 @@ export function esReingreso<T extends ItemConUnidad>(previo: T | undefined): boo
 export function esReingresoDeVerdad<T extends ItemConUnidad>(previo: T | undefined, veniaDeSumar: boolean): boolean {
   return !veniaDeSumar && esReingreso(previo);
 }
+
+/**
+ * Enlaza al slot recién creado el ítem que se estaba editando y no tenía unidad de Picking.
+ *
+ * Antes «Editar» borraba ese ítem al instante, y salir sin volver a guardar lo perdía. Ahora el
+ * ítem se queda; al guardar se le pone el slot nuevo, y `itemDeLaUnidad` lo encuentra como
+ * `previo`: el guardado lo completa en su lugar en vez de agregar un segundo ítem.
+ * `null` si no está (otro equipo ya lo cambió): el guardado sigue como un alta normal.
+ */
+export function enlazarItemEditado<T extends ItemConUnidad>(
+  lista: T[],
+  esElEditado: (item: T) => boolean,
+  slotId: number,
+): T[] | null {
+  const viejo = lista.find(esElEditado);
+  if (!viejo) return null;
+  return lista.map(i => (i === viejo ? { ...i, pickingSlotId: slotId } : i));
+}

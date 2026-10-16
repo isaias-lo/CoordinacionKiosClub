@@ -82,7 +82,9 @@ import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { combinarEnLista } from '../../shared/combinarEnLista';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
-import { levantarLapidasDeSlotsVivos } from '../../shared/lapidasBorrado';
+import { levantarLapidasDeSlotsVivos, marcarLapidaDeItem } from '../../shared/lapidasBorrado';
+import { camposParaEditar } from '../../shared/camposParaEditar';
+import { asignarSlotSinGemelas } from '../../shared/asignarSlotSinGemelas';
 import { actualizarSlotPicking, camposDePeso, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
 import { sincronizarYCruzar } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
@@ -91,7 +93,7 @@ import { subtipoDeCaja, medidasDeCaja, pesoNetoDeCaja, pesoParaMostrar, etiqueta
          type SubtipoCaja } from '../../shared/subtipoCaja';
 import { pesoEnTarjeta, pesoNetoDeTarjeta, pesoNetoPallet, taraDeTarjeta, taraEnTarjeta, taraParaGuardar, taraTrasCorregir, textoPesoConTara } from '../../shared/pesoDelPallet';
 import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
-import { itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
+import { itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad, enlazarItemEditado } from '../../shared/itemPorUnidad';
 import { avisoDeUnidad, avisoEnTerminada } from '../../shared/avisoUnidadEscaneada';
 import { useEscaneoBodega } from '../../shared/useEscaneoBodega';
 import { llevarATarjeta, huboSaltoReciente } from '../../shared/useLectorBodega';
@@ -181,6 +183,9 @@ interface FormRow {
   /** Se reabrió con «Editar». El ítem sigue guardado hasta que se vuelva a guardar: si nadie
    *  termina la edición, no se pierde nada. Ver `puedeAdoptar`. */
   editando?: boolean;
+  /** Editar un ítem que no tenía unidad de Picking: cuál es, para que el nuevo «Guardar» lo
+   *  complete en vez de agregar otro. Antes ese ítem se borraba al tocar Editar. */
+  reemplaza?: { id?: string; orden?: string };
 }
 
 // La tarjeta que se está pesando lleva el color de su tipo en el borde; peso y alto van en cifras
@@ -424,6 +429,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   };
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const { currentTienda, items, regimen } = state;
+  // Los ítems de AHORA, para lo que corre después de un `await`: la variable del render en que
+  // empezó la acción puede ser vieja, y reemplazar la lista de la tienda con ella pisa lo que otro
+  // equipo cambió mientras tanto (unir, guardar). Espejo de Nacional.
+  const itemsVivosRef = useRef(items);
+  itemsVivosRef.current = items;
   const odooProgress = useOdooProgress();  // tiendas con picking terminado hoy
   const { terminadas, marcarTerminada } = useTiendaTerminada(todayKey);
   // Una tienda terminada no se edita: para cambiar algo hay que reabrirla desde ⋯ (pedido de Isaias, 5 oct 2026).
@@ -1506,7 +1516,20 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot] }));
     }
 
-    const existing = items[cod] || [];
+    // La lista de ahora, no la del render en que se tocó Guardar: entre medio hubo un `await`.
+    let existing = itemsVivosRef.current[cod] || [];
+    // Edición de un ítem que no tenía slot: queda enlazado al slot recién creado, y así
+    // `itemDeLaUnidad` lo encuentra y el guardado lo completa en vez de agregar otro.
+    if (row.reemplaza && nuevoSlot && slotId) {
+      const enlazados = enlazarItemEditado(existing, i => i.id === row.reemplaza!.id, slotId);
+      if (enlazados) {
+        existing = enlazados;
+        dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: existing });
+        // Su llave pasa de `id:` a `slot:`: los otros equipos tienen que soltar la de antes, o se
+        // quedan con los dos. Ver `marcarLapidaDeItem`.
+        marcarLapidaDeItem(row.reemplaza.id);
+      }
+    }
     // Por CLASE, no por igualdad de string. Los cuatro contadores de antes comparaban
     // `i.tipo === 'Bulto'`, que nunca coincide con 'Adquisicion' ni con 'WebRetiro': las tres
     // adquisiciones de una tienda recibían el MISMO número y colapsaban en una sola fila del ID.
@@ -1538,7 +1561,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const previo = itemDeLaUnidad(existing, slotId);
     const savedItem = previo ? fusionarConPrevio(previo, candidato) : candidato;
     dispatch({ type: 'ADD_ITEM', item: savedItem });
-    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId, traSuma: false, editando: false } : r));
+    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId, traSuma: false, editando: false, reemplaza: undefined } : r));
     // El toast "Agregado sin pesar" lo dispara el caller (botón "Sin pesar") tras el await,
     // así queda determinista sin importar si esta función esperó por el fetch del slot.
     if (!sinPesar) showToast(`✓ ${savedItem.orden} ${previo ? 'actualizado' : 'agregado'}`, '#16A34A');
@@ -1576,13 +1599,16 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const row = formRows.find(r => r.id === rowId);
     if (!row?.savedItem) return;
     // El ítem NO se borra al abrir la edición: queda guardado hasta el nuevo «Guardar», que lo
-    // reemplaza. Espejo de Nacional, donde está el porqué (`editSavedRow`). Sin slot de Picking no
-    // hay con qué reemplazarlo, así que ahí se mantiene el borrado de antes.
-    if (row.savedItem.pickingSlotId == null) {
-      const idx = (items[currentTienda.cod] || []).findIndex(i => i.id === row.savedItem!.id);
-      if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tiendaCod: currentTienda.cod, idx });
-    }
-    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, saved: false, savedItem: undefined, editando: true } : r));
+    // reemplaza. Espejo de Nacional, donde está el porqué (`editSavedRow`). Tampoco sin slot de
+    // Picking (15/10/2026): antes ahí sí se borraba, y salir sin guardar lo perdía. Ahora la fila
+    // recuerda cuál es (`reemplaza`) y el guardado lo enlaza al slot nuevo.
+    const reemplaza = row.savedItem.pickingSlotId == null ? { id: row.savedItem.id, orden: row.savedItem.orden } : undefined;
+    // Los campos salen del ítem que la tarjeta muestra y la fila pasa a ser la de «Ahora». Espejo
+    // de Nacional, donde está el porqué (06MQH). Ver `camposParaEditar`.
+    const slot = (pickingSlotsFull[currentTienda.cod] ?? []).find(s => s.id === (row.pickingSlotId ?? row.savedItem!.pickingSlotId));
+    const campos = camposParaEditar(row.savedItem, row.savedItem.tipo === 'Chocolate' ? subtipoDeCaja(slot?.subtipo) : null, row);
+    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, ...campos, saved: false, savedItem: undefined, editando: true, reemplaza } : r));
+    elegirActiva(rowId);
   };
 
   // Borra el slot de picking_pallets vinculado y lo quita de pickingSlotsFull.
@@ -1967,7 +1993,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
      "Agregar" (guardado normal). Se actualizan AMBOS cachés de slots (light + full) para que
      NO aparezca el fantasma "¿Con cuál fue unificado?" (gP usa el light). Navegación-safe:
      el slot de P1 guarda el peso sumado, así el rebuild lo pre-rellena. */
-  const iniciarUnionInline = (sourceRow: FormRow, targetRow: FormRow, srcLabel?: string, tgtLabel?: string) => {
+  // Una unión a la vez: con la espera de la base, un doble toque mandaría la misma dos veces.
+  const uniendoRef = useRef(false);
+  const iniciarUnionInline = async (sourceRow: FormRow, targetRow: FormRow, srcLabel?: string, tgtLabel?: string) => {
     if (!currentTienda) return;
     const cod       = currentTienda.cod;
     const srcPeso   = pesoNetoDeTarjeta(sourceRow);
@@ -1976,8 +2004,22 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const prevAlto  = targetRow.savedItem?.alto ?? (parseFloat(targetRow.alto) || 0);
     const srcSlot   = sourceRow.pickingSlotId ?? sourceRow.savedItem?.pickingSlotId;
     const tgtSlot   = targetRow.pickingSlotId ?? targetRow.savedItem?.pickingSlotId;
+    // ── LA BASE PRIMERO (15/10/2026) ─────────────────────────────────────────────────────────
+    // Antes la pantalla quitaba el ítem del origen y DESPUÉS mandaba la unión a la base, sin
+    // esperarla. Si la base la rechazaba (el destino ya lo había borrado otro equipo), el peso del
+    // origen ya no estaba en pantalla y solo quedaba un aviso. Ahora se espera la respuesta y, si
+    // no se pudo unir, no se toca nada: los dos pallets quedan como estaban.
+    if (tgtSlot && srcSlot) {
+      if (uniendoRef.current) return;
+      uniendoRef.current = true;
+      let r: Awaited<ReturnType<typeof finalizarSlotUnion>>;
+      try { r = await finalizarSlotUnion(tgtSlot, srcSlot); } finally { uniendoRef.current = false; }
+      if (!r.ok) { showToast(`⚠ No se pudo unir: ${r.error} — no se cambió nada`, '#D32F2F'); return; }
+    }
+    // Lo de ahora, no lo de antes del await: en ese rato pudo llegar otro equipo.
+    const itemsAhora = itemsVivosRef.current;
     // [Revertir unificación] Snapshot ANTES de mutar (solo si ambos son items guardados).
-    const itemsAntesUnion = [...(items[cod] || [])];
+    const itemsAntesUnion = [...(itemsAhora[cod] || [])];
     const sourceItemUnion = sourceRow.savedItem;
     const puedeRevertirUnion = !!(sourceItemUnion && targetRow.savedItem);
 
@@ -1985,7 +2027,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     //    al sumar un bulto. Antes el target también se quitaba («se re-agrega al Agregar»): si
     //    nadie apretaba Agregar, la unidad volvía «sin guardar», y como el borrado no dejaba
     //    lápida, otro equipo la devolvía con el peso de antes de unir. Espejo de Nacional.
-    const cur = items[cod] || [];
+    const cur = itemsAhora[cod] || [];
     const filtered = cur
       .filter(i => !(sourceRow.savedItem && i.id === sourceRow.savedItem.id))
       .map(i => targetRow.savedItem && i.id === targetRow.savedItem.id ? { ...i, peso: nuevoPeso } : i);
@@ -1999,19 +2041,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       supabase.from('picking_pallets').update({ peso_kg: nuevoPeso }).eq('id', tgtSlot)
         .then(({ error }) => { if (error) console.error('[union peso]', error.message); });
     }
-    // EL RESULTADO SE MIRA. Antes se tiraba, y por eso una unión rechazada —porque el destino ya
-    // no existía— se veía en pantalla como si hubiera funcionado: los ítems ya se habían fusionado
-    // acá arriba. Es lo que dejó a 12LAS sin una sola unidad el 30/09.
-    if (tgtSlot && srcSlot) {
-      void finalizarSlotUnion(tgtSlot, srcSlot).then(r => {
-        if (!r.ok) showToast(`⚠ No se pudo unir: ${r.error} — recarga la tienda`, '#D32F2F');
-      });
-    }
+    // Con los dos slots, la unión en la base ya se hizo arriba (y se miró su resultado).
     // Sin slot de destino no hay refs que fusionar, pero el borrado es el mismo. Antes era un
     // `delete` a mano y se quedaba sin los DOS guards: sin el anti-revive (la recarga de picking lo
     // resucitaba) y sin la lápida (el merge entre equipos lo devolvía). `eliminarSlotPicking` hace
     // las tres cosas en un solo lugar.
-    else if (srcSlot) eliminarSlotPicking(srcSlot, { fuente: 'rmcosta', tiendaCod: cod, yaRegistrado: true });
+    if (!tgtSlot && srcSlot) eliminarSlotPicking(srcSlot, { fuente: 'rmcosta', tiendaCod: cod, yaRegistrado: true });
 
     // 3) Cachés de slots: quitar el del source de AMBOS (full para el rebuild; light para gP/badge,
     //    así no aparece el fantasma), y reflejar el peso sumado en el slot del target (full).
@@ -2165,7 +2200,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const { slot } = await crearSlotBodega({ date, store_cod: cod, tipo: tipoCodeSantiago(t), contenido: 'hogar' });
     if (!slot) return;
     setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot] }));
-    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
+    // Si la recarga de Picking trajo este slot antes que la respuesta, ya hay otra tarjeta para él.
+    setFormRows(prev => asignarSlotSinGemelas(prev, rowId, slot.id));
   };
 
   // [P5] Guarda anti doble-tap (paridad con Nacional): crear un slot NO es idempotente, así que dos

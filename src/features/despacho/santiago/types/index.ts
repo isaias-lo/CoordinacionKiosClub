@@ -43,6 +43,7 @@ export interface SantiagoItem {
   canonical_id?: string;    // P3MAI13062026P — del picking slot (para CÓDIGO en Sheets/Supabase)
   taraPallet?: number;      // kg del pallet que se restaron del peso (`peso` ya es neto). Ver pesoDelPallet.ts
   palletWeb?: boolean;      // pallet que sale sin pesar, a propósito. Ver shared/sinPesar.ts → esPalletWeb
+  editadoEn?: number;       // ms de la última edición de su carga en un equipo. Ver shared/versionDeItem.ts
 }
 
 export type SantiagoStep = 'regimen' | 'form';
