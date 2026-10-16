@@ -10,13 +10,15 @@ import { useAuth } from '@/components/AuthProvider';
 import { pushSessionStateResult, REINTENTO_PUSH_MS, fetchSessionStateMeta, subscribeToSessionState, remotoEsMasViejo } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { mergeItemsByTienda, itemsFromSnapshot } from './mergeItems';
-import { tieneLapida, lapidasComoLista, absorberLapidas } from '../../shared/lapidasBorrado';
+import { tieneLapida, lapidasComoLista, absorberLapidas, anotarItemSinUnidad } from '../../shared/lapidasBorrado';
 import { agregarSinDuplicar } from '../../shared/itemPorUnidad';
 import { stableItemKey } from '../../shared/formRowsReconcile';
+import { elegirVersion, sellarCambios } from '../../shared/versionDeItem';
 import { serializarBaseSantiago } from '../../shared/syncBase';
 import { fechaChile, fechaChileDe } from '@/lib/fechaChile';
 import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, traeRegistrosNuevos, decidir, fusionarDecisiones, aplicarDecisiones, type RegistroPorFecha, type DecisionPorFecha } from '@/features/despacho/shared/registroPorFecha';
-import { fechaDespachoBodega } from '../../shared/fechaLocal';
+import { diaDeTrabajoActual } from '@/features/despacho/shared/diaDeTrabajoActual';
+import { fechaDespachoBodega, mediodiaDe } from '../../shared/fechaLocal';
 import { soltarTiendasAjenas } from '../../shared/itemsDelEspejo';
 import { isRegionesCod } from '../../regiones/data/tiendas';
 
@@ -44,11 +46,18 @@ type SyncableState = {
   borrados?: string[];
 };
 
-const todayKey = fechaChile();
+// El día que esta pantalla trabaja: hoy, o el que venga en `?dia=` (ver `diaDeTrabajo.ts`).
+// Se llama `todayKey` desde siempre y se deja así para no renombrar cien usos; lo que cambió es
+// que ya no es forzosamente hoy.
+const todayKey = diaDeTrabajoActual();
 const SANTIAGO_KEY = `santiagoState_${todayKey}`;
 
 function isTodayPush(pushedAt: unknown): boolean {
   if (typeof pushedAt !== 'number') return false; // no timestamp — reject to avoid stale data
+  // Trabajando un día ANTERIOR esta comprobación no corresponde: lo guardado se escribió hoy y el
+  // reloj nunca va a coincidir con el día de la clave. Y no hace falta, porque la clave YA lleva
+  // el día (`santiagoState_AAAA-MM-DD`): un estado del 13 no se puede leer desde el del 14.
+  if (todayKey !== fechaChile()) return true;
   // Mismo día del CD con que se arma la clave de arriba: comparar con el reloj del equipo dejaba
   // pasar (o descartaba) un estado según el huso de quien mirara.
   return fechaChileDe(new Date(pushedAt)) === fechaChile();
@@ -96,6 +105,11 @@ type SantiagoAction =
   | { type: 'SET_FECHA_DESPACHO'; payload: string }
   | { type: 'SET_REGISTRADO'; payload: boolean };
 
+/** Sella los ítems cuya carga cambió en esta acción LOCAL. Ver `shared/versionDeItem.ts`. */
+function sellar(antes: SantiagoItem[] | undefined, despues: SantiagoItem[]): SantiagoItem[] {
+  return sellarCambios(antes ?? [], despues, stableItemKey, Date.now());
+}
+
 function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
   switch (action.type) {
     case '__ESTADO':
@@ -114,14 +128,17 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
 
     case 'ADD_ITEM': {
       const cod = action.item.tiendaCod;
+      anotarItemSinUnidad(action.item, 'vivo');
       // Si la unidad de Picking ya tiene ítem (lo guardó otro equipo), se reemplaza: no se suma otro.
       return {
         ...state,
-        items: { ...state.items, [cod]: agregarSinDuplicar(state.items[cod] || [], action.item) },
+        items: { ...state.items, [cod]: sellar(state.items[cod], agregarSinDuplicar(state.items[cod] || [], action.item)) },
       };
     }
 
     case 'DELETE_ITEM': {
+      // Sin unidad de Picking no hay slot que deje lápida: la deja el ítem. Ver `anotarItemSinUnidad`.
+      anotarItemSinUnidad((state.items[action.tiendaCod] || [])[action.idx], 'borrado');
       const list = (state.items[action.tiendaCod] || []).filter((_, i) => i !== action.idx);
       return { ...state, items: { ...state.items, [action.tiendaCod]: list } };
     }
@@ -129,11 +146,11 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
     case 'EDIT_ITEM': {
       const list = [...(state.items[action.tiendaCod] || [])];
       list[action.idx] = action.item;
-      return { ...state, items: { ...state.items, [action.tiendaCod]: list } };
+      return { ...state, items: { ...state.items, [action.tiendaCod]: sellar(state.items[action.tiendaCod], list) } };
     }
 
     case 'SET_ITEMS':
-      return { ...state, items: { ...state.items, [action.tiendaCod]: action.items } };
+      return { ...state, items: { ...state.items, [action.tiendaCod]: sellar(state.items[action.tiendaCod], action.items) } };
 
     case 'RESET':
       return { ...defaultState };
@@ -163,7 +180,7 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
         registros:     registrosTrasCarga,
         decisiones,
         // `registrado` pasa a ser DERIVADO del mapa: los componentes lo siguen leyendo igual.
-        registrado:    estaRegistrado(registrosTrasCarga, fechaDespachoBodega(fechaTrasCarga)),
+        registrado:    estaRegistrado(registrosTrasCarga, fechaDespachoBodega(fechaTrasCarga, mediodiaDe(todayKey))),
       };
     }
 
@@ -196,7 +213,7 @@ function reducer(state: SantiagoState, action: SantiagoAction): SantiagoState {
       // seguía con el `true` y el merge lo re-adoptaba al primer evento (12/10/2026, el botón
       // volvía solo a Completado). La hora sale de acá y no de la acción para no tocar los seis
       // sitios que despachan esto; la parte decidible es pura y está testeada (`decidir`).
-      const fecha = fechaDespachoBodega(state.fechaDespacho);
+      const fecha = fechaDespachoBodega(state.fechaDespacho, mediodiaDe(todayKey));
       const registros  = marcarRegistro(state.registros, fecha, action.payload);
       const decisiones = decidir(state.decisiones, fecha, action.payload, Date.now());
       return { ...state, registros, decisiones, registrado: action.payload };
@@ -341,7 +358,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
             window.dispatchEvent(new CustomEvent('bodega-conflicto-edicion', { detail: { cod, orden: item.orden } }));
           },
           // [Lápidas] Lo que se borró (acá o en otro equipo) no vuelve. Ver `shared/lapidasBorrado.ts`.
-          tieneLapida);
+          tieneLapida, elegirVersion);
         // Con los registros del remoto: en esta rama se descartaban, y un día registrado en otro
         // equipo mientras este tenía cambios sin empujar se perdía al empujar.
         dispatch({ type: 'LOAD_STATE', payload: { step: stateRef.current.step, regimen: stateRef.current.regimen, items: merged, registros: remote.registros, decisiones: remote.decisiones } });
@@ -355,7 +372,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
         lastPushedRef.current = remoteStr;
         const localItems = stateRef.current.items ?? {};
         const items = remote.items
-          ? mergeItemsByTienda(remote.items, localItems, localItems, stableItemKey, undefined, tieneLapida)
+          ? mergeItemsByTienda(remote.items, localItems, localItems, stableItemKey, undefined, tieneLapida, elegirVersion)
           : remote.items;
         dispatch({ type: 'LOAD_STATE', payload: { ...remote, items } });
       }
@@ -363,11 +380,11 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
 
     // [P9] Catch-up: re-consulta el estado y lo aplica (usado al volver a la pestaña/app y tras un push)
     catchUpRef.current = () => {
-      fetchSessionStateMeta('santiago').then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
+      fetchSessionStateMeta('santiago', todayKey).then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
     };
 
     // Initial fetch
-    fetchSessionStateMeta('santiago')
+    fetchSessionStateMeta('santiago', todayKey)
       .then((m) => {
         isInitializedRef.current = true;
         if (!m?.state) return;
@@ -384,7 +401,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
         // Si queda algo que el remoto no tenía, la base (= remoto) difiere → el próximo push lo sube.
         const localItems = stateRef.current.items ?? {};
         const items = s.items
-          ? mergeItemsByTienda(s.items, localItems, localItems, stableItemKey, undefined, tieneLapida)
+          ? mergeItemsByTienda(s.items, localItems, localItems, stableItemKey, undefined, tieneLapida, elegirVersion)
           : s.items;
         dispatch({ type: 'LOAD_STATE', payload: { ...s, items } });
       })
@@ -400,9 +417,9 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       setCanalSano(connected); // solo espejo para UI — el closure de arriba sigue siendo la fuente que usa el polling
       // On (re)connect, fetch once to catch any change missed while the socket was down.
       if (reconnected) {
-        fetchSessionStateMeta('santiago').then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
+        fetchSessionStateMeta('santiago', todayKey).then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
       }
-    });
+    }, todayKey);
 
     // Respaldo: con el canal caído, cada 15 s. Con el canal SANO ya no se apaga — pasa a una vez
     // por minuto, solo para detectar que el canal quedó mudo. Antes el respaldo se apagaba del
@@ -414,7 +431,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       tickPoll += 1;
       if (!debeConsultar(realtimeConnected, tickPoll)) return;
       try {
-        const m = await fetchSessionStateMeta('santiago');
+        const m = await fetchSessionStateMeta('santiago', todayKey);
         if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined);
       } catch {}
     }, TICK_MS);
@@ -451,7 +468,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
       isPushingRef.current = true;
       const pushedAt = Date.now();
       lastPushTimestampRef.current = pushedAt;
-      pushSessionStateResult('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined)
+      pushSessionStateResult('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined, todayKey)
         .then(({ ok, updatedAt: serverTs }) => {
           if (!ok) { pushFallido(current, prevLastPushed, prevLastFull); return; }
           if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); // [C3/RC-6] reloj de servidor de mi push
@@ -527,7 +544,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     lastPushedFullRef.current = current;
     const pushedAt = Date.now();
     lastPushTimestampRef.current = pushedAt;
-    pushSessionStateResult('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined)
+    pushSessionStateResult('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined, todayKey)
       .then(({ ok, updatedAt: serverTs }) => {
         if (!ok) { pushFallido(current, prevPushed, prevFull); return; }
         if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); // [C3/RC-6]

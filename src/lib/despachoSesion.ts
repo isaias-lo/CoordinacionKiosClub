@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { logActividad } from './actividad';
 import { fechaChile } from '@/lib/fechaChile';
 
 export type CountMap = Record<string, { p: number; b: number; c: number; ch: number }>;
@@ -67,6 +68,21 @@ export async function pushCounts(
   const conCarga = new Set(entries.map(([cod]) => cod));
   const vaciadas = [...new Set(conocidas)].filter(cod => cod && !conCarga.has(cod));
   if (!vaciadas.length) return;
+
+  // [Instrumentación, 15/10] Acá está la sospecha de «aparecen y desaparecen palets y bultos» en
+  // el Enrutador. `conocidas` son TODAS las tiendas que este equipo tiene en pantalla, y una
+  // tienda sin unidades no entra en `counts`: entonces este equipo borra su fila aunque OTRO
+  // equipo la acabe de escribir con carga. Al siguiente push del otro, reaparece.
+  //
+  // No se cambia la conducta todavía: el borrado existe por un motivo real (una tienda retirada
+  // quedaba como fantasma). Primero hay que saber si esto pasa y cuánto. Ver `actividad.ts`.
+  logActividad({
+    accion: 'conteo_borrado',
+    fuente: fuente.includes('regiones') ? 'nacional' : 'rmcosta',
+    fecha,
+    tiendas: vaciadas.length,
+    label: vaciadas.slice(0, 8).join(', '),
+  });
   try {
     await supabase.from('despacho_sesion')
       .delete()

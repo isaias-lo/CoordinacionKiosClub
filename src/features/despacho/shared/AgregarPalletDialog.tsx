@@ -5,6 +5,8 @@ import { CameraBarcodeScanner } from '@/features/auditoria/components/scanner/Ca
 import type { PickingSlot } from '@/features/despacho/santiago/components/PickingSlotCards';
 import { mensajeClaim, type MotivoClaim } from './mensajeClaim';
 import { botonDeTipoCode } from './tipoCode';
+import { levantarLapida } from './lapidasBorrado';
+import { marcarRecienAgregado } from './slotRecienAgregado';
 
 interface Props {
   /** Etiqueta del tipo que se está agregando (para el título). */
@@ -43,6 +45,16 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
   // Pallet borrado que se puede devolver tal como estaba (hay copia y es de esta tienda).
   const [restaurar, setRestaurar] = useState<{ palletId: number; aviso: string } | null>(null);
 
+  // El pallet vuelve a la carga con el MISMO id que tenía: su lápida (si la tiene, porque se
+  // borró) se levanta YA. Antes se esperaba a la recarga de Picking, y si la sincronización entre
+  // equipos llegaba antes, el pallet recién restaurado se volvía a quitar (12LAS y 16PQA, 30/09).
+  // Y se marca como recién agregado, igual que un alta (`crearSlotBodega`), para que una recarga
+  // en vuelo no lo saque de la pantalla.
+  function volvioAExistir(slot: PickingSlot) {
+    levantarLapida(slot.id);
+    marcarRecienAgregado(storeCod, slot);
+  }
+
   async function claim(refValue: string) {
     const r = refValue.trim().replace(/^#/, '');
     if (!r) { setError('Ingresa o escanea el número del pallet.'); return; }
@@ -76,7 +88,7 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
       }
       // `ya_en_carga` llega con el slot: el pallet es de esta tienda y es de hoy, así que el
       // reclamo es legítimo. Quien decide si duplica o no es el formulario.
-      if (json.data) onExistente(json.data, json.reason === 'ya_en_carga');
+      if (json.data) { volvioAExistir(json.data); onExistente(json.data, json.reason === 'ya_en_carga'); }
     } catch {
       setError('Error de conexión. Intenta de nuevo.');
     } finally {
@@ -113,7 +125,7 @@ export function AgregarPalletDialog({ tipoLabel, storeCod, date, onNuevo, onExis
             : `No se pudo restaurar el pallet #${restaurar.palletId}. ${json.error ?? ''}`.trim());
         return;
       }
-      if (json.data) onExistente(json.data);
+      if (json.data) { volvioAExistir(json.data); onExistente(json.data); }
     } catch {
       setError('Error de conexión. Intenta de nuevo.');
     } finally {

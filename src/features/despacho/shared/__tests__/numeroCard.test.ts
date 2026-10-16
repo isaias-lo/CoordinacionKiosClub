@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { repartirNumeros, numeroParaUnidadNueva, ordenDeItem, renumerarOrden, renumerarOrdenNacional, claseNacional, claseSantiago, contarPorClase, etiquetaCard, renumerarSoloSinOrden } from '../numeroCard';
+import { repartirNumeros, numeroParaUnidadNueva, ordenDeItem, renumerarOrden, renumerarOrdenNacional, claseNacional, claseSantiago, contarPorClase, etiquetaCard, renumerarSoloSinOrden, rotuloDeUnidad } from '../numeroCard';
 
 describe('repartirNumeros — EL NÚMERO ES EL QUE ESTÁ IMPRESO', () => {
   it('cada unidad se queda con su seq, sin importar el orden de la lista', () => {
@@ -293,5 +293,93 @@ describe('contarPorClase — un solo contador para toda la pantalla', () => {
 
   it('un tipo desconocido cae en bulto, como siempre', () => {
     expect(contarPorClase([i('Otro')], x => claseSantiago(x.tipo)).bulto).toBe(1);
+  });
+});
+
+// ── «Si se elimina el pallet uno, se corren los consecutivos» (14/10/2026) ──────────────────────
+//
+// Reportado desde bodega: borrar una unidad movía el número de las otras, y dejaba de coincidir
+// con la etiqueta pegada al pallet. Pasaba solo con la unidad cuya etiqueta todavía no se había
+// impreso, porque Picking escribe el `seq` recién al imprimir.
+
+describe('borrar una unidad no corre a las demás', () => {
+  it('EL CASO: se borra P1 y la que no tiene seq CONSERVA su número', () => {
+    // Quedan la de seq 2 y una sin seq que ya mostraba 3.
+    expect(repartirNumeros([2, null], [2, 3])).toEqual([2, 3]);
+  });
+
+  it('sin el número actual se corría: es exactamente lo que se reportó', () => {
+    expect(repartirNumeros([2, null])).toEqual([2, 1]);
+  });
+
+  it('el `seq` sigue mandando: la tarjeta se corrige sola cuando Picking imprime', () => {
+    // Mostraba 3, llega su etiqueta y dice 1. Gana la etiqueta.
+    expect(repartirNumeros([1], [3])).toEqual([1]);
+  });
+
+  it('un número actual que choca con el `seq` de otra NO se conserva', () => {
+    // La segunda mostraba 1, pero el 1 es de la primera por etiqueta: la segunda se mueve.
+    expect(repartirNumeros([1, null], [1, 1])).toEqual([1, 2]);
+  });
+
+  it('dos sin seq que muestran el mismo número: una lo conserva y la otra toma un hueco', () => {
+    expect(repartirNumeros([null, null], [2, 2])).toEqual([2, 1]);
+  });
+
+  it('sin seq y sin número actual, el menor hueco libre, como siempre', () => {
+    expect(repartirNumeros([1, 3, null], [1, 3, null])).toEqual([1, 3, 2]);
+    expect(repartirNumeros([null, null, null])).toEqual([1, 2, 3]);
+  });
+
+  it('un número actual inválido se ignora', () => {
+    expect(repartirNumeros([null, null], [0, -2])).toEqual([1, 2]);
+    expect(repartirNumeros([null], [NaN])).toEqual([1]);
+  });
+
+  it('renumerarOrden conserva el número de la tarjeta sin etiqueta', () => {
+    const items = [
+      { tipo: 'Pallet', orden: 'P2', slot: 2 },
+      { tipo: 'Pallet', orden: 'P3', slot: null },
+    ];
+    const r = renumerarOrden(items, i => i.slot);
+    expect(r.map(x => x.orden)).toEqual(['P2', 'P3']);
+  });
+
+  it('renumerarOrdenNacional, igual', () => {
+    const items = [
+      { pkg: 'pallet', orden: 'pallet2', slot: 2 },
+      { pkg: 'pallet', orden: 'pallet3', slot: null },
+    ];
+    const r = renumerarOrdenNacional(items, i => i.slot);
+    expect(r.map(x => x.orden)).toEqual(['pallet2', 'pallet3']);
+  });
+});
+
+// ── El rótulo que va a la planilla (14/10/2026) ────────────────────────────────────────────────
+//
+// «En Tipo me sale Pallet, Bulto, Adquisición, pero no me sale qué número es.» El dato estaba,
+// pero cada espejo escribía un formato distinto en la misma columna.
+
+describe('rotuloDeUnidad: lo que ve el coordinador en la columna N_PALLET_BULTO', () => {
+  it('una letra y su número, igual que la tarjeta y la etiqueta', () => {
+    expect(rotuloDeUnidad('pallet', 'P1')).toBe('P1');
+    expect(rotuloDeUnidad('bulto', '3B')).toBe('B3');
+    expect(rotuloDeUnidad('chocolate', 'CH2')).toBe('CH2');
+    expect(rotuloDeUnidad('contenedor', 'C4')).toBe('C4');
+    expect(rotuloDeUnidad('adquisicion', 'A1')).toBe('A1');
+    expect(rotuloDeUnidad('webretiro', 'W2')).toBe('W2');
+  });
+
+  it('LOS DOS ESPEJOS DICEN LO MISMO: antes RM ponía «1B» y Nacional un «1» pelado', () => {
+    expect(rotuloDeUnidad(claseSantiago('Bulto'), '1B')).toBe('B1');
+    expect(rotuloDeUnidad(claseNacional('bulto'), 'bulto1')).toBe('B1');
+    expect(rotuloDeUnidad(claseSantiago('Pallet'), 'P3')).toBe('P3');
+    expect(rotuloDeUnidad(claseNacional('pallet'), 'pallet3')).toBe('P3');
+  });
+
+  it('un `orden` sin número se escribe tal cual: no se inventa un rótulo', () => {
+    expect(rotuloDeUnidad('pallet', '')).toBe('');
+    expect(rotuloDeUnidad('pallet', null)).toBe('');
+    expect(rotuloDeUnidad('pallet', 'raro')).toBe('raro');
   });
 });

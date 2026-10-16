@@ -43,3 +43,14 @@ export function fechaDespachoBodega(elegida?: string | null, hoy?: Date): string
   const manana = new Date(Date.UTC(y, m - 1, d + 1));
   return `${manana.getUTCFullYear()}-${String(manana.getUTCMonth() + 1).padStart(2, '0')}-${String(manana.getUTCDate()).padStart(2, '0')}`;
 }
+
+/**
+ * El `Date` del MEDIODÍA de un día ISO. Es la base con que se le pide a `fechaDespachoBodega` que
+ * calcule desde un día que no es hoy.
+ *
+ * Mediodía y no medianoche a propósito: `new Date('2026-10-13')` se interpreta como UTC y en Chile
+ * cae el 12. Con las 12:00 locales no hay huso que lo corra de día.
+ */
+export function mediodiaDe(iso: string): Date {
+  return new Date(`${iso}T12:00:00`);
+}

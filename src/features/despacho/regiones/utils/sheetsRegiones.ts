@@ -3,7 +3,8 @@ import { canonicalDeSlot } from '@/lib/canonicalSlot';
 import { pkgCodeNacional } from '@/features/despacho/shared/tipoCode';
 import { etiquetaAgregado } from '@/features/despacho/shared/adquisicion';
 import type { DispatchItem } from '../../../../types';
-import { desempatarOrdenNacional } from '../../shared/numeroCard';
+import { desempatarOrdenNacional, rotuloDeUnidad, claseNacional } from '../../shared/numeroCard';
+import { referenciaParaPlanilla } from '../../shared/hojaDespacho';
 import { esSinPesar, esPalletWeb } from '../../shared/sinPesar';
 import { escribirPlanilla, type ResultadoPlanilla } from '../../shared/escribirPlanilla';
 import { cargaParaPlanilla } from '../../shared/contenidoCarga';
@@ -107,7 +108,7 @@ export function buildRows(
         pesoV,                                          // PESO_V
         '',                                             // VENTANA
         'Listo para despachar',                         // ESTADO
-        ordenSeq(item.orden),                           // N_PALLET_BULTO
+        rotuloDeUnidad(claseNacional(item.pkg), item.orden), // N_PALLET_BULTO
         '',                                             // FECHA_LLEGADA
         '',                                             // CONDUCTOR
         '',                                             // RUTA
@@ -117,7 +118,9 @@ export function buildRows(
         '',                                             // PIONETA 1 (col AA — Enrutador lo llena)
         '',                                             // PIONETA 2 (col AB — Enrutador lo llena)
         fechaArmadoFmt,                                 // FECHA_ARMADO (col AC)
-        item.pickingSlotId ?? '',                       // CÓDIGO (col AD — #488 = id del pallet en la etiqueta)
+        item.pickingSlotId ?? '',                       // CÓDIGO (#488 — id del pallet en la etiqueta)
+        referenciaParaPlanilla(item.refs),              // REFERENCIA (la de Odoo)
+        item.batch ?? '',                               // BATCH (vacío hasta que Picking lo guarde)
       ]);
     }
   }

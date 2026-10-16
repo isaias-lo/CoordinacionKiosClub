@@ -6,6 +6,13 @@ import { SantiagoPage } from '../features/despacho/santiago/pages/SantiagoPage';
 import { SantiagoFinishModal } from '../features/despacho/santiago/components/SantiagoFinishModal';
 import { PendingDraftBanner } from '../features/despacho/shared/PendingDraftBanner';
 import { BodegaHeader } from '../features/despacho/shared/BodegaHeader';
+import { BandaDiaDeTrabajo } from '../features/despacho/shared/BandaDiaDeTrabajo';
+import { diaDeTrabajoActual, diaDeTrabajoEsDeliberado } from '../features/despacho/shared/diaDeTrabajoActual';
+
+
+// El día que esta pantalla trabaja y si lo eligió alguien. Ver `diaDeTrabajo.ts`.
+const DIA = diaDeTrabajoActual();
+const DIA_ELEGIDO = diaDeTrabajoEsDeliberado();
 
 function SantiagoContent() {
   const { state, dispatch } = useSantiago();
@@ -43,6 +50,7 @@ function SantiagoContent() {
       {/* El banner navy "BODEGA" se eliminó (más espacio hacia arriba); el REGISTRAR se movió
           al pie de la columna derecha de StepForm (igual que Nacional). */}
       <BodegaHeader />
+      {DIA_ELEGIDO && <BandaDiaDeTrabajo dia={DIA} ruta="/despacho/santiago" />}
 
       <PendingDraftBanner fuente="santiago" />
 

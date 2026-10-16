@@ -75,11 +75,54 @@ export const TOPE_DURO_KG: Record<ClaseEnvase, number> = {
   webretiro: 500,
 };
 
-/** El mensaje del techo de cordura, o `null` si el peso entra. */
-export function excedeTopeDuro(kg: number | null, clase: ClaseEnvase): string | null {
+// ── EL OTRO EXTREMO: UN PALLET DE 1 KG (14/10/2026) ───────────────────────────────────────────
+//
+// El 14/10 el P2 de 06MQH quedó en 1 kg a las 15:51, y otra persona lo corrigió a 368 kg a las
+// 16:12. Veintiún minutos con un dato falso, y el techo de 800 no lo podía atajar: 1 está por
+// DEBAJO, no por encima.
+//
+// Un piso único no sirve, porque depende del envase. Medido sobre lo pesado desde el 01/09/2026:
+//
+//     clase        n      el más liviano real   p01    p05    bajo 20 kg
+//     ──────────────────────────────────────────────────────────────────
+//     pallet      829           23,55            46     85         0
+//     bulto       187            1,00           2,72     5        112
+//     chocolate   496            1,70           5,00    7,6       371
+//
+// Un pallet de 1 kg no existe; un bulto de 1 kg es lo normal y un chocolate de 1,7 también. Por
+// eso el piso es SOLO del pallet: avisa bajo 40 (por debajo del p01) y no deja pasar bajo 10, que
+// está lejísimos de cualquier pallet real.
+//
+// Al contenedor no se le pone piso: hay 16 en todo el histórico, muy pocos para fijar un número
+// sin inventarlo. `null` acá significa "no se sabe", no "no importa".
+
+/** Por debajo de esto se pregunta. `null` = este envase no tiene piso. */
+export const PISO_AVISO_KG: Record<ClaseEnvase, number | null> = {
+  pallet: 40,
+  contenedor: null, bulto: null, chocolate: null, adquisicion: null, webretiro: null,
+};
+
+/** Por debajo de esto NO se guarda, ni confirmando. `null` = este envase no tiene piso. */
+export const PISO_DURO_KG: Record<ClaseEnvase, number | null> = {
+  pallet: 10,
+  contenedor: null, bulto: null, chocolate: null, adquisicion: null, webretiro: null,
+};
+
+/**
+ * El mensaje cuando el peso no se puede guardar ni confirmando, o `null` si entra.
+ *
+ * Mira los DOS extremos. Antes se llamaba `excedeTopeDuro` y solo miraba el techo; el nombre
+ * cambió junto con la función para que no mienta.
+ */
+export function pesoFueraDeRango(kg: number | null, clase: ClaseEnvase): string | null {
   if (kg === null || !Number.isFinite(kg) || kg <= 0) return null;
   const tope = TOPE_DURO_KG[clase];
-  return kg > tope ? `Peso máximo ${enKg(tope)} kg para ${NOMBRE[clase]} — ¿se perdió la coma?` : null;
+  if (kg > tope) return `Peso máximo ${enKg(tope)} kg para ${NOMBRE[clase]} — ¿se perdió la coma?`;
+  const piso = PISO_DURO_KG[clase];
+  if (piso !== null && kg < piso) {
+    return `Peso mínimo ${enKg(piso)} kg para ${NOMBRE[clase]} — ¿se pesó el pallet completo?`;
+  }
+  return null;
 }
 
 /**
@@ -130,8 +173,11 @@ export function limpiarTecleo(texto: string): string {
 
 export interface AvisoPeso {
   kg: number;
+  /** El umbral que se cruzó: el techo si `lado` es alto, el piso si es bajo. */
   tope: number;
   clase: ClaseEnvase;
+  /** De qué lado se fue el número. El aviso se lee distinto según cuál. */
+  lado: 'alto' | 'bajo';
   titulo: string;
   detalle: string;
 }
@@ -144,6 +190,18 @@ export interface AvisoPeso {
  */
 export function avisoDePeso(kg: number | null, clase: ClaseEnvase): AvisoPeso | null {
   if (kg === null || !Number.isFinite(kg) || kg <= 0) return null;
+
+  // El extremo bajo. Mismo criterio que el alto: PREGUNTA, no bloquea.
+  const piso = PISO_AVISO_KG[clase];
+  if (piso !== null && kg < piso) {
+    return {
+      kg, tope: piso, clase, lado: 'bajo',
+      titulo: `${enKg(kg)} kg en un ${NOMBRE[clase]}`,
+      detalle: `Es muy poco: el ${NOMBRE[clase]} más liviano del último mes y medio pesó 23,55 kg. `
+             + `Fíjate si la balanza alcanzó a estabilizarse y si pesaste la unidad completa.`,
+    };
+  }
+
   const tope = TOPE_AVISO_KG[clase];
   if (kg <= tope) return null;
 
@@ -152,7 +210,7 @@ export function avisoDePeso(kg: number | null, clase: ClaseEnvase): AvisoPeso | 
   // delante de alguien apurado invita a aceptarla sin pensar. La balanza está ahí al lado; lo que
   // hace falta es que vuelva a mirarla, no que este aviso opine.
   return {
-    kg, tope, clase,
+    kg, tope, clase, lado: 'alto',
     titulo: `${enKg(kg)} kg en un ${NOMBRE[clase]}`,
     detalle: `Lo normal es menos de ${enKg(tope)} kg. Fíjate si se perdió la coma —353,7 no es lo `
            + `mismo que 3537— y si el número es el correcto, guárdalo igual.`,

@@ -1,6 +1,8 @@
 import { CAL_INICIAL, type CalDia } from '../rutas/data/calendar';
 import { fetchCalendarioSupa, subscribeToCalendarioSupa } from '@/lib/calendarioSync';
 
+import { claveDelDia } from '../shared/calendarioDelDia';
+
 const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
 
 export interface CalendarioCompleto {
@@ -136,21 +138,33 @@ export async function fetchCalendarioCompleto(): Promise<CalendarioCompleto> {
   return calInicialToCompleto();
 }
 
-export async function getTiendasDelDia(tipo: 'rm' | 'costa' | 'fal' = 'rm'): Promise<string[]> {
+/**
+ * La clave del calendario para un día, o la de hoy si no se pide ninguno.
+ *
+ * `new Date().getDay()` siempre devolvía el día de HOY, así que volver a trabajar el martes
+ * mostraba la lista del miércoles: el rótulo decía un día y las tiendas eran de otro. Ver
+ * `diaDeTrabajo.ts`. `claveDelDia` parte el ISO en vez de construir una fecha, porque
+ * `new Date('2026-10-13')` se interpreta como UTC y en Chile cae el 12.
+ */
+function claveDe(diaISO?: string): string {
+  return (diaISO ? claveDelDia(diaISO) : null) ?? DAY_CODES[new Date().getDay()];
+}
+
+export async function getTiendasDelDia(tipo: 'rm' | 'costa' | 'fal' = 'rm', diaISO?: string): Promise<string[]> {
   const cal = await fetchCalendarioCompleto();
-  const today = DAY_CODES[new Date().getDay()];
+  const today = claveDe(diaISO);
   return cal[today]?.[tipo] || [];
 }
 
-export async function getTiendasRegionHoy(): Promise<string[]> {
+export async function getTiendasRegionHoy(diaISO?: string): Promise<string[]> {
   const cal = await fetchCalendarioCompleto();
-  const today = DAY_CODES[new Date().getDay()];
+  const today = claveDe(diaISO);
   return cal[today]?.fal || [];
 }
 
-export async function getAllTiendasSantiago(): Promise<string[]> {
+export async function getAllTiendasSantiago(diaISO?: string): Promise<string[]> {
   const cal = await fetchCalendarioCompleto();
-  const today = DAY_CODES[new Date().getDay()];
+  const today = claveDe(diaISO);
   return [...(cal[today]?.rm || []), ...(cal[today]?.costa || []), ...(cal[today]?.fal || [])];
 }
 

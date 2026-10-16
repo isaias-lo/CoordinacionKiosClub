@@ -95,7 +95,8 @@ import { tipoTienda } from '@/features/despacho/rutas/utils/tipoTienda';
 import { avisoOdoo, motivoOdoo } from './avisoOdoo';
 import { textoSinConexion } from './avisoSinConexion';
 import { ocultarSinAsignar } from './sinAsignar';
-import { usaSelectorDeTiendas } from './selectorTiendas';
+import { usaSelectorDeTiendas, seleccionVencida } from './selectorTiendas';
+import { unirBatches } from '@/features/despacho/shared/hojaDespacho';
 
 
 // ─── Session helpers ──────────────────────────────────────────────────────────
@@ -267,6 +268,16 @@ export function PickingScreen() {
   const session = useMemo(() => loadSession(), []);
 
   const [selectedCods, setSelectedCods] = useState<string[]>([]);
+  // Día al que pertenecen las tiendas elegidas. La sesión se guarda con ESTE día y no con el de
+  // cada guardado: antes se re-sellaba con hoy en cada cambio, así que una pestaña abierta de un
+  // día para otro arrastraba las tiendas de ayer para siempre (caso 59EGN, 14/10/2026).
+  const diaSeleccionRef = useRef<string>(todayISO());
+  const selectedCodsRef = useRef(selectedCods);
+  selectedCodsRef.current = selectedCods;
+  // El reloj del cambio de día se arma una sola vez: si dependiera de showToast, cada render que
+  // cambie su identidad lo rearmaría y el intervalo de un minuto nunca llegaría a sonar.
+  const avisarRef = useRef(showToast);
+  avisarRef.current = showToast;
   // Modo manual: tienda con el campo "+ Encargado manual" abierto + lo que se está escribiendo.
   const [addingManualCod, setAddingManualCod] = useState<string | null>(null);
   const [manualName, setManualName]           = useState('');
@@ -666,7 +677,7 @@ export function PickingScreen() {
     try {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('id, store_cod, state_key, picker_label, tipo, subtipo, contenido, section, refs, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v')
+        .select('id, store_cod, state_key, picker_label, tipo, subtipo, contenido, section, refs, batch, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v')
         .eq('date', todayISO())
         .eq('is_active', true)
         .order('created_at', { ascending: true })
@@ -734,6 +745,7 @@ export function PickingScreen() {
           contenido:    (r.contenido as string) ?? 'hogar',
           section:      (r.section as string | null) ?? null,
           refs:         (r.refs as string) ?? '',
+          batch:        (r.batch as string) ?? '',
           created_at:   r.created_at as string,
           // Sin estas cinco, el evento de Realtime PISABA el peso recién guardado con undefined:
           // el slot local volvía a quedar sin pesar hasta la próxima recarga completa.
@@ -778,7 +790,7 @@ export function PickingScreen() {
     return unsub;
   }, [loadPalletSlots]);
 
-  const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '', section: string | null = null, medidas?: MedidasPallet, subtipo: string | null = null) => {
+  const addPalletSlot = useCallback(async (stateKey: string, storeCod: string, pickerLabel: string, tipo: string, contenido = 'hogar', refs = '', section: string | null = null, medidas?: MedidasPallet, subtipo: string | null = null, batch = '') => {
     const date = todayISO();
     // Idempotencia: id de operación único por click. Si el POST se reintenta (red,
     // doble-click, replay de cola offline), el server deduplica por client_op_id.
@@ -790,7 +802,7 @@ export function PickingScreen() {
     const tempId = tempIdRef.current--;
     const tempSlot: PalletSlot = {
       id: tempId, store_cod: storeCod, state_key: stateKey,
-      picker_label: pickerLabel, tipo, subtipo, contenido, section, refs,
+      picker_label: pickerLabel, tipo, subtipo, contenido, section, refs, batch,
       created_at: new Date().toISOString(),
       ...(medidas ?? {}),
     };
@@ -805,7 +817,7 @@ export function PickingScreen() {
     try {
       const res = await pickingFetch('/api/picking-pallets', {
         method: 'POST',
-        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, subtipo, contenido, section, refs, actor_name: actorName, client_op_id: clientOpId, ...(medidas ?? {}) }),
+        body: JSON.stringify({ date, store_cod: storeCod, state_key: stateKey, picker_label: pickerLabel, tipo, subtipo, contenido, section, refs, batch, actor_name: actorName, client_op_id: clientOpId, ...(medidas ?? {}) }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
@@ -945,7 +957,11 @@ export function PickingScreen() {
         method: 'DELETE',
         body: JSON.stringify({ id: slot.id, actor_name: presenceRef.current.name }),
       });
-      if (!res.ok) setPalletSlots(prev => [...prev, slot].sort((a, b) => a.id - b.id));
+      if (!res.ok) {
+        setPalletSlots(prev => [...prev, slot].sort((a, b) => a.id - b.id));
+        // Bodega ya la pesó y guardó: desde acá no se borra (ver DELETE /api/picking-pallets).
+        if (res.status === 409) showToast('⚠ Bodega ya registró esa unidad: si sobra, se elimina desde Bodega', '#D97706');
+      }
       else void loadEventos(); // ver mi propia baja en Actividad al instante
     } catch {
       setPalletSlots(prev => [...prev, slot].sort((a, b) => a.id - b.id));
@@ -1040,7 +1056,7 @@ export function PickingScreen() {
   // opsMapFetchedAt = hora real del último fetch a Odoo (lastRefresh), para que loadSession
   // pueda descartar un opsMap de otro día aunque la sesión se re-guarde con la fecha de hoy.
   useEffect(() => {
-    saveSession({ date: todayISO(), selectedCods, opsMap, pickerDisplayNames, opsMapFetchedAt: lastRefresh?.toISOString() });
+    saveSession({ date: diaSeleccionRef.current, selectedCods, opsMap, pickerDisplayNames, opsMapFetchedAt: lastRefresh?.toISOString() });
   }, [selectedCods, opsMap, pickerDisplayNames, lastRefresh]);
 
   // Disparar impresión después del re-render:
@@ -1186,6 +1202,30 @@ export function PickingScreen() {
       void fetchBatchOps(guardadas); // un solo request en vez de N paralelos
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cambio de día con la pestaña abierta: las tiendas elegidas son del día en que se eligieron, y
+  // las de ayer no están en la lista de hoy (no se podrían quitar). Se sueltan y se vuelve a la
+  // lista. Revisa cada minuto y al volver a la app; el picking se hace entre 9 y 20 h (medido en
+  // picking_pallets, 28/09–14/10/2026), así que la medianoche nunca cae a mitad de una carga.
+  useEffect(() => {
+    const revisar = () => {
+      const hoy = todayISO();
+      if (diaSeleccionRef.current === hoy) return;
+      const vencida = seleccionVencida(diaSeleccionRef.current, hoy, selectedCodsRef.current.length);
+      diaSeleccionRef.current = hoy;
+      if (!vencida) return;
+      setSelectedCods([]);
+      setTiendaActiva(null);
+      setEncargadoAbierto(null);
+      setPanelView('stores');
+      avisarRef.current('Empezó un día nuevo: se quitaron las tiendas de ayer', '#2B4BC8');
+    };
+    const alVolver = () => { if (document.visibilityState === 'visible') revisar(); };
+    const t = setInterval(revisar, 60_000);
+    document.addEventListener('visibilitychange', alVolver);
+    window.addEventListener('focus', revisar);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', alVolver); window.removeEventListener('focus', revisar); };
+  }, []);
 
   const allGroups = useMemo((): PickerGroup[] => {
     const result: PickerGroup[] = [];
@@ -1813,6 +1853,11 @@ export function PickingScreen() {
         </datalist>
         <Vista
           onElegirTiendas={() => setPanelView('stores')}
+          onQuitarTienda={c => {
+            void handleToggleStore(c);
+            setEncargadoAbierto(null);
+            if (selectedCods.length <= 1) setPanelView('stores'); // era la última: volver a elegir
+          }}
           modo={cong ? 'congelados' : 'seco'}
           encabezado={{
             cod, nombre: nameFor(cod), tipo: tipoFor(cod),
@@ -1950,11 +1995,17 @@ export function PickingScreen() {
                                 // la del grupo (null si es mixto → solo suma en "Todas").
                                 const seccionSlot: string | null = seccionActiva ?? (fullIsCongelados ? 'congelados' : seccionDeGrupo(fullGroupCats));
                                 const groupRefs = carga.ops.map(o => o.name).join('+');
+                                // El batch de Odoo del grupo. Se unen igual que las referencias,
+                                // pero SIN repetir: varios movimientos del mismo batch son lo
+                                // normal y escribirlo tres veces no agrega nada. Ver
+                                // `hojaDespacho.ts`. Medido el 14/10: 84% de los movimientos
+                                // traen batch, 84 distintos entre 126.
+                                const groupBatch = unirBatches(carga.ops.map(o => o.batch));
                                 if (delta > 0) {
                                   // Una caja nueva nace SIN peso: el total ya pesado era para las que
                                   // había, y repartirlo entre más sería inventar. La tarjeta avisa que
                                   // cambió la cantidad y pide volver a pesar (ver avisoCantidad).
-                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs, seccionSlot, undefined, subtipo);
+                                  for (let i = 0; i < delta; i++) void addPalletSlot(group.stateKey, cod, label, tipo, contenido, groupRefs, seccionSlot, undefined, subtipo, groupBatch);
                                 } else if (delta < 0) {
                                   for (let i = 0; i < -delta; i++) void removePalletSlot(group.stateKey, tipo, seccionActiva, subtipo);
                                 }

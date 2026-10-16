@@ -10,12 +10,13 @@ import { pushSessionStateResult, REINTENTO_PUSH_MS, subscribeToSessionState, fet
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { mergeEntriesByKey, mergeItemsByTienda } from '@/features/despacho/santiago/context/mergeItems';
 import { agregarSinDuplicar } from '@/features/despacho/shared/itemPorUnidad';
-import { fechaChile } from '@/lib/fechaChile';
 import { stableItemKey } from '@/features/despacho/shared/formRowsReconcile';
 import { serializarBase } from '@/features/despacho/shared/syncBase';
-import { tieneLapida, lapidasComoLista, absorberLapidas } from '@/features/despacho/shared/lapidasBorrado';
+import { tieneLapida, lapidasComoLista, absorberLapidas, anotarItemSinUnidad } from '@/features/despacho/shared/lapidasBorrado';
+import { elegirVersion, sellarCambios } from '@/features/despacho/shared/versionDeItem';
 import { estaRegistrado, marcarRegistro, fusionarRegistros, migrarRegistroViejo, traeRegistrosNuevos, decidir, fusionarDecisiones, aplicarDecisiones, type RegistroPorFecha, type DecisionPorFecha } from '@/features/despacho/shared/registroPorFecha';
-import { fechaDespachoBodega } from '@/features/despacho/shared/fechaLocal';
+import { diaDeTrabajoActual } from '@/features/despacho/shared/diaDeTrabajoActual';
+import { fechaDespachoBodega, mediodiaDe } from '@/features/despacho/shared/fechaLocal';
 
 const today = new Date();
 const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
@@ -84,6 +85,11 @@ function renumber(items: DispatchItem[]): DispatchItem[] {
   return renumerarSoloSinOrden(items).map(conId);
 }
 
+/** Sella los ítems cuya carga cambió en esta acción LOCAL. Ver `shared/versionDeItem.ts`. */
+function sellar(antes: DispatchItem[] | undefined, despues: DispatchItem[]): DispatchItem[] {
+  return sellarCambios(antes ?? [], despues, stableItemKey, Date.now());
+}
+
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case '__ESTADO':
@@ -100,8 +106,9 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, currentPkg: action.payload };
     case 'ADD_ITEM': {
       const prev = state.dispatch[action.tienda] || [];
+      anotarItemSinUnidad(action.item, 'vivo');
       // Si la unidad de Picking ya tiene ítem (lo guardó otro equipo), se reemplaza: no se suma otro.
-      const updated = renumber(agregarSinDuplicar(prev, action.item));
+      const updated = sellar(prev, renumber(agregarSinDuplicar(prev, action.item)));
       const pos = updated.findIndex(i => action.item.pickingSlotId != null && i.pickingSlotId === action.item.pickingSlotId);
       const sel = new Set(state.selection[action.tienda] || []);
       sel.add(pos >= 0 ? pos : updated.length - 1);
@@ -112,6 +119,8 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
     case 'DELETE_ITEM': {
+      // Sin unidad de Picking no hay slot que deje lápida: la deja el ítem. Ver `anotarItemSinUnidad`.
+      anotarItemSinUnidad((state.dispatch[action.tienda] || [])[action.idx], 'borrado');
       const items = (state.dispatch[action.tienda] || []).filter((_, i) => i !== action.idx);
       const updated = renumber(items);
       const sel = new Set<number>();
@@ -126,7 +135,7 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
     case 'UPDATE_ITEMS':
-      return { ...state, dispatch: { ...state.dispatch, [action.tienda]: action.items.map(conId) } };
+      return { ...state, dispatch: { ...state.dispatch, [action.tienda]: sellar(state.dispatch[action.tienda], action.items.map(conId)) } };
     case 'CLEAR_TIENDA': {
       const d = { ...state.dispatch }; delete d[action.tienda];
       const p = { ...state.pdfData }; delete p[action.tienda];
@@ -188,7 +197,7 @@ function reducer(state: AppState, action: Action): AppState {
         registros,
         decisiones,
         // `registrado` pasa a ser DERIVADO del mapa: los componentes lo siguen leyendo igual.
-        registrado: estaRegistrado(registros, fechaDespachoBodega(state.fechaDespacho)),
+        registrado: estaRegistrado(registros, fechaDespachoBodega(state.fechaDespacho, mediodiaDe(SESSION_DATE))),
       };
     }
     case 'SET_FECHA_DESPACHO':
@@ -218,7 +227,7 @@ function reducer(state: AppState, action: Action): AppState {
       // seguía con el `true` y el merge lo re-adoptaba al primer evento (12/10/2026, el botón
       // volvía solo a Completado). La hora sale de acá y no de la acción para no tocar los seis
       // sitios que despachan esto; la parte decidible es pura y está testeada (`decidir`).
-      const fecha = fechaDespachoBodega(state.fechaDespacho);
+      const fecha = fechaDespachoBodega(state.fechaDespacho, mediodiaDe(SESSION_DATE));
       const registros  = marcarRegistro(state.registros, fecha, action.payload);
       const decisiones = decidir(state.decisiones, fecha, action.payload, Date.now());
       return { ...state, registros, decisiones, registrado: action.payload };
@@ -252,7 +261,8 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 // Día del CD (America/Santiago), el mismo que usan los helpers del servidor. Con el día del reloj
 // del equipo, el servidor (que corre en UTC) generaba OTRA clave que el navegador al hidratar.
-const SESSION_DATE = fechaChile();
+// El día que esta pantalla trabaja: hoy, o el que venga en `?dia=` (ver `diaDeTrabajo.ts`).
+const SESSION_DATE = diaDeTrabajoActual();
 const REGIONES_KEY = `regionesState_${SESSION_DATE}`;
 
 function loadInitialState(): AppState {
@@ -418,7 +428,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
         // [Lápidas] Lo que se borró (acá o en otro equipo) no vuelve. Es la única señal de borrado
         // que respeta el merge: desde el 29/09 la ausencia en el remoto ya no borra nada.
-        tieneLapida);
+        // [Versión] Y entre dos versiones del mismo ítem gana la buena, no la del último que
+        // escribió la fila. Ver `shared/versionDeItem.ts`.
+        tieneLapida, elegirVersion);
 
       // ── pdfData merge ── mismo criterio por-clave que las guías de RM/Costa (mergeEntriesByKey):
       // dirty ⇒ gana la local (subida/borrado sin empujar); limpia ⇒ manda la remota; y si el remoto
@@ -445,13 +457,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // [P9] Catch-up: re-consulta el estado y lo aplica (usado al volver a la pestaña/app y tras un push)
     catchUpRef.current = () => {
-      fetchSessionStateMeta('regiones').then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
+      fetchSessionStateMeta('regiones', SESSION_DATE).then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
     };
 
     // Initial fetch: use same per-tienda dirty merge as handleRemote.
     // lastPushedRef is pre-seeded from localStorage so the baseline reflects last session's state.
     // Items added since page load (dirty) → local wins; unchanged items → remote wins.
-    fetchSessionStateMeta('regiones')
+    fetchSessionStateMeta('regiones', SESSION_DATE)
       .then((m) => {
         isInitializedRef.current = true;
         if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined);
@@ -468,9 +480,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCanalSano(connected); // solo espejo para UI — el closure de arriba sigue siendo la fuente que usa el polling
       // On (re)connect, fetch once to catch any change missed while the socket was down.
       if (reconnected) {
-        fetchSessionStateMeta('regiones').then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
+        fetchSessionStateMeta('regiones', SESSION_DATE).then((m) => { if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined); }).catch(() => {});
       }
-    });
+    }, SESSION_DATE);
 
     // Respaldo: con el canal caído, cada 15 s. Con el canal SANO ya no se apaga — pasa a una vez
     // por minuto, solo para detectar que el canal quedó mudo. Antes el respaldo se apagaba del
@@ -482,7 +494,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       tickPoll += 1;
       if (!debeConsultar(realtimeConnected, tickPoll)) return;
       try {
-        const m = await fetchSessionStateMeta('regiones');
+        const m = await fetchSessionStateMeta('regiones', SESSION_DATE);
         if (m?.state) handleRemote(m.state, m.updatedAt ?? undefined);
       } catch {}
     }, TICK_MS);
@@ -530,7 +542,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const pushedAt = Date.now();
       lastPushTimestampRef.current = pushedAt;
       // Include sessionDate and pushedAt so other devices/tabs can reject stale pushes
-      pushSessionStateResult('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined)
+      pushSessionStateResult('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined, SESSION_DATE)
         .then(({ ok, updatedAt: serverTs }) => {
           if (!ok) { pushFallido(current, prevLastPushed, prevLastFull); return; }
           if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); // [C3/RC-6] reloj de servidor de mi push
@@ -599,7 +611,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lastPushedFullRef.current = current;
     const pushedAt = Date.now();
     lastPushTimestampRef.current = pushedAt;
-    pushSessionStateResult('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined)
+    pushSessionStateResult('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined, SESSION_DATE)
       .then(({ ok, updatedAt: serverTs }) => {
         if (!ok) { pushFallido(current, prevPushed, prevFull); return; }
         if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); // [C3/RC-6]

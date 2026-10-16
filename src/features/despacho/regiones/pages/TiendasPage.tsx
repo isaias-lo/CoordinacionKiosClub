@@ -57,21 +57,24 @@ import { reconciliarFormRows, findItemForRow, sameStableItem } from '../../share
 import { mismaCargaEscrita } from '../../shared/adoptarItemRemoto';
 import { buscarPallet } from '../../shared/buscarPallet';
 import { esDeOtroEspejo, espejoDeTienda, avisoDeOtroEspejo } from '../../shared/duenoDeTienda';
-import { fechaISOLocal } from '../../shared/fechaLocal';
+import { mediodiaDe } from '../../shared/fechaLocal';
+import { diaDeTrabajoActual, diaDeTrabajoEsDeliberado } from '@/features/despacho/shared/diaDeTrabajoActual';
+import { claveDelDia } from '@/features/despacho/shared/calendarioDelDia';
+import { soloSeco } from '@/features/despacho/shared/unidadDeCongelados';
 import { supabase } from '../../../../lib/supabase';
 import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { AgregarPalletDialog } from '@/features/despacho/shared/AgregarPalletDialog';
 import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
-import { subtipoDeCaja, medidasDeCaja, pesoNetoCajaNegra, pesoParaMostrar, etiquetaSubtipo,
-         TARA_CAJA_NEGRA, type SubtipoCaja } from '../../shared/subtipoCaja';
+import { subtipoDeCaja, medidasDeCaja, pesoNetoDeCaja, pesoParaMostrar, etiquetaSubtipo, taraDeCaja,
+         type SubtipoCaja } from '../../shared/subtipoCaja';
 import { pesoEnTarjeta, pesoNetoDeTarjeta, pesoNetoPallet, taraDeTarjeta, taraEnTarjeta, taraParaGuardar, textoPesoConTara } from '../../shared/pesoDelPallet';
 import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
 import { nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE, tipoDesdePicking, unirTipos } from '@/features/despacho/shared/contenidoCarga';
 import { SelectorTipoCarga } from '@/features/despacho/shared/SelectorTipoCarga';
 import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional, bultosNacional } from '@/features/despacho/shared/numeroCard';
-import { leerPeso, limpiarTecleo, avisoDePeso, excedeTopeDuro } from '@/features/despacho/shared/pesoIngresado';
+import { leerPeso, limpiarTecleo, avisoDePeso, pesoFueraDeRango } from '@/features/despacho/shared/pesoIngresado';
 import { remapSlots, etiquetaSuma } from '@/features/despacho/shared/deshacerSuma';
 import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
@@ -80,7 +83,7 @@ import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { combinarEnLista } from '../../shared/combinarEnLista';
 import { esSinPesar, esPalletWeb, DIMS_SIN_PESAR } from '../../shared/sinPesar';
-import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
+import { agregarSinDuplicar, itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad, enlazarItemEditado } from '../../shared/itemPorUnidad';
 import { avisoDeUnidad, avisoEnTerminada } from '../../shared/avisoUnidadEscaneada';
 import { useEscaneoBodega } from '../../shared/useEscaneoBodega';
 import { llevarATarjeta, huboSaltoReciente } from '../../shared/useLectorBodega';
@@ -89,7 +92,9 @@ import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBo
 import { bannerReapertura, botonReapertura, toastSuma, type MotivoReapertura } from '../../shared/reaperturaAltura';
 import { fechaChile } from '@/lib/fechaChile';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
-import { levantarLapidasDeSlotsVivos } from '../../shared/lapidasBorrado';
+import { levantarLapidasDeSlotsVivos, marcarLapidaDeItem } from '../../shared/lapidasBorrado';
+import { camposParaEditar } from '../../shared/camposParaEditar';
+import { asignarSlotSinGemelas } from '../../shared/asignarSlotSinGemelas';
 import { actualizarSlotPicking, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
 import { sincronizarYCruzar } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
@@ -114,7 +119,10 @@ function codToTiendaName(): Record<string, string> {
 }
 
 /* ── Per-day calendar overrides ── */
-const _localDate = fechaChile();
+// El día que esta pantalla trabaja: hoy, o el que venga en `?dia=` (ver `diaDeTrabajo.ts`).
+const _localDate = diaDeTrabajoActual();
+/** El día lo eligió alguien (no es una pestaña que quedó abierta). Ver `diaDeTrabajoActual`. */
+const diaElegido = diaDeTrabajoEsDeliberado();
 const todayDateKey   = `calendarExtra_${_localDate}`;
 const todayRemoveKey = `calendarRemoved_${_localDate}`;
 function loadExtraCods(): string[]  { try { return JSON.parse(localStorage.getItem(todayDateKey)   || '[]'); } catch { return []; } }
@@ -164,6 +172,9 @@ interface FormRow {
   /** Se reabrió con «Editar». El ítem sigue guardado hasta que se vuelva a guardar: si nadie
    *  termina la edición, no se pierde nada. Ver `puedeAdoptar`. */
   editando?: boolean;
+  /** Editar un ítem que no tenía unidad de Picking: cuál es, para que el nuevo «Guardar» lo
+   *  complete en vez de agregar otro. Antes ese ítem se borraba al tocar Editar. */
+  reemplaza?: { id?: string; orden?: string };
 }
 
 // La tarjeta que se está pesando lleva el color de su tipo en el borde; los campos de peso y alto
@@ -311,9 +322,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const registrarSoloTienda = async (nombre: string, cod: string): Promise<boolean> => {
     const lista = state.dispatch[nombre] ?? [];
     if (!lista.length) return false;
-    const hoyISO = fechaChile();
+    const hoyISO = _localDate;
     try {
-      await sheetsRegionesWrite({ [nombre]: lista }, 'Luis Fica', fechaDespachoBodega(state.fechaDespacho), hoyISO);
+      await sheetsRegionesWrite({ [nombre]: lista }, 'Luis Fica', fechaDespachoBodega(state.fechaDespacho, mediodiaDe(_localDate)), hoyISO);
       // Volcar la hoja a la base y rehacer el cruce del día. Ver `sincronizarYCruzar`.
       const avisoCruce = await sincronizarYCruzar(hoyISO);
       registroTiendas.marcar(cod);
@@ -332,7 +343,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const router = useRouter();
   const odooProgress = useOdooProgress();  // progreso de Odoo (punto gris/naranja/verde) — igual que Santiago
-  const { terminadas, marcarTerminada } = useTiendaTerminada();
+  const { terminadas, marcarTerminada } = useTiendaTerminada(_localDate);
   // Una tienda terminada no se edita: para cambiar algo hay que reabrirla desde ⋯ (pedido de Isaias, 5 oct 2026).
   const tiendaTerminada = (cod?: string | null) => !!cod && terminadas.get(cod)?.terminada === true;
   useDayRollover();  // recarga al cruzar medianoche → evita guías/estado fantasma del día anterior
@@ -427,8 +438,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   // Tiendas de adelanto de hoy con destino Regiones (zona 'fal'), sin tocar el calendario de abastecimiento.
   const [adelantoCods, setAdelantoCods] = useState<string[]>([]);
   useEffect(() => {
-    const DAY_CODES = ['DO', 'LU', 'MA', 'MI', 'JU', 'VI', 'SA'];
-    const todayCode = DAY_CODES[new Date().getDay()];
+    // El día de la semana del DÍA DE TRABAJO, no el de hoy. Ver `diaDeTrabajo.ts`.
+    const todayCode = claveDelDia(_localDate) ?? '';
 
     // [P7] Hidratar el catálogo con las tiendas de Regiones de la BD (Config. Tiendas). Sin esto,
     // una tienda nueva quedaba en el calendario pero NO se renderizaba acá (la lista sale de
@@ -454,12 +465,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       .catch(() => {});
 
     // Initial fetch (checks localStorage cache first, then Sheets)
-    getTiendasDelDia('fal')
+    getTiendasDelDia('fal', _localDate)
       .then(cods => { if (cods.length > 0) setSheetsTodayCods(cods); })
       .catch(() => {});
 
     // Tiendas de adelanto de hoy (solo zona Regiones / 'fal')
-    getTiendasAdelantoHoy()
+    getTiendasAdelantoHoy(_localDate)
       .then(list => setAdelantoCods(list.filter(a => a.zona === 'fal').map(a => a.store_cod)))
       .catch(() => {});
 
@@ -500,6 +511,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const sheetDrag    = useRef({ start: 0, delta: 0 });
 
   const { dispatch: dispatchData, selectedTienda, fechaDespacho: _fechaDespacho, registrado } = state;
+  // Los ítems de AHORA, para lo que corre después de un `await`: la variable del render en que
+  // empezó la acción puede ser vieja, y reemplazar la lista de la tienda con ella pisa lo que otro
+  // equipo cambió mientras tanto (unir, guardar).
+  const itemsVivosRef = useRef(dispatchData);
+  itemsVivosRef.current = dispatchData;
   // [Presencia] Quién más tiene cada tienda abierta AHORA — pedido 2026-09-09: "no saben quién
   // está haciendo qué". Efímero (Realtime Presence, no tabla): se resetea cuando todos se van.
   // [Presencia por pallet] `slotEnFoco` es la tarjeta cuyo peso/alto/etc. se está escribiendo
@@ -620,19 +636,22 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
   /* ── Load picking slots from picking_pallets (today) ── */
   useEffect(() => {
-    const dateStr = fechaChile();
+    const dateStr = _localDate;
 
     const load = async () => {
       const { data } = await supabase
         .from('picking_pallets')
-        .select('id,store_cod,tipo,subtipo,contenido,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,picker_label,is_active')
+        .select('id,store_cod,tipo,subtipo,contenido,section,seq,canonical_id,peso_kg,alto,largo,ancho,peso_v,picker_label,is_active,refs,batch')
         .eq('date', dateStr)
         .eq('is_active', true)
         .order('id', { ascending: true });
       if (!data) return;
+      // Las cajas de congelados se pesan en SU pestaña. Acá solo hacían que la tienda no cerrara
+      // nunca, aunque la marcaran terminada. Ver `unidadDeCongelados.ts`.
+      const filas = soloSeco(data);
       const codToName = codToTiendaName();  // fresco: TIENDAS puede haber crecido desde el último load()
       const full:  Record<string, import('../../../despacho/santiago/components/PickingSlotCards').PickingSlot[]> = {};
-      for (const row of data) {
+      for (const row of filas) {
         if (fueRecienBorrado(row.id as number)) continue; // [RC-3] no revivir un slot recién borrado
         const name = codToName[row.store_cod as string];
         if (!name) continue;
@@ -646,6 +665,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
           largo: row.largo as number | null, ancho: row.ancho as number | null,
           peso_v: row.peso_v as number | null,
           picker_label: row.picker_label as string | null,
+          refs:         row.refs  as string | null,
+          batch:        row.batch as string | null,
         });
       }
       // [RC-5] Lo recién creado que esta consulta todavía no ve. Sin esto, `load` reemplaza el
@@ -1172,7 +1193,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const addFormRowInner = async (pkg: TipoPaquete, existingSlot?: PickingSlot, countOffset = 0) => {
     const cod = selectedTienda ? (TIENDAS[selectedTienda]?.cod ?? '') : '';
     const PKG_CODE: Record<TipoPaquete, string> = { pallet: 'P', box: 'B', contenedor: 'C', chocolate: 'CH', adquisicion: 'A', 'web-retiro': 'W' };
-    const date = fechaISOLocal();
+    const date = _localDate;
 
     // Chocolate: se agrega AGREGADO al instante con peso por defecto (sin formulario)
     if (pkg === 'chocolate') {
@@ -1279,7 +1300,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       next[selectedTienda] = [...(next[selectedTienda] ?? []), slot];
       return next;
     });
-    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
+    // Si la recarga de Picking trajo este slot antes que la respuesta, ya hay otra tarjeta para él.
+    setFormRows(prev => asignarSlotSinGemelas(prev, rowId, slot.id));
   };
 
   // [P5] Guarda anti doble-tap: crear un slot NO es idempotente, así que dos toques seguidos (o un
@@ -1316,7 +1338,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     if (addingSlotRef.current.has(key)) { showToast('Agregando… espera un segundo', AVISO_ESPERA); return; }
     addingSlotRef.current.add(key);
     try {
-      const { slot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: 'P', contenido: 'hogar' });
+      const { slot, error } = await crearSlotBodega({ date: _localDate, store_cod: cod, tipo: 'P', contenido: 'hogar' });
       if (!slot) { showToast(`⚠ No se pudo agregar el pallet web (${error}) — reintenta`, AVISO_ERROR); return; }
       setPickingSlotsFull(prev => ({ ...prev, [tiendaSel]: [...(prev[tiendaSel] ?? []), slot] }));
       // El número sale del `seq` del slot, igual que al guardar un pallet pesado (`saveRow`).
@@ -1347,7 +1369,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const src = row.savedItem;
     if (!src || !selectedTienda) return;
     const cod  = TIENDAS[selectedTienda]?.cod ?? '';
-    const date = fechaISOLocal();
+    const date = _localDate;
     const baseCount = (dispatchData[selectedTienda] || []).filter(i => i.pkg === 'box').length;
     let creados = 0;
     for (let k = 0; k < cantidad; k++) {
@@ -1404,6 +1426,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     deOtraBodega: cod => (esDeOtroEspejo(cod, 'nacional', isRegionesCod)
       ? avisoDeOtroEspejo(cod, espejoDeTienda(cod, isRegionesCod))
       : null),
+    // Una etiqueta del otro espejo lleva a la persona a su pestaña, que la abre allá. Se guarda lo
+    // pendiente antes de salir, igual que el botón Enrutador. Ver `saltoEntreBodegas.ts`.
+    espejo: 'nacional',
+    navegar: ruta => { flushPending(); router.push(ruta); },
     irA: p => {
       const tienda = TIENDAS[p.claveTienda];
       if (!tienda) return false;
@@ -1451,10 +1477,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       // peso/alto/largo/ancho ni pasar por validarDimensiones.
       p = DIMS_SIN_PESAR.peso; a = DIMS_SIN_PESAR.alto; aw = DIMS_SIN_PESAR.ancho; l = DIMS_SIN_PESAR.largo;
     } else {
-      if (caja === 'negra') {
-        // Se pesa ENTERA y vuelve al CD: se descuenta lo que pesa vacía. Se rechaza lo que no
-        // llega a la tara en vez de recortarlo a cero (ver `pesoNetoCajaNegra`).
-        const neto = pesoNetoCajaNegra(row.peso);
+      if (caja) {
+        // La caja se pesa ENTERA —no hay forma de pesar el contenido solo— y no es mercadería: se
+        // descuenta lo que pesa vacía. Las DOS cajas tienen tara (negra 3,3 · cartón 0,4). Se
+        // rechaza lo que no llega a la tara en vez de recortarlo a cero. Ver `pesoNetoDeCaja`.
+        const neto = pesoNetoDeCaja(row.peso, caja);
         if (!neto.ok) { showToast(`⚠ ${neto.error}`, '#D32F2F'); return; }
         p = neto.neto;
       } else if (row.pkg === 'pallet') {
@@ -1482,7 +1509,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       // Un peso imposible se ataja ACÁ, con la balanza todavía al lado y el bulto todavía arriba.
       // El 28/09 un «353,7» al que se le perdió la coma quedó registrado como 9.357 kg y nadie lo
       // vio hasta cruzarlo contra Odoo al día siguiente. Ver `shared/pesoIngresado.ts`.
-      const duro = excedeTopeDuro(p, claseNacional(row.pkg));
+      const duro = pesoFueraDeRango(p, claseNacional(row.pkg));
       if (duro) { showToast(`⚠ ${duro}`, '#D32F2F'); return; }
       const aviso = avisoDePeso(p, claseNacional(row.pkg));
       if (aviso && !window.confirm(`⚠ ${aviso.titulo}\n\n${aviso.detalle}\n\n¿Guardar así?`)) return;
@@ -1493,13 +1520,28 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // quedaba "confirmado" en el resumen local sin fila real en picking_pallets, invisible
     // para Seguimiento/Enrutador/Conteo de Flota. Último intento acá, igual que Santiago.
     let slotId = row.pickingSlotId;
+    let slotRecienCreado = false;
     if (!slotId) {
-      const { slot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: TIENDAS[selectedTienda]?.cod ?? '', tipo: pkgCodeNacional(row.pkg), contenido: 'hogar' });
+      const { slot, error } = await crearSlotBodega({ date: _localDate, store_cod: TIENDAS[selectedTienda]?.cod ?? '', tipo: pkgCodeNacional(row.pkg), contenido: 'hogar' });
       if (!slot) { showToast(`⚠ No se pudo guardar (${error}) — reintenta`, '#D32F2F'); return; }
       slotId = slot.id;
+      slotRecienCreado = true;
       setPickingSlotsFull(prev => ({ ...prev, [selectedTienda]: [...(prev[selectedTienda] ?? []), slot] }));
     }
-    const currentItems = dispatchData[selectedTienda] || [];
+    // La lista de ahora, no la del render en que se tocó Guardar: entre medio hubo un `await`.
+    let currentItems = itemsVivosRef.current[selectedTienda] || [];
+    // Edición de un ítem que no tenía slot: queda enlazado al slot recién creado, y así
+    // `itemDeLaUnidad` lo encuentra y el guardado lo completa en vez de agregar otro.
+    if (row.reemplaza && slotRecienCreado) {
+      const enlazados = enlazarItemEditado(currentItems, i => sameStableItem(i, row.reemplaza), slotId);
+      if (enlazados) {
+        currentItems = enlazados;
+        dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: currentItems });
+        // Su llave pasa de `id:` a `slot:`: los otros equipos tienen que soltar la de antes, o se
+        // quedan con los dos. Ver `marcarLapidaDeItem`.
+        marcarLapidaDeItem(row.reemplaza.id);
+      }
+    }
     // El número sale del `seq` —el que quedó IMPRESO en la etiqueta—, no de la posición. Se pasan
     // los `seq` de las hermanas porque el número se fija UNA vez acá: una unidad sin `seq` que
     // cayera en su posición podría quedarse con el id de fila de otra.
@@ -1525,12 +1567,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       const perItem = Math.round(pdfInfo.totalSum / newItems.length);
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: newItems.map((it, i) => ({ ...it, guia: pdfInfo.guias[i]?.num || '', valor: perItem })) });
     }
-    const savedItem: DispatchItem = { ...item, id: previo?.id ?? crypto.randomUUID(), canonical_id: pickingSlot?.canonical_id ?? undefined };
+    const savedItem: DispatchItem = { ...item, id: previo?.id ?? crypto.randomUUID(),
+      canonical_id: pickingSlot?.canonical_id ?? undefined,
+      refs:  pickingSlot?.refs  ?? undefined,
+      batch: pickingSlot?.batch ?? undefined };
     // `pickingSlotId` va SIEMPRE en la fila, no solo en el ítem: cuando el slot se creó recién acá
     // (el reintento de arriba), la fila se quedaba sin él. El backfill pregunta por los slots que
     // las filas declaran (`slotsRepresentados`), no encontraba este, y agregaba una SEGUNDA tarjeta
     // para la misma unidad. RM/Costa ya lo hacía (StepForm: mismo punto); acá faltaba.
-    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId, traSuma: false, editando: false } : r));
+    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId, traSuma: false, editando: false, reemplaza: undefined } : r));
     // El toast "Agregado sin pesar" lo dispara el caller (botón "Sin pesar") justo después.
     if (!sinPesar) showToast(`✓ ${item.orden} ${previo ? 'actualizado' : 'agregado'}`, '#16A34A');
     logActividad({ accion: 'registrar_item', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
@@ -1567,13 +1612,16 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // tienda sin volver a guardar, la unidad reaparecía «sin guardar» con sus datos (los tenía el
     // slot de Picking), y otro equipo la devolvía con el peso viejo. Ahora queda guardado tal cual
     // hasta el nuevo «Guardar», que lo reemplaza (`itemDeLaUnidad` + `fusionarConPrevio`).
-    // Sin slot de Picking no hay con qué reemplazarlo, así que ahí se mantiene el borrado de antes.
-    if (row.savedItem.pickingSlotId == null) {
-      const currentItems = dispatchData[selectedTienda] || [];
-      const idx = currentItems.findIndex(i => sameStableItem(i, row.savedItem));
-      if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tienda: selectedTienda, idx });
-    }
-    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, saved: false, savedItem: undefined, editando: true } : r));
+    // Sin slot de Picking tampoco se borra (15/10/2026): antes sí, y salir sin guardar lo perdía.
+    // La fila recuerda cuál es (`reemplaza`) y el guardado lo enlaza al slot nuevo.
+    const reemplaza = row.savedItem.pickingSlotId == null ? { id: row.savedItem.id, orden: row.savedItem.orden } : undefined;
+    // Los campos salen del ítem que la tarjeta muestra, no de lo que quedó escrito en la fila, y la
+    // fila pasa a ser la de «Ahora». Sin las dos cosas, el 14/10 en 06MQH se editó el P2 (sin pesar)
+    // viendo los 237 kg del P1, y se guardó eso. Ver `camposParaEditar`.
+    const slot = (pickingSlotsFull[selectedTienda] ?? []).find(s => s.id === (row.pickingSlotId ?? row.savedItem!.pickingSlotId));
+    const campos = camposParaEditar(row.savedItem, row.savedItem.pkg === 'chocolate' ? subtipoDeCaja(slot?.subtipo) : null, row);
+    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, ...campos, saved: false, savedItem: undefined, editando: true, reemplaza } : r));
+    elegirActiva(rowId);
   };
 
   // Borra el slot de picking_pallets vinculado y lo quita de pickingSlotsFull.
@@ -1664,7 +1712,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // Vuelve con su número de antes si nadie lo tomó (ver recrearSlotConNumero); las medidas y el
     // peso se le escriben en el mismo update.
     const { slot, conservoNumero, error } = await recrearSlotConNumero({
-      date: fechaISOLocal(), store_cod: cod,
+      date: _localDate, store_cod: cod,
       tipo: slotAntes?.tipo ?? pkgCodeNacional(item.pkg), contenido: slotAntes?.contenido ?? 'hogar',
       seqOriginal: slotAntes?.seq, canonicalOriginal: slotAntes?.canonical_id ?? item.canonical_id,
       peso: item.peso, alto: item.alto, largo: item.largo, ancho: item.ancho,
@@ -1743,7 +1791,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     let sinSlot = 0, conCodigoNuevo = 0;
     for (const o of snap.origenes) {
       const r = await recrearSlotConNumero({
-        date: fechaISOLocal(), store_cod: snap.cod, tipo: o.tipo, contenido: o.contenido,
+        date: _localDate, store_cod: snap.cod, tipo: o.tipo, contenido: o.contenido,
         seqOriginal: o.seq, canonicalOriginal: o.canonical,
         peso: o.peso, alto: o.alto, largo: o.largo, ancho: o.ancho,
       });
@@ -1789,7 +1837,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const { name, itemsAntes, sourceItem, oldSrcSlot, tgtSlot, tgtPeso } = snap;
     const cod = TIENDAS[name]?.cod ?? '';
     let newSrcSlotId: number | undefined;
-    const { slot: nuevoSlot, error } = await crearSlotBodega({ date: fechaISOLocal(), store_cod: cod, tipo: pkgCodeNacional(sourceItem.pkg), contenido: 'hogar' });
+    const { slot: nuevoSlot, error } = await crearSlotBodega({ date: _localDate, store_cod: cod, tipo: pkgCodeNacional(sourceItem.pkg), contenido: 'hogar' });
     if (nuevoSlot) newSrcSlotId = nuevoSlot.id;
     // El source queda sin # si falla — ahora AVISA en vez de fallar en silencio.
     else showToast(`⚠ Revertido sin # de bodega para el source (${error})`, '#D97706');
@@ -1949,7 +1997,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
      se reabre como card editable con el peso ya sumado para ingresar/ajustar la altura y
      "Agregar" (guardado normal). Se actualizan AMBOS cachés de slots (light + full) para que
      NO aparezca el fantasma "¿Con cuál fue unificado?" (gP usa el light). Navegación-safe. */
-  const iniciarUnionInline = (sourceRow: FormRow, targetRow: FormRow, srcLabel?: string, tgtLabel?: string) => {
+  // Una unión a la vez: con la espera de la base, un doble toque mandaría la misma dos veces.
+  const uniendoRef = useRef(false);
+  const iniciarUnionInline = async (sourceRow: FormRow, targetRow: FormRow, srcLabel?: string, tgtLabel?: string) => {
     if (!selectedTienda) return;
     const name      = selectedTienda;
     const srcPeso   = pesoNetoDeTarjeta(sourceRow);
@@ -1959,8 +2009,22 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const srcSlot   = sourceRow.pickingSlotId ?? sourceRow.savedItem?.pickingSlotId;
     const tgtSlot   = targetRow.pickingSlotId ?? targetRow.savedItem?.pickingSlotId;
     const mguia     = unionRefs(targetRow.savedItem?.guia ?? targetRow.guia, sourceRow.savedItem?.guia ?? sourceRow.guia);
+    // ── LA BASE PRIMERO (15/10/2026) ─────────────────────────────────────────────────────────
+    // Antes la pantalla quitaba el ítem del origen y DESPUÉS mandaba la unión a la base, sin
+    // esperarla. Si la base la rechazaba (el destino ya lo había borrado otro equipo), el peso del
+    // origen ya no estaba en pantalla y solo quedaba un aviso. Ahora se espera la respuesta y, si
+    // no se pudo unir, no se toca nada: los dos pallets quedan como estaban.
+    if (tgtSlot && srcSlot) {
+      if (uniendoRef.current) return;
+      uniendoRef.current = true;
+      let r: Awaited<ReturnType<typeof finalizarSlotUnion>>;
+      try { r = await finalizarSlotUnion(tgtSlot, srcSlot); } finally { uniendoRef.current = false; }
+      if (!r.ok) { showToast(`⚠ No se pudo unir: ${r.error} — no se cambió nada`, '#D32F2F'); return; }
+    }
+    // Lo de ahora, no lo de antes del await: en ese rato pudo llegar otro equipo.
+    const itemsAhora = itemsVivosRef.current;
     // [Revertir unificación] Snapshot ANTES de mutar (solo si ambos son items guardados).
-    const itemsAntesUnion = [...(dispatchData[name] || [])];
+    const itemsAntesUnion = [...(itemsAhora[name] || [])];
     const sourceItemUnion = sourceRow.savedItem;
     const puedeRevertirUnion = !!(sourceItemUnion && targetRow.savedItem);
 
@@ -1968,7 +2032,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     //    fusionadas, igual que al sumar un bulto. Antes el target también se quitaba («se re-agrega
     //    al Agregar»): si nadie apretaba Agregar, la unidad volvía «sin guardar», y como el borrado
     //    no dejaba lápida, otro equipo la devolvía con el peso de antes de unir.
-    const cur = dispatchData[name] || [];
+    const cur = itemsAhora[name] || [];
     const remaining = cur
       .filter(i => !sameStableItem(i, sourceRow.savedItem))
       .map(i => sameStableItem(i, targetRow.savedItem) ? { ...i, peso: nuevoPeso, guia: mguia || i.guia } : i);
@@ -1981,19 +2045,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       supabase.from('picking_pallets').update({ peso_kg: nuevoPeso }).eq('id', tgtSlot)
         .then(({ error }) => { if (error) console.error('[union peso]', error.message); });
     }
-    // EL RESULTADO SE MIRA. Antes se tiraba, y por eso una unión rechazada —porque el destino ya
-    // no existía— se veía en pantalla como si hubiera funcionado: los ítems ya se habían fusionado
-    // acá arriba. Es lo que dejó a 12LAS sin una sola unidad el 30/09.
-    if (tgtSlot && srcSlot) {
-      void finalizarSlotUnion(tgtSlot, srcSlot).then(r => {
-        if (!r.ok) showToast(`⚠ No se pudo unir: ${r.error} — recarga la tienda`, '#D32F2F');
-      });
-    }
+    // Con los dos slots, la unión en la base ya se hizo arriba (y se miró su resultado).
     // Sin slot de destino no hay refs que fusionar, pero el borrado es el mismo. Antes era un
     // `delete` a mano y se quedaba sin los DOS guards: sin el anti-revive (la recarga de picking lo
     // resucitaba) y sin la lápida (el merge entre equipos lo devolvía). `eliminarSlotPicking` hace
     // las tres cosas en un solo lugar.
-    else if (srcSlot) eliminarSlotPicking(srcSlot, {
+    if (!tgtSlot && srcSlot) eliminarSlotPicking(srcSlot, {
       fuente: 'nacional', tiendaCod: TIENDAS[name]?.cod, tiendaNombre: name, yaRegistrado: true,
     });
 
@@ -2269,7 +2326,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   <div className={`grid ${row.pkg === 'pallet' ? 'grid-cols-3' : 'grid-cols-2'} gap-2 mb-2`}>
                     <div>
                       <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">
-                        Peso{cajaDeFila === 'negra' && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(TARA_CAJA_NEGRA).replace('.', ',')} kg de caja</span>}
+                        Peso{cajaDeFila && <span className="normal-case text-[#C2410C] font-bold"> · se descuentan {String(taraDeCaja(cajaDeFila)).replace('.', ',')} kg de caja</span>}
                       </label>
                       <input type="text" value={row.peso} onChange={e => updateRow(row.id, 'peso', limpiarTecleo(e.target.value))}
                         onFocus={marcarEnFoco} onBlur={quitarFoco} placeholder="kg" inputMode="decimal" data-campo="peso"
@@ -2662,7 +2719,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             <AgregarPalletDialog
               tipoLabel={PKG_LABEL[dialogPkg]}
               storeCod={TIENDAS[selectedTienda]?.cod ?? ''}
-              date={fechaISOLocal()}
+              date={_localDate}
               refInicial={dialogRef ?? undefined}
               comprobarAlAbrir={dialogBorrado}
               onClose={() => setDialogPkg(null)}
@@ -2690,8 +2747,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   return (
     <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
 
-      {/* La pantalla quedó abierta de un día para otro. Ver `diaDeLaSesion.ts`. */}
-      <AvisoDiaViejo diaDeLaSesion={_localDate} />
+      {/* La banda del día elegido va en `AppScreen`, arriba de todo: este contenedor es una FILA
+          en escritorio. Acá queda solo el aviso de pestaña vieja, que es `fixed` y no estorba.
+          Las dos señales son opuestas y nunca salen juntas. Ver `diaDeTrabajoEsDeliberado`. */}
+      {!diaElegido && <AvisoDiaViejo diaDeLaSesion={_localDate} />}
 
       {/* Wrapper: on mobile = top/bottom stack, on desktop = transparent via contents */}
       <div className="flex flex-col lg:contents flex-1 min-h-0 overflow-hidden">

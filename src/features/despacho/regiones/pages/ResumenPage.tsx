@@ -21,7 +21,7 @@ import type { TipoContenido, TipoPaquete, DispatchItem } from '../../../../types
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
 import { eliminarSlotPicking } from '../../shared/eliminarSlotPicking';
 import { formatCLPCorto } from '../../shared/formatoCLP';
-import { excedeTopeDuro } from '../../shared/pesoIngresado';
+import { pesoFueraDeRango } from '../../shared/pesoIngresado';
 import { actualizarSlotPicking, camposDePeso, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
 import { esSinPesar, esPalletWeb } from '../../shared/sinPesar';
 import { etiquetaDeUnidad } from '../../shared/adquisicion';
@@ -182,7 +182,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
       setCombineModal(null);
       return;
     }
-    const duro = excedeTopeDuro(peso, claseNacional(src.pkg));
+    const duro = pesoFueraDeRango(peso, claseNacional(src.pkg));
     if (duro) { showToast(`⚠ ${duro}`, AVISO_ERROR); return; }
     const tipoMerge: TipoContenido = unirTipos(src.tipo, tgt.tipo);
     const guia  = [src.guia, tgt.guia].filter(Boolean).join(', ');
@@ -246,7 +246,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
     const sinPeso = clase === 'adquisicion' || clase === 'webretiro' || esPalletWeb(list[idx]);
     const peso = sinPeso ? (leerPeso(editPeso) ?? 0) : leerPeso(editPeso);
     if (peso == null) { showToast('Ingresa el peso', '#D97706'); return; }
-    const duro = excedeTopeDuro(peso, clase);
+    const duro = pesoFueraDeRango(peso, clase);
     if (duro) { showToast(`⚠ ${duro}`, '#D32F2F'); return; }
     const antes = list[idx];
     list[idx] = {

@@ -3,6 +3,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
 import { puedeRestaurar, avisoRestaurar } from '@/features/despacho/shared/restaurarPallet';
 import { variantesDeCodigo } from '@/features/despacho/shared/buscarPallet';
+import { reclamoRetrocede } from '@/features/despacho/shared/mensajeClaim';
 
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
@@ -121,6 +122,14 @@ export async function POST(request: NextRequest) {
     const yaEnCarga = String(slot.date ?? '') === date && slot.is_active === true && slot.combined_into == null;
     if (yaEnCarga) {
       return NextResponse.json({ data: slot, reason: 'ya_en_carga' });
+    }
+
+    // Nunca hacia atrás: un pallet vivo en una carga MÁS NUEVA no se mueve. Ver `reclamoRetrocede`.
+    if (reclamoRetrocede(slot.date as string | null, date, slot.is_active === true && slot.combined_into == null)) {
+      return NextResponse.json(
+        { error: 'El pallet está en la carga de un día posterior', reason: 'de_dia_posterior' },
+        { status: 409 },
+      );
     }
 
     // Re-datar a hoy (conserva store_cod y canonical_id) + reactivar.

@@ -32,9 +32,15 @@ export interface DispatchItem {
   ancho: number;
   largo: number;
   pickingSlotId?: number;   // FK a picking_pallets.id (trazabilidad)
+  /** La REFERENCIA de Odoo del movimiento que armó esta unidad (`99REC/DT/138597`). Varias van
+   *  unidas con `+`. Viaja desde el slot para que llegue a la planilla. Ver `hojaDespacho.ts`. */
+  refs?: string;
+  /** El batch de Odoo. Vacío en todo lo anterior a que Picking empiece a guardarlo. */
+  batch?: string;
   canonical_id?: string;    // P3MAI13062026P — del picking slot (para CÓDIGO en Sheets/Supabase)
   taraPallet?: number;      // kg del pallet que se restaron del peso (`peso` ya es neto). Ver pesoDelPallet.ts
   palletWeb?: boolean;      // pallet que sale sin pesar, a propósito. Ver shared/sinPesar.ts → esPalletWeb
+  editadoEn?: number;       // ms de la última edición de su carga en un equipo. Ver shared/versionDeItem.ts
 }
 
 export interface PdfGuia {

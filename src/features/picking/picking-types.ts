@@ -35,6 +35,8 @@ export interface PickingSession {
 }
 
 export interface PalletSlot {
+  /** El batch de Odoo del grupo que armó esta unidad. Vacío en todo lo anterior al 15/10/2026. */
+  batch?: string;
   id: number;
   store_cod: string;
   state_key: string;

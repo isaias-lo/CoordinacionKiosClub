@@ -7,7 +7,7 @@ import { fechaChile } from '@/lib/fechaChile';
 
 // peso_kg/alto/largo/ancho/peso_v: las columnas ya existían, pero solo las escribía Bodega. Ahora
 // también viajan desde Picking, así que el cliente necesita verlas de vuelta al crear un slot.
-const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, subtipo, contenido, section, refs, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v';
+const SELECT_COLS = 'id, store_cod, state_key, picker_label, tipo, subtipo, contenido, section, refs, batch, created_at, seq, canonical_id, peso_kg, alto, largo, ancho, peso_v';
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
 // Auditoría de altas/bajas de pallets (fire-and-forget — no debe bloquear la respuesta).
@@ -92,6 +92,8 @@ export async function POST(request: NextRequest) {
       contenido:    body.contenido ?? 'hogar',
       section:      body.section ?? null,
       refs:         body.refs ?? '',
+      // El batch de Odoo del grupo que armó esta unidad. Viaja igual que `refs`.
+      batch:        body.batch ?? '',
       client_op_id: body.client_op_id ?? null,
       // Null cuando no vienen: un slot sin pesar queda igual que siempre.
       peso_kg:      body.peso_kg ?? null,
@@ -183,6 +185,26 @@ export async function DELETE(request: NextRequest) {
   if (!actor) return UNAUTH();
   const body = await request.json() as { id: number; actor_name?: string };
   const sb = supabaseServer();
+  // ── LO QUE BODEGA YA REGISTRÓ NO SE BORRA DESDE ACÁ (15/10/2026) ───────────────────────────────
+  // Por esta ruta borra Picking (el «−» del contador, que saca la ÚLTIMA unidad sin confirmar).
+  // Bodega borra por su cuenta, con confirmación y bitácora (`eliminarSlotPicking`). Antes nada
+  // impedía que un «−» en Picking se llevara un pallet que Bodega ya había pesado y guardado: se
+  // iba de la base, del despacho y de la planilla. Ahora, si Bodega lo registró, se rechaza y
+  // Picking lo dice; para sacarlo, se borra en Bodega.
+  const { data: unidad } = await sb.from('picking_pallets').select('id, date').eq('id', body.id).maybeSingle();
+  if (unidad?.date) {
+    const { data: registro } = await sb.from('actividad_bodega').select('id')
+      .eq('accion', 'registrar_item')
+      .gte('fecha', unidad.date as string).lte('fecha', unidad.date as string)
+      .eq('detalle->>slotId', String(body.id))
+      .limit(1).maybeSingle();
+    if (registro) {
+      return NextResponse.json(
+        { error: 'Bodega ya registró esta unidad', reason: 'registrado_en_bodega' },
+        { status: 409 },
+      );
+    }
+  }
   // Sacar la unidad del registro de despacho antes de borrarla — base Y planilla, RM Y Nacional.
   // Si no, el pallet borrado sigue viajando en el papel (51SER, 11/09/2026). Ver limpiarDespacho.ts.
   const limpieza = await sacarUnidadDelDespacho(sb, body.id);
