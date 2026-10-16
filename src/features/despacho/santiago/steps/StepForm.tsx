@@ -73,7 +73,7 @@ import { subscribeToPickingPallets } from '@/lib/pickingPalletsChannel';
 import { fetchSessionState, subscribeToSessionState, pushSessionState } from '@/lib/userSessionState';
 import { mergeEntriesByKey } from '../context/mergeItems';
 import { processPdf } from '../../regiones/utils/pdfUtils';
-import { isRegionesCod, codsRegionesDeBD, registrarCodsRegiones } from '../../regiones/data/tiendas';
+import { isRegionesCod, codsRegionesDeBD, registrarCodsRegiones, validarDimensiones } from '../../regiones/data/tiendas';
 import { esDeOtroEspejo, espejoDeTienda, avisoDeOtroEspejo } from '../../shared/duenoDeTienda';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
@@ -82,7 +82,9 @@ import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { combinarEnLista } from '../../shared/combinarEnLista';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
 import { eliminarSlotPicking, fueRecienBorrado } from '../../shared/eliminarSlotPicking';
-import { levantarLapidasDeSlotsVivos } from '../../shared/lapidasBorrado';
+import { levantarLapidasDeSlotsVivos, marcarLapidaDeItem } from '../../shared/lapidasBorrado';
+import { camposParaEditar } from '../../shared/camposParaEditar';
+import { asignarSlotSinGemelas } from '../../shared/asignarSlotSinGemelas';
 import { actualizarSlotPicking, camposDePeso, AVISO_SLOT_BORRADO } from '../../shared/actualizarSlotPicking';
 import { sincronizarYCruzar } from '../../shared/avisarCruce';
 import { faltantesEnLaConsulta, slotsRecienAgregados } from '@/features/despacho/shared/slotRecienAgregado';
@@ -91,7 +93,7 @@ import { subtipoDeCaja, medidasDeCaja, pesoNetoDeCaja, pesoParaMostrar, etiqueta
          type SubtipoCaja } from '../../shared/subtipoCaja';
 import { pesoEnTarjeta, pesoNetoDeTarjeta, pesoNetoPallet, taraDeTarjeta, taraEnTarjeta, taraParaGuardar, taraTrasCorregir, textoPesoConTara } from '../../shared/pesoDelPallet';
 import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
-import { itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad } from '../../shared/itemPorUnidad';
+import { itemDeLaUnidad, fusionarConPrevio, esReingresoDeVerdad, enlazarItemEditado } from '../../shared/itemPorUnidad';
 import { avisoDeUnidad, avisoEnTerminada } from '../../shared/avisoUnidadEscaneada';
 import { useEscaneoBodega } from '../../shared/useEscaneoBodega';
 import { llevarATarjeta, huboSaltoReciente } from '../../shared/useLectorBodega';
@@ -181,6 +183,9 @@ interface FormRow {
   /** Se reabrió con «Editar». El ítem sigue guardado hasta que se vuelva a guardar: si nadie
    *  termina la edición, no se pierde nada. Ver `puedeAdoptar`. */
   editando?: boolean;
+  /** Editar un ítem que no tenía unidad de Picking: cuál es, para que el nuevo «Guardar» lo
+   *  complete en vez de agregar otro. Antes ese ítem se borraba al tocar Editar. */
+  reemplaza?: { id?: string; orden?: string };
 }
 
 // La tarjeta que se está pesando lleva el color de su tipo en el borde; peso y alto van en cifras
@@ -424,6 +429,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   };
   const { pending: undoPending, armar: armarUndo, revertir: revertirUndo, descartar: descartarUndo } = useUndoDelete();
   const { currentTienda, items, regimen } = state;
+  // Los ítems de AHORA, para lo que corre después de un `await`: la variable del render en que
+  // empezó la acción puede ser vieja, y reemplazar la lista de la tienda con ella pisa lo que otro
+  // equipo cambió mientras tanto (unir, guardar). Espejo de Nacional.
+  const itemsVivosRef = useRef(items);
+  itemsVivosRef.current = items;
   const odooProgress = useOdooProgress();  // tiendas con picking terminado hoy
   const { terminadas, marcarTerminada } = useTiendaTerminada(todayKey);
   // Una tienda terminada no se edita: para cambiar algo hay que reabrirla desde ⋯ (pedido de Isaias, 5 oct 2026).
@@ -1477,6 +1487,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       fA = row.tipo === 'Pallet' ? 100 : isCont ? CONTENEDOR_ANCHO : isChocTipo ? (medidasCaja?.ancho ?? 0) : (isChoc ? CHOCOLATE_BULTO_DIMS.ancho : (parseFloat(row.ancho) || 0));
       if (!isCont && !isChocTipo && !a) { showToast('Ingresa el alto', '#D97706'); return; }
       if (row.tipo === 'Bulto' && !isChoc && (!fL || !fA)) { showToast('Ingresa largo y ancho', '#D97706'); return; }
+      // Mismos límites que Nacional (`saveRow` de TiendasPage). Acá no se validaban: un alto de 1800
+      // por un cero de más, o uno negativo, se guardaba tal cual.
+      const errores = (isCont || isChoc || isChocTipo) ? [] : validarDimensiones(row.tipo === 'Pallet' ? 'pallet' : 'box', p, a, fA, fL);
+      if (errores.length) { showToast('⚠ ' + errores[0], '#D32F2F'); return; }
       // Un peso imposible se ataja ACÁ, con la balanza todavía al lado y el bulto todavía arriba.
       // El 28/09 un «353,7» al que se le perdió la coma quedó registrado como 9.357 kg y nadie lo
       // vio hasta cruzarlo contra Odoo al día siguiente. Ver `shared/pesoIngresado.ts`.
@@ -1506,7 +1520,20 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot] }));
     }
 
-    const existing = items[cod] || [];
+    // La lista de ahora, no la del render en que se tocó Guardar: entre medio hubo un `await`.
+    let existing = itemsVivosRef.current[cod] || [];
+    // Edición de un ítem que no tenía slot: queda enlazado al slot recién creado, y así
+    // `itemDeLaUnidad` lo encuentra y el guardado lo completa en vez de agregar otro.
+    if (row.reemplaza && nuevoSlot && slotId) {
+      const enlazados = enlazarItemEditado(existing, i => i.id === row.reemplaza!.id, slotId);
+      if (enlazados) {
+        existing = enlazados;
+        dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: existing });
+        // Su llave pasa de `id:` a `slot:`: los otros equipos tienen que soltar la de antes, o se
+        // quedan con los dos. Ver `marcarLapidaDeItem`.
+        marcarLapidaDeItem(row.reemplaza.id);
+      }
+    }
     // Por CLASE, no por igualdad de string. Los cuatro contadores de antes comparaban
     // `i.tipo === 'Bulto'`, que nunca coincide con 'Adquisicion' ni con 'WebRetiro': las tres
     // adquisiciones de una tienda recibían el MISMO número y colapsaban en una sola fila del ID.
@@ -1538,7 +1565,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const previo = itemDeLaUnidad(existing, slotId);
     const savedItem = previo ? fusionarConPrevio(previo, candidato) : candidato;
     dispatch({ type: 'ADD_ITEM', item: savedItem });
-    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId, traSuma: false, editando: false } : r));
+    setFormRows(prev => prev.map(r => r.id === row.id ? { ...r, saved: true, savedItem, pickingSlotId: slotId, traSuma: false, editando: false, reemplaza: undefined } : r));
     // El toast "Agregado sin pesar" lo dispara el caller (botón "Sin pesar") tras el await,
     // así queda determinista sin importar si esta función esperó por el fetch del slot.
     if (!sinPesar) showToast(`✓ ${savedItem.orden} ${previo ? 'actualizado' : 'agregado'}`, '#16A34A');
@@ -1576,13 +1603,16 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const row = formRows.find(r => r.id === rowId);
     if (!row?.savedItem) return;
     // El ítem NO se borra al abrir la edición: queda guardado hasta el nuevo «Guardar», que lo
-    // reemplaza. Espejo de Nacional, donde está el porqué (`editSavedRow`). Sin slot de Picking no
-    // hay con qué reemplazarlo, así que ahí se mantiene el borrado de antes.
-    if (row.savedItem.pickingSlotId == null) {
-      const idx = (items[currentTienda.cod] || []).findIndex(i => i.id === row.savedItem!.id);
-      if (idx !== -1) dispatch({ type: 'DELETE_ITEM', tiendaCod: currentTienda.cod, idx });
-    }
-    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, saved: false, savedItem: undefined, editando: true } : r));
+    // reemplaza. Espejo de Nacional, donde está el porqué (`editSavedRow`). Tampoco sin slot de
+    // Picking (15/10/2026): antes ahí sí se borraba, y salir sin guardar lo perdía. Ahora la fila
+    // recuerda cuál es (`reemplaza`) y el guardado lo enlaza al slot nuevo.
+    const reemplaza = row.savedItem.pickingSlotId == null ? { id: row.savedItem.id, orden: row.savedItem.orden } : undefined;
+    // Los campos salen del ítem que la tarjeta muestra y la fila pasa a ser la de «Ahora». Espejo
+    // de Nacional, donde está el porqué (06MQH). Ver `camposParaEditar`.
+    const slot = (pickingSlotsFull[currentTienda.cod] ?? []).find(s => s.id === (row.pickingSlotId ?? row.savedItem!.pickingSlotId));
+    const campos = camposParaEditar(row.savedItem, row.savedItem.tipo === 'Chocolate' ? subtipoDeCaja(slot?.subtipo) : null, row);
+    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, ...campos, saved: false, savedItem: undefined, editando: true, reemplaza } : r));
+    elegirActiva(rowId);
   };
 
   // Borra el slot de picking_pallets vinculado y lo quita de pickingSlotsFull.
@@ -1906,8 +1936,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const pesosBultos = bultoRows.map(r => pesoNetoDeTarjeta(r));
     const pesoActual  = pesoNetoDeTarjeta(palletRow);
     const nuevoPeso   = sumarPesoMultiple(pesoActual, pesosBultos);
-    const palletIdx   = formRows.slice(0, formRows.findIndex(r => r.id === palletRowId) + 1).filter(r => r.tipo === 'Pallet').length;
-    const palletLabel = `P${palletIdx}`;
+    // El número impreso (`seq`), igual que la tarjeta. Antes contaba la posición: borrado P1, el
+    // pallet que la tarjeta llama P3 se anunciaba como «P2» en el aviso, el deshacer y la bitácora.
+    const palletLabel = labelDeFila(palletRow, formRows);
 
     // El destino se reconfirma ANTES de borrar nada. Antes se borraba el slot del bulto y recién
     // después se chequeaba: si el pallet había cambiado, la función salía con el slot ya borrado y
@@ -1967,7 +1998,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
      "Agregar" (guardado normal). Se actualizan AMBOS cachés de slots (light + full) para que
      NO aparezca el fantasma "¿Con cuál fue unificado?" (gP usa el light). Navegación-safe:
      el slot de P1 guarda el peso sumado, así el rebuild lo pre-rellena. */
-  const iniciarUnionInline = (sourceRow: FormRow, targetRow: FormRow, srcLabel?: string, tgtLabel?: string) => {
+  // Una unión a la vez: con la espera de la base, un doble toque mandaría la misma dos veces.
+  const uniendoRef = useRef(false);
+  const iniciarUnionInline = async (sourceRow: FormRow, targetRow: FormRow, srcLabel?: string, tgtLabel?: string) => {
     if (!currentTienda) return;
     const cod       = currentTienda.cod;
     const srcPeso   = pesoNetoDeTarjeta(sourceRow);
@@ -1976,8 +2009,24 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const prevAlto  = targetRow.savedItem?.alto ?? (parseFloat(targetRow.alto) || 0);
     const srcSlot   = sourceRow.pickingSlotId ?? sourceRow.savedItem?.pickingSlotId;
     const tgtSlot   = targetRow.pickingSlotId ?? targetRow.savedItem?.pickingSlotId;
+    // El contenido del unido junta los dos, igual que al combinar desde el Resumen. Espejo de Nacional.
+    const mcont: ContenidoSantiago = contenidoSantiago(unirTipos(sourceRow.savedItem?.contenido ?? sourceRow.contenido, targetRow.savedItem?.contenido ?? targetRow.contenido));
+    // ── LA BASE PRIMERO (15/10/2026) ─────────────────────────────────────────────────────────
+    // Antes la pantalla quitaba el ítem del origen y DESPUÉS mandaba la unión a la base, sin
+    // esperarla. Si la base la rechazaba (el destino ya lo había borrado otro equipo), el peso del
+    // origen ya no estaba en pantalla y solo quedaba un aviso. Ahora se espera la respuesta y, si
+    // no se pudo unir, no se toca nada: los dos pallets quedan como estaban.
+    if (tgtSlot && srcSlot) {
+      if (uniendoRef.current) return;
+      uniendoRef.current = true;
+      let r: Awaited<ReturnType<typeof finalizarSlotUnion>>;
+      try { r = await finalizarSlotUnion(tgtSlot, srcSlot); } finally { uniendoRef.current = false; }
+      if (!r.ok) { showToast(`⚠ No se pudo unir: ${r.error} — no se cambió nada`, '#D32F2F'); return; }
+    }
+    // Lo de ahora, no lo de antes del await: en ese rato pudo llegar otro equipo.
+    const itemsAhora = itemsVivosRef.current;
     // [Revertir unificación] Snapshot ANTES de mutar (solo si ambos son items guardados).
-    const itemsAntesUnion = [...(items[cod] || [])];
+    const itemsAntesUnion = [...(itemsAhora[cod] || [])];
     const sourceItemUnion = sourceRow.savedItem;
     const puedeRevertirUnion = !!(sourceItemUnion && targetRow.savedItem);
 
@@ -1985,10 +2034,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     //    al sumar un bulto. Antes el target también se quitaba («se re-agrega al Agregar»): si
     //    nadie apretaba Agregar, la unidad volvía «sin guardar», y como el borrado no dejaba
     //    lápida, otro equipo la devolvía con el peso de antes de unir. Espejo de Nacional.
-    const cur = items[cod] || [];
+    const cur = itemsAhora[cod] || [];
     const filtered = cur
       .filter(i => !(sourceRow.savedItem && i.id === sourceRow.savedItem.id))
-      .map(i => targetRow.savedItem && i.id === targetRow.savedItem.id ? { ...i, peso: nuevoPeso } : i);
+      .map(i => targetRow.savedItem && i.id === targetRow.savedItem.id ? { ...i, peso: nuevoPeso, contenido: mcont } : i);
     if (filtered.length !== cur.length || targetRow.savedItem) {
       const renumbered = renumerarOrden(filtered, i => seqDeSlot(cod, i.pickingSlotId));
       dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: renumbered });
@@ -1999,19 +2048,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       supabase.from('picking_pallets').update({ peso_kg: nuevoPeso }).eq('id', tgtSlot)
         .then(({ error }) => { if (error) console.error('[union peso]', error.message); });
     }
-    // EL RESULTADO SE MIRA. Antes se tiraba, y por eso una unión rechazada —porque el destino ya
-    // no existía— se veía en pantalla como si hubiera funcionado: los ítems ya se habían fusionado
-    // acá arriba. Es lo que dejó a 12LAS sin una sola unidad el 30/09.
-    if (tgtSlot && srcSlot) {
-      void finalizarSlotUnion(tgtSlot, srcSlot).then(r => {
-        if (!r.ok) showToast(`⚠ No se pudo unir: ${r.error} — recarga la tienda`, '#D32F2F');
-      });
-    }
+    // Con los dos slots, la unión en la base ya se hizo arriba (y se miró su resultado).
     // Sin slot de destino no hay refs que fusionar, pero el borrado es el mismo. Antes era un
     // `delete` a mano y se quedaba sin los DOS guards: sin el anti-revive (la recarga de picking lo
     // resucitaba) y sin la lápida (el merge entre equipos lo devolvía). `eliminarSlotPicking` hace
     // las tres cosas en un solo lugar.
-    else if (srcSlot) eliminarSlotPicking(srcSlot, { fuente: 'rmcosta', tiendaCod: cod, yaRegistrado: true });
+    if (!tgtSlot && srcSlot) eliminarSlotPicking(srcSlot, { fuente: 'rmcosta', tiendaCod: cod, yaRegistrado: true });
 
     // 3) Cachés de slots: quitar el del source de AMBOS (full para el rebuild; light para gP/badge,
     //    así no aparece el fantasma), y reflejar el peso sumado en el slot del target (full).
@@ -2029,7 +2071,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       .filter(r => r.id !== sourceRow.id)
       .map(r => r.id === targetRow.id
         ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
-            alto: prevAlto ? String(prevAlto) : '', mergeReopened: true }
+            alto: prevAlto ? String(prevAlto) : '', contenido: mcont, mergeReopened: true }
         : r));
     setFormMergeState(null);
     showToast(`Unificado (+${srcPeso}kg) — ingresa la altura y Agregar`, '#2563EB');
@@ -2056,9 +2098,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
 
   // `existingSlot` viene del flujo "Preexistente" (pallet adelantado ya reclamado a hoy):
   // en ese caso NO se crea un slot nuevo, se usa el reclamado.
-  // countOffset: al "agregar de a N" (loop), el número del chocolate se calcula del `items` del
-  // closure (que NO se actualiza dentro del loop) → sin offset, los N quedarían con el mismo CH#.
-  // El offset (índice de la iteración) los numera CH{base+1}..CH{base+N} y hace únicos los ids.
+  // countOffset: índice de la vuelta al "agregar de a N". Hace únicos los ids; el número de la
+  // unidad ya no depende de él, sale del `seq` de su slot.
   const addFormRowInner = async (t: TipoCargamento, existingSlot?: PickingSlot, countOffset = 0) => {
     const cod = currentTienda?.cod;
 
@@ -2078,7 +2119,11 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       }
       setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot!] }));
       const existing = items[cod] || [];
-      const chc = existing.filter(i => i.tipo === 'Chocolate').length + 1 + countOffset;
+      // El número sale del `seq` del slot, como en `saveRow`. Contar los que hay repetía número
+      // tras un borrado (con CH1 y CH3, el nuevo salía CH3 en el ítem y CH4 en la tarjeta).
+      const chc = numeroParaUnidadNueva(
+        existing.filter(i => claseSantiago(i.tipo) === 'chocolate').map(i => seqDeSlot(cod, i.pickingSlotId)),
+        slot.seq);
       const stamp = Date.now();
       const item: SantiagoItem = {
         id: `${cod}-chadd-${stamp}-${countOffset}`, tiendaCod: cod, tipo: 'Chocolate', contenido: 'Chocolate',
@@ -2117,9 +2162,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       }
       setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot!] }));
       const existing = items[cod] || [];
-      // Se numera en la serie de BULTOS: `claseSantiago` cae en 'bulto' y `ordenDeItem` devuelve
-      // `${n}B`. Un contador propio partiría la serie en dos.
-      const nb = existing.filter(i => claseSantiago(i.tipo) === 'bulto').length + 1 + countOffset;
+      // Su propia serie (A1, A2… / W1, W2…), del `seq` del slot: es lo que dice la tarjeta y la
+      // etiqueta. Antes contaba los bultos, así que dos adquisiciones seguidas salían las dos A1.
+      const clase = claseSantiago(t);
+      const nb = numeroParaUnidadNueva(
+        existing.filter(i => claseSantiago(i.tipo) === clase).map(i => seqDeSlot(cod, i.pickingSlotId)),
+        slot.seq);
       const stamp = Date.now();
       const item: SantiagoItem = {
         id: `${cod}-agr-${stamp}-${countOffset}`, tiendaCod: cod, tipo: t,
@@ -2165,7 +2213,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const { slot } = await crearSlotBodega({ date, store_cod: cod, tipo: tipoCodeSantiago(t), contenido: 'hogar' });
     if (!slot) return;
     setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), slot] }));
-    setFormRows(prev => prev.map(r => r.id === rowId ? { ...r, pickingSlotId: slot.id } : r));
+    // Si la recarga de Picking trajo este slot antes que la respuesta, ya hay otra tarjeta para él.
+    setFormRows(prev => asignarSlotSinGemelas(prev, rowId, slot.id));
   };
 
   // [P5] Guarda anti doble-tap (paridad con Nacional): crear un slot NO es idempotente, así que dos
@@ -2233,7 +2282,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     if (!src || !currentTienda || !regimen) return;
     const cod  = currentTienda.cod;
     const date = todayKey;
-    const baseCount = (items[cod] || []).filter(i => i.tipo === 'Bulto').length; // # antes de duplicar (sin lecturas stale)
+    // Números desde el `seq` de cada slot nuevo, sumando los que se van creando en esta vuelta.
+    const seqsBultos = (items[cod] || [])
+      .filter(i => claseSantiago(i.tipo) === 'bulto')
+      .map(i => seqDeSlot(cod, i.pickingSlotId));
     let creados = 0;
     for (let k = 0; k < cantidad; k++) {
       const { slot, error } = await crearSlotBodega({ date, store_cod: cod, tipo: 'B', contenido: 'hogar' });
@@ -2246,7 +2298,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       const item: SantiagoItem = {
         id: `${cod}-dup-${stamp}-${k}`, tiendaCod: cod, tipo: 'Bulto', contenido: src.contenido,
         peso: src.peso, alto: src.alto, largo: src.largo, ancho: src.ancho,
-        pesoVolumetrico: src.pesoVolumetrico ?? 0, regimen, orden: `${baseCount + 1 + k}B`, estado: ESTADO_DEFAULT,
+        pesoVolumetrico: src.pesoVolumetrico ?? 0, regimen, orden: ordenDeItem('Bulto', numeroParaUnidadNueva(seqsBultos, slot.seq)), estado: ESTADO_DEFAULT,
         pickingSlotId: slot?.id,
       };
       dispatch({ type: 'ADD_ITEM', item });
@@ -2255,6 +2307,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         peso: String(src.peso), alto: String(src.alto), largo: String(src.largo), ancho: String(src.ancho),
         saved: true, savedItem: item, pickingSlotId: slot?.id,
       }]);
+      seqsBultos.push(slot.seq ?? null);
       if (slot?.id) {
         supabase.from('picking_pallets').update({ peso_kg: src.peso, alto: src.alto, ancho: src.ancho, largo: src.largo })
           .eq('id', slot.id).then(({ error }) => { if (error) console.error('[duplicarBulto]', error.message); });
@@ -3254,10 +3307,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             // Incluye pallets AÚN NO agregados (marcados con borde punteado). Sumar les fija el peso
             // en su card + slot; hay que acordarse de agregarlos para que queden registrados.
             const palletRows = formRows.filter(r => r.tipo === 'Pallet' && (r.savedItem || r.pickingSlotId));
-            const getPalletLabel = (r: FormRow) => {
-              const idx = formRows.slice(0, formRows.findIndex(x => x.id === r.id) + 1).filter(x => x.tipo === 'Pallet').length;
-              return `P${idx}`;
-            };
+            // Mismo número que la tarjeta (su `seq`). Contar la posición hacía que, borrado P1, el
+            // botón «P2» sumara al pallet que la tarjeta llama P3.
+            const getPalletLabel = (r: FormRow) => labelDeFila(r, formRows);
             const selectedCount = sumableRows.filter(r => mergeSel.has(r.id)).length;
             const allSelected = selectedCount > 0 && selectedCount === sumableRows.length;
             return (

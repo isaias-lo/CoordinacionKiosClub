@@ -3,6 +3,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
 import { puedeRestaurar, avisoRestaurar } from '@/features/despacho/shared/restaurarPallet';
 import { variantesDeCodigo } from '@/features/despacho/shared/buscarPallet';
+import { reclamoRetrocede } from '@/features/despacho/shared/mensajeClaim';
 
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
@@ -46,7 +47,12 @@ export async function POST(request: NextRequest) {
     }
     if (!slot) {
       // `variantesDeCodigo`: la etiqueta de 23PEÑ/37VIÑ llega como PEN/VIN o sin la Ñ.
-      const { data } = await sb.from('picking_pallets').select(SLOT_FIELDS).in('canonical_id', variantesDeCodigo(ref)).limit(1).maybeSingle();
+      // Con orden: un código puede estar en más de una fila (un pallet unificado queda inactivo con
+      // su código, y el número se calcula solo sobre los activos). Sin orden, la base devolvía
+      // cualquiera y el escaneo podía revivir el inactivo en vez del pallet que está en el piso.
+      const { data } = await sb.from('picking_pallets').select(SLOT_FIELDS).in('canonical_id', variantesDeCodigo(ref))
+        .order('is_active', { ascending: false }).order('id', { ascending: false })
+        .limit(1).maybeSingle();
       slot = data ?? null;
     }
 
@@ -121,6 +127,14 @@ export async function POST(request: NextRequest) {
     const yaEnCarga = String(slot.date ?? '') === date && slot.is_active === true && slot.combined_into == null;
     if (yaEnCarga) {
       return NextResponse.json({ data: slot, reason: 'ya_en_carga' });
+    }
+
+    // Nunca hacia atrás: un pallet vivo en una carga MÁS NUEVA no se mueve. Ver `reclamoRetrocede`.
+    if (reclamoRetrocede(slot.date as string | null, date, slot.is_active === true && slot.combined_into == null)) {
+      return NextResponse.json(
+        { error: 'El pallet está en la carga de un día posterior', reason: 'de_dia_posterior' },
+        { status: 409 },
+      );
     }
 
     // Re-datar a hoy (conserva store_cod y canonical_id) + reactivar.

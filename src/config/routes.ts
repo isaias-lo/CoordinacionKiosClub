@@ -108,9 +108,9 @@ const EXTRA_REAL_PATHS: string[] = [
   // El comentario de abajo ya lo decía —"La ruta sigue activa"— y sin embargo no estaba en esta
   // lista: `despachador` y `coordinador-flota` la tienen en la tabla y la perdían al primer guardado.
   '/despacho/control-flota',
-  '/perfil', '/tiendas', '/panel-choferes', '/chofer', '/control-cruce',
+  '/perfil', '/tiendas', '/panel-choferes',
   '/historial', '/recepcion', '/despacho-hub', '/despacho/conteo',
-  '/despacho/santiago/rutas', '/despacho/config-tiendas',
+  '/despacho/config-tiendas',
   '/despacho/actividad', // tab Actividad de bodega; acceso vía prefijo de /despacho
   '/admin/usuarios', '/admin/calendario', '/admin/sistema',
   '/control-interno', // placeholder, no acceso directo desde sidebar

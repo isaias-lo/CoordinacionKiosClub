@@ -32,6 +32,11 @@ export function mergeItemsByTienda<T>(
   // que borrarlos de nuevo. `fueBorrado` es la memoria que la base ya no guarda — ver
   // `shared/lapidasBorrado.ts`.
   fueBorrado: (llave: string) => boolean = () => false,
+  // [Versión del ítem 15/10/2026] Cuando el mismo ítem viene distinto de los dos lados, decide cuál
+  // es el bueno aunque la tienda esté «limpia». Sin esto, en una tienda que este equipo no tocó se
+  // adoptaba lo remoto tal cual, y lo remoto podía ser la copia VIEJA de un equipo que empujó por
+  // otra tienda: así se perdió el peso del P2 de 01TPS el 14/10. Ver `shared/versionDeItem.ts`.
+  elegir?: (local: T, remoto: T) => 'local' | 'remoto' | null,
 ): Record<string, T[]> {
   // [E3b/C2] Antes el merge era por TIENDA completa (dirty ⇒ gana toda la local). Eso pisaba lo
   // que otro usuario hacía en la MISMA tienda al mismo tiempo (A edita dims mientras B agrega un
@@ -53,13 +58,21 @@ export function mergeItemsByTienda<T>(
     if (JSON.stringify(loc) === JSON.stringify(base)) {
       const enRemoto = new Set(rem.map(keyOf));
       const soloLocal = loc.filter(i => !enRemoto.has(keyOf(i)) && !fueBorrado(keyOf(i)));
-      const remoto = sinLapidas(rem, keyOf, fueBorrado);
+      let remoto = sinLapidas(rem, keyOf, fueBorrado);
+      if (elegir) {
+        const porLlave = new Map(loc.map(i => [keyOf(i), i]));
+        const conLocal = remoto.map(r => {
+          const l = porLlave.get(keyOf(r));
+          return l && elegir(l, r) === 'local' ? l : r;
+        });
+        if (conLocal.some((x, i) => x !== remoto[i])) remoto = conLocal;
+      }
       out[cod] = soloLocal.length ? [...remoto, ...soloLocal] : remoto;
       continue;
     }
     // Tienda editada localmente → merge por-ítem (protege mi edición sin pisar lo del otro).
     out[cod] = mergeListaPorItem(rem, loc, base, keyOf,
-      onConflict ? item => onConflict(cod, item) : undefined, fueBorrado);
+      onConflict ? item => onConflict(cod, item) : undefined, fueBorrado, elegir);
   }
   return out;
 }
@@ -83,6 +96,7 @@ export function mergeListaPorItem<T>(
   remote: T[], local: T[], base: T[], keyOf: (i: T) => string,
   onConflict?: (item: T) => void,
   fueBorrado: (llave: string) => boolean = () => false,
+  elegir?: (local: T, remoto: T) => 'local' | 'remoto' | null,
 ): T[] {
   const bMap = new Map(base.map(i => [keyOf(i), i]));
   const rMap = new Map(remote.map(i => [keyOf(i), i]));
@@ -104,6 +118,10 @@ export function mergeListaPorItem<T>(
       // distintos entre sí. Gana local igual (nunca perder un cambio legítimo en silencio no es
       // negociable), pero se avisa — a diferencia de "solo cambió uno de los dos", que no es
       // conflicto, es simplemente la edición más nueva ganando.
+      // Si se sabe cuál de las dos es la buena (más nueva, o con peso contra «sin pesar»), manda
+      // eso. Si no, la regla de siempre.
+      const decide = elegir?.(item, rMap.get(k)!) ?? null;
+      if (decide) { result.push(decide === 'local' ? item : rMap.get(k)!); continue; }
       if (lChanged && rChanged && !eq(item, rMap.get(k))) onConflict?.(item);
       result.push(lChanged || !rChanged ? item : rMap.get(k)!);
     } else {

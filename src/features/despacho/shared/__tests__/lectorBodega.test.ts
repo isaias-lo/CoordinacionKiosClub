@@ -102,3 +102,15 @@ describe('siguienteCampo', () => {
     expect(siguienteCampo(['peso', 'alto'], 'cajas')).toBeNull();
   });
 });
+
+describe('siguienteCampo · Enter con el peso vacío', () => {
+  it('no guarda: vuelve al peso', () => {
+    expect(siguienteCampo(['peso', 'alto'], 'alto', new Set(['peso']))).toBe('peso');
+  });
+  it('con peso, guarda como siempre', () => {
+    expect(siguienteCampo(['peso', 'alto'], 'alto', new Set())).toBe('guardar');
+  });
+  it('una tarjeta sin campo de peso guarda igual', () => {
+    expect(siguienteCampo(['alto'], 'alto', new Set(['alto']))).toBe('guardar');
+  });
+});

@@ -13,7 +13,7 @@ import { combinarEnLista } from '@/features/despacho/shared/combinarEnLista';
 import { Check, Download } from 'lucide-react';
 import { useApp } from '../../../../context/AppContext';
 import { buildRows, exportToTemplate } from '../utils/exportUtils';
-import { TIENDAS, getTodayTiendas } from '../data/tiendas';
+import { TIENDAS, getTodayTiendas, validarDimensiones } from '../data/tiendas';
 import { formatCod } from '../../rutas/utils/helpers';
 import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { REGIONES_TERMINADO_KEY } from '@/components/modals/FinishModal';
@@ -248,6 +248,9 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
     if (peso == null) { showToast('Ingresa el peso', '#D97706'); return; }
     const duro = pesoFueraDeRango(peso, clase);
     if (duro) { showToast(`⚠ ${duro}`, '#D32F2F'); return; }
+    // Las medidas con los mismos límites que la tarjeta (`saveRow`): acá no se revisaban.
+    const errMedidas = validarDimensiones(editPkg, peso, parseFloat(editAlto) || 0, parseFloat(editAncho) || 0, parseFloat(editLargo) || 0);
+    if (errMedidas.length) { showToast('⚠ ' + errMedidas[0], '#D32F2F'); return; }
     const antes = list[idx];
     list[idx] = {
       ...list[idx],

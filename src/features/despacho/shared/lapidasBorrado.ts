@@ -104,6 +104,44 @@ export function marcarLapida(slotId?: number | null): void {
 }
 
 /**
+ * Marca como borrado un ítem que NO tiene unidad de Picking (su llave es `id:…`, ver
+ * `stableItemKey`). El `id` es único (UUID en Nacional, tienda + hora en RM/Costa) y no se reutiliza,
+ * así que la lápida no puede tapar a otro ítem.
+ *
+ * Dos casos (15/10/2026):
+ *  - Se borra un ítem sin unidad. Antes no dejaba lápida, y otro equipo lo devolvía.
+ *  - «Editar» un ítem sin unidad lo enlaza al slot nuevo (`enlazarItemEditado`): su llave pasa de
+ *    `id:X` a `slot:S`. Los demás equipos seguían con `id:X` como «solo local» y sumaban `slot:S`:
+ *    un pallet de más que nadie podía borrar. La lápida de `id:X` les dice que ese ya no existe.
+ */
+export function marcarLapidaDeItem(id?: string | null): void {
+  if (!id) return;
+  const k = `id:${id}`;
+  levantadas.delete(k);
+  lapidas.add(k);
+}
+
+/** Vuelve a existir un ítem sin unidad (el Revertir de un borrado cuyo slot no se pudo recrear). */
+export function levantarLapidaDeItem(id?: string | null): void {
+  if (!id) return;
+  const k = `id:${id}`;
+  lapidas.delete(k);
+  levantadas.add(k);
+}
+
+/**
+ * Lo que hacen los reducers de los dos espejos con cada alta y cada borrado de un ítem SIN unidad
+ * de Picking. Los que tienen unidad ya pasan por `eliminarSlotPicking` / `crearSlotBodega`; estos
+ * no tenían ningún punto común, y por eso su borrado no viajaba. Idempotente: el reducer puede
+ * correr dos veces con la misma acción.
+ */
+export function anotarItemSinUnidad(item: { id?: string; pickingSlotId?: number | null } | undefined, quedo: 'borrado' | 'vivo'): void {
+  if (!item || item.pickingSlotId != null) return;
+  if (quedo === 'borrado') marcarLapidaDeItem(item.id);
+  else levantarLapidaDeItem(item.id);
+}
+
+/**
  * Levanta la lápida de una unidad. Lo llama `crearSlotBodega`, que es por donde pasa toda alta de
  * Bodega — incluido el Revertir, que recrea el slot.
  *
@@ -166,13 +204,16 @@ export function levantarLapidasDeSlotsVivos(ids: Iterable<number>): void {
   for (const id of ids) if (lapidas.has(llaveDeSlot(id))) levantarLapida(id);
 }
 
-/** Incorpora las lápidas que trae un remoto. Solo llaves de slot: un id de slot no se reutiliza. */
+/**
+ * Incorpora las lápidas que trae un remoto. Solo llaves de slot o de id de ítem: ninguna de las dos
+ * se reutiliza. Las de `orden:` no, porque el orden sí se repite.
+ */
 export function absorberLapidas(llaves: unknown): void {
   if (!Array.isArray(llaves)) return;
   for (const k of llaves) {
     // Una lápida que YA se levantó no vuelve a entrar. El otro equipo todavía la trae porque
     // nadie recargó su pestaña; acá ya se sabe que la unidad existe.
-    if (typeof k === 'string' && k.startsWith('slot:') && !levantadas.has(k)) lapidas.add(k);
+    if (typeof k === 'string' && (k.startsWith('slot:') || k.startsWith('id:')) && !levantadas.has(k)) lapidas.add(k);
   }
 }
 

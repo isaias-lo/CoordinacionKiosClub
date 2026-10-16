@@ -29,6 +29,7 @@ const ACCION_META: Record<string, { verb: string; cls: string }> = {
   // No es una acción de nadie: es el sistema contándose a sí mismo. Solo aparece con el
   // interruptor de diagnóstico, y va apagado para que no compita con el trabajo de las personas.
   merge_descarte: { verb: 'Sync quitó',   cls: 'text-text-3 bg-bg-2' },
+  conteo_borrado: { verb: 'Conteo borrado', cls: 'text-text-3 bg-bg-2' },
 };
 
 function detalleOf(r: ActividadRow) {

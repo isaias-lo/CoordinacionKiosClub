@@ -130,3 +130,33 @@ describe('esReingresoDeVerdad — sumar no es rehacer trabajo', () => {
     expect(esReingresoDeVerdad(sinPesar, false)).toBe(false);
   });
 });
+
+import { enlazarItemEditado } from '../itemPorUnidad';
+
+describe('enlazarItemEditado: editar un ítem sin unidad de Picking no lo pierde', () => {
+  const a = { id: 'a', peso: 100 };
+  const b = { id: 'b', peso: 200, pickingSlotId: 7 };
+
+  it('le pone el slot nuevo al editado y deja el resto igual', () => {
+    const out = enlazarItemEditado([a, b], i => i.id === 'a', 99)!;
+    expect(out[0]).toEqual({ id: 'a', peso: 100, pickingSlotId: 99 });
+    expect(out[1]).toBe(b);
+  });
+
+  it('si ya no está (otro equipo lo cambió) devuelve null y no toca la lista', () => {
+    expect(enlazarItemEditado([b], i => i.id === 'a', 99)).toBeNull();
+  });
+});
+
+describe('fusionarConPrevio · pallet web', () => {
+  type ItemWeb = Item & { palletWeb?: boolean };
+  const web: ItemWeb = { id: 'w', orden: 'P1', tipo: 'Pallet', peso: 0, alto: 0, largo: 0, ancho: 0, pickingSlotId: 9, palletWeb: true };
+  it('guardarlo otra vez sin peso lo deja como pallet web, no como «sin pesar»', () => {
+    const nuevo: ItemWeb = { id: 'n', orden: 'P1', tipo: 'Pallet', peso: 0, alto: 0, largo: 0, ancho: 0, pickingSlotId: 9 };
+    expect(fusionarConPrevio(web, nuevo).palletWeb).toBe(true);
+  });
+  it('pesarlo lo vuelve un pallet común', () => {
+    const nuevo: ItemWeb = { id: 'n', orden: 'P1', tipo: 'Pallet', peso: 310, alto: 160, largo: 0, ancho: 0, pickingSlotId: 9 };
+    expect(fusionarConPrevio(web, nuevo).palletWeb).toBeUndefined();
+  });
+});

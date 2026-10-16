@@ -957,7 +957,11 @@ export function PickingScreen() {
         method: 'DELETE',
         body: JSON.stringify({ id: slot.id, actor_name: presenceRef.current.name }),
       });
-      if (!res.ok) setPalletSlots(prev => [...prev, slot].sort((a, b) => a.id - b.id));
+      if (!res.ok) {
+        setPalletSlots(prev => [...prev, slot].sort((a, b) => a.id - b.id));
+        // Bodega ya la pesó y guardó: desde acá no se borra (ver DELETE /api/picking-pallets).
+        if (res.status === 409) showToast('⚠ Bodega ya registró esa unidad: si sobra, se elimina desde Bodega', '#D97706');
+      }
       else void loadEventos(); // ver mi propia baja en Actividad al instante
     } catch {
       setPalletSlots(prev => [...prev, slot].sort((a, b) => a.id - b.id));

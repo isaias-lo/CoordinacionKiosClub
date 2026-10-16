@@ -29,6 +29,7 @@ const MEDIDAS = ['peso', 'alto', 'largo', 'ancho', 'pesoVolumetrico', 'taraPalle
  * - Sigue siendo el mismo ítem: conserva su `id` y su `orden` (su lugar y su número).
  * - "Sin pesar" encima de un ítem pesado no borra el peso: 0 kg quiere decir "no se pesó", no
  *   "pesa 0". Se conservan las medidas que ya tenía.
+ * - Un pallet web guardado otra vez sin peso sigue siendo pallet web.
  */
 export function fusionarConPrevio<T extends ItemConUnidad>(previo: T, nuevo: T): T {
   const out: T = { ...nuevo };
@@ -37,6 +38,10 @@ export function fusionarConPrevio<T extends ItemConUnidad>(previo: T, nuevo: T):
     const hacia = out as unknown as Record<string, unknown>;
     for (const k of MEDIDAS) if (k in desde) hacia[k] = desde[k];
   }
+  // Un «pallet web» que se vuelve a guardar sin peso sigue siendo pallet web. Sin esto, Editar →
+  // Guardar lo convertía en «sin pesar»: aparecía en los avisos de falta pesar y con selector de
+  // tipo de carga. Con peso deja de serlo, como en el Resumen.
+  if (esPalletWeb(previo) && esSinPesar(out)) out.palletWeb = true;
   if (previo.id !== undefined) out.id = previo.id;
   if (previo.orden !== undefined) out.orden = previo.orden;
   return out;
@@ -92,4 +97,22 @@ export function esReingreso<T extends ItemConUnidad>(previo: T | undefined): boo
  */
 export function esReingresoDeVerdad<T extends ItemConUnidad>(previo: T | undefined, veniaDeSumar: boolean): boolean {
   return !veniaDeSumar && esReingreso(previo);
+}
+
+/**
+ * Enlaza al slot recién creado el ítem que se estaba editando y no tenía unidad de Picking.
+ *
+ * Antes «Editar» borraba ese ítem al instante, y salir sin volver a guardar lo perdía. Ahora el
+ * ítem se queda; al guardar se le pone el slot nuevo, y `itemDeLaUnidad` lo encuentra como
+ * `previo`: el guardado lo completa en su lugar en vez de agregar un segundo ítem.
+ * `null` si no está (otro equipo ya lo cambió): el guardado sigue como un alta normal.
+ */
+export function enlazarItemEditado<T extends ItemConUnidad>(
+  lista: T[],
+  esElEditado: (item: T) => boolean,
+  slotId: number,
+): T[] | null {
+  const viejo = lista.find(esElEditado);
+  if (!viejo) return null;
+  return lista.map(i => (i === viejo ? { ...i, pickingSlotId: slotId } : i));
 }
