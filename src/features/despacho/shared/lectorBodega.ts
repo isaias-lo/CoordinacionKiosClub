@@ -147,8 +147,15 @@ export class ConfirmacionDoble {
  * `campos` = los nombres de los campos de la tarjeta en el orden en que aparecen. Un campo que no
  * está en la lista (cajas negras, guía) no avanza: Enter ahí no hace nada distinto de antes.
  */
-export function siguienteCampo(campos: readonly string[], actual: string): string | 'guardar' | null {
+export function siguienteCampo(
+  campos: readonly string[], actual: string, vacios: ReadonlySet<string> = new Set(),
+): string | 'guardar' | null {
   const i = campos.indexOf(actual);
   if (i === -1) return null;
-  return campos.at(i + 1) ?? 'guardar';
+  const sig = campos.at(i + 1) ?? 'guardar';
+  // Con el peso vacío, Enter no guarda: vuelve al peso. Guardar sin peso abre «¿Agregar sin
+  // pesar?», y el Enter siguiente lo aceptaba: dos Enter de más dejaban la unidad en 0 kg. «Sin
+  // pesar» queda como decisión de tocar el botón, no de teclear.
+  if (sig === 'guardar' && campos.includes('peso') && vacios.has('peso')) return 'peso';
+  return sig;
 }

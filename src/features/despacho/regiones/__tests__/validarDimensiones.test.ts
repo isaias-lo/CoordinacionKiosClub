@@ -21,3 +21,10 @@ describe('validarDimensiones — límite de altura de pallet en bodega (185 cm)'
     expect(validarDimensiones('box', 400, 210, 200, 200)).toContain('Alto máximo 200 cm');
   });
 });
+
+describe('validarDimensiones — medidas negativas', () => {
+  it('rechaza un alto, ancho o largo negativo', () => {
+    expect(validarDimensiones('pallet', 300, -150, 100, 120)).toContain('Las medidas no pueden ser negativas');
+    expect(validarDimensiones('box', 20, 40, -30, 50)).toContain('Las medidas no pueden ser negativas');
+  });
+});
