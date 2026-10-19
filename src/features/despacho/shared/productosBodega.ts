@@ -76,7 +76,7 @@ export function pesoParaCampo(kg: number): string {
   return String(kg).replace('.', ',');
 }
 
-export interface CamposDelBulto { peso: string; alto?: string; ancho?: string; largo?: string }
+export interface CamposDelBulto { peso: string; alto?: string; ancho?: string; largo?: string; producto: string }
 
 /**
  * Lo que «Escanear producto» escribe en la tarjeta del bulto: el peso (unitario × cantidad) y las
@@ -84,15 +84,30 @@ export interface CamposDelBulto { peso: string; alto?: string; ancho?: string; l
  * Las medidas van tal cual (en Bodega los productos guardados son el bulto mismo: una silla, una
  * reposera en su caja); se pueden corregir a mano como cualquier campo.
  */
-export function camposDesdeProducto(p: Pick<ProductoBodega, 'peso_kg' | 'alto_cm' | 'ancho_cm' | 'largo_cm'>, cantidad: string): CamposDelBulto | null {
+export function camposDesdeProducto(p: Pick<ProductoBodega, 'nombre' | 'peso_kg' | 'alto_cm' | 'ancho_cm' | 'largo_cm'>, cantidad: string): CamposDelBulto | null {
   const peso = pesoPorCantidad(p.peso_kg, cantidad);
   if (peso == null) return null;
-  const out: CamposDelBulto = { peso: pesoParaCampo(peso) };
+  // El nombre viaja al ítem guardado para mostrarse en la línea pesada (Isaias, 19/10/2026).
+  const out: CamposDelBulto = { peso: pesoParaCampo(peso), producto: p.nombre };
   // Los campos de medidas de la tarjeta son `type="number"`: punto decimal.
   if (p.alto_cm != null && p.alto_cm > 0) out.alto = String(p.alto_cm);
   if (p.ancho_cm != null && p.ancho_cm > 0) out.ancho = String(p.ancho_cm);
   if (p.largo_cm != null && p.largo_cm > 0) out.largo = String(p.largo_cm);
   return out;
+}
+
+/** Tope del nombre en la línea pesada: un nombre de Odoo entero ocupaba tres renglones. */
+export const MAX_NOMBRE_EN_LINEA = 40;
+
+/**
+ * La línea de una unidad pesada con el producto a la derecha de los «cm» (Isaias, 19/10/2026):
+ * «18 kg · 82 cm · Silla de Terraza Torino Black 1 un». Sin producto, la línea queda igual.
+ */
+export function conProducto(resumen: string, producto?: string | null): string {
+  const nombre = producto?.trim();
+  if (!nombre) return resumen;
+  const corto = nombre.length > MAX_NOMBRE_EN_LINEA ? `${nombre.slice(0, MAX_NOMBRE_EN_LINEA - 1).trimEnd()}…` : nombre;
+  return `${resumen} · ${corto}`;
 }
 
 // ── Desde Odoo ─────────────────────────────────────────────────────────────────────────────────
