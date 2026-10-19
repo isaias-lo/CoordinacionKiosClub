@@ -66,3 +66,26 @@ describe('middleware — redirecciones', () => {
     expect(r2.headers.get('location')).toBe('https://app.test/login');
   });
 });
+
+describe('middleware — rol con la página vieja /despacho-hub', () => {
+  // Así está hoy el rol "Asistente Despacho" en la tabla `roles` de producción.
+  const asistente = {
+    role: 'asistente-despacho',
+    home_path: '/despacho-hub',
+    allowed_paths: ['/despacho-hub', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/perfil'],
+  };
+
+  it('entra a Inicio y no hay bucle', async () => {
+    usuario = { user_metadata: asistente };
+    const inicio = await pedir('/');
+    expect(inicio.headers.get('location')).toBeNull();
+    const hub = await pedir('/despacho-hub');
+    expect(hub.headers.get('location')).toBeNull(); // la página misma redirige a `/`, que se abre
+  });
+
+  it('no le regala el Enrutador', async () => {
+    usuario = { user_metadata: asistente };
+    const r = await pedir('/despacho');
+    expect(r.headers.get('location')).toBe('https://app.test/');
+  });
+});

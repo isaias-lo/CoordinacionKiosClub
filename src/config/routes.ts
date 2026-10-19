@@ -138,9 +138,28 @@ export const HOME_OPTIONS: { value: string; label: string }[] = [
 
 // ── Función de acceso (middleware + frontend) ────────────────────
 
+/**
+ * Páginas viejas que hoy solo redirigen a otra. Tener permiso para la vieja da permiso para la
+ * nueva, porque es adonde la página manda.
+ *
+ * `/despacho-hub` era el menú de los asistentes. El 30 sep 2026 (#631) pasó a mandar a
+ * `/despacho`, pero el rol "Asistente Despacho" en la tabla `roles` sigue con `/despacho-hub` como
+ * inicio y sin `/despacho` entre sus rutas. El middleware dejaba entrar a `/despacho-hub`, la página
+ * mandaba a `/despacho`, el middleware lo prohibía y devolvía a `/despacho-hub`… "demasiadas
+ * redirecciones". Le pasó a Steven el 19 oct 2026 en la handheld y en su celular.
+ *
+ * Ahora `/despacho-hub` manda a Inicio (`/`), que muestra solo los módulos que cada uno puede abrir
+ * (Nacional y RM/Costa para un asistente). No regala el Enrutador a quien no lo tenía.
+ */
+const RUTAS_REDIRIGIDAS: Record<string, string> = {
+  '/despacho-hub': '/',
+};
+
 /** Las rutas efectivas de un rol: las del token si vienen, si no el respaldo de código. */
 export function rutasDeRol(role: string, metaPaths?: string[]): string[] {
-  return metaPaths ?? SYSTEM_ROLE_PATHS[role] ?? [];
+  const rutas = metaPaths ?? SYSTEM_ROLE_PATHS[role] ?? [];
+  const destinos = rutas.map(p => RUTAS_REDIRIGIDAS[p]).filter((p): p is string => !!p && !rutas.includes(p));
+  return destinos.length ? [...rutas, ...destinos] : rutas;
 }
 
 /**
@@ -159,7 +178,9 @@ export function rutasDeRol(role: string, metaPaths?: string[]): string[] {
 export function paginaInicial(role: string, metaPaths?: string[], metaHome?: string): string {
   const allowed = rutasDeRol(role, metaPaths);
   const sirve = (p?: string): boolean => !!p && isPathAllowed(allowed, p);
-  if (sirve(metaHome)) return metaHome!;
+  // Directo a donde termina, sin pasar por la página que solo redirige.
+  const home = metaHome ? (RUTAS_REDIRIGIDAS[metaHome] ?? metaHome) : metaHome;
+  if (sirve(home)) return home!;
   if (sirve(SYSTEM_ROLE_HOME[role])) return SYSTEM_ROLE_HOME[role];
   // Cualquier ruta propia antes que `/perfil`: mandar a Perfil a quien tiene trabajo que hacer es
   // el último recurso, no el primero.
