@@ -7,8 +7,8 @@
 // handheld escanea el código de barras del producto, se busca acá, y el peso del bulto sale de
 // peso unitario × cantidad. Sigue siendo UN bulto: la cantidad es de unidades dentro de él.
 //
-// Las medidas del producto son de UNA unidad, así que no se copian al bulto: el alto, ancho y
-// largo del bulto los sigue poniendo quien pesa.
+// Las medidas del producto guardadas en la base también se copian al bulto (pedido de Isaias del
+// 19/10/2026: al escanear solo llegaba el peso). Ver `camposDesdeProducto`.
 
 export interface ProductoBodega {
   codigo: string;
@@ -76,26 +76,99 @@ export function pesoParaCampo(kg: number): string {
   return String(kg).replace('.', ',');
 }
 
+export interface CamposDelBulto { peso: string; alto?: string; ancho?: string; largo?: string }
+
+/**
+ * Lo que «Escanear producto» escribe en la tarjeta del bulto: el peso (unitario × cantidad) y las
+ * medidas del producto guardadas en la base, las que tenga. `null` si no se puede calcular el peso.
+ * Las medidas van tal cual (en Bodega los productos guardados son el bulto mismo: una silla, una
+ * reposera en su caja); se pueden corregir a mano como cualquier campo.
+ */
+export function camposDesdeProducto(p: Pick<ProductoBodega, 'peso_kg' | 'alto_cm' | 'ancho_cm' | 'largo_cm'>, cantidad: string): CamposDelBulto | null {
+  const peso = pesoPorCantidad(p.peso_kg, cantidad);
+  if (peso == null) return null;
+  const out: CamposDelBulto = { peso: pesoParaCampo(peso) };
+  // Los campos de medidas de la tarjeta son `type="number"`: punto decimal.
+  if (p.alto_cm != null && p.alto_cm > 0) out.alto = String(p.alto_cm);
+  if (p.ancho_cm != null && p.ancho_cm > 0) out.ancho = String(p.ancho_cm);
+  if (p.largo_cm != null && p.largo_cm > 0) out.largo = String(p.largo_cm);
+  return out;
+}
+
 // ── Desde Odoo ─────────────────────────────────────────────────────────────────────────────────
 
 /**
  * Campos de medidas que puede tener `product.product`, en orden de preferencia. Odoo no trae
  * medidas de serie: dependen del módulo instalado (`product_dimension` de OCA usa los
- * `product_*`). La ruta pregunta a Odoo cuáles existen (`fields_get`) y pide solo esos.
+ * `product_*`) o de campos propios (`x_…`, de Studio). La ruta pregunta a Odoo qué campos
+ * existen (`fields_get`) y elige con `camposMedidaDe`.
  */
 export const CAMPOS_MEDIDA = {
-  alto:  ['product_height', 'height'],
-  ancho: ['product_width', 'width'],
-  largo: ['product_length', 'length'],
+  alto:  ['product_height', 'height', 'x_alto', 'x_altura', 'x_studio_alto', 'x_studio_altura'],
+  ancho: ['product_width', 'width', 'x_ancho', 'x_studio_ancho'],
+  largo: ['product_length', 'length', 'x_largo', 'x_longitud', 'x_studio_largo', 'x_studio_longitud'],
 } as const;
 
+/** Si el nombre técnico no está en la lista, se reconoce por la etiqueta que Odoo le pone. */
+const ETIQUETA_MEDIDA = {
+  alto:  /\b(alto|altura|height)\b/i,
+  ancho: /\b(ancho|width)\b/i,
+  largo: /\b(largo|longitud|length|profundidad|depth)\b/i,
+} as const;
+
+/** Lo que devuelve `fields_get` de Odoo: nombre técnico → tipo y etiqueta. */
+export type DefinicionCampos = Record<string, { type?: string; string?: string }>;
+
+export type CamposMedida = Partial<Record<keyof typeof CAMPOS_MEDIDA, string>>;
+
+const esNumerico = (d?: { type?: string }) => d?.type === 'float' || d?.type === 'integer';
+
+/**
+ * Qué campo de Odoo es el alto, el ancho y el largo. Primero por nombre técnico conocido; si no,
+ * por la etiqueta de un campo numérico (en español o inglés). Un campo de unidad, cantidad o de
+ * embalaje no cuenta aunque su etiqueta diga «largo».
+ */
+export function camposMedidaDe(def: DefinicionCampos): CamposMedida {
+  const out: CamposMedida = {};
+  const usados = new Set<string>();
+  for (const k of Object.keys(CAMPOS_MEDIDA) as (keyof typeof CAMPOS_MEDIDA)[]) {
+    let campo: string | undefined = CAMPOS_MEDIDA[k].find(c => esNumerico(def[c]));
+    if (!campo) {
+      campo = Object.keys(def).sort().find(c =>
+        !usados.has(c) && esNumerico(def[c]) && !/uom|qty|count|packag/i.test(c)
+        && ETIQUETA_MEDIDA[k].test(def[c].string ?? ''));
+    }
+    if (campo) { out[k] = campo; usados.add(campo); }
+  }
+  return out;
+}
+
 /** Los campos que se le piden a Odoo, dados los que existen en `product.product`. */
-export function camposAPedir(existentes: Iterable<string>): string[] {
-  const hay = new Set(existentes);
-  const base = ['id', 'default_code', 'name', 'barcode', 'weight'];
-  const extra = ['weight_uom_name', 'dimensional_uom_id'];
-  const medidas = Object.values(CAMPOS_MEDIDA).flatMap(c => c.find(f => hay.has(f)) ?? []);
-  return [...base.filter(f => hay.has(f) || f === 'id' || f === 'name'), ...extra.filter(f => hay.has(f)), ...medidas];
+export function camposAPedir(def: DefinicionCampos): string[] {
+  const base = ['id', 'default_code', 'name', 'barcode', 'weight'].filter(f => f === 'id' || f === 'name' || f in def);
+  const extra = ['weight_uom_name', 'dimensional_uom_id'].filter(f => f in def);
+  return [...base, ...extra, ...Object.values(camposMedidaDe(def))];
+}
+
+/**
+ * Los campos numéricos con valor de un producto (y los de texto con nombre de medida), para cuando no se encontraron medidas: así el
+ * administrador ve en /admin/sistema dónde las guarda su Odoo y se puede agregar el nombre arriba.
+ */
+export function camposNumericosConValor(r: Record<string, unknown>, def: DefinicionCampos): CampoConValor[] {
+  return Object.keys(r)
+    .filter(c => c !== 'id' && !c.endsWith('_id') && (
+      (esNumerico(def[c]) && typeof r[c] === 'number' && (r[c] as number) > 0)
+      // Medidas escritas como texto («150x68x52»), en un campo de texto con nombre de medida.
+      || (esTextoDeMedida(def[c]) && typeof r[c] === 'string' && (r[c] as string).trim() !== '')))
+    .sort()
+    .map(c => ({ campo: c, etiqueta: def[c].string ?? c, valor: r[c] as number | string }));
+}
+
+export interface CampoConValor { campo: string; etiqueta: string; valor: number | string }
+
+/** Campos de texto que podrían guardar medidas, para el diagnóstico. */
+export function esTextoDeMedida(d?: { type?: string; string?: string }): boolean {
+  return d?.type === 'char' && /medida|dimensi|alto|altura|ancho|largo|tama/i.test(d.string ?? '');
 }
 
 const A_CM: Record<string, number> = { mm: 0.1, cm: 1, m: 100, in: 2.54, ft: 30.48 };
@@ -115,6 +188,8 @@ export interface ProductoDeOdoo extends ProductoBodega {
   unidadMedidas: string | null;
   /** Las medidas venían en una unidad desconocida y quedaron sin convertir: revisarlas antes de guardar. */
   medidasSinConvertir: boolean;
+  /** Sin medidas: los campos numéricos con valor que sí trae este producto. Ver `camposNumericosConValor`. */
+  otrosCampos?: CampoConValor[];
 }
 
 /**
@@ -124,7 +199,7 @@ export interface ProductoDeOdoo extends ProductoBodega {
  * medidas a cm según la unidad que Odoo declare. Sin unidad declarada para las medidas, quedan
  * como vienen y se marca `medidasSinConvertir` para que el administrador las mire.
  */
-export function productoDesdeOdoo(r: Record<string, unknown>, codigoBuscado: string): ProductoDeOdoo {
+export function productoDesdeOdoo(r: Record<string, unknown>, codigoBuscado: string, campos: CamposMedida = {}): ProductoDeOdoo {
   const unidadPeso = typeof r.weight_uom_name === 'string' ? r.weight_uom_name.trim().toLowerCase() : 'kg';
   const pesoCrudo = numeroOdoo(r.weight);
   const pesoKg = pesoCrudo == null ? null : redondear(pesoCrudo * (A_KG[unidadPeso] ?? 1), 3);
@@ -132,15 +207,14 @@ export function productoDesdeOdoo(r: Record<string, unknown>, codigoBuscado: str
   const uom = Array.isArray(r.dimensional_uom_id) && typeof r.dimensional_uom_id[1] === 'string'
     ? r.dimensional_uom_id[1].trim().toLowerCase() : null;
   const factor = uom != null ? A_CM[uom] : undefined;
-  const medida = (campos: readonly string[]): number | null => {
-    const campo = campos.find(c => c in r);
+  const medida = (campo: string | undefined): number | null => {
     const v = campo ? numeroOdoo(r[campo]) : null;
     if (v == null) return null;
     return redondear(factor != null ? v * factor : v, 2);
   };
-  const alto = medida(CAMPOS_MEDIDA.alto);
-  const ancho = medida(CAMPOS_MEDIDA.ancho);
-  const largo = medida(CAMPOS_MEDIDA.largo);
+  const alto = medida(campos.alto);
+  const ancho = medida(campos.ancho);
+  const largo = medida(campos.largo);
 
   return {
     codigo: typeof r.default_code === 'string' && r.default_code.trim() ? normalizarCodigo(r.default_code) : normalizarCodigo(codigoBuscado),

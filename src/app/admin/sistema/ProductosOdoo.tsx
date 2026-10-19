@@ -149,6 +149,13 @@ export default function ProductosOdoo({ odooActivo }: { odooActivo: boolean | nu
             {encontrado.medidasSinConvertir && (
               <> <strong style={{ color: '#D97706' }}>Odoo no dice en qué unidad están las medidas:</strong> revisa que sean centímetros.</>
             )}
+            {encontrado.alto_cm == null && encontrado.ancho_cm == null && encontrado.largo_cm == null && (
+              <> <strong style={{ color: '#D97706' }}>Odoo no trae medidas en un campo conocido.</strong>
+                {encontrado.otrosCampos?.length
+                  ? <> Campos con valor en este producto: {encontrado.otrosCampos.map(c => `${c.etiqueta} (${c.campo}) = ${c.valor}`).join(' · ')}.</>
+                  : ' Este producto no tiene ningún campo numérico con valor en Odoo.'}
+              </>
+            )}
             {encontrado.peso_kg == null && (
               <> <strong style={{ color: '#D97706' }}>Sin peso en Odoo:</strong> en Bodega no se podrá calcular el peso con este producto.</>
             )}

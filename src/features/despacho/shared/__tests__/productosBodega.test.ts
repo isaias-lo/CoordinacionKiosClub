@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buscarProducto, camposAPedir, llaveBarcode, normalizarCodigo, pesoParaCampo, pesoPorCantidad,
+  buscarProducto, camposAPedir, camposDesdeProducto, camposMedidaDe, camposNumericosConValor, llaveBarcode, normalizarCodigo, pesoParaCampo, pesoPorCantidad,
   productoDesdeOdoo, validarProducto, MAX_CANTIDAD,
 } from '../productosBodega';
 
@@ -59,6 +59,23 @@ describe('pesoPorCantidad', () => {
   });
 });
 
+describe('camposDesdeProducto', () => {
+  const SILLA = { peso_kg: 3.98, alto_cm: 82, ancho_cm: 51, largo_cm: 41 };
+  it('trae el peso por la cantidad y las medidas guardadas', () => {
+    expect(camposDesdeProducto(SILLA, '2')).toEqual({ peso: '7,96', alto: '82', ancho: '51', largo: '41' });
+  });
+  it('las medidas con decimales van con punto (campos numéricos)', () => {
+    expect(camposDesdeProducto({ ...SILLA, ancho_cm: 68.5 }, '1')?.ancho).toBe('68.5');
+  });
+  it('sin medidas guardadas, solo el peso', () => {
+    expect(camposDesdeProducto({ peso_kg: 9, alto_cm: null, ancho_cm: 0, largo_cm: null }, '1')).toEqual({ peso: '9' });
+  });
+  it('sin peso o con una cantidad inválida, nada', () => {
+    expect(camposDesdeProducto({ ...SILLA, peso_kg: null }, '1')).toBeNull();
+    expect(camposDesdeProducto(SILLA, '')).toBeNull();
+  });
+});
+
 describe('pesoParaCampo', () => {
   it('usa coma decimal, como se teclea en Peso', () => {
     expect(pesoParaCampo(4.26)).toBe('4,26');
@@ -66,14 +83,50 @@ describe('pesoParaCampo', () => {
   });
 });
 
-describe('camposAPedir', () => {
-  it('pide solo las medidas que existen en Odoo', () => {
-    const c = camposAPedir(['id', 'name', 'default_code', 'barcode', 'weight', 'product_length', 'width']);
-    expect(c).toEqual(['id', 'default_code', 'name', 'barcode', 'weight', 'width', 'product_length']);
+const F = { type: 'float' } as const;
+const BASE = { id: { type: 'integer' }, name: { type: 'char' }, default_code: { type: 'char' }, barcode: { type: 'char' }, weight: F };
+
+describe('camposMedidaDe', () => {
+  it('reconoce los nombres técnicos conocidos', () => {
+    expect(camposMedidaDe({ ...BASE, product_length: F, product_width: F, product_height: F }))
+      .toEqual({ alto: 'product_height', ancho: 'product_width', largo: 'product_length' });
   });
-  it('sin módulo de medidas, solo lo básico', () => {
-    expect(camposAPedir(['id', 'name', 'default_code', 'barcode', 'weight', 'weight_uom_name']))
+  it('si no, reconoce por la etiqueta de un campo numérico', () => {
+    expect(camposMedidaDe({ ...BASE,
+      x_studio_float_1: { type: 'float', string: 'Alto (cm)' },
+      x_studio_float_2: { type: 'float', string: 'Ancho' },
+      x_studio_float_3: { type: 'float', string: 'Largo' },
+    })).toEqual({ alto: 'x_studio_float_1', ancho: 'x_studio_float_2', largo: 'x_studio_float_3' });
+  });
+  it('no toma campos de texto, de unidad ni de embalaje', () => {
+    expect(camposMedidaDe({ ...BASE,
+      x_alto_texto: { type: 'char', string: 'Alto' },
+      length_uom_id: { type: 'integer', string: 'Unidad de largo' },
+      packaging_length: { type: 'float', string: 'Largo' },
+    })).toEqual({});
+  });
+});
+
+describe('camposAPedir', () => {
+  it('pide lo básico y las medidas que encontró', () => {
+    expect(camposAPedir({ ...BASE, product_length: F, width: F }))
+      .toEqual(['id', 'default_code', 'name', 'barcode', 'weight', 'width', 'product_length']);
+  });
+  it('sin medidas, solo lo básico', () => {
+    expect(camposAPedir({ ...BASE, weight_uom_name: { type: 'char' } }))
       .toEqual(['id', 'default_code', 'name', 'barcode', 'weight', 'weight_uom_name']);
+  });
+});
+
+describe('camposNumericosConValor', () => {
+  it('lista números con valor y textos con nombre de medida, sin ids', () => {
+    const def = { id: { type: 'integer' }, volume: F, list_price: F, categ_id: { type: 'integer' },
+      x_medidas: { type: 'char', string: 'Medidas' }, description: { type: 'char', string: 'Descripción' } };
+    const r = { id: 3, volume: 0.05, list_price: 0, categ_id: 2, x_medidas: '150x68x52', description: 'algo' };
+    expect(camposNumericosConValor(r, def)).toEqual([
+      { campo: 'volume', etiqueta: 'volume', valor: 0.05 },
+      { campo: 'x_medidas', etiqueta: 'Medidas', valor: '150x68x52' },
+    ]);
   });
 });
 
@@ -85,11 +138,12 @@ describe('productoDesdeOdoo', () => {
   });
   it('convierte el peso a kg y las medidas a cm según la unidad de Odoo', () => {
     const p = productoDesdeOdoo({ id: 1, default_code: 'X', name: 'X', barcode: '78', weight: 500, weight_uom_name: 'g',
-      product_height: 0.25, product_width: 0.1, product_length: 0.3, dimensional_uom_id: [5, 'm'] }, 'X');
+      product_height: 0.25, product_width: 0.1, product_length: 0.3, dimensional_uom_id: [5, 'm'] }, 'X',
+    { alto: 'product_height', ancho: 'product_width', largo: 'product_length' });
     expect(p).toMatchObject({ peso_kg: 0.5, alto_cm: 25, ancho_cm: 10, largo_cm: 30, unidadMedidas: 'm', medidasSinConvertir: false });
   });
   it('medidas sin unidad declarada quedan como vienen y se marcan', () => {
-    const p = productoDesdeOdoo({ id: 1, default_code: 'X', name: 'X', weight: 2, height: 12 }, 'X');
+    const p = productoDesdeOdoo({ id: 1, default_code: 'X', name: 'X', weight: 2, x_alto: 12 }, 'X', { alto: 'x_alto' });
     expect(p.alto_cm).toBe(12);
     expect(p.medidasSinConvertir).toBe(true);
   });
