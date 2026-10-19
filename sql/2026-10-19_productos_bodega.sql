@@ -1,5 +1,6 @@
 -- Productos de Odoo para pesar bultos en Bodega. Pedido de Isaias del 19/10/2026.
--- Aplicado en la base de pruebas (kiosclub-pruebas) el 19/10/2026. Producción: pendiente de su OK.
+-- Aplicado en pruebas (kiosclub-pruebas) y en producción (epiwlmegimfftivqzzup) el 19/10/2026,
+-- producción con el OK de Isaias (13:57 UTC).
 --
 -- En /admin/sistema se busca un producto en Odoo por su código y, si es el correcto, se guarda acá
 -- con su nombre, código de barras, peso y medidas. En Bodega, al pesar un bulto, la handheld
