@@ -4,7 +4,7 @@ import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { fechaChileDe, limitesDiaChile } from '@/lib/fechaChile';
 import { verifyAuth } from '@/lib/apiAuth';
-import { camposAPedir, normalizarCodigo, productoDesdeOdoo } from '@/features/despacho/shared/productosBodega';
+import { camposAPedir, camposMedidaDe, camposNumericosConValor, esTextoDeMedida, normalizarCodigo, productoDesdeOdoo, type DefinicionCampos } from '@/features/despacho/shared/productosBodega';
 
 // Credentials are read from server-side env vars only — never from the request body.
 // Prefer ODOO_* (no NEXT_PUBLIC_) so the API key is not compiled into the browser bundle.
@@ -84,8 +84,8 @@ interface OdooRpcParams {
   args: unknown[];
 }
 
-/** Campos de `product.product` que se piden en `producto_detalle`; ver `camposAPedir`. */
-let camposProductoCache: string[] | null = null;
+/** `fields_get` de `product.product`, para `producto_detalle`. Ver `camposMedidaDe`. */
+let defProductoCache: DefinicionCampos | null = null;
 
 async function odooRpc(baseUrl: string, params: OdooRpcParams): Promise<unknown> {
   const url = baseUrl.replace(/\/$/, '') + '/jsonrpc';
@@ -484,26 +484,40 @@ export async function POST(req: NextRequest) {
       const codigo = normalizarCodigo(query || '');
       if (!codigo) return NextResponse.json({ error: 'Ingresa un código de producto' }, { status: 400 });
 
-      if (!camposProductoCache) {
-        const def = (await odooRpc(url, {
+      if (!defProductoCache) {
+        defProductoCache = (await odooRpc(url, {
           service: 'object', method: 'execute_kw',
-          args: [db, uid, apiKey, 'product.product', 'fields_get', [], { attributes: ['type'] }],
-        })) as Record<string, unknown>;
-        camposProductoCache = camposAPedir(Object.keys(def));
+          args: [db, uid, apiKey, 'product.product', 'fields_get', [], { attributes: ['type', 'string'] }],
+        })) as DefinicionCampos;
       }
+      const def = defProductoCache;
+      const camposMedida = camposMedidaDe(def);
 
       const encontrados = (await odooRpc(url, {
         service: 'object', method: 'execute_kw',
         args: [db, uid, apiKey, 'product.product', 'search_read',
           [['|', ['default_code', '=', codigo], ['barcode', '=', (query || '').trim()]]],
-          { fields: camposProductoCache, limit: 2 },
+          { fields: camposAPedir(def), limit: 2 },
         ],
       })) as Array<Record<string, unknown>>;
 
       if (!encontrados.length) return NextResponse.json({ producto: null });
       // Si el código calza con uno y el código de barras con otro, gana el código.
       const elegido = encontrados.find(r => typeof r.default_code === 'string' && normalizarCodigo(r.default_code) === codigo) ?? encontrados[0];
-      return NextResponse.json({ producto: productoDesdeOdoo(elegido, codigo) });
+      const producto = productoDesdeOdoo(elegido, codigo, camposMedida);
+      // Sin medidas: se leen todos los campos numéricos de este producto y se muestran en
+      // /admin/sistema, para ver en qué campo las guarda este Odoo.
+      if (producto.alto_cm == null && producto.ancho_cm == null && producto.largo_cm == null) {
+        try {
+          const numericos = Object.keys(def).filter(c => def[c]?.type === 'float' || def[c]?.type === 'integer' || esTextoDeMedida(def[c]));
+          const [todo] = (await odooRpc(url, {
+            service: 'object', method: 'execute_kw',
+            args: [db, uid, apiKey, 'product.product', 'read', [[elegido.id]], { fields: numericos }],
+          })) as Array<Record<string, unknown>>;
+          if (todo) producto.otrosCampos = camposNumericosConValor(todo, def);
+        } catch { /* solo diagnóstico */ }
+      }
+      return NextResponse.json({ producto });
     }
 
     /* ── get_picker_stats ── */

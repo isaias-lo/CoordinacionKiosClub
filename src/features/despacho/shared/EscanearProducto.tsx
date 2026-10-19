@@ -3,7 +3,8 @@
 // «Escanear producto» en la tarjeta de un bulto (Nacional y RM/Costa). La handheld lee el código
 // de barras del producto, se busca en los productos que el administrador guardó desde Odoo
 // (/admin/sistema), y con la cantidad se calcula el peso: peso unitario × cantidad. El peso cae en
-// el campo Peso y se puede corregir a mano. El bulto sigue contando como UN bulto.
+// el campo Peso, junto con las medidas guardadas del producto, y todo se puede corregir a mano.
+// El bulto sigue contando como UN bulto.
 //
 // Los campos de acá NO llevan `data-campo` a propósito: el lector global de Bodega
 // (`useLectorBodega`) solo se queda las lecturas hechas en campos de la tarjeta o en el buscador.
@@ -11,7 +12,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { ScanBarcode } from 'lucide-react';
-import { buscarProducto, pesoParaCampo, pesoPorCantidad, MAX_CANTIDAD, type ProductoBodega } from './productosBodega';
+import { buscarProducto, camposDesdeProducto, pesoParaCampo, pesoPorCantidad, MAX_CANTIDAD, type CamposDelBulto, type ProductoBodega } from './productosBodega';
 
 // La lista es corta y cambia poco: se pide una vez y se reusa en todas las tarjetas un rato.
 const VIGENCIA_MS = 5 * 60_000;
@@ -28,7 +29,7 @@ async function cargarProductos(forzar = false): Promise<ProductoBodega[]> {
 
 const CAMPO = 'w-full bg-white border border-border rounded-btn px-2.5 py-2 text-text font-barlow text-[16px] outline-none focus:border-[#1E40AF] placeholder:text-text-3';
 
-export default function EscanearProducto({ onPeso }: { onPeso: (peso: string) => void }) {
+export default function EscanearProducto({ onUsar }: { onUsar: (campos: CamposDelBulto) => void }) {
   const [abierto, setAbierto] = useState(false);
   const [leido, setLeido] = useState('');
   const [cantidad, setCantidad] = useState('');
@@ -79,7 +80,9 @@ export default function EscanearProducto({ onPeso }: { onPeso: (peso: string) =>
 
   const usar = () => {
     if (!producto || peso == null) return;
-    onPeso(pesoParaCampo(peso));
+    const campos = camposDesdeProducto(producto, cantidad);
+    if (!campos) return;
+    onUsar(campos);
     setUsado(`${cantidad} × ${producto.nombre}`);
     setAbierto(false); setProducto(null); setCantidad(''); setAviso('');
     // De vuelta al Peso de la tarjeta: Enter sigue al próximo campo, como siempre.

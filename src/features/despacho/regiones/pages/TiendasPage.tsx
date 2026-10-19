@@ -2395,8 +2395,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                           className={CAMPO_GRANDE} />
                       </div>
                     </div>
-                    {/* Peso desde el producto: código de barras + cantidad. Espejo en StepForm. */}
-                    <EscanearProducto onPeso={v => updateRow(row.id, 'peso', v)} />
+                    {/* Peso y medidas desde el producto: código de barras + cantidad. Espejo en StepForm. */}
+                    <EscanearProducto onUsar={c => { for (const [campo, v] of Object.entries(c)) updateRow(row.id, campo as 'peso' | 'alto' | 'ancho' | 'largo', v); }} />
                     </>
                   ) : isContRow ? (
                     <div className="mb-1.5 text-[11px] rounded px-1.5 py-1" style={{ color: '#6B21A8', background: 'rgba(107,33,168,0.06)', border: '1px solid rgba(107,33,168,0.15)' }}>

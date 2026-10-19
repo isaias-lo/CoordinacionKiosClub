@@ -3080,8 +3080,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       ))}
                     </div>
                   )}
-                  {/* Peso desde el producto: código de barras + cantidad. Espejo en TiendasPage. */}
-                  {row.tipo === 'Bulto' && !isChocRow && <EscanearProducto onPeso={v => updateRow(row.id, 'peso', v)} />}
+                  {/* Peso y medidas desde el producto: código de barras + cantidad. Espejo en TiendasPage. */}
+                  {row.tipo === 'Bulto' && !isChocRow && <EscanearProducto onUsar={c => { for (const [campo, v] of Object.entries(c)) updateRow(row.id, campo as 'peso' | 'alto' | 'ancho' | 'largo', v); }} />}
                   {row.tipo === 'Pallet' && (
                     <div className="mb-1.5 text-[11px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">120×100 cm</div>
                   )}
