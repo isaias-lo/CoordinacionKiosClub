@@ -142,14 +142,17 @@ export const HOME_OPTIONS: { value: string; label: string }[] = [
  * Páginas viejas que hoy solo redirigen a otra. Tener permiso para la vieja da permiso para la
  * nueva, porque es adonde la página manda.
  *
- * `/despacho-hub` pasó a ser un `redirect('/despacho')` el 30 sep 2026 (#631), pero el rol
- * "Asistente Despacho" en la tabla `roles` sigue con `/despacho-hub` como inicio y sin `/despacho`
- * entre sus rutas. Resultado: el middleware dejaba entrar a `/despacho-hub`, la página mandaba a
- * `/despacho`, el middleware lo prohibía y devolvía a `/despacho-hub`… "demasiadas redirecciones".
- * Le pasó a Steven el 19 oct 2026 en la handheld y en su celular, recién creada su cuenta.
+ * `/despacho-hub` era el menú de los asistentes. El 30 sep 2026 (#631) pasó a mandar a
+ * `/despacho`, pero el rol "Asistente Despacho" en la tabla `roles` sigue con `/despacho-hub` como
+ * inicio y sin `/despacho` entre sus rutas. El middleware dejaba entrar a `/despacho-hub`, la página
+ * mandaba a `/despacho`, el middleware lo prohibía y devolvía a `/despacho-hub`… "demasiadas
+ * redirecciones". Le pasó a Steven el 19 oct 2026 en la handheld y en su celular.
+ *
+ * Ahora `/despacho-hub` manda a Inicio (`/`), que muestra solo los módulos que cada uno puede abrir
+ * (Nacional y RM/Costa para un asistente). No regala el Enrutador a quien no lo tenía.
  */
 const RUTAS_REDIRIGIDAS: Record<string, string> = {
-  '/despacho-hub': '/despacho',
+  '/despacho-hub': '/',
 };
 
 /** Las rutas efectivas de un rol: las del token si vienen, si no el respaldo de código. */

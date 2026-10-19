@@ -47,8 +47,8 @@ describe('destinoTrasLogin', () => {
   });
 
   it('si no puede, va a su inicio', () => {
-    expect(destinoTrasLogin(asistente, '/admin')).toBe('/despacho');
-    // /despacho-hub solo redirige a /despacho: se va directo, sin el salto.
-    expect(destinoTrasLogin(asistente, null)).toBe('/despacho');
+    expect(destinoTrasLogin(asistente, '/admin')).toBe('/');
+    // /despacho-hub solo redirige a Inicio: se va directo, sin el salto.
+    expect(destinoTrasLogin(asistente, null)).toBe('/');
   });
 });

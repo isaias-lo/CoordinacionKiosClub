@@ -75,11 +75,17 @@ describe('middleware — rol con la página vieja /despacho-hub', () => {
     allowed_paths: ['/despacho-hub', '/despacho/regiones', '/despacho/santiago', '/despacho/conteo', '/perfil'],
   };
 
-  it('/despacho-hub redirige a /despacho, y /despacho se abre: no hay bucle', async () => {
+  it('entra a Inicio y no hay bucle', async () => {
     usuario = { user_metadata: asistente };
     const inicio = await pedir('/');
-    expect(inicio.headers.get('location')).toBe('https://app.test/despacho');
+    expect(inicio.headers.get('location')).toBeNull();
+    const hub = await pedir('/despacho-hub');
+    expect(hub.headers.get('location')).toBeNull(); // la página misma redirige a `/`, que se abre
+  });
+
+  it('no le regala el Enrutador', async () => {
+    usuario = { user_metadata: asistente };
     const r = await pedir('/despacho');
-    expect(r.headers.get('location')).toBeNull();
+    expect(r.headers.get('location')).toBe('https://app.test/');
   });
 });
