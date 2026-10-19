@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   if (!await verifyAuth(request)) return UNAUTH();
   try {
     const body = await request.json() as {
-      date: string; store_cod: string; tipo: string; contenido?: string;
+      date: string; store_cod: string; tipo: string; contenido?: string; client_op_id?: string;
     };
     if (!body.date || !body.store_cod || !body.tipo) {
       return NextResponse.json({ error: 'date, store_cod y tipo requeridos' }, { status: 400 });
@@ -34,12 +34,19 @@ export async function POST(request: NextRequest) {
     // altas concurrentes del mismo (date, store_cod, tipo) y calcula el seq sin carrera → dos
     // usuarios agregando a la vez ya no crean slots con seq duplicado. Si la función todavía no
     // está desplegada (PGRST202 = no existe), cae al camino viejo para no romper nada.
-    const rpc = await sb.rpc('fn_create_bodega_slot', {
+    const params = {
       p_date:      body.date,
       p_store_cod: body.store_cod,
       p_tipo:      body.tipo,
       p_contenido: body.contenido ?? 'hogar',
-    });
+    };
+    // Con `client_op_id`, un reintento de la MISMA alta (se perdió la respuesta) devuelve la unidad
+    // que ya existe. Esa versión de la función tiene un parámetro más; si la base todavía no la
+    // tiene (PGRST202), se usa la de siempre, que crea igual pero sin deduplicar.
+    let rpc = body.client_op_id
+      ? await sb.rpc('fn_create_bodega_slot', { ...params, p_client_op_id: body.client_op_id })
+      : await sb.rpc('fn_create_bodega_slot', params);
+    if (rpc.error?.code === 'PGRST202' && body.client_op_id) rpc = await sb.rpc('fn_create_bodega_slot', params);
     if (!rpc.error) {
       const row = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data;
       if (row) {
@@ -83,11 +90,21 @@ export async function POST(request: NextRequest) {
         seq,
         canonical_id,
         is_active:    true,
+        client_op_id: body.client_op_id ?? null,
       })
       .select(SELECT_COLS)
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      // Mismo criterio que POST /api/picking-pallets: el índice único de client_op_id dice que esta
+      // alta ya se creó en un intento anterior. Se devuelve esa.
+      if (error.code === '23505' && body.client_op_id) {
+        const { data: existing } = await sb
+          .from('picking_pallets').select(SELECT_COLS).eq('client_op_id', body.client_op_id).maybeSingle();
+        if (existing) return NextResponse.json({ data: existing, idempotent: true });
+      }
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
     return NextResponse.json({ data });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
