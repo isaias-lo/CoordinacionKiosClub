@@ -1,5 +1,6 @@
 'use client';
 
+import EscanearProducto from '@/features/despacho/shared/EscanearProducto';
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navigation, ChevronLeft, ClipboardList, User, Store, FileUp, AlertTriangle, Pencil } from 'lucide-react';
@@ -2379,6 +2380,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     )}
                   </div>
                   {row.pkg === 'box' ? (
+                    <>
                     <div className="grid grid-cols-2 gap-2 mb-2">
                       <div>
                         <label className="text-rotulo font-bold text-text-sub uppercase block mb-1">Ancho</label>
@@ -2393,6 +2395,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                           className={CAMPO_GRANDE} />
                       </div>
                     </div>
+                    {/* Peso desde el producto: código de barras + cantidad. Espejo en StepForm. */}
+                    <EscanearProducto onPeso={v => updateRow(row.id, 'peso', v)} />
+                    </>
                   ) : isContRow ? (
                     <div className="mb-1.5 text-[11px] rounded px-1.5 py-1" style={{ color: '#6B21A8', background: 'rgba(107,33,168,0.06)', border: '1px solid rgba(107,33,168,0.15)' }}>
                       80 × 110 cm · alto 150 cm — fijo

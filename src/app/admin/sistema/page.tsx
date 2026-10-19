@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Power, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeRefresh';
+import ProductosOdoo from './ProductosOdoo';
 
 const C = {
   ground: '#F8FAFC', surface: '#fff', border: '#E2E8F0', borderSoft: '#F1F5F9',
@@ -130,6 +131,8 @@ export default function SistemaAdminPage() {
             para crear pallets a mano ahí) — Bodega, que ya es 100% manual, no se ve afectada.
           </div>
         </div>
+
+        <ProductosOdoo odooActivo={activo} />
       </div>
     </div>
   );

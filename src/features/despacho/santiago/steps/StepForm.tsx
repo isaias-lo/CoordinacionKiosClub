@@ -13,6 +13,7 @@ import { subscribeToCalendarChanges } from '../../utils/useCalendario';
 import { getTiendasAdelantoHoy, agregarTiendaAlDia, zonaForStore } from '../../shared/tiendasAdelanto';
 import { AvisoDiaViejo } from '../../shared/AvisoDiaViejo';
 import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/shared/chocolate';
+import EscanearProducto from '@/features/despacho/shared/EscanearProducto';
 import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE, clasificarContenido, nombreContenido, tipoDesdePicking, unirTipos } from '@/features/despacho/shared/contenidoCarga';
 import { SelectorTipoCarga } from '@/features/despacho/shared/SelectorTipoCarga';
 import { tipoBloqueadoDeSlot } from '@/features/despacho/shared/tipoDeSlot';
@@ -3079,6 +3080,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       ))}
                     </div>
                   )}
+                  {/* Peso desde el producto: código de barras + cantidad. Espejo en TiendasPage. */}
+                  {row.tipo === 'Bulto' && !isChocRow && <EscanearProducto onPeso={v => updateRow(row.id, 'peso', v)} />}
                   {row.tipo === 'Pallet' && (
                     <div className="mb-1.5 text-[11px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">120×100 cm</div>
                   )}
