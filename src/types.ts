@@ -41,6 +41,8 @@ export interface DispatchItem {
   taraPallet?: number;      // kg del pallet que se restaron del peso (`peso` ya es neto). Ver pesoDelPallet.ts
   palletWeb?: boolean;      // pallet que sale sin pesar, a propósito. Ver shared/sinPesar.ts → esPalletWeb
   editadoEn?: number;       // ms de la última edición de su carga en un equipo. Ver shared/versionDeItem.ts
+  /** Nombre del producto si el bulto se pesó con «Escanear producto». Se muestra en la línea pesada. */
+  producto?: string;
 }
 
 export interface PdfGuia {

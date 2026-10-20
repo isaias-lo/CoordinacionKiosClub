@@ -16,6 +16,8 @@ import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/sha
 import EscanearProducto from '@/features/despacho/shared/EscanearProducto';
 import { unidadesSinRepetir, avisoRepetidas, esMismaUnidad } from '@/features/despacho/shared/unidadesSinRepetir';
 import { slotsUnicos, agregarSlots } from '@/features/despacho/shared/slotsUnicos';
+import BarraSumarBultos from '@/features/despacho/shared/BarraSumarBultos';
+import { conProducto } from '@/features/despacho/shared/productosBodega';
 import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE, clasificarContenido, nombreContenido, tipoDesdePicking, unirTipos } from '@/features/despacho/shared/contenidoCarga';
 import { SelectorTipoCarga } from '@/features/despacho/shared/SelectorTipoCarga';
 import { tipoBloqueadoDeSlot } from '@/features/despacho/shared/tipoDeSlot';
@@ -43,7 +45,7 @@ import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTi
 import { useAvisoNuevasTrasTerminar } from '../../shared/avisoNuevasTrasTerminar';
 import { avisoAntesDeRegistrar, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
 import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, TiendaSinUnidades, type OpcionAgregar } from '../../shared/TiendaAbierta';
-import { confirmarCambioGuardado, confirmarEliminarVarios, confirmarQuitarSinGuardar } from '../../shared/confirmarGuardado';
+import { confirmarCambioGuardado, confirmarQuitarSinGuardar } from '../../shared/confirmarGuardado';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { mismaCargaEscrita } from '../../shared/adoptarItemRemoto';
 import { buscarPallet } from '../../shared/buscarPallet';
@@ -171,6 +173,8 @@ interface FormRow {
   /** Solo pallets: lo que pesa el pallet mismo, en kg. Se le resta al peso. Vacío = nada, que es
    *  el caso normal. Ver `pesoNetoPallet`. */
   pesoPallet?: string;
+  /** Producto de «Escanear producto»; pasa al ítem al guardar. Ver `EscanearProducto.tsx`. */
+  producto?: string;
   saved?: boolean;
   /** La tarjeta se reabrió porque se le SUMÓ algo: el guardado que viene no es trabajo rehecho.
    *  Ver `esReingresoDeVerdad`. Se limpia al guardar. */
@@ -1558,6 +1562,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       // Si la armó Picking, el tipo es el de su etiqueta (la tarjeta lo muestra bloqueado).
       contenido: tipoDesdePicking(pickingSlot) ? contenidoSantiago(pickingSlot!.contenido) : row.contenido,
       peso: p, alto: a, largo: fL, ancho: fA, taraPallet: tara,
+      // El producto escaneado; al reabrir una guardada, el que ya tenía.
+      producto: row.producto ?? row.savedItem?.producto,
       pesoVolumetrico: pesoV, regimen,
       // El número impreso del slot, no su posición entre los que hay ahora.
       orden: ordenDeItem(row.tipo, numeroParaUnidadNueva(seqsHermanas, pickingSlot?.seq)),
@@ -1667,35 +1673,6 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     deletePickingSlot(slotIdBorrado, { label: borrado?.orden ?? (row ? labelDeFila(row, formRows) : undefined) });
     setFormRows(prev => prev.filter(r => r.id !== rowId));
     if (borrado) armarUndo(`${borrado.orden} eliminado`, () => reAgregarItem(borrado, slotAntes));
-  };
-
-  // Varios de una vez (barra de seleccionados). Los índices se toman de la lista de AHORA y se
-  // borran de mayor a menor: así ninguno se corre. El dispatch ya deja el estado al día al instante.
-  const deleteSavedRows = (rowIds: string[]) => {
-    if (!currentTienda || rowIds.length === 0) return;
-    const cod = currentTienda.cod;
-    const filas = formRows.filter(r => rowIds.includes(r.id));
-    const actuales = items[cod] || [];
-    const indices = filas
-      .map(r => r.savedItem ? actuales.findIndex(i => i.id === r.savedItem!.id) : -1)
-      .filter(i => i !== -1)
-      .sort((a, b) => b - a);
-    for (const idx of indices) dispatch({ type: 'DELETE_ITEM', tiendaCod: cod, idx });
-    const deshacer: { item: NonNullable<FormRow['savedItem']>; slotAntes?: PickingSlot }[] = [];
-    for (const row of filas) {
-      const slotId = row.pickingSlotId ?? row.savedItem?.pickingSlotId;
-      const slotAntes = slotId != null ? (pickingSlotsFullRef.current[cod] ?? []).find(s => s.id === slotId) : undefined;
-      deletePickingSlot(slotId, { label: row.savedItem?.orden ?? labelDeFila(row, formRows) });
-      if (row.savedItem) deshacer.push({ item: row.savedItem, slotAntes });
-    }
-    const ids = new Set(rowIds);
-    setFormRows(prev => prev.filter(r => !ids.has(r.id)));
-    setMergeSel(new Set());
-    if (deshacer.length > 0) {
-      armarUndo(`${deshacer.length} eliminado${deshacer.length > 1 ? 's' : ''}`, async () => {
-        for (const d of deshacer) await reAgregarItem(d.item, d.slotAntes);
-      });
-    }
   };
 
   // Quitar un form row sin guardar (✕) — también borra su slot.
@@ -2005,7 +1982,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     setMergeSel(new Set());
     showToast(repetidas > 0
       ? `${toastSuma(palletLabel, sumarPesoMultiple(0, pesosBultos), bultoRows.length)} · ${avisoRepetidas(repetidas)}`
-      : toastSuma(palletLabel, sumarPesoMultiple(0, pesosBultos), bultoRows.length), repetidas > 0 ? '#D97706' : '#16A34A');
+      : toastSuma(palletLabel, sumarPesoMultiple(0, pesosBultos), bultoRows.length), repetidas > 0 ? AVISO_ESPERA : AVISO_OK);
     logActividad({ accion: 'sumar', fuente: 'rmcosta', tiendaCod: cod, tiendaNombre: currentTienda.tienda,
       sourceLabel: `${bultoRows.length} ítems`, label: palletLabel, peso: sumarPesoMultiple(0, pesosBultos), slotId: targetSlotId });
     armarUndo(etiquetaSuma(snap.origenes.map(o => o.label), palletLabel), () => revertirSuma(snap));
@@ -2872,7 +2849,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     resaltada={row.pickingSlotId != null && row.pickingSlotId === resaltado}
                     // Una adquisición no tiene peso ni medidas: escribir «0kg · 0cm» haría pasar la
                     // AUSENCIA de un dato por un dato. Dice qué es.
-                    resumen={etiquetaDeUnidad(row.savedItem) ?? `${textoPesoConTara(row.savedItem.peso, row.savedItem.taraPallet)} · ${row.savedItem.alto} cm`}
+                    resumen={etiquetaDeUnidad(row.savedItem) ?? conProducto(`${textoPesoConTara(row.savedItem.peso, row.savedItem.taraPallet)} · ${row.savedItem.alto} cm`, row.savedItem.producto)}
                     campos={etiquetaDeUnidad(row.savedItem) ? undefined : [
                       { rotulo: 'Peso', valor: textoPesoConTara(row.savedItem.peso, row.savedItem.taraPallet) },
                       { rotulo: 'Alto', valor: `${row.savedItem.alto} cm` },
@@ -3098,7 +3075,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     </div>
                   )}
                   {/* Peso y medidas desde el producto: código de barras + cantidad. Espejo en TiendasPage. */}
-                  {row.tipo === 'Bulto' && !isChocRow && <EscanearProducto onUsar={c => { for (const [campo, v] of Object.entries(c)) updateRow(row.id, campo as 'peso' | 'alto' | 'ancho' | 'largo', v); }} />}
+                  {row.tipo === 'Bulto' && !isChocRow && <EscanearProducto onUsar={c => { for (const [campo, v] of Object.entries(c)) updateRow(row.id, campo as 'peso' | 'alto' | 'ancho' | 'largo' | 'producto', v); }} />}
                   {row.tipo === 'Pallet' && (
                     <div className="mb-1.5 text-[11px] text-info bg-[rgba(37,99,235,0.06)] border border-[rgba(37,99,235,0.15)] rounded px-1.5 py-1">120×100 cm</div>
                   )}
@@ -3336,57 +3313,22 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             })()}
           </>
           {(() => {
-            // [Sumar en masa · botones] La barra aparece apenas hay ≥1 Bulto/CH guardado (aunque NO
-            // haya pallet todavía). El destino se elige con UN clic en el botón del pallet (P1/P2…);
-            // antes era un <select> + botón "Sumar" aparte. "+ Nuevo" abre el diálogo de "+ Pallet"
-            // de siempre (no crea nada distinto): la selección se mantiene y al crear el pallet
-            // aparece su botón para sumar.
+            // [Sumar en masa] Aparece apenas hay ≥1 Bulto/CH guardado, aunque no haya pallet. El
+            // destino se elige con UN toque en el pallet. Ver `BarraSumarBultos.tsx`.
             const sumableRows = formRows.filter(r => r.saved && r.savedItem && (r.tipo === 'Bulto' || r.tipo === 'Chocolate'));
             if (sumableRows.length === 0) return null;
-            // Incluye pallets AÚN NO agregados (marcados con borde punteado). Sumar les fija el peso
-            // en su card + slot; hay que acordarse de agregarlos para que queden registrados.
+            // Incluye pallets AÚN NO agregados (borde punteado). Sumar les fija el peso en su card
+            // + slot; hay que acordarse de agregarlos para que queden registrados.
             const palletRows = formRows.filter(r => r.tipo === 'Pallet' && (r.savedItem || r.pickingSlotId));
-            // Mismo número que la tarjeta (su `seq`). Contar la posición hacía que, borrado P1, el
-            // botón «P2» sumara al pallet que la tarjeta llama P3.
-            const getPalletLabel = (r: FormRow) => labelDeFila(r, formRows);
             const selectedCount = sumableRows.filter(r => mergeSel.has(r.id)).length;
             const allSelected = selectedCount > 0 && selectedCount === sumableRows.length;
             return (
-              <div className="sticky bottom-0 z-10 -mx-2 mt-1 mb-2 px-3 py-2.5 flex items-center gap-2 flex-wrap shadow-lg"
-                style={{ background: '#1B2A6B' }}>
-                <button onClick={() => setMergeSel(allSelected ? new Set() : new Set(sumableRows.map(r => r.id)))}
-                  className={`font-barlow-condensed px-2.5 py-1.5 rounded text-[12px] font-bold cursor-pointer border transition-all ${
-                    allSelected ? 'bg-white text-navy border-white' : 'text-white border-white/35 bg-white/10'}`}>
-                  Todos
-                </button>
-                <span className="font-barlow-condensed text-[12px] text-white/85 font-semibold flex-1 min-w-[96px]">
-                  {selectedCount > 0 ? `${selectedCount} seleccionados` : 'Marcá varios o Todos'}
-                </span>
-                <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-wide text-white/55">Sumar a</span>
-                {palletRows.map(r => {
-                  const agregado = !!r.savedItem;
-                  return (
-                  <button key={r.id} disabled={selectedCount === 0}
-                    onClick={() => sumarVariosAPallet([...mergeSel], r.id)}
-                    title={agregado ? `Sumar los seleccionados a ${getPalletLabel(r)}` : `Sumar a ${getPalletLabel(r)} — aún sin agregar (acordate de agregarlo después)`}
-                    className={`font-barlow-condensed px-3 py-1.5 rounded text-[13px] font-bold cursor-pointer transition-all border-[1.5px] text-white hover:bg-[#2f7bff] hover:border-[#2f7bff] disabled:opacity-40 disabled:cursor-not-allowed ${
-                      agregado ? 'border-white/40 bg-white/10' : 'border-dashed border-amber-300 bg-transparent'}`}>
-                    {getPalletLabel(r)}
-                  </button>
-                  );
-                })}
-                <button onClick={() => setDialogTipo('Pallet')}
-                  title="Crear un pallet nuevo para sumar los seleccionados"
-                  className="font-barlow-condensed px-3 py-1.5 rounded text-[13px] font-bold cursor-pointer transition-all border-[1.5px] border-dashed border-white/45 text-[#CDE0FF] hover:bg-white/10">
-                  + Nuevo
-                </button>
-                <button disabled={selectedCount === 0}
-                  onClick={() => { const ids = sumableRows.filter(r => mergeSel.has(r.id)).map(r => r.id); if (confirmarEliminarVarios(ids.length)) deleteSavedRows(ids); }}
-                  title="Eliminar todos los seleccionados"
-                  className="font-barlow-condensed px-3 py-1.5 rounded text-apoyo font-bold cursor-pointer transition-all border-[1.5px] border-red-300/70 text-red-200 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed">
-                  Eliminar
-                </button>
-              </div>
+              <BarraSumarBultos total={sumableRows.length} seleccionados={selectedCount}
+                onTodos={() => setMergeSel(allSelected ? new Set() : new Set(sumableRows.map(r => r.id)))}
+                // Mismo número que la tarjeta (su `seq`). Contar la posición hacía que, borrado P1,
+                // el botón «P2» sumara al pallet que la tarjeta llama P3.
+                pallets={palletRows.map(r => ({ id: r.id, etiqueta: labelDeFila(r, formRows), agregado: !!r.savedItem }))}
+                onSumar={id => sumarVariosAPallet([...mergeSel], id)} />
             );
           })()}
           </fieldset>

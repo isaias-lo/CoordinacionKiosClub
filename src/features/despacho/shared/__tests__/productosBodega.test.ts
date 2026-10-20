@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buscarProducto, camposAPedir, camposDesdeProducto, camposMedidaDe, camposNumericosConValor, llaveBarcode, normalizarCodigo, pesoParaCampo, pesoPorCantidad,
+  buscarProducto, camposAPedir, camposDesdeProducto, conProducto, MAX_NOMBRE_EN_LINEA, camposMedidaDe, camposNumericosConValor, llaveBarcode, normalizarCodigo, pesoParaCampo, pesoPorCantidad,
   productoDesdeOdoo, validarProducto, MAX_CANTIDAD,
 } from '../productosBodega';
 
@@ -60,19 +60,34 @@ describe('pesoPorCantidad', () => {
 });
 
 describe('camposDesdeProducto', () => {
-  const SILLA = { peso_kg: 3.98, alto_cm: 82, ancho_cm: 51, largo_cm: 41 };
+  const SILLA = { nombre: 'Silla', peso_kg: 3.98, alto_cm: 82, ancho_cm: 51, largo_cm: 41 };
   it('trae el peso por la cantidad y las medidas guardadas', () => {
-    expect(camposDesdeProducto(SILLA, '2')).toEqual({ peso: '7,96', alto: '82', ancho: '51', largo: '41' });
+    expect(camposDesdeProducto(SILLA, '2')).toEqual({ peso: '7,96', alto: '82', ancho: '51', largo: '41', producto: 'Silla' });
   });
   it('las medidas con decimales van con punto (campos numéricos)', () => {
     expect(camposDesdeProducto({ ...SILLA, ancho_cm: 68.5 }, '1')?.ancho).toBe('68.5');
   });
   it('sin medidas guardadas, solo el peso', () => {
-    expect(camposDesdeProducto({ peso_kg: 9, alto_cm: null, ancho_cm: 0, largo_cm: null }, '1')).toEqual({ peso: '9' });
+    expect(camposDesdeProducto({ nombre: 'Baúl', peso_kg: 9, alto_cm: null, ancho_cm: 0, largo_cm: null }, '1')).toEqual({ peso: '9', producto: 'Baúl' });
   });
   it('sin peso o con una cantidad inválida, nada', () => {
     expect(camposDesdeProducto({ ...SILLA, peso_kg: null }, '1')).toBeNull();
     expect(camposDesdeProducto(SILLA, '')).toBeNull();
+  });
+});
+
+describe('conProducto', () => {
+  it('agrega el nombre después de los cm', () => {
+    expect(conProducto('18 kg · 82 cm', 'Silla Torino')).toBe('18 kg · 82 cm · Silla Torino');
+  });
+  it('sin producto la línea queda igual', () => {
+    expect(conProducto('18 kg · 82 cm', undefined)).toBe('18 kg · 82 cm');
+    expect(conProducto('18 kg · 82 cm', '  ')).toBe('18 kg · 82 cm');
+  });
+  it('acorta los nombres largos', () => {
+    const r = conProducto('9 kg · 52 cm', 'Reposera Acero Reposabrazos 198 X 67 X 52 Cm Cool Gray Sunseeker 1 Un');
+    expect(r.endsWith('…')).toBe(true);
+    expect(r.length).toBeLessThanOrEqual('9 kg · 52 cm · '.length + MAX_NOMBRE_EN_LINEA);
   });
 });
 
