@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { unidadesSinRepetir, avisoRepetidas } from '../unidadesSinRepetir';
+import { unidadesSinRepetir, avisoRepetidas, esMismaUnidad } from '../unidadesSinRepetir';
 
 describe('unidadesSinRepetir', () => {
   it('deja pasar unidades distintas', () => {
@@ -43,5 +43,20 @@ describe('avisoRepetidas', () => {
   it('singular y plural', () => {
     expect(avisoRepetidas(1)).toBe('Una tarjeta estaba repetida y no se sumó dos veces');
     expect(avisoRepetidas(5)).toBe('5 tarjetas estaban repetidas y no se sumaron dos veces');
+  });
+});
+
+describe('esMismaUnidad', () => {
+  it('misma unidad si comparten slot, aunque una lo tenga solo en el ítem', () => {
+    expect(esMismaUnidad({ id: 'a', pickingSlotId: 3520 }, { id: 'b', savedItem: { pickingSlotId: 3520 } })).toBe(true);
+  });
+  it('misma unidad si comparten ítem guardado', () => {
+    expect(esMismaUnidad({ id: 'a', savedItem: { id: 'x' } }, { id: 'b', savedItem: { id: 'x' } })).toBe(true);
+  });
+  it('distintas si no comparten nada', () => {
+    expect(esMismaUnidad({ id: 'a', pickingSlotId: 1 }, { id: 'b', pickingSlotId: 2 })).toBe(false);
+  });
+  it('dos tarjetas nuevas sin slot ni ítem no son la misma', () => {
+    expect(esMismaUnidad({ id: 'a' }, { id: 'b' })).toBe(false);
   });
 });
