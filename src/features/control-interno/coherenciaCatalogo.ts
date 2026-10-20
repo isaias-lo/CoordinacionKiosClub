@@ -128,9 +128,10 @@ export function coherenciaCatalogo(
     if (despacha && vacio(t.sector_comuna)) sinSector.push(cod);
     if (despacha && vacio(t.region))        sinRegion.push(cod);
 
-    // «Región Sur» con el GPS al norte del CD (o al revés). Medido el 20/10/2026: 61RIO dice
-    // «Región Sur» y su GPS está en Copiapó (−27,36), región de Atacama. Norte y sur los transporta
-    // gente distinta, así que el sector equivocado la manda con el transportista equivocado.
+    // «Región Sur» con el GPS al norte del CD (o al revés): uno de los dos está mal. Medido el
+    // 20/10/2026: 61RIO dice «Región Sur» (correcto, está en Concepción) y su ficha traía GPS de
+    // Copiapó (−27,36) y región Atacama. Norte y sur los transporta gente distinta, y el GPS es lo
+    // que usa el Enrutador para ordenar las paradas.
     const zona = zonaDeSector(t.sector_comuna);
     if (despacha && (zona === 'sur' || zona === 'norte') && t.lat != null && Number.isFinite(t.lat)) {
       const porGps = t.lat < LAT_CD_DEFAULT ? 'sur' : 'norte';
