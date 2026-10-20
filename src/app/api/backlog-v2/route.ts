@@ -4,7 +4,7 @@ import { supabaseServer, hayServiceRole } from '@/lib/supabaseServer';
 import { verifyAuth } from '@/lib/apiAuth';
 import { fechaChile, fechaChileDe } from '@/lib/fechaChile';
 import {
-  pendientesDelDia, despachadasParaOrigen, aFechaPlanilla, desdeFechaPlanilla,
+  pendientesDelDia, despachadasParaOrigen, aFechaPlanilla, desdeFechaPlanilla, sinResueltas,
   type PendienteBacklog,
 } from '@/features/despacho/rutas/utils/backlogSegundaVuelta';
 
@@ -137,10 +137,25 @@ export async function GET(request: NextRequest) {
       pendientes.push(...pendientesDelDia(filas, despachadasParaOrigen(despachos, fecha), fecha));
     }
 
+    // Lo que una PERSONA marcó como resuelto fuera del sistema (ver /api/backlog-resuelto). Se
+    // aplica acá, al final: el cálculo sigue siendo el mismo de siempre y esto solo le saca lo
+    // que alguien ya decidió. Si la consulta falla, se devuelve el backlog COMPLETO en vez de
+    // ninguno — mostrar de más es recuperable, esconder carga pendiente no.
+    const { data: resueltas, error: errResueltas } = await sb
+      .from('backlog_resuelto')
+      .select('fecha_origen, tienda_cod')
+      .gte('fecha_origen', desde);
+    if (errResueltas) console.error('[backlog-v2] backlog_resuelto:', errResueltas.message);
+    const visibles = errResueltas ? pendientes : sinResueltas(
+      pendientes,
+      (resueltas ?? []).map(r => ({ fechaOrigen: String(r.fecha_origen), cod: String(r.tienda_cod) })),
+    );
+
     // Los contadores viajan a propósito: si el cálculo devuelve de más, lo primero que hay que saber
     // es CUÁNTO alcanzó a leer. Sin esto, diagnosticarlo desde afuera es adivinar.
     return NextResponse.json({
-      pendientes, desde, hoy,
+      pendientes: visibles, desde, hoy,
+      resueltasFuera: pendientes.length - visibles.length,
       diasConDespacho: despachos.length,
       filasLeidas: { despacho_rm: rm.length, despacho_regiones: reg.length },
       serviceRole: hayServiceRole(),
