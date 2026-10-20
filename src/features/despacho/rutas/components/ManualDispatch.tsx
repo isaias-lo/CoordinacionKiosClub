@@ -136,6 +136,16 @@ function estimarKm(stores: StoreTag[], gps: Record<string, number[]>, cd: number
 
 interface DraggingState extends StoreTag { from: string; }
 
+/** Un toque sobre una tienda que todavía no se convierte en arrastre (ver handleTouchStart). */
+interface EsperaToque {
+  timer: number; el: HTMLElement; item: StoreTag; from: string;
+  x0: number; y0: number; x: number; y: number;
+}
+/** Cuánto hay que mantener apretada una tienda para levantarla con el dedo. */
+const ESPERA_TOQUE_MS = 250;
+/** Lo que puede temblar el dedo durante la espera sin que cuente como scroll. */
+const TOLERANCIA_TOQUE_PX = 10;
+
 /* ── Pill de filtro de grupo del pool "Sin asignar" (Todas/RM/COSTA/REGIONES) — se movió aquí
    desde el DespachoHeader (barra global, al lado de Supervisor). ── */
 // Dos estados, no tres: el pill filtra la vista y nada más. El tercer estado ("apagado", en gris)
@@ -207,6 +217,7 @@ export default function ManualDispatch({
   const [selected,          setSelected]          = useState<Set<string>>(new Set()); // P10b: multi-selección del pool
   const scrollRaf    = useRef<number | null>(null);
   const touchState   = useRef<{ active: boolean; item: StoreTag | null; from: string | null; ghost: HTMLElement | null }>({ active: false, item: null, from: null, ghost: null });
+  const touchEspera  = useRef<EsperaToque | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // [Flota plegable] Qué empresas están plegadas. Se recuerda por navegador: con seis empresas, la
@@ -446,18 +457,43 @@ export default function ManualDispatch({
 
   function handleDragEnd() { setDragging(null); setDragOver(null); }
 
+  // [Scroll en tablet] El arrastre con el dedo arranca recién al MANTENER apretada la tienda.
+  // Antes arrancaba apenas se tocaba, y como en la vista nueva cada tienda del pool es una fila de
+  // todo el ancho, casi cualquier toque caía sobre una: el dedo agarraba la tienda en vez de mover
+  // la página y no había forma de hacer scroll. Ahora, si el dedo se desliza antes de la espera, es
+  // un scroll normal; si se queda quieto, se levanta la tienda como siempre.
   function handleTouchStart(e: React.TouchEvent, store: StoreTag, from: string) {
     if (bloqueada(from)) return; // ver handleDragStart: un camión cerrado no suelta carga
     const touch = e.touches[0];
-    const el    = e.currentTarget as HTMLElement;
+    if (!touch) return;
+    cancelarEspera();
+    const el = e.currentTarget as HTMLElement;
+    const espera = touchEspera.current = {
+      timer: 0, el, item: store, from,
+      x0: touch.clientX, y0: touch.clientY, x: touch.clientX, y: touch.clientY,
+    };
+    espera.timer = window.setTimeout(() => {
+      if (touchEspera.current !== espera) return;
+      touchEspera.current = null;
+      levantarTienda(espera);
+    }, ESPERA_TOQUE_MS);
+  }
+
+  function cancelarEspera() {
+    if (touchEspera.current) window.clearTimeout(touchEspera.current.timer);
+    touchEspera.current = null;
+  }
+
+  function levantarTienda({ el, item: store, from, x, y }: EsperaToque) {
+    if (!el.isConnected) return;
     const rect  = el.getBoundingClientRect();
     const w     = Math.min(rect.width, 150);
 
     const ghost = el.cloneNode(true) as HTMLElement;
     ghost.style.cssText = [
       'position:fixed',
-      `left:${touch.clientX - w / 2}px`,
-      `top:${touch.clientY - rect.height / 2}px`,
+      `left:${x - w / 2}px`,
+      `top:${y - rect.height / 2}px`,
       `width:${w}px`,
       'pointer-events:none',
       'opacity:0.88',
@@ -468,6 +504,7 @@ export default function ManualDispatch({
       'transition:none',
     ].join(';');
     document.body.appendChild(ghost);
+    navigator.vibrate?.(10);
 
     touchState.current = { active: true, item: store, from, ghost };
     setDragging({ ...store, from });
@@ -478,6 +515,13 @@ export default function ManualDispatch({
     if (!container) return;
 
     function onTouchMove(e: TouchEvent) {
+      const espera = touchEspera.current;
+      if (espera && e.touches[0]) {
+        // Todavía no se levantó la tienda: si el dedo ya se movió, es scroll y se deja pasar.
+        espera.x = e.touches[0].clientX; espera.y = e.touches[0].clientY;
+        if (Math.hypot(espera.x - espera.x0, espera.y - espera.y0) > TOLERANCIA_TOQUE_PX) cancelarEspera();
+        return;
+      }
       if (!touchState.current.active) return;
       e.preventDefault();
       const touch = e.touches[0];
@@ -503,6 +547,7 @@ export default function ManualDispatch({
     }
 
     function onTouchEnd(e: TouchEvent) {
+      cancelarEspera();
       if (!touchState.current.active) return;
       const touch = e.changedTouches[0];
       const { ghost, item, from } = touchState.current;
@@ -522,11 +567,24 @@ export default function ManualDispatch({
       setDragOver(null);
     }
 
+    // El sistema cortó el gesto (llamada, alerta): se suelta la tienda sin moverla.
+    function onTouchCancel() {
+      cancelarEspera();
+      if (!touchState.current.active) return;
+      touchState.current.ghost?.remove();
+      touchState.current = { active: false, item: null, from: null, ghost: null };
+      setDragging(null);
+      setDragOver(null);
+    }
+
     container.addEventListener('touchmove', onTouchMove, { passive: false });
     document.addEventListener('touchend', onTouchEnd);
+    document.addEventListener('touchcancel', onTouchCancel);
     return () => {
+      cancelarEspera();
       container.removeEventListener('touchmove', onTouchMove);
       document.removeEventListener('touchend', onTouchEnd);
+      document.removeEventListener('touchcancel', onTouchCancel);
     };
   }, []);
 
@@ -1496,7 +1554,7 @@ function ParadaTagComp({ parada, isDragging, selected, onToggleSelect, onDragSta
   return (
     <div
       draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onTouchStart={onTouchStart}
-      className={`flex items-center gap-1 rounded-[6px] px-2 py-[3px] cursor-grab select-none transition-all border min-h-[30px] min-w-0 max-w-full touch-manipulation ${isDragging
+      className={`flex items-center gap-1 rounded-[6px] px-2 py-[3px] cursor-grab select-none [-webkit-touch-callout:none] transition-all border min-h-[30px] min-w-0 max-w-full touch-manipulation ${isDragging
         ? 'opacity-30 scale-95'
         : selected
           ? `ring-2 ring-knavy/40 ${isEntrega ? 'bg-blue-100 border-blue-400 text-blue-800' : 'bg-orange-100 border-orange-400 text-orange-800'}`
@@ -1577,7 +1635,7 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
       <div
         draggable={!pendienteTerminar} onDragStart={onDragStart} onDragEnd={onDragEnd} onTouchStart={onTouchStart}
         title={pendienteTerminar ? 'Bodega todavía no la termina: el conteo puede seguir creciendo' : undefined}
-        className={`flex-1 flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2 min-h-[44px] min-w-0 select-none touch-manipulation transition-all ${isDragging
+        className={`flex-1 flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2 min-h-[44px] min-w-0 select-none [-webkit-touch-callout:none] touch-manipulation transition-all ${isDragging
           ? 'opacity-30 scale-95 cursor-grab bg-knavy/[0.05] border-knavy/20'
           : pendienteTerminar
             ? 'cursor-not-allowed bg-white/60 border-dashed border-black/[0.16] text-kmuted'
@@ -1619,7 +1677,7 @@ function StoreTagComp({ store, tiendas, isDragging, selected, onToggleSelect, on
     <div
       draggable={!pendienteTerminar} onDragStart={onDragStart} onDragEnd={onDragEnd} onTouchStart={onTouchStart}
       style={!isDragging ? { boxShadow: '0 1px 3px rgba(27,42,107,0.15)' } : undefined}
-      className={`flex items-center gap-1.5 rounded-[8px] px-2 py-[3px] select-none transition-all border min-h-[30px] min-w-0 max-w-full touch-manipulation ${isDragging
+      className={`flex items-center gap-1.5 rounded-[8px] px-2 py-[3px] select-none [-webkit-touch-callout:none] transition-all border min-h-[30px] min-w-0 max-w-full touch-manipulation ${isDragging
         ? 'opacity-30 scale-95 cursor-grab bg-knavy/[0.05] border-knavy/20'
         : pendienteTerminar
           ? 'opacity-45 cursor-not-allowed bg-knavy/[0.03] border-knavy/[0.12] text-knavy/70 border-dashed'
