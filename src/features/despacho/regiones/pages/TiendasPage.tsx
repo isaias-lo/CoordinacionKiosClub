@@ -1,6 +1,8 @@
 'use client';
 
 import EscanearProducto from '@/features/despacho/shared/EscanearProducto';
+import { unidadesSinRepetir, avisoRepetidas, esMismaUnidad } from '@/features/despacho/shared/unidadesSinRepetir';
+import { slotsUnicos, agregarSlots } from '@/features/despacho/shared/slotsUnicos';
 import BarraSumarBultos from '@/features/despacho/shared/BarraSumarBultos';
 import { conProducto } from '@/features/despacho/shared/productosBodega';
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
@@ -575,7 +577,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
      en formRowsReconcile.ts. */
   const selectedItems = selectedTienda ? dispatchData[selectedTienda] : undefined;
   const selectedSlotsFull = useMemo(
-    () => (selectedTienda ? (pickingSlotsFull[selectedTienda] ?? []) : []),
+    // Sin ids repetidos: dos entradas del mismo slot son dos tarjetas (60PBL). Ver `slotsUnicos.ts`.
+    () => (selectedTienda ? slotsUnicos(pickingSlotsFull[selectedTienda] ?? []) : []),
     [selectedTienda, pickingSlotsFull],
   );
   useEffect(() => {
@@ -800,7 +803,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       }, 60);
 
       const existingItems  = dispatchData[selectedTienda] || [];
-      const slots          = pickingSlotsFullRef.current[selectedTienda] ?? [];
+      // Una tarjeta por slot: la lista no puede traer el mismo id dos veces (60PBL). Ver `slotsUnicos.ts`.
+      const slots          = slotsUnicos(pickingSlotsFullRef.current[selectedTienda] ?? []);
       const pickingP       = slots.filter(s => s.tipo === 'P').length;
       const pickingC       = slots.filter(s => s.tipo === 'C').length;
       const pickingB       = slots.filter(s => s.tipo === 'B').length;
@@ -814,7 +818,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         setPresets(prev => ({ ...prev, [selectedTienda]: { pallets: pickingP, bultos: pickingB, contenedores: pickingC, chocolates: pickingCH } }));
       }
 
-      const fullSlotsR = pickingSlotsFullRef.current[selectedTienda] ?? [];
+      const fullSlotsR = slots;
       const baseSlotsRRaw = fullSlotsR.length > 0 ? fullSlotsR : slots.map(s => ({
         id: 0, tipo: s.tipo, subtipo: null, contenido: s.contenido, seq: null, canonical_id: null,
         peso_kg: null, alto: null, largo: null, ancho: null, peso_v: null,
@@ -1798,7 +1802,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     }
     setPickingSlotsFull(prev => {
       const arr = (prev[snap.tienda] ?? []).map(sl => (sl.id === snap.tgtSlot ? { ...sl, peso_kg: snap.tgtPesoAntes } : sl));
-      return { ...prev, [snap.tienda]: [...arr, ...nuevos] };
+      // La recarga de Picking puede haberlos traído ya: agregarlos de nuevo duplicaba tarjetas (60PBL).
+      return { ...prev, [snap.tienda]: agregarSlots(arr, nuevos) };
     });
     // Los items de antes, apuntando a los slots re-creados, y renumerados con el seq que quedó: un
     // CH que no recuperó su número toma el nuevo también en su `orden` (el que va a Sheets).
@@ -1874,6 +1879,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       showToast('El pallet destino cambió — recarga la tienda e inténtalo otra vez', '#D97706');
       return;
     }
+    // La unidad tiene que seguir guardada: si ya no está, esta tarjeta era una repetida o vieja y
+    // sumarla agregaría su peso otra vez (60PBL, 20/10/2026). Se quita de la pantalla y no se suma.
+    if (bultoRow.savedItem && !findItemForRow(dispatchData[selectedTienda] || [], { pickingSlotId: bultoRow.pickingSlotId, savedItem: bultoRow.savedItem })) {
+      setFormRows(prev => prev.filter(r => r.id !== bultoRowId));
+      showToast('Esa tarjeta ya se había sumado o borrado: se quitó y no se sumó otra vez', AVISO_ESPERA);
+      return;
+    }
     const snap = snapshotSuma(selectedTienda, [bultoRow], palletRow, palletLabel, pesoActual);
 
     deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId, { yaRegistrado: true });
@@ -1893,8 +1905,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // la altura — la carga creció y esa medida es la única que el sistema no puede deducir
     // (ver reaperturaAltura.ts). El item sigue guardado: si nadie confirma, no se pierde nada.
     const altoPrevio = palletRow.savedItem?.alto ?? (parseFloat(palletRow.alto) || 0);
+    // Con el bulto se va cualquier otra tarjeta de la misma unidad: ya quedó sumada.
     setFormRows(prev => prev
-      .filter(r => r.id !== bultoRowId)
+      .filter(r => r.id !== bultoRowId && (r.id === palletRowId || !esMismaUnidad(r, bultoRow)))
       .map(r => r.id === palletRowId
         ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
@@ -1922,7 +1935,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const sumarVariosAPallet = (bultoRowIds: string[], palletRowId: string) => {
     if (!selectedTienda) return;
     const palletRow = formRows.find(r => r.id === palletRowId);
-    const bultoRows = formRows.filter(r => bultoRowIds.includes(r.id) && (r.pkg === 'box' || r.pkg === 'chocolate'));
+    // Una unidad se suma una vez aunque haya dos tarjetas para ella. Ver `unidadesSinRepetir.ts`.
+    const { unicas: bultoRows, repetidas } = unidadesSinRepetir(formRows.filter(r => bultoRowIds.includes(r.id) && (r.pkg === 'box' || r.pkg === 'chocolate')));
     if (!palletRow || bultoRows.length === 0) {
       showToast('No se pudo sumar: recarga la tienda e inténtalo otra vez', '#D97706');
       return;
@@ -1959,10 +1973,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
     // Form: quitar TODOS los bultos seleccionados y reabrir la tarjeta del pallet con el peso ya
     // sumado, para confirmar la altura (ver reaperturaAltura.ts).
-    const bultoRowIdSet = new Set(bultoRows.map(r => r.id));
+    // Las repetidas también se van de la pantalla: eran la misma unidad, que ya quedó sumada.
+    const bultoRowIdSet = new Set(bultoRowIds);
     const altoPrevio = palletRow.savedItem?.alto ?? (parseFloat(palletRow.alto) || 0);
     setFormRows(prev => prev
-      .filter(r => !bultoRowIdSet.has(r.id))
+      .filter(r => !bultoRowIdSet.has(r.id) && (r.id === palletRowId || !bultoRows.some(b => esMismaUnidad(r, b))))
       .map(r => r.id === palletRowId
         ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
             alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
@@ -1977,7 +1992,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
     setFormMergeState(null);
     setMergeSel(new Set());
-    showToast(toastSuma(palletLabel, sumarPesoMultiple(0, pesosBultos), bultoRows.length), '#16A34A');
+    showToast(repetidas > 0
+      ? `${toastSuma(palletLabel, sumarPesoMultiple(0, pesosBultos), bultoRows.length)} · ${avisoRepetidas(repetidas)}`
+      : toastSuma(palletLabel, sumarPesoMultiple(0, pesosBultos), bultoRows.length), repetidas > 0 ? AVISO_ESPERA : AVISO_OK);
     logActividad({ accion: 'sumar', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
       tiendaNombre: selectedTienda, sourceLabel: `${bultoRows.length} ítems`, label: palletLabel,
       peso: sumarPesoMultiple(0, pesosBultos), slotId: targetSlotId });
