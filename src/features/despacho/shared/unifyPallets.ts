@@ -32,3 +32,20 @@ export function unionRefs(a?: string | null, b?: string | null): string {
 export function slotQueSobrevive(targetSlotId: number, _sourceSlotId: number): number {
   return targetSlotId;
 }
+
+/**
+ * Cuántas unidades se le juntaron a la que sobrevive, contando las que ya traían las dos. P1 + P3
+ * = 1; si después se le une P2 (que ya era P2 + P4), 1 + 1 + 1 = 3. Se guarda en el ítem
+ * (`unidos`) para que el pallet unificado se vea como tal en Bodega (Isaias, 20/10/2026: «el
+ * pallet unificado, que sea notable, así se sabe que se unificó, desde lejos»).
+ */
+export function unidosTrasUnir(destino?: { unidos?: number } | null, origen?: { unidos?: number } | null): number {
+  const n = (v?: number) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+  return n(destino?.unidos) + 1 + n(origen?.unidos);
+}
+
+/** «Unificado · 2 en 1». `null` si la unidad no se unificó. */
+export function textoUnificado(unidos?: number | null): string | null {
+  if (typeof unidos !== 'number' || !Number.isFinite(unidos) || unidos < 1) return null;
+  return `Unificado · ${Math.floor(unidos) + 1} en 1`;
+}

@@ -107,3 +107,11 @@ export function idActiva<R extends { id: string; pickingSlotId?: number | null }
   if (o.elegida && pendientes.some(p => p.id === o.elegida)) return o.elegida;
   return pendientes[0]?.id ?? null;
 }
+
+/**
+ * ¿La tarjeta «Ahora» pasó a OTRA unidad? Sin una anterior (recién abierta la tienda) no es un
+ * cambio: no hay nada de qué distinguirla. Ver `AhoraUnidad` en TiendaAbierta.tsx.
+ */
+export function esCambioDeUnidad(anterior: string | null | undefined, actual: string): boolean {
+  return !!anterior && anterior !== actual;
+}

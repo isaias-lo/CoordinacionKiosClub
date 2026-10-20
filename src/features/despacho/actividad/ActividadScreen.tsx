@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { BodegaHeader } from '../shared/BodegaHeader';
 import type { ActividadRow, FuenteActividad } from '@/lib/actividad';
 import { fechaChile } from '@/lib/fechaChile';
-import { opcionesDeFiltro, filtrarVisibles, avisoDeCorte } from './utils/feedActividad';
+import { opcionesDeFiltro, filtrarVisibles, avisoDeCorte, tipoDeActividad } from './utils/feedActividad';
 
 // El día del CD. Este es el "Hoy" que mostraba mañana cuando se miraba después de las 21:00.
 const localDate = fechaChile;
@@ -164,6 +164,7 @@ export function ActividadScreen() {
                 <th className="px-3 py-2 font-bold">Usuario</th>
                 <th className="px-3 py-2 font-bold">Acción</th>
                 <th className="px-3 py-2 font-bold">Ítem</th>
+                <th className="px-3 py-2 font-bold">Tipo</th>
                 <th className="px-3 py-2 font-bold">Código</th>
                 <th className="px-3 py-2 font-bold">Peso</th>
                 <th className="px-3 py-2 font-bold">Tienda</th>
@@ -187,6 +188,7 @@ export function ActividadScreen() {
                       <span className={`text-[11px] font-bold px-2 py-0.5 rounded leading-none ${meta.cls}`}>{meta.verb}</span>
                     </td>
                     <td className="px-3 py-2 font-semibold text-text whitespace-nowrap">{item}</td>
+                    <td className="px-3 py-2 text-text-2 whitespace-nowrap">{tipoDeActividad(r.detalle) ?? '—'}</td>
                     <td className="px-3 py-2 font-mono text-navy whitespace-nowrap">{d.slotId ? `#${d.slotId}` : '—'}</td>
                     <td className="px-3 py-2 text-text-2 tabular-nums whitespace-nowrap">{d.peso != null ? `${d.peso}kg` : '—'}</td>
                     <td className="px-3 py-2 text-text-2 whitespace-nowrap">

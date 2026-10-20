@@ -50,6 +50,8 @@
   --uni-bulto:        #0F766E;  --uni-bulto-suave:      rgba(15,118,110,0.10);
   --uni-contenedor:   #6D28D9;  --uni-contenedor-suave: rgba(109,40,217,0.10);
   --uni-chocolate:    #7C2D12;  --uni-chocolate-suave:  rgba(124,45,18,0.10);
+  /* Unidad unificada (dos o más juntadas en una). Morado de «Unificó» en Actividad. */
+  --unificado:        #6B21A8;  --unificado-suave:      rgba(107,33,168,0.10);  --unificado-letra: #FFFFFF;
 
   /* Aviso sobre la PANTALLA, no sobre la carga: la barra de «esta pantalla es de otro día».
      Familia aparte a propósito — no es `est-*` (estado) ni `uni-*` (tipo de unidad), y el ocre
@@ -135,6 +137,7 @@ html.dark {
   --uni-bulto:        #5EEAD4;  --uni-bulto-suave:      rgba(94,234,212,0.14);
   --uni-contenedor:   #C4B5FD;  --uni-contenedor-suave: rgba(196,181,253,0.14);
   --uni-chocolate:    #FDBA74;  --uni-chocolate-suave:  rgba(253,186,116,0.14);
+  --unificado:        #D8B4FE;  --unificado-suave:      rgba(216,180,254,0.14);  --unificado-letra: #111E38;
 }
 
 html.dark ::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.15); }
@@ -321,3 +324,63 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); 
 }
 /* El salto deja la tarjeta arriba de la lista con aire para la etiqueta "ESCANEADO". */
 [id^="pallet-card-"] { scroll-margin-top: 18px; }
+
+/* La tarjeta «Ahora» cambió de unidad (Guardar y seguir, tocar una ficha, escanear otra). Antes se
+   reemplazaba sin movimiento y no se notaba que ya era otra: P1 y B1 tienen el mismo formulario.
+   Entra deslizándose con un destello del color de su tipo, y un cartel «BULTO B2» grande aparece
+   encima y se va. Corre una vez por cambio: la tarjeta se monta de nuevo con cada unidad. Ver
+   `AhoraUnidad` en features/despacho/shared/TiendaAbierta.tsx. */
+.unidad-cambia                          { --uni-cambio: var(--color-text-sub); }
+.unidad-cambia[data-clase="pallet"]     { --uni-cambio: var(--uni-pallet); }
+.unidad-cambia[data-clase="bulto"]      { --uni-cambio: var(--uni-bulto); }
+.unidad-cambia[data-clase="contenedor"] { --uni-cambio: var(--uni-contenedor); }
+.unidad-cambia[data-clase="chocolate"]  { --uni-cambio: var(--uni-chocolate); }
+.unidad-cambia > [data-tarjeta-bodega] {
+  animation: unidad-entra 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), unidad-destello 1.1s ease-out;
+}
+.unidad-cambia-cartel {
+  position: absolute;
+  z-index: 5;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 18px;
+  border-radius: 999px;
+  background: var(--uni-cambio);
+  color: var(--color-card);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  animation: unidad-cartel 1.3s ease-out;
+}
+@keyframes unidad-entra {
+  from { transform: translateX(28px); opacity: 0.2; }
+  to   { transform: none; opacity: 1; }
+}
+@keyframes unidad-destello {
+  0%   { box-shadow: 0 0 0 4px var(--uni-cambio), 0 0 0 14px color-mix(in srgb, var(--uni-cambio) 35%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes unidad-cartel {
+  0%   { opacity: 0; transform: translate(-50%, -6px) scale(0.92); }
+  15%  { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  70%  { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -4px) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .unidad-cambia > [data-tarjeta-bodega] { animation: unidad-destello 1.1s ease-out; }
+  .unidad-cambia-cartel { animation-duration: 2s; }
+}
+
+/* Unidad unificada: se reconoce desde lejos (Isaias, 20/10/2026). Franja gruesa morada a la
+   izquierda y rayas suaves de fondo en la fila; el chip «UNIFICADO · 2 en 1» va en morado lleno.
+   Ver `ChipUnificado` en features/despacho/shared/TiendaAbierta.tsx. */
+.fila-unificada {
+  box-shadow: inset 6px 0 0 var(--unificado);
+  background-image: repeating-linear-gradient(-45deg, var(--unificado-suave) 0 10px, transparent 10px 20px);
+}
+.chip-unificado {
+  background: var(--unificado);
+  color: var(--unificado-letra);
+}

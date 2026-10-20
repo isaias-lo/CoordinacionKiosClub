@@ -4,10 +4,13 @@
 // revisa lo que trae (nombre, código de barras, peso, medidas), y si es el correcto lo guarda en
 // `productos_bodega`. En Bodega, la handheld escanea el código de barras del producto para sacar
 // el peso de un bulto (ver `features/despacho/shared/productosBodega.ts`).
+//
+// Arriba, «Pedidos desde Bodega»: los códigos que alguien escaneó y no estaban, con quién los pidió
+// (Isaias, 20/10/2026). «Buscar en Odoo» lo trae acá abajo; al guardarlo, el pedido se cierra solo.
 
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Package, Search, Trash2 } from 'lucide-react';
-import type { ProductoBodega, ProductoDeOdoo } from '@/features/despacho/shared/productosBodega';
+import { AlertTriangle, Inbox, Package, Search, Trash2, X } from 'lucide-react';
+import { quienPidio, type PeticionProducto, type ProductoBodega, type ProductoDeOdoo } from '@/features/despacho/shared/productosBodega';
 
 const C = {
   surface: '#fff', border: '#E2E8F0', borderSoft: '#F1F5F9',
@@ -35,6 +38,7 @@ export default function ProductosOdoo({ odooActivo }: { odooActivo: boolean | nu
   const [medidas, setMedidas] = useState<Medidas>({ peso_kg: '', alto_cm: '', ancho_cm: '', largo_cm: '' });
   const [guardando, setGuardando] = useState(false);
   const [aviso, setAviso] = useState<{ tono: 'error' | 'ok'; texto: string } | null>(null);
+  const [peticiones, setPeticiones] = useState<PeticionProducto[] | null>(null);
 
   const cargar = useCallback(() => {
     fetch('/api/productos-bodega')
@@ -44,8 +48,30 @@ export default function ProductosOdoo({ odooActivo }: { odooActivo: boolean | nu
   }, []);
   useEffect(() => { cargar(); }, [cargar]);
 
-  const buscar = async () => {
-    const q = codigo.trim();
+  const cargarPeticiones = useCallback(() => {
+    fetch('/api/productos-bodega/peticiones')
+      .then(r => (r.ok ? r.json() : Promise.reject()))
+      .then((j: { peticiones?: PeticionProducto[] }) => setPeticiones(j.peticiones ?? []))
+      .catch(() => setPeticiones(prev => prev ?? []));
+  }, []);
+  // Bodega pide mientras se trabaja: se mira de nuevo cada minuto con la pantalla abierta.
+  useEffect(() => {
+    cargarPeticiones();
+    const t = setInterval(cargarPeticiones, 60_000);
+    return () => clearInterval(t);
+  }, [cargarPeticiones]);
+
+  const descartar = async (p: PeticionProducto) => {
+    if (!confirm(`¿Descartar el pedido de ${p.codigo}? Deja de aparecer acá; si Bodega lo vuelve a escanear, se pide de nuevo.`)) return;
+    const res = await fetch('/api/productos-bodega/peticiones', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id }),
+    });
+    if (!res.ok) { setAviso({ tono: 'error', texto: 'No se pudo descartar el pedido.' }); return; }
+    cargarPeticiones();
+  };
+
+  const buscar = async (texto?: string) => {
+    const q = (texto ?? codigo).trim();
     if (!q || buscando) return;
     setBuscando(true); setAviso(null); setEncontrado(null);
     try {
@@ -81,9 +107,10 @@ export default function ProductosOdoo({ odooActivo }: { odooActivo: boolean | nu
       });
       const j = await res.json().catch(() => ({})) as { error?: string };
       if (!res.ok) { setAviso({ tono: 'error', texto: j.error ?? 'No se pudo guardar.' }); return; }
-      setAviso({ tono: 'ok', texto: `${encontrado.nombre} quedó guardado.` });
+      const atendidas = (j as { peticionesAtendidas?: number }).peticionesAtendidas ?? 0;
+      setAviso({ tono: 'ok', texto: `${encontrado.nombre} quedó guardado.${atendidas > 0 ? ` Se cerró ${atendidas === 1 ? 'el pedido' : `${atendidas} pedidos`} de Bodega.` : ''}` });
       setEncontrado(null); setCodigo('');
-      cargar();
+      cargar(); cargarPeticiones();
     } finally {
       setGuardando(false);
     }
@@ -105,11 +132,41 @@ export default function ProductosOdoo({ odooActivo }: { odooActivo: boolean | nu
         Los productos guardados acá se pueden escanear en Bodega para calcular el peso de un bulto.
       </div>
 
+      {peticiones && peticiones.length > 0 && (
+        <div style={{ marginBottom: 14, border: '1px solid #FDE68A', background: '#FFFBEB', borderRadius: 10, padding: '10px 12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#92400E', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            <Inbox size={14} aria-hidden="true" /> Pedidos desde Bodega ({peticiones.length})
+          </div>
+          <div style={{ fontSize: 12, color: '#92400E', marginTop: 2, marginBottom: 6 }}>
+            Códigos que se escanearon y no están guardados. Búscalos en Odoo y guárdalos: el pedido se cierra solo.
+          </div>
+          {peticiones.map(p => (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderTop: '1px solid #FDE68A' }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'monospace' }}>{p.codigo}</div>
+                <div style={{ fontSize: 11.5, color: C.muted2 }}>
+                  {quienPidio(p)} · {new Date(p.updated_at).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+              <button onClick={() => { setCodigo(p.codigo); void buscar(p.codigo); }} disabled={buscando || odooActivo === false}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, border: 'none', background: C.navy, color: '#fff',
+                  fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', cursor: 'pointer', opacity: buscando || odooActivo === false ? 0.6 : 1 }}>
+                <Search size={13} aria-hidden="true" /> Buscar en Odoo
+              </button>
+              <button onClick={() => void descartar(p)} aria-label={`Descartar el pedido de ${p.codigo}`} title="Descartar"
+                style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: 'none', background: 'transparent', color: C.faint, cursor: 'pointer' }}>
+                <X size={15} aria-hidden="true" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 8 }}>
         <input value={codigo} onChange={e => setCodigo(e.target.value)} placeholder="Código del producto o código de barras"
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void buscar(); } }}
           aria-label="Código del producto" style={CAMPO} />
-        <button onClick={buscar} disabled={!codigo.trim() || buscando || odooActivo === false}
+        <button onClick={() => void buscar()} disabled={!codigo.trim() || buscando || odooActivo === false}
           style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px', borderRadius: 8, border: 'none',
             background: C.navy, color: '#fff', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap',
             cursor: !codigo.trim() || buscando ? 'default' : 'pointer', opacity: !codigo.trim() || buscando || odooActivo === false ? 0.6 : 1 }}>

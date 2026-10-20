@@ -9,9 +9,12 @@
 // Los campos de acá NO llevan `data-campo` a propósito: el lector global de Bodega
 // (`useLectorBodega`) solo se queda las lecturas hechas en campos de la tarjeta o en el buscador.
 // En cualquier otro campo la lectura se escribe tal cual, que es lo que se quiere acá.
+//
+// Si el código no está guardado, «Pedir que se agregue» deja la petición (código + quién la pidió)
+// en /admin/sistema (Isaias, 20/10/2026). Ver `api/productos-bodega/peticiones`.
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { ScanBarcode } from 'lucide-react';
+import { ScanBarcode, Send } from 'lucide-react';
 import { buscarProducto, camposDesdeProducto, pesoParaCampo, pesoPorCantidad, MAX_CANTIDAD, type CamposDelBulto, type ProductoBodega } from './productosBodega';
 
 // La lista es corta y cambia poco: se pide una vez y se reusa en todas las tarjetas un rato.
@@ -36,6 +39,9 @@ export default function EscanearProducto({ onUsar }: { onUsar: (campos: CamposDe
   const [producto, setProducto] = useState<ProductoBodega | null>(null);
   const [aviso, setAviso] = useState('');
   const [usado, setUsado] = useState('');
+  // El código leído que no está en los productos guardados, para ofrecer pedirlo.
+  const [noEsta, setNoEsta] = useState('');
+  const [pedido, setPedido] = useState<'no' | 'enviando' | 'listo'>('no');
   const raiz = useRef<HTMLDivElement>(null);
   const campoCodigo = useRef<HTMLInputElement>(null);
   const campoCantidad = useRef<HTMLInputElement>(null);
@@ -60,12 +66,12 @@ export default function EscanearProducto({ onUsar }: { onUsar: (campos: CamposDe
     // El Enter de la pistola y la búsqueda por pausa pueden pedir lo mismo casi juntas.
     if (ultima.current.texto === texto && Date.now() - ultima.current.hora < 1500) return;
     ultima.current = { texto, hora: Date.now() };
-    setAviso('');
+    setAviso(''); setNoEsta(''); setPedido('no');
     try {
       let p = buscarProducto(await cargarProductos(), texto);
       // Recién agregado en /admin/sistema y todavía no en la lista de este equipo: una vuelta más.
       if (!p) p = buscarProducto(await cargarProductos(true), texto);
-      if (!p) { setProducto(null); setAviso(`${texto} no está en los productos guardados (se agregan en Sistema).`); return; }
+      if (!p) { setProducto(null); setNoEsta(texto); setAviso(`${texto} todavía no está en los productos guardados.`); return; }
       setProducto(p);
       setLeido('');
       setCantidad('');
@@ -77,6 +83,26 @@ export default function EscanearProducto({ onUsar }: { onUsar: (campos: CamposDe
   };
 
   const peso = producto ? pesoPorCantidad(producto.peso_kg, cantidad) : null;
+
+  const pedir = async () => {
+    if (!noEsta || pedido !== 'no') return;
+    setPedido('enviando');
+    try {
+      const r = await fetch('/api/productos-bodega/peticiones', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codigo: noEsta }),
+      });
+      const j = await r.json().catch(() => ({})) as { error?: string; yaPedido?: boolean; pedidoPor?: string };
+      if (!r.ok) { setPedido('no'); setAviso(j.error ?? 'No se pudo enviar la petición. Intenta de nuevo.'); return; }
+      setPedido('listo');
+      setAviso(j.yaPedido
+        ? `${noEsta} ya estaba pedido${j.pedidoPor ? ` por ${j.pedidoPor}` : ''}: se sumó tu pedido. Mientras, ingresa el peso a mano.`
+        : `Listo: se pidió agregar ${noEsta}. Lo verá el administrador en Sistema. Mientras, ingresa el peso a mano.`);
+    } catch {
+      setPedido('no');
+      setAviso('No se pudo enviar la petición. Revisa la conexión.');
+    }
+  };
 
   const usar = () => {
     if (!producto || peso == null) return;
@@ -145,13 +171,19 @@ export default function EscanearProducto({ onUsar }: { onUsar: (campos: CamposDe
           )}
         </>
       )}
-      {aviso && <div className="mt-1.5 text-rotulo text-warn normal-case tracking-normal">{aviso}</div>}
+      {aviso && <div className={`mt-1.5 text-rotulo normal-case tracking-normal ${pedido === 'listo' ? 'text-est-ok' : 'text-warn'}`}>{aviso}</div>}
+      {noEsta && !producto && pedido !== 'listo' && (
+        <button type="button" onClick={() => void pedir()} disabled={pedido === 'enviando'}
+          className="mt-1.5 flex items-center gap-1.5 text-apoyo font-bold text-white bg-navy disabled:opacity-50 border-none rounded-btn px-3 py-2 cursor-pointer">
+          <Send size={14} aria-hidden="true" /> {pedido === 'enviando' ? 'Enviando…' : 'Pedir que se agregue'}
+        </button>
+      )}
       <div className="mt-1.5 flex gap-3">
         {producto && (
           <button type="button" onClick={() => { setProducto(null); setAviso(''); setTimeout(() => campoCodigo.current?.focus(), 0); }}
             className="text-rotulo font-bold text-navy bg-transparent border-none p-0 cursor-pointer">Otro producto</button>
         )}
-        <button type="button" onClick={() => { setAbierto(false); setProducto(null); setLeido(''); setCantidad(''); setAviso(''); }}
+        <button type="button" onClick={() => { setAbierto(false); setProducto(null); setLeido(''); setCantidad(''); setAviso(''); setNoEsta(''); setPedido('no'); }}
           className="text-rotulo font-bold text-text-sub bg-transparent border-none p-0 cursor-pointer">Cerrar</button>
       </div>
     </div>

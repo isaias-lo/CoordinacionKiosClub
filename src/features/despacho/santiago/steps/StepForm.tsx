@@ -19,6 +19,7 @@ import { slotsUnicos, agregarSlots } from '@/features/despacho/shared/slotsUnico
 import BarraSumarBultos from '@/features/despacho/shared/BarraSumarBultos';
 import { conProducto } from '@/features/despacho/shared/productosBodega';
 import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE, clasificarContenido, nombreContenido, tipoDesdePicking, unirTipos } from '@/features/despacho/shared/contenidoCarga';
+import { unidosTrasUnir } from '@/features/despacho/shared/unifyPallets';
 import { SelectorTipoCarga } from '@/features/despacho/shared/SelectorTipoCarga';
 import { tipoBloqueadoDeSlot } from '@/features/despacho/shared/tipoDeSlot';
 import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, ordenDeItem, renumerarOrden, etiquetaCard, claseSantiago, bultosSantiago } from '@/features/despacho/shared/numeroCard';
@@ -44,7 +45,7 @@ import { useTarjetaActiva } from '../../shared/useTarjetaActiva';
 import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTienda, ResumenVacio, UnidadResumen } from '../../shared/ResumenDiaUI';
 import { useAvisoNuevasTrasTerminar } from '../../shared/avisoNuevasTrasTerminar';
 import { avisoAntesDeRegistrar, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
-import { CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, TiendaSinUnidades, type OpcionAgregar } from '../../shared/TiendaAbierta';
+import { AhoraUnidad, ChipUnificado, CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, TiendaSinUnidades, type OpcionAgregar } from '../../shared/TiendaAbierta';
 import { confirmarCambioGuardado, confirmarQuitarSinGuardar } from '../../shared/confirmarGuardado';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { mismaCargaEscrita } from '../../shared/adoptarItemRemoto';
@@ -175,6 +176,8 @@ interface FormRow {
   pesoPallet?: string;
   /** Producto de «Escanear producto»; pasa al ítem al guardar. Ver `EscanearProducto.tsx`. */
   producto?: string;
+  /** Unidades que se le unificaron; pasa al ítem al guardar. Ver `unidosTrasUnir`. */
+  unidos?: number;
   saved?: boolean;
   /** La tarjeta se reabrió porque se le SUMÓ algo: el guardado que viene no es trabajo rehecho.
    *  Ver `esReingresoDeVerdad`. Se limpia al guardar. */
@@ -1395,7 +1398,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const contenido: ContenidoSantiago = contenidoSantiago(unirTipos(src.contenido, tgt.contenido));
     // /6000, como en el resto del sistema (estaba en /5000 y sin decimales solo acá).
     const pesoVolumetrico = (alto * src.ancho * src.largo) / 6000;
-    const merged: SantiagoItem = { ...src, id: `${tiendaCod}-${Date.now()}`, peso, alto, contenido, pesoVolumetrico, taraPallet: undefined, palletWeb: peso > 0 ? undefined : src.palletWeb };
+    const merged: SantiagoItem = { ...src, id: `${tiendaCod}-${Date.now()}`, peso, alto, contenido, pesoVolumetrico, taraPallet: undefined, palletWeb: peso > 0 ? undefined : src.palletWeb,
+      // Combinar también es unificar: queda marcada en Bodega. Ver `unidosTrasUnir`.
+      unidos: unidosTrasUnir(src, tgt) };
     // Misma regla que Nacional, en un solo sitio: el fusionado queda en la POSICIÓN del primero
     // de los dos, no al final. (Acá ya era así; se comparte para que no vuelvan a divergir.)
     const newList = combinarEnLista(allItems, srcIdx, tgtIdx, merged);
@@ -1415,7 +1420,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         if (!r.ok) showToast(`⚠ La unión quedó a medias (${r.error}) — revisá el pallet`, '#D32F2F');
       });
       logActividad({ accion: 'unificar', fuente: 'rmcosta', tiendaCod,
-        label: ordenToLabel(merged.orden), sourceLabel: ordenToLabel(tgt.orden), peso: merged.peso, slotId: src.pickingSlotId });
+        label: ordenToLabel(merged.orden), sourceLabel: ordenToLabel(tgt.orden), peso: merged.peso, contenido: merged.contenido, slotId: src.pickingSlotId });
     }
     setCombineModal(null);
   };
@@ -1564,6 +1569,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       peso: p, alto: a, largo: fL, ancho: fA, taraPallet: tara,
       // El producto escaneado; al reabrir una guardada, el que ya tenía.
       producto: row.producto ?? row.savedItem?.producto,
+      // Unificada sigue unificada al guardar la altura (o al editarla después).
+      unidos: row.unidos ?? row.savedItem?.unidos,
       pesoVolumetrico: pesoV, regimen,
       // El número impreso del slot, no su posición entre los que hay ahora.
       orden: ordenDeItem(row.tipo, numeroParaUnidadNueva(seqsHermanas, pickingSlot?.seq)),
@@ -2008,6 +2015,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const tgtSlot   = targetRow.pickingSlotId ?? targetRow.savedItem?.pickingSlotId;
     // El contenido del unido junta los dos, igual que al combinar desde el Resumen. Espejo de Nacional.
     const mcont: ContenidoSantiago = contenidoSantiago(unirTipos(sourceRow.savedItem?.contenido ?? sourceRow.contenido, targetRow.savedItem?.contenido ?? targetRow.contenido));
+    // Para que se vea unificado (chip y franja morada). Espejo de Nacional.
+    const unidos = unidosTrasUnir(targetRow.savedItem ?? targetRow, sourceRow.savedItem ?? sourceRow);
     // ── LA BASE PRIMERO (15/10/2026) ─────────────────────────────────────────────────────────
     // Antes la pantalla quitaba el ítem del origen y DESPUÉS mandaba la unión a la base, sin
     // esperarla. Si la base la rechazaba (el destino ya lo había borrado otro equipo), el peso del
@@ -2034,7 +2043,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const cur = itemsAhora[cod] || [];
     const filtered = cur
       .filter(i => !(sourceRow.savedItem && i.id === sourceRow.savedItem.id))
-      .map(i => targetRow.savedItem && i.id === targetRow.savedItem.id ? { ...i, peso: nuevoPeso, contenido: mcont } : i);
+      .map(i => targetRow.savedItem && i.id === targetRow.savedItem.id ? { ...i, peso: nuevoPeso, contenido: mcont, unidos } : i);
     if (filtered.length !== cur.length || targetRow.savedItem) {
       const renumbered = renumerarOrden(filtered, i => seqDeSlot(cod, i.pickingSlotId));
       dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: renumbered });
@@ -2068,12 +2077,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       .filter(r => r.id !== sourceRow.id)
       .map(r => r.id === targetRow.id
         ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
-            alto: prevAlto ? String(prevAlto) : '', contenido: mcont, mergeReopened: true }
+            alto: prevAlto ? String(prevAlto) : '', contenido: mcont, unidos, mergeReopened: true }
         : r));
     setFormMergeState(null);
     showToast(`Unificado (+${srcPeso}kg) — ingresa la altura y Agregar`, '#2563EB');
     logActividad({ accion: 'unificar', fuente: 'rmcosta', tiendaCod: cod, tiendaNombre: currentTienda.tienda,
-      sourceLabel: srcLabel, label: tgtLabel, peso: nuevoPeso, slotId: tgtSlot });
+      sourceLabel: srcLabel, label: tgtLabel, peso: nuevoPeso, contenido: mcont, slotId: tgtSlot });
     if (puedeRevertirUnion && sourceItemUnion) {
       armarUndo(`Unificado ${srcLabel ?? ''} → ${tgtLabel ?? ''}`.replace(/\s+→\s*$/, ''), () => revertirUnificacion({
         cod, itemsAntes: itemsAntesUnion, sourceItem: sourceItemUnion, oldSrcSlot: srcSlot, tgtSlot, tgtPeso,
@@ -2414,7 +2423,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     });
     logActividad({ accion: 'editar_item', fuente: 'rmcosta', tiendaCod: cod, tiendaNombre: tiendaByCod[cod]?.tienda,
       label: ordenToLabel(item.orden), peso: pesoR, alto, pesoPrevio: item.peso, altoPrevio: item.alto,
-      slotId: item.pickingSlotId });
+      contenido: item.contenido, slotId: item.pickingSlotId });
     setResumenEditing(null);
     showToast('✓ Item actualizado', '#16A34A');
   };
@@ -2766,7 +2775,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                           },
                         };
                         return (
-                          <UnidadResumen key={item.id}
+                          <UnidadResumen key={item.id} unidos={item.unidos}
                             data-r-item-idx={idx} data-r-item-cod={cod}
                             {...arrastreR}
                             className={cerrada ? '' : rDragIdx !== null && rDragCod === cod ? 'cursor-grabbing' : 'cursor-grab'}
@@ -2845,7 +2854,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   // [Handheld] El ancla también en la línea pesada: escanear una unidad ya pesada
                   // tiene que llegar a ella y mostrarla, no abrir la tienda y quedarse arriba.
                   <FilaPesada key={row.id} clase={claseUnidad(row.tipo)} etiqueta={rowLabel}
-                    slotId={row.pickingSlotId}
+                    slotId={row.pickingSlotId} unidos={row.savedItem.unidos}
                     resaltada={row.pickingSlotId != null && row.pickingSlotId === resaltado}
                     // Una adquisición no tiene peso ni medidas: escribir «0kg · 0cm» haría pasar la
                     // AUSENCIA de un dato por un dato. Dice qué es.
@@ -2995,6 +3004,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     <EtiquetaUnidad clase={claseUnidad(row.tipo)} grande>{rowLabel}</EtiquetaUnidad>
                     {row.pickingSlotId ? <span className="font-mono text-cuerpo text-text">#{row.pickingSlotId}</span> : null}
                     {cajaDeFila && <ChipCaja caja={cajaDeFila} />}
+                    <ChipUnificado unidos={row.unidos ?? row.savedItem?.unidos} grande />
                     <button onClick={() => removeUnsavedRow(row.id)} aria-label={`Quitar ${rowLabel}`}
                       className="ml-auto w-10 h-10 -mr-1 flex items-center justify-center rounded-btn text-text-sub bg-bg-2 active:bg-bg-3 cursor-pointer border-none text-cuerpo">✕</button>
                   </div>
@@ -3239,8 +3249,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   {!activa && enCola.length === 0 && ghostCards.length === 0 && pesadas.length === 0 && <TiendaSinUnidades />}
                   {activa && (
                     <>
-                      <RotuloSeccion>Ahora</RotuloSeccion>
-                      {renderUnidad(activa)}
+                      {/* El rótulo dice qué es y el cambio de unidad se ve. Ver `AhoraUnidad`. */}
+                      <AhoraUnidad id={activa.id} clase={claseUnidad(activa.tipo)} etiqueta={labelDeFila(activa, orderedRows)}>
+                        {renderUnidad(activa)}
+                      </AhoraUnidad>
                     </>
                   )}
                   {(enCola.length > 0 || ghostCards.length > 0) && (
