@@ -148,3 +148,52 @@ export function despachadasParaOrigen(
   }
   return out;
 }
+
+// ── LO QUE SE RESOLVIÓ FUERA DEL SISTEMA ──────────────────────────────────────────────────────
+//
+// El backlog es una RESTA que se recalcula sola: carga registrada − lo que salió con patente. Esa
+// es su virtud —no depende de que nadie se acuerde de apretar nada— y también su límite: si una
+// tienda se despachó a mano, se consolidó con otro envío o se resolvió hablando con la tienda, el
+// sistema no tiene de dónde enterarse, y la sigue mostrando para siempre.
+//
+// El coordinador lo preguntó así: «si ya registré o lo hice de forma manual, ¿no puedo simplemente
+// elegir eliminar?». Eliminar no: la fila de `despacho_sesion` es el registro de que Bodega armó
+// esa carga, y borrarla para callar el backlog destruye el hecho junto con el aviso. Lo que
+// corresponde es anotar la decisión al lado —quién la tomó y cuándo— y que la resta la respete.
+//
+// ── POR QUÉ UNA SOLA FORMA DE DATO PARA LOS DOS BOTONES ───────────────────────────────────────
+//
+// Se pidieron dos alcances: marcar UNA tienda y cerrar un DÍA completo. Se guardan igual —una
+// marca por tienda y día—, y «el día completo» es un atajo que crea las que haya en ese momento.
+//
+// La alternativa, un registro de «día resuelto», se descartó por un caso concreto: si alguien
+// registra una tienda tarde, esa carga es nueva y nadie la resolvió. Con la marca por tienda
+// aparece, que es lo correcto. Con un día marcado entero quedaría tapada desde antes de existir.
+
+/** Una tienda de un día que alguien dio por resuelta fuera del sistema. */
+export interface ResueltaFuera {
+  fechaOrigen: string;
+  cod: string;
+}
+
+/** La llave de una tienda en un día. La misma forma que usa `unirBacklog`. */
+export function claveDeResuelta(fechaOrigen: string, cod: string): string {
+  return `${String(fechaOrigen ?? '').trim()}::${String(cod ?? '').trim().toUpperCase()}`;
+}
+
+/**
+ * Saca del backlog lo que ya se marcó como resuelto.
+ *
+ * La marca es por tienda Y día: una tienda que quedó pendiente el lunes y otra vez el jueves son
+ * dos hechos distintos, y resolver el lunes no dice nada del jueves. Cruzar solo por código
+ * borraría el segundo sin que nadie lo decidiera.
+ */
+export function sinResueltas(
+  pendientes: PendienteBacklog[],
+  resueltas: Iterable<ResueltaFuera>,
+): PendienteBacklog[] {
+  const fuera = new Set<string>();
+  for (const r of resueltas) fuera.add(claveDeResuelta(r.fechaOrigen, r.cod));
+  if (!fuera.size) return pendientes;
+  return pendientes.filter(p => !fuera.has(claveDeResuelta(p.fechaOrigen, p.c)));
+}

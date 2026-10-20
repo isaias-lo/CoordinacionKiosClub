@@ -75,6 +75,7 @@ import {
 import { aplicarCargaDelDia } from './utils/cargaFechaPasada';
 import { unirBacklog } from './utils/backlogSegundaVuelta';
 import { fetchBacklogCalculado } from '@/lib/backlogV2';
+import { toast } from 'sonner';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 // [Enrutador V2] Interruptor del motor geográfico nuevo. En true usa enrutarV2 (medido: 14% menos
@@ -1776,6 +1777,40 @@ export default function RutasScreen() {
     if (fechasV2.length === 0) { if (v2Fecha) setV2Fecha(''); return; }
     if (!fechasV2.includes(v2Fecha)) setV2Fecha(fechasV2[0]);
   }, [fechasV2, v2Fecha]);
+
+  // ── «YA RESUELTO»: lo que se despachó fuera del sistema ─────────────────────────────────────
+  //
+  // El backlog es una resta que se recalcula sola, así que no tiene cómo enterarse de una tienda
+  // que salió a mano o se consolidó con otro envío: la muestra para siempre. Esto es el único
+  // lugar donde una persona puede decirle «esto ya está».
+  //
+  // NO borra la carga: la fila de `despacho_sesion` queda intacta —es el registro de que Bodega
+  // la armó— y lo que se guarda es la decisión, con quién la tomó y cuándo (`/api/backlog-resuelto`).
+  // Por eso se puede deshacer sin haber perdido nada.
+  async function marcarResueltas(fecha: string, cods: string[], deshacer = false) {
+    if (!fecha || !cods.length) return;
+    try {
+      const res = await fetch('/api/backlog-resuelto', {
+        method:  deshacer ? 'DELETE' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ fecha, cods }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      // Se relee del servidor en vez de sacarlas de la lista local: así lo que queda en pantalla
+      // es lo que el cálculo dice ahora, y un fallo en la escritura se ve en el acto en vez de
+      // esconderse detrás de una lista optimista que ya no coincide con la base.
+      setPendientesV2Origen(await fetchBacklogCalculado().catch(() => [] as PendienteV2[]));
+      const n = cods.length;
+      if (deshacer) { toast.success(`${n} ${n === 1 ? 'tienda vuelve' : 'tiendas vuelven'} al backlog`); return; }
+      toast.success(`${n} ${n === 1 ? 'tienda marcada' : 'tiendas marcadas'} como resuelta${n === 1 ? '' : 's'}`, {
+        description: 'Sale del backlog. La carga registrada no se tocó.',
+        action: { label: 'Deshacer', onClick: () => { void marcarResueltas(fecha, cods, true); } },
+      });
+    } catch (e) {
+      console.error('[marcarResueltas]', e);
+      toast.error('No se pudo marcar. La lista sigue como estaba.');
+    }
+  }
 
   // Cerrar un camión de 2ª vuelta de UNA fecha de origen: registra SOLO ese camión (vuelta 2 →
   // patente en columna "2ª Vuelta"), genera su manifiesto y quita esas tiendas de las pendientes
@@ -3575,9 +3610,28 @@ export default function RutasScreen() {
                         );
                       })}
                     </div>}
-                    {vista !== 'nueva' && <div className="mb-3 text-[12px] text-kmuted">
-                      Pendientes del <span className="font-semibold text-ktext">{v2Fecha ? fechaTxt(v2Fecha) : '—'}</span>: asigná
-                      un camión y cerralo — se registra como 2ª vuelta (hoy) con su manifiesto, bajo esa fecha de origen.
+                    {vista !== 'nueva' && <div className="mb-3 flex items-start gap-3 flex-wrap">
+                      <div className="text-[12px] text-kmuted flex-1 min-w-[260px]">
+                        Pendientes del <span className="font-semibold text-ktext">{v2Fecha ? fechaTxt(v2Fecha) : '—'}</span>: asigná
+                        un camión y cerralo — se registra como 2ª vuelta (hoy) con su manifiesto, bajo esa fecha de origen.
+                        <span className="block mt-0.5">¿Ya salieron por fuera? Marcalas resueltas y dejan de aparecer, sin tocar la carga registrada.</span>
+                      </div>
+                      {/* El alcance de DÍA entero. El de una tienda sola vive en la barra de
+                          selección del pool (`accionPool`): se marcan las que sean y se toca ahí.
+                          Las dos puntas guardan lo mismo —una marca por tienda y día—, así que una
+                          tienda registrada más tarde vuelve a aparecer, que es lo correcto. */}
+                      {v2Fecha && (() => {
+                        const delDia = pendientesV2Origen.filter(x => x.fechaOrigen === v2Fecha).map(x => x.c);
+                        if (!delDia.length) return null;
+                        return (
+                          <button
+                            onClick={() => { void marcarResueltas(v2Fecha, delDia); }}
+                            title={`Saca del backlog las ${delDia.length} tiendas del ${fechaTxt(v2Fecha)}. La carga registrada no se toca y se puede deshacer.`}
+                            className="px-3 py-1.5 rounded-kios2 text-[12px] font-semibold border border-black/[0.12] bg-kbg text-ktext hover:border-knavy/40 whitespace-nowrap">
+                            Marcar el día resuelto · {delDia.length}
+                          </button>
+                        );
+                      })()}
                     </div>}
                     <ManualDispatch
                       vistaA={vista === 'nueva'}
@@ -3588,6 +3642,7 @@ export default function RutasScreen() {
                       // pendiente se podia alcanzar. Lo unico que se veia era «2 pendientes en el
                       // otro», sin forma de llegar al otro. Ver `poolsSeparados.ts`.
                       pool={pool} onPool={setPool}
+                      accionPool={{ label: 'Ya resuelto', onClick: cods => { void marcarResueltas(v2Fecha, cods); } }}
                       calT={calTV2}
                       flota={flota}
                       gps={gps}
