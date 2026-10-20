@@ -1,6 +1,7 @@
 'use client';
 
 import EscanearProducto from '@/features/despacho/shared/EscanearProducto';
+import { unidadesSinRepetir, avisoRepetidas } from '@/features/despacho/shared/unidadesSinRepetir';
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navigation, ChevronLeft, ClipboardList, User, Store, FileUp, AlertTriangle, Pencil } from 'lucide-react';
@@ -1945,7 +1946,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   const sumarVariosAPallet = (bultoRowIds: string[], palletRowId: string) => {
     if (!selectedTienda) return;
     const palletRow = formRows.find(r => r.id === palletRowId);
-    const bultoRows = formRows.filter(r => bultoRowIds.includes(r.id) && (r.pkg === 'box' || r.pkg === 'chocolate'));
+    // Una unidad se suma una vez aunque haya dos tarjetas para ella. Ver `unidadesSinRepetir.ts`.
+    const { unicas: bultoRows, repetidas } = unidadesSinRepetir(formRows.filter(r => bultoRowIds.includes(r.id) && (r.pkg === 'box' || r.pkg === 'chocolate')));
     if (!palletRow || bultoRows.length === 0) {
       showToast('No se pudo sumar: recarga la tienda e inténtalo otra vez', '#D97706');
       return;
@@ -1982,7 +1984,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
     // Form: quitar TODOS los bultos seleccionados y reabrir la tarjeta del pallet con el peso ya
     // sumado, para confirmar la altura (ver reaperturaAltura.ts).
-    const bultoRowIdSet = new Set(bultoRows.map(r => r.id));
+    // Las repetidas también se van de la pantalla: eran la misma unidad, que ya quedó sumada.
+    const bultoRowIdSet = new Set(bultoRowIds);
     const altoPrevio = palletRow.savedItem?.alto ?? (parseFloat(palletRow.alto) || 0);
     setFormRows(prev => prev
       .filter(r => !bultoRowIdSet.has(r.id))
@@ -2000,7 +2003,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
     setFormMergeState(null);
     setMergeSel(new Set());
-    showToast(toastSuma(palletLabel, sumarPesoMultiple(0, pesosBultos), bultoRows.length), '#16A34A');
+    showToast(repetidas > 0
+      ? `${toastSuma(palletLabel, sumarPesoMultiple(0, pesosBultos), bultoRows.length)} · ${avisoRepetidas(repetidas)}`
+      : toastSuma(palletLabel, sumarPesoMultiple(0, pesosBultos), bultoRows.length), repetidas > 0 ? '#D97706' : '#16A34A');
     logActividad({ accion: 'sumar', fuente: 'nacional', tiendaCod: TIENDAS[selectedTienda]?.cod,
       tiendaNombre: selectedTienda, sourceLabel: `${bultoRows.length} ítems`, label: palletLabel,
       peso: sumarPesoMultiple(0, pesosBultos), slotId: targetSlotId });
