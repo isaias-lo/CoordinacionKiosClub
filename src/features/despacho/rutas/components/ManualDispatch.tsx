@@ -84,6 +84,12 @@ interface Props {
   /** [Cerrar en masa] Si se provee `onCerrarVarios`, cada tarjeta de camión cerrable muestra un
    *  checkbox y aparece una barra "Cerrar seleccionados" para cerrarlos todos de una. `cerrarSel`
    *  = patentes seleccionadas; `esCerrada(p)` = true si ya está cerrada (tarjeta en verde). */
+  /** [2ª vuelta · «Ya resuelto»] Acción extra en la barra que ya aparece al seleccionar tiendas
+   *  del pool. Se cuelga de esa selección en vez de poner un control en cada tarjeta: el gesto
+   *  —marcar varias y tocar una acción— ya existe acá para mover a un camión, y agregarle una
+   *  segunda salida no cambia nada para quien no la usa. Sin esta prop, la barra queda igual que
+   *  antes, así que la pestaña de Despacho no se entera. */
+  accionPool?: { label: string; onClick: (cods: string[]) => void };
   /** [Fase] Indicador 1-5 arriba de la columna de flota. Vivía FUERA del componente y solo en
    *  Despacho; acá lo ven los tres tableros. El cálculo sigue en `utils/faseEnrutador`. */
   fase?: FaseInfo;
@@ -172,6 +178,7 @@ export default function ManualDispatch({
   camionSeleccionado = null,
   camionSeleccionadoKm = null,
   onSelectTruck,
+  accionPool,
   scrollContainerRef,
   fase,
   ordenRuta,
@@ -781,7 +788,14 @@ export default function ManualDispatch({
             <div className="px-4 py-2 bg-knavy/[0.05] border-b border-knavy/15 flex items-center gap-2 text-[12px]">
               <span className="font-bold text-knavy">{selected.size} seleccionada{selected.size > 1 ? 's' : ''}</span>
               <span className="text-kmuted">— toca una patente para mover todas a la vez</span>
-              <button onClick={e => { e.stopPropagation(); clearSel(); }} className="ml-auto text-kmuted underline font-semibold">Limpiar</button>
+              {accionPool && (
+                <button
+                  onClick={e => { e.stopPropagation(); accionPool.onClick([...selected]); clearSel(); }}
+                  className="ml-auto px-2.5 py-1 rounded-kios2 bg-knavy text-white font-semibold hover:bg-knavy/90">
+                  {accionPool.label}
+                </button>
+              )}
+              <button onClick={e => { e.stopPropagation(); clearSel(); }} className={`${accionPool ? '' : 'ml-auto '}text-kmuted underline font-semibold`}>Limpiar</button>
             </div>
           )}
           <div className={A ? 'p-2.5 flex flex-col gap-1.5 min-h-[64px]' : 'p-3 flex flex-wrap gap-[6px] min-h-[64px] items-start'}>
