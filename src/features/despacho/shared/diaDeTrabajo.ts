@@ -105,3 +105,80 @@ export function urlConDia(ruta: string, dia: string | null): string {
   const base = String(ruta ?? '').split('?')[0];
   return dia ? `${base}?dia=${encodeURIComponent(dia)}` : base;
 }
+
+// ── QUE TODAS LAS PIEZAS DE UNA CARGA TRABAJEN EL MISMO DÍA ───────────────────────────────────
+//
+// `urlConDia` (arriba) explica que cambiar de día tiene que RECARGAR la página entera, porque las
+// claves de `localStorage`, el estado compartido y la lista de tiendas se fijan al cargar. Eso es
+// cierto y el botón de la banda lo respeta. Lo que faltaba es la defensa para cuando la URL
+// cambia por cualquier OTRA vía: un enlace del menú, el botón atrás, una navegación interna.
+//
+// ── POR QUÉ HACÍA FALTA: LAS TIENDAS FANTASMA DEL 12 Y DEL 19/10 ──────────────────────────────
+//
+// El día se resuelve leyendo la URL en el instante en que se evalúa cada módulo, y hay SEIS
+// módulos que lo hacen por su cuenta. No se evalúan juntos:
+//
+//   · `AppContext` cuelga de `providers.tsx`, en la raíz → primera carga de CUALQUIER página.
+//   · `SantiagoContext` se monta en `/despacho` → al abrir el Enrutador.
+//   · `AppScreen`/`TiendasPage` y `SantiagoScreen`/`StepForm` llegan por `dynamic({ssr:false})`
+//     → recién al entrar a cada bodega.
+//
+// Entre un momento y otro la URL puede cambiar sin recargar nada. Ahí los días se parten: el
+// contexto se queda en un día y la pantalla que ESCRIBE queda en otro. El 19/10 eso dejó seis
+// filas en `despacho_sesion` con fecha de hoy y los conteos del viernes — las mismas seis tiendas
+// que el 12/10, y por el mismo camino.
+//
+// La decisión se deja acá, pura: `diaDeTrabajoActual.ts` solo mira el navegador y obedece.
+
+/** El día que quedó fijado la primera vez que una pieza de esta carga lo resolvió. */
+export interface DiaFijado {
+  /** El día resuelto. Es el que TODAS las piezas de esta carga tienen que usar. */
+  dia: string;
+  /** El `?dia=` con que se fijó, ya recortado. `null` = la URL no pedía ninguno. */
+  pedido: string | null;
+}
+
+export interface DecisionDeDia {
+  /** El día que debe usar quien pregunta: siempre el ya fijado, si lo había. */
+  dia: string;
+  /** Lo que hay que guardar como fijado, o `null` si ya estaba y no cambia. */
+  fijar: DiaFijado | null;
+  /** La URL pide otro día que el fijado: hay que recargar la página entera. */
+  recargar: boolean;
+}
+
+/**
+ * Qué día usar, y si la carga quedó partida entre dos.
+ *
+ * La primera pieza que pregunta fija el día; las demás heredan ESE valor aunque su módulo se
+ * evalúe más tarde y la URL ya diga otra cosa. Así ninguna pieza escribe en un día distinto del
+ * que la pantalla está mostrando.
+ *
+ * Cuando la URL sí pide otro día, no se cambia el valor en caliente —eso es justo lo que deja la
+ * pantalla a mitad de camino—: se pide RECARGAR, y al volver a cargar las seis piezas se fijan
+ * juntas desde la misma URL.
+ */
+export function decidirDiaDeTrabajo(
+  fijado: DiaFijado | null,
+  pedidoEnURL: string | null | undefined,
+  hoy: string,
+  maxAtras = MAX_DIAS_ATRAS,
+): DecisionDeDia {
+  const pedido = String(pedidoEnURL ?? '').trim() || null;
+
+  if (!fijado) {
+    const dia = resolverDiaDeTrabajo(pedido, hoy, maxAtras);
+    return { dia, fijar: { dia, pedido }, recargar: false };
+  }
+
+  // Se mira si cambió lo que PIDE la URL, no el reloj. Una pestaña que cruza la medianoche sigue
+  // en su día y se avisa con `AvisoDiaViejo` (#722); recargarla le borraría la pantalla a alguien
+  // que está trabajando, que es peor que el problema.
+  if (pedido === fijado.pedido) return { dia: fijado.dia, fijar: null, recargar: false };
+
+  // Cambió el pedido, pero puede resolver al MISMO día: un `?dia=` del futuro, mal escrito o
+  // fuera de la ventana cae en hoy igual que no traer ninguno. Comparar el resuelto —y no el
+  // crudo— es lo que evita un bucle de recargas que nunca converge.
+  const resuelto = resolverDiaDeTrabajo(pedido, hoy, maxAtras);
+  return { dia: fijado.dia, fijar: null, recargar: resuelto !== fijado.dia };
+}
