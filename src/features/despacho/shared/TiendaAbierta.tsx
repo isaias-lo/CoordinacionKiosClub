@@ -21,8 +21,9 @@
 // Nacional y RM/Costa usan estas mismas piezas: si cambian, cambian juntas.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { MoreHorizontal, Pencil, ChevronLeft, Lock, Plus } from 'lucide-react';
-import { ESTILO_UNIDAD, LETRA_UNIDAD, type AvanceTienda, type ClaseUnidad } from './unidadVisual';
+import { MoreHorizontal, Pencil, ChevronLeft, Lock, Plus, Layers } from 'lucide-react';
+import { textoUnificado } from './unifyPallets';
+import { ESTILO_UNIDAD, LETRA_UNIDAD, esCambioDeUnidad, type AvanceTienda, type ClaseUnidad } from './unidadVisual';
 
 /** «P1», «B3»: la etiqueta de la unidad, en el color de su tipo. */
 export function EtiquetaUnidad({ clase, children, grande }: { clase: ClaseUnidad; children: ReactNode; grande?: boolean }) {
@@ -263,6 +264,62 @@ export function TiendaSinUnidades() {
   );
 }
 
+/** El nombre del tipo, para el rótulo «Ahora · Bulto B2». */
+export const NOMBRE_CLASE: Record<ClaseUnidad, string> = {
+  pallet: 'Pallet', bulto: 'Bulto', contenedor: 'Contenedor', chocolate: 'Chocolate', agregado: 'Agregado',
+};
+
+/**
+ * La sección «Ahora» con su tarjeta, y el efecto al CAMBIAR de unidad (Isaias, 20/10/2026: «al
+ * estar en una tienda y en un pallet, que haga un efecto al cambiar de pallet, bulto o chocolate;
+ * hoy suele ser confuso»).
+ *
+ * Por qué confundía: las tarjetas de pallet, bulto y chocolate tienen el mismo formulario y el
+ * mismo lugar. Guardar y seguir, tocar una ficha o escanear otra etiqueta reemplazaba la tarjeta en
+ * el acto, sin movimiento: solo cambiaban «P1» por «B1» y el color del borde. Con la vista en la
+ * balanza, no se notaba que ya era otra unidad.
+ *
+ * Ahora:
+ *   · El rótulo dice qué es, en su color y siempre: «Ahora · Bulto B2».
+ *   · Al cambiar, la tarjeta entra deslizándose con un destello del color del tipo, y un cartel
+ *     grande «BULTO B2» aparece encima y se desvanece. No hay temporizador: es una animación CSS
+ *     que corre una vez cada vez que cambia `id` (`.unidad-cambia` en index.css).
+ *   · Al abrir la tienda (la primera tarjeta) no hay efecto: no hubo cambio.
+ */
+export function AhoraUnidad({ id, clase, etiqueta, children }: {
+  id: string;
+  clase: ClaseUnidad;
+  etiqueta: string;
+  children: ReactNode;
+}) {
+  // Lo del render anterior, guardado en estado y ajustado durante el render (patrón de React para
+  // "derivar de la vez anterior"): así la animación sale en el mismo cuadro que la tarjeta nueva.
+  const [vista, setVista] = useState<{ id: string; cambio: boolean }>({ id, cambio: false });
+  let cambio = vista.cambio;
+  if (vista.id !== id) {
+    cambio = esCambioDeUnidad(vista.id, id);
+    setVista({ id, cambio });
+  }
+  const nombre = `${NOMBRE_CLASE[clase]} ${etiqueta}`;
+  return (
+    <>
+      <div className="flex items-baseline gap-1.5 px-1 pt-3 pb-1.5 font-barlow-condensed text-rotulo font-bold uppercase">
+        <span className="text-text-sub">Ahora</span>
+        <span className="text-text-sub" aria-hidden="true">·</span>
+        <span className={ESTILO_UNIDAD[clase].texto} aria-live="polite">{nombre}</span>
+      </div>
+      <div key={id} data-clase={clase} className={cambio ? 'relative unidad-cambia' : 'relative'}>
+        {cambio && (
+          <div aria-hidden="true" className="unidad-cambia-cartel font-barlow-condensed text-titulo font-extrabold uppercase">
+            {nombre}
+          </div>
+        )}
+        {children}
+      </div>
+    </>
+  );
+}
+
 /** La tarjeta que se está pesando. Los atributos `data-*` los usa el lector (useLectorBodega). */
 export function TarjetaActiva({ clase, slotId, resaltada, children }: {
   clase: ClaseUnidad;
@@ -276,6 +333,20 @@ export function TarjetaActiva({ clase, slotId, resaltada, children }: {
       className={`relative bg-card rounded-kios border-2 p-3 flex flex-col gap-2.5 shadow-kios ${ESTILO_UNIDAD[clase].borde} ${resaltada ? 'tarjeta-escaneada' : ''}`}>
       {children}
     </div>
+  );
+}
+
+/**
+ * «UNIFICADO · 2 en 1», en morado lleno: la unidad juntó dos o más (Isaias, 20/10/2026: que el
+ * pallet unificado sea notable, desde lejos, sin tener que leer la etiqueta). Nada si no se unificó.
+ */
+export function ChipUnificado({ unidos, grande }: { unidos?: number | null; grande?: boolean }) {
+  const texto = textoUnificado(unidos);
+  if (!texto) return null;
+  return (
+    <span className={`chip-unificado inline-flex items-center gap-1 rounded-full font-barlow-condensed font-extrabold uppercase leading-none flex-shrink-0 ${grande ? 'text-cuerpo px-3 h-8' : 'text-rotulo px-2.5 h-7'}`}>
+      <Layers size={grande ? 16 : 14} aria-hidden="true" /> {texto}
+    </span>
   );
 }
 
@@ -311,7 +382,7 @@ export function ColaPendientes({ fichas, onElegir }: { fichas: FichaPendiente[];
  * Recién escaneada (`resaltada`) y con `campos`, se muestra como la tarjeta grande pero celeste y
  * bloqueada: se ve lo guardado, no se puede escribir, y Editar (que pide confirmar) es la salida.
  */
-export function FilaPesada({ clase, etiqueta, slotId, resumen, detalle, aviso, resaltada, seleccion, campos, children }: {
+export function FilaPesada({ clase, etiqueta, slotId, resumen, detalle, aviso, resaltada, seleccion, campos, unidos, children }: {
   clase: ClaseUnidad;
   etiqueta: string;
   slotId?: number;
@@ -326,8 +397,11 @@ export function FilaPesada({ clase, etiqueta, slotId, resumen, detalle, aviso, r
   seleccion?: ReactNode;
   /** Lo guardado, campo por campo, para la vista grande. */
   campos?: { rotulo: string; valor: string }[];
+  /** Unidades que se le unificaron: la fila se marca para verse de lejos. Ver `ChipUnificado`. */
+  unidos?: number;
   children?: ReactNode;
 }) {
+  const unificada = !!textoUnificado(unidos);
   const [abierta, setAbierta] = useState(false);
   if (resaltada && campos && campos.length > 0) {
     return (
@@ -338,6 +412,7 @@ export function FilaPesada({ clase, etiqueta, slotId, resumen, detalle, aviso, r
           <EtiquetaUnidad clase={clase} grande>{etiqueta}</EtiquetaUnidad>
           {slotId != null && <span className="font-mono text-apoyo text-text-sub">#{slotId}</span>}
           {aviso}
+          <ChipUnificado unidos={unidos} />
           <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-600 text-white px-2.5 py-1 text-rotulo font-bold uppercase">
             <Lock size={12} aria-hidden="true" /> Guardado
           </span>
@@ -357,13 +432,14 @@ export function FilaPesada({ clase, etiqueta, slotId, resumen, detalle, aviso, r
   }
   return (
     <div id={slotId != null ? `pallet-card-${slotId}` : undefined}
-      className={`bg-card ${resaltada ? 'relative tarjeta-escaneada' : ''}`}>
+      className={`bg-card ${unificada ? 'fila-unificada' : ''} ${resaltada ? 'relative tarjeta-escaneada' : ''}`}>
       <div className="flex items-center gap-2.5 px-3 py-2 min-h-[52px]">
         {seleccion}
         <EtiquetaUnidad clase={clase}>{etiqueta}</EtiquetaUnidad>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-cuerpo font-semibold text-text tabular-nums">{resumen}</span>
+            <ChipUnificado unidos={unidos} />
             {aviso}
           </div>
           {(detalle || slotId != null) && (

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { unionRefs, slotQueSobrevive } from '../unifyPallets';
+import { unionRefs, slotQueSobrevive, unidosTrasUnir, textoUnificado } from '../unifyPallets';
 import { sumPeso } from '../combineUtils';
 
 describe('unifyPallets — unionRefs', () => {
@@ -41,5 +41,24 @@ describe('unifyPallets — invariante del target', () => {
     // sumPeso es la fuente de verdad de la suma; el merge usa exactamente esto.
     expect(sumPeso(120.5, 80.25)).toBe(sumPeso(80.25, 120.5)); // conmutativa
     expect(sumPeso(100, 0)).toBe(100); // source sin peso → target intacto
+  });
+});
+
+describe('unidosTrasUnir / textoUnificado', () => {
+  it('la primera unión deja 1 unida: «2 en 1»', () => {
+    expect(unidosTrasUnir({}, {})).toBe(1);
+    expect(textoUnificado(1)).toBe('Unificado · 2 en 1');
+  });
+  it('suma lo que ya traían las dos', () => {
+    expect(unidosTrasUnir({ unidos: 1 }, { unidos: 1 })).toBe(3);
+    expect(textoUnificado(3)).toBe('Unificado · 4 en 1');
+  });
+  it('sin datos o con basura cuenta como cero', () => {
+    expect(unidosTrasUnir(null, undefined)).toBe(1);
+    expect(unidosTrasUnir({ unidos: -2 }, { unidos: Number.NaN })).toBe(1);
+  });
+  it('una unidad que no se unificó no lleva texto', () => {
+    expect(textoUnificado(undefined)).toBeNull();
+    expect(textoUnificado(0)).toBeNull();
   });
 });

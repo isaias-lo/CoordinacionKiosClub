@@ -32,6 +32,7 @@
 // se borra: se puede pedir aparte, porque para diagnosticar el merge es justo lo que hace falta.
 
 import type { AccionActividad, ActividadRow } from '@/lib/actividad';
+import { nombreContenido } from '@/features/despacho/shared/contenidoCarga';
 
 /**
  * Las acciones que registra el SISTEMA, no una persona.
@@ -127,4 +128,22 @@ export function accionesPedidas(
   todas: readonly AccionActividad[], verDiagnostico: boolean,
 ): string[] {
   return verDiagnostico ? [...todas] : todas.filter(esTrabajoDePersona);
+}
+
+/**
+ * El tipo de carga de la unidad, para la columna «Tipo» (Isaias, 20/10/2026: «que en actividad
+ * salga el tipo del pallet, falta eso»).
+ *
+ * Sale de `detalle.contenido`. RM/Costa lo mandaba desde siempre al ingresar ('Comida',
+ * 'Hogar-Aseo', 'Mixto'…) pero la pantalla no lo mostraba; Nacional no lo mandaba (393 ingresos
+ * sin tipo del 13 al 20/10) y desde ahora sí. Los dos formatos se leen igual con
+ * `nombreContenido`. Un evento viejo sin tipo queda en blanco, salvo el chocolate, que se sabe por
+ * su etiqueta (CH3).
+ */
+export function tipoDeActividad(detalle: Record<string, unknown> | null | undefined): string | null {
+  const contenido = detalle?.contenido;
+  if (typeof contenido === 'string' && contenido.trim()) return nombreContenido(contenido);
+  const label = detalle?.label;
+  if (typeof label === 'string' && /^CH\d+$/i.test(label.trim())) return 'Chocolate';
+  return null;
 }

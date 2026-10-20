@@ -19,7 +19,8 @@
 
 import type { HTMLAttributes, ReactNode } from 'react';
 import { Check, ChevronDown, Copy, Lock, Pencil, Trash2 } from 'lucide-react';
-import { EtiquetaUnidad } from './TiendaAbierta';
+import { ChipUnificado, EtiquetaUnidad } from './TiendaAbierta';
+import { textoUnificado } from './unifyPallets';
 import { ESTILO_UNIDAD, LETRA_UNIDAD, type ClaseUnidad } from './unidadVisual';
 import { formatCLP, formatCLPCorto } from './formatoCLP';
 import { formatoKg, textoAvanceTiendas, type TotalesResumen } from './resumenDia';
@@ -184,9 +185,11 @@ const BOTON_ACCION = 'w-10 h-10 flex items-center justify-center rounded-btn bg-
  * Una unidad del resumen. Los `HTMLAttributes` pasan derecho al contenedor: el arrastrar para
  * combinar (mouse y toque) lo maneja cada pantalla.
  */
-export function UnidadResumen({ clase, etiqueta, peso, detalle, seleccion, bloqueada, resaltada, apagada, onEditar, onCopiar, onEliminar, ...resto }: {
+export function UnidadResumen({ clase, etiqueta, peso, detalle, unidos, seleccion, bloqueada, resaltada, apagada, onEditar, onCopiar, onEliminar, ...resto }: {
   clase: ClaseUnidad;
   etiqueta: string;
+  /** Unidades que se le unificaron: se marca morada, igual que en la tienda. Ver `ChipUnificado`. */
+  unidos?: number;
   /** «300 kg», o lo que diga la unidad si no se pesa («Adquisición»). */
   peso: string;
   /** Contenido, medidas, guía, estado: la segunda línea. */
@@ -205,7 +208,7 @@ export function UnidadResumen({ clase, etiqueta, peso, detalle, seleccion, bloqu
   return (
     <div {...resto}
       className={`flex items-center gap-2.5 pl-3.5 pr-2 py-2 border-t border-border/60 select-none transition-colors ${
-        resaltada ? 'bg-est-ok-suave shadow-[inset_4px_0_0_var(--est-ok)]' : seleccion?.activa ? 'bg-est-ok-suave' : 'bg-card'} ${apagada ? 'opacity-40' : ''} ${resto.className ?? ''}`}>
+        resaltada ? 'bg-est-ok-suave shadow-[inset_4px_0_0_var(--est-ok)]' : seleccion?.activa ? 'bg-est-ok-suave' : textoUnificado(unidos) ? 'bg-card fila-unificada' : 'bg-card'} ${apagada ? 'opacity-40' : ''} ${resto.className ?? ''}`}>
       {seleccion && (
         <button type="button" role="checkbox" aria-checked={seleccion.activa} aria-label={`Exportar ${etiqueta}`}
           onClick={e => { e.stopPropagation(); seleccion.onToggle(); }}
@@ -215,7 +218,10 @@ export function UnidadResumen({ clase, etiqueta, peso, detalle, seleccion, bloqu
       )}
       <EtiquetaUnidad clase={clase}>{etiqueta}</EtiquetaUnidad>
       <div className="flex-1 min-w-0">
-        <div className="font-barlow-condensed text-cuerpo font-extrabold text-text tabular-nums leading-tight">{peso}</div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-barlow-condensed text-cuerpo font-extrabold text-text tabular-nums leading-tight">{peso}</span>
+          <ChipUnificado unidos={unidos} />
+        </div>
         {detalle && <div className="text-apoyo text-text-sub truncate">{detalle}</div>}
       </div>
       {bloqueada ? (

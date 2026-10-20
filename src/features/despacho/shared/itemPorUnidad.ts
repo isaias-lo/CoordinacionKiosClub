@@ -18,6 +18,7 @@ interface ItemConUnidad {
   id?: string;
   orden?: string;
   palletWeb?: boolean;
+  unidos?: number;
 }
 
 const MEDIDAS = ['peso', 'alto', 'largo', 'ancho', 'pesoVolumetrico', 'taraPallet'] as const;
@@ -30,6 +31,7 @@ const MEDIDAS = ['peso', 'alto', 'largo', 'ancho', 'pesoVolumetrico', 'taraPalle
  * - "Sin pesar" encima de un ítem pesado no borra el peso: 0 kg quiere decir "no se pesó", no
  *   "pesa 0". Se conservan las medidas que ya tenía.
  * - Un pallet web guardado otra vez sin peso sigue siendo pallet web.
+ * - Una unidad unificada sigue siéndolo: volver a pesarla no deshace la unión (`unidos`).
  */
 export function fusionarConPrevio<T extends ItemConUnidad>(previo: T, nuevo: T): T {
   const out: T = { ...nuevo };
@@ -42,6 +44,7 @@ export function fusionarConPrevio<T extends ItemConUnidad>(previo: T, nuevo: T):
   // Guardar lo convertía en «sin pesar»: aparecía en los avisos de falta pesar y con selector de
   // tipo de carga. Con peso deja de serlo, como en el Resumen.
   if (esPalletWeb(previo) && esSinPesar(out)) out.palletWeb = true;
+  if ((previo.unidos ?? 0) > (out.unidos ?? 0)) out.unidos = previo.unidos;
   if (previo.id !== undefined) out.id = previo.id;
   if (previo.orden !== undefined) out.orden = previo.orden;
   return out;

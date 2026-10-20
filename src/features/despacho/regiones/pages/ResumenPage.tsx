@@ -32,6 +32,7 @@ import { copiaParaOtraTienda, formatoMedidas, posicionDeUnidad, totalesResumen }
 import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTienda, ResumenVacio, UnidadResumen } from '../../shared/ResumenDiaUI';
 import { AVISO_ERROR } from '../../shared/colorAviso';
 import { nombreContenido, unirTipos } from '../../shared/contenidoCarga';
+import { unidosTrasUnir } from '../../shared/unifyPallets';
 import { SelectorTipoCarga } from '../../shared/SelectorTipoCarga';
 import { tipoBloqueadoDeSlot } from '../../shared/tipoDeSlot';
 
@@ -189,7 +190,9 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
     const valor = (src.valor || 0) + (tgt.valor || 0);
     // `...src` conserva el `pickingSlotId`, y `combinarEnLista` lo deja en la posición del primero
     // de los dos — la misma regla que usan los dos formularios, en un solo sitio.
-    const merged: DispatchItem = { ...src, peso, alto, tipo: tipoMerge, guia, valor, taraPallet: undefined, palletWeb: peso > 0 ? undefined : src.palletWeb };
+    const merged: DispatchItem = { ...src, peso, alto, tipo: tipoMerge, guia, valor, taraPallet: undefined, palletWeb: peso > 0 ? undefined : src.palletWeb,
+      // Combinar también es unificar: queda marcada en Bodega. Ver `unidosTrasUnir`.
+      unidos: unidosTrasUnir(src, tgt) };
     dispatch({ type: 'UPDATE_ITEMS', tienda, items: renumber(combinarEnLista(list, srcIdx, tgtIdx, merged)) });
     // El slot que sobrevive se queda con el peso combinado: el cruce con Odoo lee el slot.
     void actualizarSlotPicking(merged.pickingSlotId, camposDePeso(merged, esSinPesar(merged))).then(r => {
@@ -207,7 +210,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
       // dejaba. Los dos espejos ya lo registran; faltaba este tercer camino.
       logActividad({ accion: 'unificar', fuente: 'nacional',
         tiendaCod: TIENDAS[tienda]?.cod, tiendaNombre: tienda,
-        label: ordenToLabel(merged.orden), sourceLabel: ordenToLabel(tgt.orden), peso: merged.peso, slotId: src.pickingSlotId });
+        label: ordenToLabel(merged.orden), sourceLabel: ordenToLabel(tgt.orden), peso: merged.peso, contenido: merged.tipo, slotId: src.pickingSlotId });
     }
     setCombineModal(null);
     showToast('✓ Items combinados', '#16A34A');
@@ -274,7 +277,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
     // pudiera ver quién ni cuándo.
     logActividad({ accion: 'editar_item', fuente: 'nacional', tiendaCod: TIENDAS[tienda]?.cod, tiendaNombre: tienda,
       label: ordenToLabel(editado.orden), peso: editado.peso, alto: editado.alto,
-      pesoPrevio: antes.peso, altoPrevio: antes.alto, slotId: editado.pickingSlotId });
+      pesoPrevio: antes.peso, altoPrevio: antes.alto, contenido: editado.tipo, slotId: editado.pickingSlotId });
     void actualizarSlotPicking(editado.pickingSlotId, camposDePeso(editado, esSinPesar(editado))).then(r => {
       if (r.error) console.error('[picking_pallets update]', r.error);
       if (r.yaNoExiste) showToast(AVISO_SLOT_BORRADO, AVISO_ERROR);
@@ -502,7 +505,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
                 },
               };
               return (
-                <UnidadResumen key={item.id ?? idx}
+                <UnidadResumen key={item.id ?? idx} unidos={item.unidos}
                   data-item-idx={idx} data-item-tienda={name}
                   {...arrastre}
                   className={cerrada ? '' : dragIdx !== null && dragTienda === name ? 'cursor-grabbing' : 'cursor-grab'}

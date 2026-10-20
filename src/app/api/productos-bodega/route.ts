@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth, verifyAdmin, verifyActor } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { normalizarCodigo, validarProducto } from '@/features/despacho/shared/productosBodega';
+import { llavesDelProducto, normalizarCodigo, validarProducto } from '@/features/despacho/shared/productosBodega';
 
 // Productos de Odoo guardados para pesar bultos (ver sql/2026-10-19_productos_bodega.sql).
 // La tabla tiene RLS sin políticas: todo pasa por acá con service role. Leer, cualquier usuario
@@ -40,7 +40,18 @@ export async function POST(request: NextRequest) {
     .from('productos_bodega')
     .upsert({ ...v.fila, creado_por: actor?.name ?? null, updated_at: new Date().toISOString() }, { onConflict: 'codigo' });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  // Las peticiones de Bodega por este producto quedan atendidas (ver ./peticiones/route.ts). El
+  // producto ya está guardado: si esto falla no se deshace, pero se dice, para no dejarlas colgadas
+  // sin que nadie se entere.
+  const ahora = new Date().toISOString();
+  const { data: atendidas, error: errPet } = await supabaseServer()
+    .from('productos_peticiones')
+    .update({ estado: 'agregado', resuelto_por: actor?.name ?? null, resuelto_at: ahora, updated_at: ahora })
+    .eq('estado', 'pendiente')
+    .in('llave', llavesDelProducto(v.fila))
+    .select('id');
+  if (errPet) return NextResponse.json({ ok: true, avisoPeticiones: errPet.message });
+  return NextResponse.json({ ok: true, peticionesAtendidas: atendidas?.length ?? 0 });
 }
 
 export async function DELETE(request: NextRequest) {

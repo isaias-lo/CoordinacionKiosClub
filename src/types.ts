@@ -43,6 +43,9 @@ export interface DispatchItem {
   editadoEn?: number;       // ms de la última edición de su carga en un equipo. Ver shared/versionDeItem.ts
   /** Nombre del producto si el bulto se pesó con «Escanear producto». Se muestra en la línea pesada. */
   producto?: string;
+  /** Cuántas unidades se le unificaron (Unificar en Bodega o Combinar en el Resumen). Hace que la
+   *  unidad se vea como unificada. Ver `unidosTrasUnir` en shared/unifyPallets.ts. */
+  unidos?: number;
 }
 
 export interface PdfGuia {

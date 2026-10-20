@@ -285,3 +285,54 @@ export function validarProducto(cuerpo: unknown): { ok: true; fila: ProductoBode
     },
   };
 }
+
+// ── Peticiones: el código escaneado no está ────────────────────────────────────────────────────
+//
+// Isaias, 20/10/2026: los productos se van agregando de a poco; si Bodega escanea uno que todavía no
+// está, se pide que se agregue y la petición llega a /admin/sistema con el nombre de quien la pidió
+// y el código. Ver sql/2026-10-20_productos_peticiones.sql.
+
+export interface PeticionProducto {
+  id: number;
+  codigo: string;
+  pedido_por: string;
+  ultimo_pedido_por: string | null;
+  veces: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Largo máximo de lo leído: un EAN-13 son 13; los internos, algo más. Más que esto es basura. */
+export const MAX_CODIGO_PETICION = 64;
+
+/**
+ * Valida el código que se pide agregar. Devuelve lo leído limpio y su `llave` (como lo compara
+ * `buscarProducto`), o el motivo del rechazo. La ruta lo usa antes de escribir.
+ */
+export function validarPeticion(cuerpo: unknown): { ok: true; codigo: string; llave: string } | { ok: false; error: string } {
+  const c = cuerpo && typeof cuerpo === 'object' ? (cuerpo as Record<string, unknown>).codigo : undefined;
+  const codigo = typeof c === 'string' ? c.trim() : '';
+  if (!codigo) return { ok: false, error: 'Falta el código del producto' };
+  if (codigo.length > MAX_CODIGO_PETICION) return { ok: false, error: 'El código es demasiado largo' };
+  // Sin espacios ni caracteres de control: una lectura con eso no es un código de barras.
+  if ([...codigo].some(ch => /\s/.test(ch) || ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)) return { ok: false, error: 'El código tiene caracteres no válidos' };
+  return { ok: true, codigo, llave: llaveBarcode(codigo) };
+}
+
+/**
+ * Las llaves con que un producto recién guardado responde a peticiones pendientes: su código de
+ * barras y su código de Odoo (hay etiquetas que imprimen el `default_code`). Sin repetidas.
+ */
+export function llavesDelProducto(p: Pick<ProductoBodega, 'codigo' | 'barcode'>): string[] {
+  const out = new Set<string>();
+  if (p.barcode?.trim()) out.add(llaveBarcode(p.barcode));
+  if (p.codigo.trim()) out.add(llaveBarcode(normalizarCodigo(p.codigo)));
+  return [...out];
+}
+
+/** «Lo pidió Kamila» o «Lo pidieron 3 veces · primero Kamila · último: Steven». */
+export function quienPidio(p: Pick<PeticionProducto, 'pedido_por' | 'ultimo_pedido_por' | 'veces'>): string {
+  if (p.veces <= 1) return `Lo pidió ${p.pedido_por}`;
+  const ultimo = p.ultimo_pedido_por && p.ultimo_pedido_por !== p.pedido_por ? ` · último: ${p.ultimo_pedido_por}` : '';
+  return `Lo pidieron ${p.veces} veces · primero ${p.pedido_por}${ultimo}`;
+}
