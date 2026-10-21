@@ -141,8 +141,10 @@ interface EsperaToque {
   timer: number; el: HTMLElement; item: StoreTag; from: string;
   x0: number; y0: number; x: number; y: number;
 }
-/** Cuánto hay que mantener apretada una tienda para levantarla con el dedo. */
-const ESPERA_TOQUE_MS = 250;
+/** Cuánto hay que mantener apretada una tienda para levantarla con el dedo. Con 250 ms, quien
+ *  apoya el dedo, se detiene un instante y recién después desliza, levantaba la tienda en vez de
+ *  hacer scroll (21/10/2026). 400 ms queda cerca del «mantener apretado» del propio teléfono. */
+const ESPERA_TOQUE_MS = 400;
 /** Lo que puede temblar el dedo durante la espera sin que cuente como scroll. */
 const TOLERANCIA_TOQUE_PX = 10;
 
