@@ -1,3 +1,4 @@
+import type { Juntado } from '../../shared/juntados';
 export type RegimenCarga = 'Seco' | 'Congelado';
 export type TipoCargamento = 'Pallet' | 'Bulto' | 'Contenedor' | 'Chocolate' | 'Adquisicion' | 'WebRetiro';
 // 'Mixto' es comida y hogar (así quedó escrito en la planilla). Ver contenidoCarga.ts.
@@ -49,6 +50,8 @@ export interface SantiagoItem {
   /** Cuántas unidades se le unificaron (Unificar en Bodega o Combinar en el Resumen). Hace que la
    *  unidad se vea como unificada. Ver `unidosTrasUnir` en shared/unifyPallets.ts. */
   unidos?: number;
+  /** Lo que se le juntó: el tipo de cada pallet unido y los B/CH sumados. Ver shared/juntados.ts. */
+  juntado?: Juntado;
 }
 
 export type SantiagoStep = 'regimen' | 'form';

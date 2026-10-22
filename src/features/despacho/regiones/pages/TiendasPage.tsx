@@ -29,6 +29,7 @@ import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
 import { sumarPesoMultiple } from '../../shared/sumarMultiple';
 import { unionRefs, unidosTrasUnir } from '../../shared/unifyPallets';
+import { juntadoTrasSumar, juntadoTrasUnir, juntadoDeTienda, type Juntado, type JuntadoTienda } from '../../shared/juntados';
 import { finalizarSlotUnion } from '../../shared/finalizarSlotUnion';
 import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { useUndoDelete } from '../../shared/useUndoDelete';
@@ -37,7 +38,7 @@ import { pkgCodeNacional } from '../../shared/tipoCode';
 import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
 import { avanceTienda, claseUnidad } from '@/features/despacho/shared/unidadVisual';
 import { useTarjetaActiva } from '@/features/despacho/shared/useTarjetaActiva';
-import { AhoraUnidad, ChipUnificado, CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, TiendaSinUnidades } from '@/features/despacho/shared/TiendaAbierta';
+import { AhoraUnidad, ChipUnificado, ChipSumados, CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, TiendaSinUnidades } from '@/features/despacho/shared/TiendaAbierta';
 import { confirmarCambioGuardado, confirmarQuitarSinGuardar } from '@/features/despacho/shared/confirmarGuardado';
 import { FilaTienda, BarraDelDia, UnidadesDelDia, FechasBodega, RotuloLista, PieLista, BaldosaAgregar, GRILLA_MOSAICO } from '@/features/despacho/shared/ListaTiendasUI';
 import { usePlegarCabecera } from '@/features/despacho/shared/usePlegarCabecera';
@@ -78,7 +79,7 @@ import { subtipoDeCaja, medidasDeCaja, pesoNetoDeCaja, pesoParaMostrar, etiqueta
          type SubtipoCaja } from '../../shared/subtipoCaja';
 import { pesoEnTarjeta, pesoNetoDeTarjeta, pesoNetoPallet, taraDeTarjeta, taraEnTarjeta, taraParaGuardar, textoPesoConTara } from '../../shared/pesoDelPallet';
 import { CampoPesoPallet } from '../../shared/CampoPesoPallet';
-import { nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE, tipoDesdePicking, unirTipos } from '@/features/despacho/shared/contenidoCarga';
+import { nombreContenido, contenidoRegiones, CONTENIDO_CHOCOLATE, tipoDesdePicking, tipoQueManda, unirTipos } from '@/features/despacho/shared/contenidoCarga';
 import { SelectorTipoCarga } from '@/features/despacho/shared/SelectorTipoCarga';
 import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, etiquetaCard, claseNacional, ordenNacional, renumerarOrdenNacional, bultosNacional } from '@/features/despacho/shared/numeroCard';
 import { leerPeso, limpiarTecleo, avisoDePeso, pesoFueraDeRango } from '@/features/despacho/shared/pesoIngresado';
@@ -164,6 +165,8 @@ interface FormRow {
   producto?: string;
   /** Unidades que se le unificaron; pasa al ítem al guardar. Ver `unidosTrasUnir`. */
   unidos?: number;
+  /** Lo que se le juntó (tipos unidos, B/CH sumados); pasa al ítem al guardar. Ver shared/juntados.ts. */
+  juntado?: Juntado;
   guia: string;
   valor: string;
   saved?: boolean;
@@ -244,8 +247,10 @@ interface GridCardProps {
   onRemoveFromToday?: () => void;
   /** «Hoy» en baldosas (Mosaico), «Todas» en filas. Ver `ListaTiendasUI`. */
   forma?: 'fila' | 'baldosa';
+  /** Unificados y B/CH dentro de un pallet. Ver `juntadoDeTienda`. */
+  juntado?: JuntadoTienda;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, bultoCount, adquisicionCount = 0, webRetiroCount = 0, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, sinPesarCount, nuevas = 0, onSelect, onDragStart, onAddToday, onRemoveFromToday, forma }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, bultoCount, adquisicionCount = 0, webRetiroCount = 0, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, sinPesarCount, nuevas = 0, onSelect, onDragStart, onAddToday, onRemoveFromToday, forma, juntado }: GridCardProps) {
   const t = TIENDAS[name];
   // El bulto ya NO sale por resta: así caían adentro las adquisiciones y los web/retiro. Ver
   // `contarPorClase`. Lo que falta es lo que Picking imprimió y Bodega todavía no cargó; sin
@@ -267,7 +272,7 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       agregados={{ adquisicion: adquisicionCount, webRetiro: webRetiroCount }}
       sinPesar={sinPesarCount ?? 0}
       odoo={isToday ? { done: storeDoneOps, total: storeTotalOps } : undefined}
-      viendo={viendo} onSelect={onSelect} onDragStart={onDragStart} accion={accion} forma={forma} />
+      viendo={viendo} onSelect={onSelect} onDragStart={onDragStart} accion={accion} forma={forma} juntado={juntado} />
   );
 }
 
@@ -1582,13 +1587,16 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const posItem = previo ? currentItems.indexOf(previo) : currentItems.length;
     const itemGuia  = hasPdf ? (pdfInfo?.guias[posItem]?.num || '') : row.guia.trim();
     const itemValor = hasPdf ? 0 : (parseFloat(row.valor) || 0);
-    // Si la armó Picking, el tipo es el de su etiqueta (la tarjeta lo muestra bloqueado).
-    const tipoGuardado: TipoContenido = tipoDesdePicking(pickingSlot) ? contenidoRegiones(pickingSlot!.contenido) : row.tipo;
+    // Si la armó Picking, el tipo es el de su etiqueta (la tarjeta lo muestra bloqueado), salvo
+    // que se haya unificado: ahí manda la mezcla de los dos. Ver `tipoQueManda`.
+    const tipoGuardado: TipoContenido = contenidoRegiones(tipoQueManda(pickingSlot, row.tipo,
+      (row.unidos ?? row.savedItem?.unidos ?? previo?.unidos ?? 0) > 0));
     const candidato: DispatchItem = { orden, tipo: tipoGuardado, pkg: row.pkg, peso: p, alto: a, ancho: aw, largo: l, guia: itemGuia, valor: itemValor, pickingSlotId: slotId, taraPallet: tara,
       // El producto escaneado; al reabrir una guardada, el que ya tenía.
       producto: row.producto ?? row.savedItem?.producto,
       // Unificada sigue unificada al guardar la altura (o al editarla después).
-      unidos: row.unidos ?? row.savedItem?.unidos };
+      unidos: row.unidos ?? row.savedItem?.unidos,
+      juntado: row.juntado ?? row.savedItem?.juntado };
     const item = previo ? fusionarConPrevio(previo, candidato) : candidato;
     dispatch({ type: 'ADD_ITEM', tienda: selectedTienda, item });
     if (hasPdf && pdfInfo) {
@@ -1891,17 +1899,24 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       return;
     }
     const snap = snapshotSuma(selectedTienda, [bultoRow], palletRow, palletLabel, pesoActual);
+    // Que el pallet diga lo que lleva adentro: sin esto el CH desaparecía sin dejar rastro.
+    // El pallet puede estar reabierto sin guardar (tras otra suma o una unión): su tarjeta ya no
+    // tiene `savedItem`, pero el ítem sigue guardado. Antes se buscaba solo por `savedItem` y la suma
+    // no le llegaba al ítem: el bulto se borraba, el slot quedaba con el peso nuevo y Bodega con el
+    // de antes. Si nadie apretaba Agregar, esos kilos no se contaban (LAS BRUJAS, pruebas 22/10; espejo de RM).
+    const palletItem = palletRow.savedItem ?? itemDeLaUnidad(dispatchData[selectedTienda] || [], palletRow.pickingSlotId);
+    const juntado = juntadoTrasSumar(palletItem?.juntado ?? palletRow.juntado, [bultoRow.pkg === 'chocolate' ? 'CH' : 'B']);
 
     deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId, { yaRegistrado: true });
 
     // Contexto: un solo UPDATE_ITEMS — quita el bulto guardado (si lo estaba) y suma el peso
     // al pallet guardado (si lo está). El match es por id ESTABLE (pickingSlotId/orden) — no
     // por pkg+orden, que cambia bajo renumberItems tras un eco remoto (causa del "freeze").
-    if (bultoRow.savedItem || palletRow.savedItem) {
+    if (bultoRow.savedItem || palletItem) {
       const cur = dispatchData[selectedTienda] || [];
       const newItems = cur
         .filter(i => !sameStableItem(i, bultoRow.savedItem))
-        .map(i => sameStableItem(i, palletRow.savedItem) ? { ...i, peso: nuevoPeso } : i);
+        .map(i => sameStableItem(i, palletItem) ? { ...i, peso: nuevoPeso, juntado } : i);
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumberItems(newItems) });
     }
 
@@ -1914,7 +1929,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       .filter(r => r.id !== bultoRowId && (r.id === palletRowId || !esMismaUnidad(r, bultoRow)))
       .map(r => r.id === palletRowId
         ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
-            alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
+            alto: altoPrevio ? String(altoPrevio) : '', juntado, mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
     // BD: actualizar el peso del slot del destino (si tiene slot de picking)
@@ -1960,6 +1975,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       return;
     }
     const snap = snapshotSuma(selectedTienda, bultoRows, palletRow, palletLabel, pesoActual);
+    // Reabierto sin guardar: el ítem se busca por su unidad. Ver `sumarBultoAPallet`.
+    const palletItem = palletRow.savedItem ?? itemDeLaUnidad(dispatchData[selectedTienda] || [], palletRow.pickingSlotId);
+    const juntado = juntadoTrasSumar(palletItem?.juntado ?? palletRow.juntado, bultoRows.map(r => r.pkg === 'chocolate' ? 'CH' : 'B'));
 
     for (const bultoRow of bultoRows) {
       deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId, { yaRegistrado: true });
@@ -1967,11 +1985,11 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
 
     // Contexto: un solo UPDATE_ITEMS — quita TODOS los bultos guardados seleccionados y suma el
     // peso total al pallet guardado. Mismo match por id ESTABLE (sameStableItem) que la single.
-    if (bultoRows.some(r => r.savedItem) || palletRow.savedItem) {
+    if (bultoRows.some(r => r.savedItem) || palletItem) {
       const cur = dispatchData[selectedTienda] || [];
       const newItems = cur
         .filter(i => !bultoRows.some(r => r.savedItem && sameStableItem(i, r.savedItem)))
-        .map(i => sameStableItem(i, palletRow.savedItem) ? { ...i, peso: nuevoPeso } : i);
+        .map(i => sameStableItem(i, palletItem) ? { ...i, peso: nuevoPeso, juntado } : i);
       dispatch({ type: 'UPDATE_ITEMS', tienda: selectedTienda, items: renumberItems(newItems) });
     }
 
@@ -1984,7 +2002,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       .filter(r => !bultoRowIdSet.has(r.id) && (r.id === palletRowId || !bultoRows.some(b => esMismaUnidad(r, b))))
       .map(r => r.id === palletRowId
         ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
-            alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
+            alto: altoPrevio ? String(altoPrevio) : '', juntado, mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
     // BD: un solo update del peso del slot destino
@@ -2028,6 +2046,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const mtipo: TipoContenido = unirTipos(sourceRow.savedItem?.tipo ?? sourceRow.tipo, targetRow.savedItem?.tipo ?? targetRow.tipo);
     // Para que se vea unificado (chip y franja morada). Ver `unidosTrasUnir`.
     const unidos = unidosTrasUnir(targetRow.savedItem ?? targetRow, sourceRow.savedItem ?? sourceRow);
+    // De qué tipo era cada uno, y lo que ya traían sumado. Ver `juntadoTrasUnir`.
+    const juntado = juntadoTrasUnir(
+      { juntado: targetRow.savedItem?.juntado ?? targetRow.juntado, tipo: targetRow.savedItem?.tipo ?? targetRow.tipo },
+      { juntado: sourceRow.savedItem?.juntado ?? sourceRow.juntado, tipo: sourceRow.savedItem?.tipo ?? sourceRow.tipo });
     // ── LA BASE PRIMERO (15/10/2026) ─────────────────────────────────────────────────────────
     // Antes la pantalla quitaba el ítem del origen y DESPUÉS mandaba la unión a la base, sin
     // esperarla. Si la base la rechazaba (el destino ya lo había borrado otro equipo), el peso del
@@ -2046,6 +2068,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const itemsAntesUnion = [...(itemsAhora[name] || [])];
     const sourceItemUnion = sourceRow.savedItem;
     const puedeRevertirUnion = !!(sourceItemUnion && targetRow.savedItem);
+    // Reabiertas sin guardar, los ítems se buscan por su unidad. Ver `sumarBultoAPallet`.
+    const srcItem = sourceRow.savedItem ?? itemDeLaUnidad(itemsAhora[name] || [], srcSlot);
+    const tgtItem = targetRow.savedItem ?? itemDeLaUnidad(itemsAhora[name] || [], tgtSlot);
 
     // 1) Items: quitar el del source y dejar el del target GUARDADO con el peso sumado y las guías
     //    fusionadas, igual que al sumar un bulto. Antes el target también se quitaba («se re-agrega
@@ -2053,9 +2078,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     //    no dejaba lápida, otro equipo la devolvía con el peso de antes de unir.
     const cur = itemsAhora[name] || [];
     const remaining = cur
-      .filter(i => !sameStableItem(i, sourceRow.savedItem))
-      .map(i => sameStableItem(i, targetRow.savedItem) ? { ...i, peso: nuevoPeso, guia: mguia || i.guia, tipo: mtipo, unidos } : i);
-    if (remaining.length !== cur.length || targetRow.savedItem) {
+      .filter(i => !sameStableItem(i, srcItem))
+      .map(i => sameStableItem(i, tgtItem) ? { ...i, peso: nuevoPeso, guia: mguia || i.guia, tipo: mtipo, unidos, juntado } : i);
+    if (remaining.length !== cur.length || tgtItem) {
       dispatch({ type: 'UPDATE_ITEMS', tienda: name, items: renumberItems(remaining, name) });
     }
 
@@ -2089,7 +2114,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       .filter(r => r.id !== sourceRow.id)
       .map(r => r.id === targetRow.id
         ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
-            alto: prevAlto ? String(prevAlto) : '', guia: mguia || r.guia, tipo: mtipo, unidos, mergeReopened: true }
+            alto: prevAlto ? String(prevAlto) : '', guia: mguia || r.guia, tipo: mtipo, unidos, juntado, mergeReopened: true }
         : r));
     setFormMergeState(null);
     showToast(`Unificado (+${srcPeso}kg) — ingresa la altura y Agregar`, '#2563EB');
@@ -2159,13 +2184,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   : row.savedItem.pkg === 'contenedor' ? '80×110 cm · alto 150 cm'
                   : row.savedItem.pkg === 'chocolate' ? etiquetaSubtipo(subtipoDeCaja(slotDeFila?.subtipo))
                   // Un pallet web va sin categoría (Isaias, 13/10/2026).
-                  : row.savedItem.pkg === 'pallet' ? (esPalletWeb(row.savedItem) ? '' : nombreContenido(tipoDesdePicking(slotDeFila) ? slotDeFila!.contenido : row.savedItem.tipo))
+                  : row.savedItem.pkg === 'pallet' ? (esPalletWeb(row.savedItem) ? '' : nombreContenido(tipoQueManda(slotDeFila, row.savedItem.tipo, (row.savedItem.unidos ?? 0) > 0)))
                   : '';
                 return (
                   // [Handheld] El ancla también en la línea pesada: escanear una unidad ya pesada
                   // tiene que llegar a ella y mostrarla, no abrir la tienda y quedarse arriba.
                   <FilaPesada key={row.id} clase={claseUnidad(row.pkg)} etiqueta={rowLabel}
-                    slotId={row.pickingSlotId} unidos={row.savedItem.unidos}
+                    slotId={row.pickingSlotId} unidos={row.savedItem.unidos} juntado={row.savedItem.juntado}
                     resaltada={row.pickingSlotId != null && row.pickingSlotId === resaltado}
                     // Una adquisición no tiene peso ni medidas: escribir «0kg · 0cm» haría pasar la
                     // AUSENCIA de un dato por un dato. Dice qué es.
@@ -2317,6 +2342,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     {row.pickingSlotId ? <span className="font-mono text-cuerpo text-text">#{row.pickingSlotId}</span> : null}
                     {cajaDeFila && <ChipCaja caja={cajaDeFila} />}
                     <ChipUnificado unidos={row.unidos ?? row.savedItem?.unidos} grande />
+                    <ChipSumados juntado={row.juntado ?? row.savedItem?.juntado} grande />
                     <button onClick={() => removeUnsavedRow(row.id)} aria-label={`Quitar ${rowLabel}`}
                       className="ml-auto w-10 h-10 -mr-1 flex items-center justify-center rounded-btn text-text-sub bg-bg-2 active:bg-bg-3 cursor-pointer border-none text-cuerpo">✕</button>
                   </div>
@@ -2340,7 +2366,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     const slot = row.pickingSlotId ? (pickingSlotsFull[selectedTienda ?? ''] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
                     const bloqueado = tipoDesdePicking(slot);
                     return (
-                      <SelectorTipoCarga valor={bloqueado ? contenidoRegiones(slot!.contenido) : contenidoRegiones(row.tipo)}
+                      <SelectorTipoCarga valor={contenidoRegiones(tipoQueManda(slot, row.tipo, (row.unidos ?? row.savedItem?.unidos ?? 0) > 0))}
                         bloqueado={bloqueado} onCambiar={t => updateRow(row.id, 'tipo', t)} />
                     );
                   })()}
@@ -2879,6 +2905,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       bultoCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).bulto}
                       adquisicionCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).adquisicion}
                       webRetiroCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).webretiro}
+                      juntado={juntadoDeTienda(cardItems)}
                       pickingP={Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - consumed.p)}
                       pickingB={Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - consumed.b)}
                       pickingC={Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - consumed.c)}
@@ -2933,6 +2960,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                         bultoCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).bulto}
                         adquisicionCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).adquisicion}
                         webRetiroCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).webretiro}
+                        juntado={juntadoDeTienda(cardItems)}
                         pickingP={Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - consumed.p)}
                         pickingB={Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - consumed.b)}
                         pickingC={Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - consumed.c)}

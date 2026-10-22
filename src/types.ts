@@ -1,3 +1,4 @@
+import type { Juntado } from '@/features/despacho/shared/juntados';
 // Los ocho tipos de carga (ver `ClaseContenido` en despacho/shared/contenidoCarga.ts).
 export type TipoContenido =
   | 'comida' | 'hogar' | 'aseo' | 'chocolate'
@@ -46,6 +47,8 @@ export interface DispatchItem {
   /** Cuántas unidades se le unificaron (Unificar en Bodega o Combinar en el Resumen). Hace que la
    *  unidad se vea como unificada. Ver `unidosTrasUnir` en shared/unifyPallets.ts. */
   unidos?: number;
+  /** Lo que se le juntó: el tipo de cada pallet unido y los B/CH sumados. Ver shared/juntados.ts. */
+  juntado?: Juntado;
 }
 
 export interface PdfGuia {
