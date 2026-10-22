@@ -11,6 +11,7 @@ import { getTiendaSantiagoByCod } from '../santiago/data/tiendasSantiago';
 import { fechaChile } from '@/lib/fechaChile';
 import { avisoNoRegistrado } from './escribirPlanilla';
 import { urlConDia } from './diaDeTrabajo';
+import { tituloPendientes } from './tituloPendientes';
 
 type Fuente = 'santiago' | 'regiones';
 
@@ -80,6 +81,11 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
   const [busy,      setBusy]      = useState<string | null>(null);
   const [toast,     setToast]     = useState<string | null>(null);
   const [toastMal,  setToastMal]  = useState(false);
+  // Arranca plegado y se abre solo en pantallas anchas: en el teléfono el aviso se comía la pantalla.
+  const [abierto,   setAbierto]   = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia?.('(min-width: 768px)').matches) setAbierto(true);
+  }, []);
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
@@ -209,59 +215,73 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
         </div>
       )}
 
-      {drafts.map(d => (
-        <div key={d.fecha} className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-4 py-3">
-          <div className="flex items-start gap-3 flex-wrap">
-            <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-extrabold text-amber-800 uppercase tracking-wide flex items-center gap-2">
-                ⚠️ Despacho sin registrar · {fechaBonita(d.fecha)}
-              </div>
-              <div className="text-[13px] text-amber-700 font-semibold mt-0.5">
-                {d.tiendas} tienda{d.tiendas !== 1 ? 's' : ''}
-                {d.pallets > 0 ? ` · ${d.pallets} pallet${d.pallets !== 1 ? 's' : ''}` : ''}
-                {d.bultos > 0 ? ` · ${d.bultos} bulto${d.bultos !== 1 ? 's' : ''}` : ''}
-                {d.contenedores > 0 ? ` · ${d.contenedores} cont.` : ''}
-                {d.chocolates > 0 ? ` · ${d.chocolates} choc.` : ''}
-              </div>
-              <div className="text-[11px] text-amber-600 mt-0.5">
-                Ya es un nuevo día. Si quedó algo sin pesar, termínalo en SU día antes de registrar.
+      {drafts.length > 0 && (
+        // Plegable (análisis del 22/10/2026): en el teléfono, dos días pendientes ocupaban cerca del
+        // 60 % de la primera pantalla y «Descartar» quedaba cortado por el borde. Plegado queda una
+        // sola línea que igual dice qué días faltan; en el escritorio arranca abierto.
+        <section aria-label="Despachos sin registrar" className="flex-shrink-0 bg-amber-50 border-b border-amber-200">
+          <button type="button" onClick={() => setAbierto(a => !a)} aria-expanded={abierto}
+            className="w-full min-h-[44px] px-4 py-2 flex items-center gap-2 text-left cursor-pointer">
+            <span aria-hidden="true">⚠️</span>
+            <span className="flex-1 min-w-0 text-apoyo font-extrabold text-amber-900">
+              {tituloPendientes(drafts.map(d => fechaBonita(d.fecha)))}
+            </span>
+            <span className="flex-shrink-0 text-apoyo font-bold text-amber-900 underline underline-offset-2">
+              {abierto ? 'Ocultar' : 'Ver'}
+            </span>
+          </button>
+          {abierto && drafts.map(d => (
+            <div key={d.fecha} className="px-4 pb-3 pt-1 border-t border-amber-200/70">
+              <div className="flex items-start gap-3 flex-wrap">
+                <div className="flex-1 min-w-[12rem]">
+                  <div className="text-apoyo font-extrabold text-amber-900">{fechaBonita(d.fecha)}</div>
+                  <div className="text-apoyo text-amber-900 font-semibold">
+                    {d.tiendas} tienda{d.tiendas !== 1 ? 's' : ''}
+                    {d.pallets > 0 ? ` · ${d.pallets} pallet${d.pallets !== 1 ? 's' : ''}` : ''}
+                    {d.bultos > 0 ? ` · ${d.bultos} bulto${d.bultos !== 1 ? 's' : ''}` : ''}
+                    {d.contenedores > 0 ? ` · ${d.contenedores} cont.` : ''}
+                    {d.chocolates > 0 ? ` · ${d.chocolates} choc.` : ''}
+                  </div>
+                  <div className="text-rotulo text-amber-800 mt-0.5 normal-case tracking-normal">
+                    Ya es un nuevo día. Si quedó algo sin pesar, termínalo en SU día antes de registrar.
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => { window.location.href = urlConDia(fuente === 'santiago' ? '/despacho/santiago' : '/despacho/regiones', d.fecha); }}
+                    className="px-3 py-2 rounded-btn text-apoyo font-bold cursor-pointer transition-all active:scale-95 min-h-[44px] bg-navy text-white"
+                    title="Abrir Bodega en ese día para terminar de pesar"
+                  >
+                    Terminar ese día
+                  </button>
+                  <button
+                    onClick={() => registrar(d)}
+                    disabled={busy === d.fecha}
+                    className="min-h-[44px] flex items-center gap-1.5 px-3 py-2 rounded-btn text-apoyo font-bold text-white cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+                    style={{ background: 'linear-gradient(145deg,#16A34A,#15803D)', boxShadow: '0 2px 8px rgba(22,163,74,0.35)' }}
+                  >
+                    <span aria-hidden="true">{busy === d.fecha ? '⏳' : '✓'}</span> Registrar ahora
+                  </button>
+                  <button
+                    onClick={() => setReviewing(d)}
+                    className="min-h-[44px] px-3 py-2 rounded-btn text-apoyo font-bold cursor-pointer transition-all active:scale-95 bg-white text-amber-900 border border-amber-800/30"
+                  >
+                    Revisar
+                  </button>
+                  <button
+                    onClick={() => descartar(d)}
+                    disabled={busy === d.fecha}
+                    // text-sub y no el gris #9CA3AF de antes, que daba 2,5:1 sobre blanco.
+                    className="min-h-[44px] px-3 py-2 rounded-btn text-apoyo font-bold cursor-pointer transition-all active:scale-95 disabled:opacity-50 bg-white text-text-sub border border-border"
+                  >
+                    Descartar
+                  </button>
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <button
-                onClick={() => { window.location.href = urlConDia(fuente === 'santiago' ? '/despacho/santiago' : '/despacho/regiones', d.fecha); }}
-                className="px-3 py-2 rounded-btn text-apoyo font-bold cursor-pointer transition-all active:scale-95 min-h-[44px] bg-navy text-white"
-                title="Abrir Bodega en ese día para terminar de pesar"
-              >
-                Terminar ese día
-              </button>
-              <button
-                onClick={() => registrar(d)}
-                disabled={busy === d.fecha}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-bold text-white cursor-pointer transition-all active:scale-95 disabled:opacity-50"
-                style={{ background: 'linear-gradient(145deg,#16A34A,#15803D)', boxShadow: '0 2px 8px rgba(22,163,74,0.35)' }}
-              >
-                {busy === d.fecha ? '⏳' : '✓'} Registrar ahora
-              </button>
-              <button
-                onClick={() => setReviewing(d)}
-                className="px-3 py-2 rounded-lg text-[12px] font-bold cursor-pointer transition-all active:scale-95"
-                style={{ background: 'white', color: '#92400E', border: '1px solid rgba(146,64,14,0.30)' }}
-              >
-                👁 Revisar
-              </button>
-              <button
-                onClick={() => descartar(d)}
-                disabled={busy === d.fecha}
-                className="px-3 py-2 rounded-lg text-[12px] font-bold cursor-pointer transition-all active:scale-95 disabled:opacity-50"
-                style={{ background: 'white', color: '#9CA3AF', border: '1px solid rgba(0,0,0,0.12)' }}
-              >
-                🗑 Descartar
-              </button>
-            </div>
-          </div>
-        </div>
-      ))}
+          ))}
+        </section>
+      )}
 
       {/* Modal Revisar */}
       {reviewing && (
@@ -277,7 +297,8 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
                   {reviewing.chocolates > 0 ? ` · ${reviewing.chocolates}CH` : ''}
                 </div>
               </div>
-              <button onClick={() => setReviewing(null)} className="text-white/50 hover:text-white text-xl">✕</button>
+              <button onClick={() => setReviewing(null)} aria-label="Cerrar"
+                className="w-[44px] h-[44px] -mr-2 flex items-center justify-center text-white/80 hover:text-white text-xl">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto divide-y divide-border">
               {reviewing.stores.map(s => (

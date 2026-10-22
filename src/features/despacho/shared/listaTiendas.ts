@@ -92,3 +92,21 @@ export function chipFila(t: { estado: EstadoLista; sinPesar: number; conGuia: bo
   if (t.estado === 'curso') return { texto: 'En curso', tono: 'curso' };
   return { texto: 'Sin empezar', tono: 'apagado' };
 }
+
+const NOMBRE_UNIDAD: Record<string, [string, string]> = {
+  P: ['pallet', 'pallets'], B: ['bulto', 'bultos'], C: ['contenedor', 'contenedores'], CH: ['chocolate', 'chocolates'],
+};
+
+/**
+ * «6 pallets, 1 bulto, 1 chocolate»: lo que lee el lector de pantalla en vez de «6 P, 1 B, 1 CH».
+ * Una letra desconocida se deja como viene.
+ */
+export function textoUnidadesDelDia(unidades: readonly { letra: string; n: number }[]): string {
+  return unidades
+    .filter(u => u.n > 0)
+    .map(u => {
+      const nombre = NOMBRE_UNIDAD[u.letra];
+      return `${u.n} ${nombre ? nombre[u.n === 1 ? 0 : 1] : u.letra}`;
+    })
+    .join(', ');
+}

@@ -3,7 +3,8 @@
 import EscanearProducto from '@/features/despacho/shared/EscanearProducto';
 import { unidadesSinRepetir, avisoRepetidas, esMismaUnidad } from '@/features/despacho/shared/unidadesSinRepetir';
 import { slotsUnicos, agregarSlots } from '@/features/despacho/shared/slotsUnicos';
-import BarraSumarBultos from '@/features/despacho/shared/BarraSumarBultos';
+import BarraSumarBultos, { CasillaMarcar } from '@/features/despacho/shared/BarraSumarBultos';
+import { JuntarCon } from '@/features/despacho/shared/JuntarCon';
 import { conProducto } from '@/features/despacho/shared/productosBodega';
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -2211,9 +2212,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       </>
                     }
                     seleccion={(row.pkg === 'box' || row.pkg === 'chocolate') ? (
-                      <input type="checkbox" checked={mergeSel.has(row.id)} onChange={() => toggleMergeSel(row.id)}
-                        aria-label={`Seleccionar ${rowLabel} para sumar en masa`}
-                        className="w-5 h-5 cursor-pointer flex-shrink-0" style={{ accentColor: 'var(--uni-pallet)' }} />
+                      <CasillaMarcar marcada={mergeSel.has(row.id)} onCambiar={() => toggleMergeSel(row.id)} etiqueta={rowLabel} />
                     ) : undefined}>
                     <div className="flex gap-2 flex-wrap">
                       <BotonAccion onClick={() => { if (confirmarCambioGuardado('editar', rowLabel)) editSavedRow(row.id); }}>Editar</BotonAccion>
@@ -2225,96 +2224,32 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     </div>
                     {dupRow === row.id && row.pkg === 'box' && (
                       <div className="mt-1.5 pt-1.5 border-t border-black/[0.08] flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[9px] font-bold uppercase tracking-wide text-warn">Duplicar</span>
+                        <span className="text-rotulo font-bold uppercase text-text-2">Duplicar</span>
                         <div className="flex items-center border border-black/[0.15] rounded-md overflow-hidden bg-white">
-                          <button onClick={() => setDupN(n => Math.max(1, n - 1))} className="w-6 h-7 text-navy font-bold text-[15px] leading-none">−</button>
+                          <button onClick={() => setDupN(n => Math.max(1, n - 1))} aria-label="Uno menos" className="w-[44px] h-[44px] text-navy font-bold text-titulo leading-none">−</button>
                           <span className="w-7 text-center font-bold text-[14px] tabular-nums">{dupN}</span>
-                          <button onClick={() => setDupN(n => Math.min(20, n + 1))} className="w-6 h-7 text-navy font-bold text-[15px] leading-none">+</button>
+                          <button onClick={() => setDupN(n => Math.min(20, n + 1))} aria-label="Uno más" className="w-[44px] h-[44px] text-navy font-bold text-titulo leading-none">+</button>
                         </div>
                         <button onClick={() => { const n = dupN; setDupRow(null); void duplicarBulto(row, n); }}
-                          className="h-7 px-2.5 rounded-md bg-warn text-white text-[11px] font-bold flex items-center gap-1">⧉ Duplicar {dupN}</button>
+                          className="min-h-[44px] px-3 rounded-btn bg-navy text-white text-apoyo font-bold flex items-center gap-1">⧉ Duplicar {dupN}</button>
                       </div>
                     )}
-                    {/* P1: Sumar a Pallet directo en la card guardada (box/chocolate) sin abrir ✎ */}
-                    {(row.pkg === 'box' || row.pkg === 'chocolate') && (() => {
-                      const palletTargets = formRows.filter(r => r.id !== row.id && r.pkg === 'pallet');
-                      if (palletTargets.length === 0) return null;
-                      const getRowLabel = (r: typeof row) => {
-                        return labelDeFila(r, formRows);
-                      };
-                      const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
-                      return (
-                        <div className="mt-1.5 pt-1.5 border-t border-dashed" style={{ borderColor: 'rgba(37,99,235,0.30)' }}>
-                          {isExpanded ? (
-                            <div className="flex flex-col gap-1">
-                              <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">Sumar a Pallet…</div>
-                              <div className="flex flex-wrap gap-1">
-                                {palletTargets.map(pl => (
-                                  <button key={`sum-${pl.id}`}
-                                    onClick={() => sumarBultoAPallet(row.id, getRowLabel(pl), pl.id)}
-                                    className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
-                                    style={{ borderColor: 'rgba(37,99,235,0.45)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
-                                    → {getRowLabel(pl)}
-                                  </button>
-                                ))}
-                                <button onClick={() => setFormMergeState(null)}
-                                  className="px-2 py-1 rounded font-barlow-condensed text-[10px] cursor-pointer border transition-all"
-                                  style={{ borderColor: 'rgba(0,0,0,0.15)', color: '#9CA3AF', background: 'white' }}>✕</button>
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
-                              className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
-                              style={{ border: '1.5px dashed rgba(37,99,235,0.30)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
-                              SUMAR A PALLET
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })()}
-                    {/* P3 #1: Unificar directo en la card guardada (pallet/contenedor) sin abrir ✎ */}
-                    {(row.pkg === 'pallet' || row.pkg === 'contenedor') && (() => {
-                      const combineTargets = formRows.filter(r => r.id !== row.id && r.pkg === row.pkg);
-                      if (combineTargets.length === 0) return null;
-                      const getRowLabel = (r: typeof row) => {
-                        return labelDeFila(r, formRows);
-                      };
-                      const col = row.pkg === 'contenedor'
-                        ? { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)', solid: 'rgba(107,33,168,0.45)' }
-                        : { border: 'rgba(37,99,235,0.30)', color: '#2563EB', bg: 'rgba(37,99,235,0.06)', solid: 'rgba(37,99,235,0.45)' };
-                      const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
-                      return (
-                        <div className="mt-1.5 pt-1.5 border-t border-dashed" style={{ borderColor: col.border }}>
-                          {isExpanded ? (
-                            <div className="flex flex-col gap-1">
-                              <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">Unificar con…</div>
-                              <div className="flex flex-wrap gap-1">
-                                {combineTargets.map(other => (
-                                  <button key={`uni-${other.id}`}
-                                    onClick={() => { if (window.confirm(`${getRowLabel(row)} ya está guardado.\n\n¿Seguro que quieres unificarlo con ${getRowLabel(other)}?`)) iniciarUnionInline(row, other, getRowLabel(row), getRowLabel(other)); }}
-                                    className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
-                                    style={{ borderColor: col.solid, color: col.color, background: col.bg }}>
-                                    {getRowLabel(other)}
-                                  </button>
-                                ))}
-                                <button onClick={() => setFormMergeState(null)}
-                                  className="px-2 py-1 rounded font-barlow-condensed text-[10px] cursor-pointer border transition-all"
-                                  style={{ borderColor: 'rgba(0,0,0,0.15)', color: '#9CA3AF', background: 'white' }}>✕</button>
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
-                              title={`Sumar el peso de ${getRowLabel(row)} a otro ${row.pkg === 'contenedor' ? 'contenedor' : 'pallet'} y borrar ${getRowLabel(row)} — no se puede deshacer`}
-                              className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
-                              style={{ border: `1.5px dashed ${col.border}`, color: col.color, background: col.bg }}>
-                              UNIFICAR
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    {/* «Juntar con…» en la línea guardada. Espejo de RM/Costa; ver `JuntarCon`. */}
+                    <JuntarCon origen={rowLabel}
+                      abierto={formMergeState?.sourceId === row.id && formMergeState.targetId === null}
+                      onAbrir={() => setFormMergeState({ sourceId: row.id, targetId: null })}
+                      onCerrar={() => setFormMergeState(null)}
+                      destinos={(row.pkg === 'box' || row.pkg === 'chocolate')
+                        ? formRows.filter(r => r.id !== row.id && r.pkg === 'pallet').map(pl => {
+                            const etiqueta = labelDeFila(pl, formRows);
+                            return { id: pl.id, etiqueta, efecto: 'sumar' as const, onElegir: () => sumarBultoAPallet(row.id, etiqueta, pl.id) };
+                          })
+                        : (row.pkg === 'pallet' || row.pkg === 'contenedor')
+                          ? formRows.filter(r => r.id !== row.id && r.pkg === row.pkg).map(other => {
+                              const etiqueta = labelDeFila(other, formRows);
+                              return { id: other.id, etiqueta, efecto: 'unir' as const, onElegir: () => iniciarUnionInline(row, other, rowLabel, etiqueta) };
+                            })
+                          : []} />
                   </FilaPesada>
                 );
               }
@@ -2397,7 +2332,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                           max={row.pkg === 'pallet' ? MAX_ALTO_CM : undefined}
                           className={CAMPO_GRANDE} />
                         {row.pkg === 'pallet' && excedeAltoMax(parseFloat(row.alto) || 0) && (
-                          <div className="text-[10px] text-warn mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
+                          <div className="text-rotulo font-semibold text-est-aviso mt-0.5 normal-case tracking-normal">⚠ máx {MAX_ALTO_CM} cm</div>
                         )}
                       </div>
                     )}
@@ -2476,65 +2411,27 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     className="w-full min-h-[50px] bg-navy text-white border-none rounded-btn font-barlow-condensed text-titulo font-bold cursor-pointer transition-transform active:scale-[0.98]">
                     {row.mergeReopened ? botonReapertura(row.mergeMotivo ?? 'union') : (pendientes.length > 1 ? 'Guardar y seguir' : 'Guardar')}
                   </button>
-                  {!row.mergeReopened && (() => {
-                    const esBultoOChoc = row.pkg === 'box' || row.pkg === 'chocolate';
-                    const combineTargets = (row.pkg === 'pallet' || row.pkg === 'box' || row.pkg === 'contenedor')
-                      ? formRows.filter(r => !r.saved && r.id !== row.id && r.pkg === row.pkg)
-                      : [];
-                    const palletTargets = esBultoOChoc
-                      ? formRows.filter(r => r.id !== row.id && r.pkg === 'pallet')
-                      : [];
-                    if (combineTargets.length === 0 && palletTargets.length === 0) return null;
-                    const gcStyle = row.pkg === 'pallet'
-                      ? { border: 'rgba(37,99,235,0.30)', color: '#2563EB', bg: 'rgba(37,99,235,0.06)' }
-                      : row.pkg === 'contenedor'
-                      ? { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)' }
-                      : { border: 'rgba(217,119,6,0.30)', color: '#D97706', bg: 'rgba(217,119,6,0.06)' };
-                    const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
-                    const getRowLabel = (r: typeof row) => {
-                      return labelDeFila(r, formRows);
-                    };
-                    return (
-                      <div className="mt-1.5 pt-1.5 border-t border-dashed" style={{ borderColor: gcStyle.border }}>
-                        {isExpanded ? (
-                          <div className="flex flex-col gap-1">
-                            <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">
-                              {palletTargets.length > 0 ? 'Sumar a Pallet / combinar…' : '¿Combinar con…?'}
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                              {palletTargets.map(pl => (
-                                <button key={`sum-${pl.id}`}
-                                  onClick={() => sumarBultoAPallet(row.id, getRowLabel(pl), pl.id)}
-                                  className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
-                                  style={{ borderColor: 'rgba(37,99,235,0.45)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
-                                  → {getRowLabel(pl)}
-                                </button>
-                              ))}
-                              {combineTargets.map(other => (
-                                <button key={other.id}
-                                  onClick={() => iniciarUnionInline(row, other, getRowLabel(row), getRowLabel(other))}
-                                  className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
-                                  style={{ borderColor: gcStyle.border, color: gcStyle.color, background: 'white' }}>
-                                  {getRowLabel(other)}
-                                </button>
-                              ))}
-                              <button onClick={() => setFormMergeState(null)}
-                                className="px-2 py-1 rounded font-barlow-condensed text-[10px] cursor-pointer border transition-all"
-                                style={{ borderColor: 'rgba(0,0,0,0.15)', color: '#9CA3AF', background: 'white' }}>✕</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
-                            title={`Sumar el peso de ${getRowLabel(row)} a un pallet o a otro ${row.pkg === 'chocolate' ? 'chocolate' : 'bulto'} y borrar ${getRowLabel(row)} — no se puede deshacer`}
-                            className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
-                            style={{ border: `1.5px dashed ${gcStyle.border}`, color: gcStyle.color, background: gcStyle.bg }}>
-                            {palletTargets.length > 0 ? 'SUMAR / UNIFICAR' : 'UNIFICAR'}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })()}
+                  {/* «Juntar con…» en la tarjeta abierta. Espejo de RM/Costa; ver `JuntarCon`. */}
+                  {!row.mergeReopened && (
+                    <JuntarCon origen={rowLabel}
+                      abierto={formMergeState?.sourceId === row.id && formMergeState.targetId === null}
+                      onAbrir={() => setFormMergeState({ sourceId: row.id, targetId: null })}
+                      onCerrar={() => setFormMergeState(null)}
+                      destinos={[
+                        ...((row.pkg === 'box' || row.pkg === 'chocolate')
+                          ? formRows.filter(r => r.id !== row.id && r.pkg === 'pallet').map(pl => {
+                              const etiqueta = labelDeFila(pl, formRows);
+                              return { id: `sum-${pl.id}`, etiqueta, efecto: 'sumar' as const, onElegir: () => sumarBultoAPallet(row.id, etiqueta, pl.id) };
+                            })
+                          : []),
+                        ...((row.pkg === 'pallet' || row.pkg === 'box' || row.pkg === 'contenedor')
+                          ? formRows.filter(r => !r.saved && r.id !== row.id && r.pkg === row.pkg).map(other => {
+                              const etiqueta = labelDeFila(other, formRows);
+                              return { id: other.id, etiqueta, efecto: 'unir' as const, onElegir: () => iniciarUnionInline(row, other, rowLabel, etiqueta) };
+                            })
+                          : []),
+                      ]} />
+                  )}
                 </div>
               );
     };
@@ -2607,15 +2504,15 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
               </span>
               <span className="text-[10px] text-text-3 font-mono truncate block">{pdfInfo!.guias.map(g => g.num).join(', ')}</span>
             </div>
-            <button onClick={clearPdf} className="text-text-3 hover:text-red cursor-pointer border-none bg-transparent px-1 flex-shrink-0 text-[13px]">✕</button>
+            <button onClick={clearPdf} aria-label="Quitar la guía PDF" className="w-[44px] h-[44px] flex items-center justify-center text-text-sub hover:text-red cursor-pointer border-none bg-transparent flex-shrink-0 text-[13px]">✕</button>
           </>
         ) : (
           <>
-            <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-3 flex-1">Guía PDF</span>
+            <span className="font-barlow-condensed text-[11px] font-bold uppercase tracking-widest text-text-sub flex-1">Guía PDF</span>
             {pdfLoading
               ? <span className="text-[11px] text-info flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 border border-bg-3 border-t-info rounded-full animate-spin flex-shrink-0" />Leyendo…</span>
               : <button onClick={() => fileRef.current?.click()}
-                  className="flex items-center gap-1 px-2.5 py-1 border border-dashed border-border-2 rounded-btn font-barlow-condensed text-[11px] font-bold text-text-3 hover:text-[#1E40AF] hover:border-[#1E40AF] cursor-pointer transition-all">
+                  className="min-h-[44px] flex items-center gap-1 px-3 py-1 border border-dashed border-border-2 rounded-btn font-barlow-condensed text-apoyo font-bold text-text-sub hover:text-[#1E40AF] hover:border-[#1E40AF] cursor-pointer transition-all">
                   Subir PDF
                 </button>
             }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { avanceFila, chipFila, estadoLista, filtroVigente, nuevasTrasTerminar, pasaFiltro, resumenDia } from '../listaTiendas';
+import { avanceFila, chipFila, estadoLista, filtroVigente, nuevasTrasTerminar, pasaFiltro, resumenDia, textoUnidadesDelDia } from '../listaTiendas';
 
 const cero = { pallet: 0, bulto: 0, contenedor: 0, chocolate: 0 };
 
@@ -74,5 +74,16 @@ describe('terminada, y Picking imprime algo después', () => {
   it('el aviso gana sobre todo lo demás', () => {
     expect(chipFila({ estado: 'curso', sinPesar: 3, conGuia: true, nuevas: 1 })).toEqual({ texto: '1 nueva de Picking', tono: 'aviso' });
     expect(chipFila({ estado: 'curso', sinPesar: 0, conGuia: true, nuevas: 2 }).texto).toBe('2 nuevas de Picking');
+  });
+});
+
+
+describe('textoUnidadesDelDia', () => {
+  it('en palabras, con singular y plural, sin los ceros', () => {
+    expect(textoUnidadesDelDia([{ letra: 'P', n: 6 }, { letra: 'B', n: 1 }, { letra: 'CH', n: 0 }, { letra: 'C', n: 2 }]))
+      .toBe('6 pallets, 1 bulto, 2 contenedores');
+  });
+  it('una letra desconocida se deja como viene', () => {
+    expect(textoUnidadesDelDia([{ letra: 'X', n: 3 }])).toBe('3 X');
   });
 });

@@ -119,7 +119,7 @@ export function CabeceraResumen({ totales, tiendas, avance, herramientas, volver
 export function BotonHerramienta({ children, onClick, title, activo }: { children: ReactNode; onClick: () => void; title?: string; activo?: boolean }) {
   return (
     <button type="button" onClick={onClick} title={title} aria-pressed={activo}
-      className={`min-h-[36px] px-2.5 rounded-btn text-apoyo font-bold cursor-pointer whitespace-nowrap active:opacity-80 ${activo ? 'bg-navy text-white' : 'bg-bg-2 text-text-2'}`}>
+      className={`min-h-[44px] px-3 rounded-btn text-apoyo font-bold cursor-pointer whitespace-nowrap active:opacity-80 ${activo ? 'bg-navy text-white' : 'bg-bg-2 text-text-2'}`}>
       {children}
     </button>
   );
@@ -183,7 +183,7 @@ export function AvisoResumenTerminada() {
   );
 }
 
-const BOTON_ACCION = 'w-10 h-10 flex items-center justify-center rounded-btn bg-bg-2 text-text-2 active:bg-bg-3 cursor-pointer flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed';
+const BOTON_ACCION = 'w-[44px] h-[44px] flex items-center justify-center rounded-btn bg-bg-2 text-text-2 active:bg-bg-3 cursor-pointer flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed';
 
 /**
  * Una unidad del resumen. Los `HTMLAttributes` pasan derecho al contenedor: el arrastrar para

@@ -28,7 +28,7 @@ import { BarraAvance, ConteoPorTipo } from './TiendaAbierta';
 import { PresenciaBadge } from './PresenciaBadge';
 import { StoreProgressBar } from './StoreProgressBar';
 import type { ViendoInfo } from './usePresenciaTienda';
-import { chipFila, type EstadoLista, type FiltroLista, type ResumenDia, type TonoChip } from './listaTiendas';
+import { chipFila, textoUnidadesDelDia, type EstadoLista, type FiltroLista, type ResumenDia, type TonoChip } from './listaTiendas';
 import { agregadosBaldosa, ariaBaldosa, detalleBaldosa, pctAnillo, pctOdoo } from './baldosaTienda';
 import { textoJuntadoTienda, type JuntadoTienda } from './juntados';
 
@@ -94,7 +94,7 @@ export function FilaTienda(props: FilaTiendaProps) {
       draggable={!!onDragStart}
       onDragStart={onDragStart}
       className={`relative flex items-stretch border-b border-border transition-colors ${claseFila(activa, estado, conGuia)}`}>
-      <button type="button" onClick={onSelect} aria-current={activa ? 'true' : undefined}
+      <button type="button" onClick={onSelect} aria-current={activa ? 'true' : undefined} data-tienda-lista=""
         className="flex-1 min-w-0 grid grid-cols-[52px_1fr_auto] gap-x-2.5 gap-y-1 items-center px-3.5 py-2.5 text-left cursor-pointer select-none">
         <span className="row-span-2 relative font-barlow-condensed text-titulo font-extrabold text-navy text-center tabular-nums">
           <PresenciaBadge viendo={viendo} />
@@ -197,7 +197,7 @@ export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avan
   const odooListo = odooPct === 100;
   return (
     <div draggable={!!onDragStart} onDragStart={onDragStart} className="relative min-w-0">
-      <button type="button" onClick={onSelect} aria-current={activa ? 'true' : undefined}
+      <button type="button" onClick={onSelect} aria-current={activa ? 'true' : undefined} data-tienda-lista=""
         aria-label={[ariaBaldosa({ nombre, cod, estado, avance, chip: chip.texto, conGuia, agregados, odoo }), textoJuntado].filter(Boolean).join(', ')}
         title={tipo ? `${nombre} · ${tipo.label}` : nombre}
         className={`w-full h-full min-h-[116px] rounded-card px-1.5 pt-2 pb-1.5 flex flex-col items-center gap-0.5 text-center cursor-pointer select-none transition-colors active:opacity-80 ${CAJA_BALDOSA[estado]} ${activa ? 'ring-2 ring-navy ring-offset-2 ring-offset-bg' : ''}`}>
@@ -284,7 +284,7 @@ export function BarraDelDia({ resumen, filtro, onFiltro }: {
   ];
   return (
     <div className="bg-card border-b border-border px-3 flex items-center justify-between gap-2 flex-shrink-0">
-      <span className="flex items-baseline gap-1.5 tabular-nums whitespace-nowrap" aria-label={`${resumen.lista} de ${resumen.total} tiendas listas`}>
+      <span role="img" className="flex items-baseline gap-1.5 tabular-nums whitespace-nowrap" aria-label={`${resumen.lista} de ${resumen.total} tiendas listas`}>
         <span className="font-barlow-condensed text-cifra font-extrabold text-text leading-none">{resumen.lista}/{resumen.total}</span>
         <span className="text-cuerpo font-semibold text-text">{resumen.lista === 1 && resumen.total === 1 ? 'lista' : 'listas'}</span>
       </span>
@@ -318,7 +318,9 @@ export function UnidadesDelDia({ unidades }: { unidades: { letra: string; n: num
   const visibles = unidades.filter(u => u.n > 0);
   if (visibles.length === 0) return null;
   return (
-    <span className="flex items-center gap-1" aria-label={visibles.map(u => `${u.n} ${u.letra}`).join(', ')}>
+    // `role="img"`: un `aria-label` en un span sin rol lo ignoran los lectores. Y en palabras: «6 P»
+    // se leía «seis pe».
+    <span role="img" className="flex items-center gap-1" aria-label={textoUnidadesDelDia(visibles)}>
       {visibles.map(u => {
         const clase = CLASE_LETRA[u.letra];
         const estilo = clase ? ESTILO_UNIDAD[clase] : null;
@@ -363,7 +365,7 @@ export function FechasBodega({ armado, despacho, min, onDespacho, registrado, ch
       <label className="flex flex-col leading-tight">
         <span className="text-rotulo font-bold uppercase text-text-sub">Despacho</span>
         <input type="date" value={despacho} min={min} onChange={e => onDespacho(e.target.value)}
-          className="border-[1.5px] border-border rounded-btn px-1.5 py-0.5 text-apoyo font-bold text-navy bg-card" />
+          className="min-h-[40px] border-[1.5px] border-border rounded-btn px-1.5 py-0.5 text-apoyo font-bold text-navy bg-card" />
       </label>
       {children && <span className="ml-auto">{children}</span>}
       {registrado && (
@@ -383,7 +385,7 @@ export function RotuloLista({ children, derecha, onClick }: { children: ReactNod
       {derecha}
     </>
   );
-  const clase = 'w-full px-3.5 pt-3 pb-1.5 flex items-center gap-2 bg-bg sticky top-0 z-20';
+  const clase = 'w-full min-h-[44px] px-3.5 pt-3 pb-1.5 flex items-center gap-2 bg-bg sticky top-0 z-20';
   return onClick
     ? <button type="button" onClick={onClick} className={`${clase} cursor-pointer`}>{cuerpo}</button>
     : <div className={clase}>{cuerpo}</div>;

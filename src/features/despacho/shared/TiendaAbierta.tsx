@@ -109,7 +109,7 @@ export function MenuAgregar({ opciones, bloqueado }: { opciones: OpcionAgregar[]
       <button type="button" onClick={() => setAbierto(a => !a)} disabled={bloqueado}
         aria-expanded={abierto} aria-label="Agregar a esta tienda"
         title={bloqueado ? 'Tienda terminada: reábrela para agregar' : 'Agregar pallet, bulto, contenedor, chocolate…'}
-        className="w-10 h-10 flex items-center justify-center rounded-btn bg-navy text-white active:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">
+        className="w-[44px] h-[44px] flex items-center justify-center rounded-btn bg-navy text-white active:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">
         <Plus size={22} aria-hidden="true" />
       </button>
       {abierto && (
@@ -153,6 +153,17 @@ export function CabeceraTienda({ nombre, subtitulo, avance, indicador, estado, a
 }) {
   const [menu, setMenu] = useState(false);
   const caja = useRef<HTMLDivElement>(null);
+  const titulo = useRef<HTMLHeadingElement>(null);
+  // Al abrir una tienda desde la lista, el foco pasa a su nombre: con teclado o lector de pantalla
+  // el foco se quedaba en la lista y había que adivinar dónde había aparecido la tienda (análisis
+  // del 22/10/2026). Solo si venía de la lista o de ningún lado: si el lector ya puso el cursor en
+  // Peso (`enfocarPeso`), no se lo quita.
+  useEffect(() => {
+    const a = document.activeElement;
+    const desdeLista = !a || a === document.body || !!a.closest('[data-tienda-lista]');
+    const h = titulo.current;
+    if (desdeLista && h && h.getClientRects().length > 0) h.focus({ preventScroll: true });
+  }, [nombre]);
   useEffect(() => {
     if (!menu) return;
     const fuera = (e: PointerEvent) => { if (!caja.current?.contains(e.target as Node)) setMenu(false); };
@@ -167,13 +178,13 @@ export function CabeceraTienda({ nombre, subtitulo, avance, indicador, estado, a
       <div className="flex items-start gap-2">
         {onVolver && (
           <button type="button" onClick={onVolver} aria-label="Volver a la lista"
-            className="touch-auto w-10 h-10 -ml-1 flex items-center justify-center rounded-btn text-text-2 bg-bg-2 active:bg-bg-3 flex-shrink-0">
+            className="touch-auto w-[44px] h-[44px] -ml-1 flex items-center justify-center rounded-btn text-text-2 bg-bg-2 active:bg-bg-3 flex-shrink-0">
             <ChevronLeft size={22} aria-hidden="true" />
           </button>
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 min-w-0">
-            <h2 className="font-barlow-condensed text-titulo font-extrabold text-text truncate m-0">{nombre}</h2>
+            <h2 ref={titulo} tabIndex={-1} className="font-barlow-condensed text-titulo font-extrabold text-text truncate m-0 focus:outline-none">{nombre}</h2>
             {indicador}
           </div>
           <div className="font-mono text-apoyo text-text-sub truncate">{subtitulo}</div>
@@ -183,7 +194,7 @@ export function CabeceraTienda({ nombre, subtitulo, avance, indicador, estado, a
         {acciones && (
           <div ref={caja} className="relative touch-auto flex-shrink-0">
             <button type="button" onClick={() => setMenu(m => !m)} aria-expanded={menu} aria-label="Acciones de la tienda"
-              className="w-10 h-10 flex items-center justify-center rounded-btn text-text-2 bg-bg-2 active:bg-bg-3">
+              className="w-[44px] h-[44px] flex items-center justify-center rounded-btn text-text-2 bg-bg-2 active:bg-bg-3">
               <MoreHorizontal size={22} aria-hidden="true" />
             </button>
             {menu && (
@@ -482,7 +493,7 @@ export function FilaPesada({ clase, etiqueta, slotId, resumen, detalle, aviso, r
         {children && (
           <button type="button" onClick={() => setAbierta(a => !a)} aria-expanded={abierta}
             aria-label={`Acciones de ${etiqueta}`}
-            className={`w-11 h-11 flex items-center justify-center rounded-btn flex-shrink-0 ${abierta ? 'bg-navy text-white' : 'bg-bg-2 text-text-2 active:bg-bg-3'}`}>
+            className={`w-[44px] h-[44px] flex items-center justify-center rounded-btn flex-shrink-0 ${abierta ? 'bg-navy text-white' : 'bg-bg-2 text-text-2 active:bg-bg-3'}`}>
             <Pencil size={18} aria-hidden="true" />
           </button>
         )}

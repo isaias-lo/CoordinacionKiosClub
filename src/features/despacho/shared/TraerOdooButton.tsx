@@ -60,7 +60,7 @@ export function TraerOdooButton({ rol, fechaISO, showToast, className }: Props) 
           setCargando(false);
         }
       }}
-      className={`h-[34px] px-3 rounded-full border border-white/25 bg-white/10 text-white font-barlow-condensed text-[13px] font-bold tracking-wide whitespace-nowrap transition-all flex items-center gap-1.5 ${
+      className={`h-[44px] px-3 rounded-full border border-white/25 bg-white/10 text-white font-barlow-condensed text-[13px] font-bold tracking-wide whitespace-nowrap transition-all flex items-center gap-1.5 ${
         cargando ? 'opacity-60 cursor-wait' : 'cursor-pointer active:scale-95 hover:bg-white/20'
       } ${className ?? ''}`}
     >
