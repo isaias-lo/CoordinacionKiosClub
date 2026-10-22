@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { formatCod } from '@/features/despacho/rutas/utils/helpers';
 import { fetchCalendarioCompleto, writeCalendario } from '@/features/despacho/utils/useCalendario';
-import { saveCalendario } from '@/lib/calendarioSync';
+import { saveCalendario, fetchCalendarioSupa, subscribeToCalendarioSupa } from '@/lib/calendarioSync';
 import {
   fetchCalendarioArmado, saveCalendarioArmado, subscribeToCalendarioArmado,
   computeDiff, crearNotificacion, fetchCalendarioDespacho,
@@ -14,6 +14,10 @@ import {
 } from '@/lib/calendarioCongeladosSync';
 import { TIENDAS_INICIAL, GPS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { tipoTienda } from '@/features/despacho/rutas/utils/tipoTienda';
+import {
+  grupoCalendario, tipoVisual, buscarTiendas, fueraDeGrupo, moverASuGrupo,
+  fusionarCalendario, mismoCalendario, type Sugerencia,
+} from './grupoCalendario';
 import CalendarioSemanaA from '@/features/despacho/rutas/components/CalendarioSemanaA';
 import { esRegionNorte } from '@/lib/sectores';
 import CalendarioNotificaciones from '@/components/CalendarioNotificaciones';
@@ -28,7 +32,9 @@ const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'];
 const DNOM: Record<string, string> = { LU: 'Lunes', MA: 'Martes', MI: 'Miércoles', JU: 'Jueves', VI: 'Viernes', SA: 'Sábado', DO: 'Domingo' };
 // Columna de "hoy" (única distinción por día — el resto de columnas quedan neutras). new
 // Date().getDay(): 0=domingo..6=sábado → se remapea a la posición de DIAS (lunes primero).
-const TODAY_DIA = DIAS[(new Date().getDay() + 6) % 7];
+// Se calcula en cada render: como constante de módulo quedaba fija en el día en que se abrió la
+// pestaña, y una pantalla que queda abierta de un día para otro marcaba el día anterior.
+const diaDeHoy = () => DIAS[(new Date().getDay() + 6) % 7];
 
 const GRUPOS: [string, string, string][] = [
   ['rm',      'RM',        'Bodega Santiago — RM'],
@@ -85,7 +91,11 @@ export default function CalendarioColumnas({
   const [lastSaved, setLastSaved]   = useState<string | null>(null);
   const [grp, setGrp]               = useState(forceGeneral ? 'general' : 'rm');
   const [search, setSearch]         = useState('');
-  const [suggest, setSuggest]       = useState<string[]>([]);
+  const [suggest, setSuggest]       = useState<Sugerencia[]>([]);
+  // Lo último que llegó de la base mientras había cambios sin guardar. No se aplica encima de lo
+  // que la persona está editando (antes se aplicaba y le borraba el trabajo sin avisar): se avisa,
+  // y al guardar se juntan las dos cosas con `fusionarCalendario`.
+  const [remotoPendiente, setRemotoPendiente] = useState<CalRecord | null>(null);
   const [showSug, setShowSug]       = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerCod, setPickerCod]   = useState('');
@@ -100,6 +110,7 @@ export default function CalendarioColumnas({
   const ddRef = useRef<{ dia: string | null; cod: string | null; idx: number }>({ dia: null, cod: null, idx: -1 });
   const pendingResolveRef = useRef<string[]>([]);
   const [tiendasDB, setTiendasDB] = useState<Record<string, TiendaCal>>({});
+  const [apagadas, setApagadas]   = useState<Set<string>>(new Set());
   const firstDayBtnRef = useRef<HTMLButtonElement>(null);
 
   // Modal de días: cierre con Escape + foco inicial en el primer día (accesibilidad).
@@ -118,23 +129,32 @@ export default function CalendarioColumnas({
       .then(r => r.json())
       .then((json: { tiendas?: Array<{ codigo: string; nombre: string; sector_comuna?: string; direccion?: string; tipo?: string; lat?: number | null; activo?: boolean }> }) => {
         const db: Record<string, TiendaCal> = {};
+        const apagadas = new Set<string>();
         for (const t of (json.tiendas ?? [])) {
-          if (t.activo === false) continue;
+          if (t.activo === false) { apagadas.add(t.codigo); continue; }
           db[t.codigo] = { n: t.nombre, z: t.sector_comuna ?? '', d: t.direccion ?? '', tipo: t.tipo ?? '', lat: t.lat ?? null };
         }
         setTiendasDB(db);
+        setApagadas(apagadas);
       })
       .catch(() => {});
   }, []);
 
-  // Merged lookup: TIENDAS_INICIAL as base, overridden by active DB stores
+  // Merged lookup: TIENDAS_INICIAL as base, overridden by active DB stores.
+  // Las apagadas en la base se sacan también de la base estática: antes solo se saltaban al leer la
+  // BD, y la ficha estática de la misma tienda seguía ofreciéndola en el buscador.
   const tiendasAll = useMemo<Record<string, TiendaCal>>(() => {
     const base: Record<string, TiendaCal> = {};
     for (const [k, v] of Object.entries(TIENDAS_INICIAL)) {
+      if (apagadas.has(k)) continue;
       base[k] = { n: v.n, z: v.z, d: v.d ?? '', tipo: v.tipo ?? '', lat: GPS_INICIAL[k]?.[0] ?? null };
     }
     return { ...base, ...tiendasDB };
-  }, [tiendasDB]);
+  }, [tiendasDB, apagadas]);
+
+  function ficha(cod: string): TiendaCal | undefined {
+    return tiendasAll[cod] ?? tiendasAll[cod.replace('PEN', 'PEÑ')] ?? tiendasAll[cod.replace('VIN', 'VIÑ')];
+  }
 
   // El tipo sale del CATÁLOGO (`tipo`: MALL / STRIPCENTER / …), que ya viene de /api/tiendas.
   //
@@ -144,15 +164,11 @@ export default function CalendarioColumnas({
   // strip centers cuyo domicilio termina en "Local 5" salían pintados de mall. La heurística de la
   // dirección sobrevive dentro de `tipoTienda`, pero solo como último recurso si el catálogo no
   // trae `tipo`.
+  //
+  // Regiones y Costa salen del SECTOR con `grupoDeSector` (ver `grupoCalendario.ts`): comparar
+  // `z === 'Región'` exacto mandaba a RM toda ficha con «Región Sur» o «Región Norte».
   function getTipo(cod: string): StoreType {
-    const inf = tiendasAll[cod] ?? tiendasAll[cod.replace('PEN', 'PEÑ')] ?? tiendasAll[cod.replace('VIN', 'VIÑ')];
-    if (!inf) return 'street';
-    if (inf.z === 'Región') return 'region';
-    if (inf.z === 'Costa')  return 'costa';
-    const k = tipoTienda(inf.tipo, inf.d, inf.z).key;
-    if (k === 'costa')  return 'costa';   // `z` no exacto ("Costa Valparaíso") igual cae acá
-    if (k === 'region') return 'region';
-    return k === 'mall' ? 'mall' : k === 'strip' ? 'strip' : 'street';
+    return tipoVisual(ficha(cod));
   }
 
   // ¿Consolida al norte? Sale del sector del catálogo, con la latitud de desempate para las fichas
@@ -174,30 +190,41 @@ export default function CalendarioColumnas({
   // Clasifica una tienda en el grupo del calendario usando la metadata real (Supabase + TIENDAS_INICIAL),
   // en vez de los sets hardcodeados COSTA_CODES/FAL_CODES que no se actualizan al agregar nuevas tiendas.
   function getGroup(cod: string): 'rm' | 'costa' | 'fal' {
-    const tipo = getTipo(cod);
-    if (tipo === 'region') return 'fal';
-    if (tipo === 'costa')  return 'costa';
-    return 'rm';
+    return grupoCalendario(ficha(cod));
   }
 
+  // El editor lee SIEMPRE de la base. `fetchCalendarioCompleto` sirve primero un caché de
+  // localStorage de hasta una hora, que está bien para quien solo mira el calendario, pero no para
+  // quien lo edita: editar una copia de hace 50 minutos y guardarla borraba lo que otro hizo entre
+  // medio. El caché queda solo como respaldo si la base no contesta.
+  const leerRemoto = (): Promise<CalRecord | null> =>
+    source === 'armado'     ? fetchCalendarioArmado()
+    : source === 'congelados' ? fetchCalendarioCongelados()
+    : fetchCalendarioSupa();
+
+  // Refs para que el aviso de Realtime vea el estado de ahora y no el del primer render.
+  const calRef   = useRef<CalRecord | null>(null);
+  const localRef = useRef<CalRecord | null>(null);
+  calRef.current = cal;
+  localRef.current = local;
+
   useEffect(() => {
-    const loader = source === 'armado'
-      ? fetchCalendarioArmado().then(c => c ?? fetchCalendarioCompleto())
-      : source === 'congelados'
-      ? fetchCalendarioCongelados()
-      : fetchCalendarioCompleto();
-    loader
+    leerRemoto()
+      .then(c => c ?? fetchCalendarioCompleto())
       .then(c => { setCal(c); setLocal(JSON.parse(JSON.stringify(c))); setLoading(false); })
       .catch(() => setLoading(false));
 
-    if (source === 'armado') {
-      const unsub = subscribeToCalendarioArmado(c => setCal(c));
-      return unsub;
-    }
-    if (source === 'congelados') {
-      const unsub = subscribeToCalendarioCongelados(c => setCal(c));
-      return unsub;
-    }
+    // Llegó un cambio de otra persona. Si acá no hay nada sin guardar, se muestra tal cual; si lo
+    // hay, se guarda aparte y se avisa (ver `remotoPendiente`).
+    const alLlegar = (c: CalRecord) => {
+      const sinCambios = mismoCalendario(localRef.current, calRef.current);
+      if (sinCambios) { setCal(c); setRemotoPendiente(null); }
+      else if (!mismoCalendario(c, calRef.current)) setRemotoPendiente(c);
+    };
+    if (source === 'armado') return subscribeToCalendarioArmado(alLlegar);
+    if (source === 'congelados') return subscribeToCalendarioCongelados(alLlegar);
+    // El central no se escuchaba: dos pestañas de Config. Despacho abiertas no se enteraban una de otra.
+    return subscribeToCalendarioSupa(alLlegar);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
 
@@ -205,7 +232,18 @@ export default function CalendarioColumnas({
     if (cal) setLocal(JSON.parse(JSON.stringify(cal)));
   }, [cal]);
 
-  const hasChanges = local && cal && JSON.stringify(local) !== JSON.stringify(cal);
+  const hasChanges = !!local && !!cal && !mismoCalendario(local, cal);
+
+  // Tiendas guardadas en la pestaña equivocada según su sector (la 61RIO que se agregó en RM).
+  const fuera = useMemo(
+    () => fueraDeGrupo(local, cod => (ficha(cod) ? getGroup(cod) : null)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [local, tiendasAll],
+  );
+
+  function moverFuera() {
+    setLocal(prev => (prev ? moverASuGrupo(prev, fuera) : prev));
+  }
 
   const visibleDias = DIAS.slice(0, visibleCount);
 
@@ -217,20 +255,17 @@ export default function CalendarioColumnas({
 
   function handleSearch(q: string) {
     setSearch(q);
-    const qup = q.trim().toUpperCase();
-    if (!qup) { setSuggest([]); setShowSug(false); return; }
-    const res = Object.keys(tiendasAll).filter(c => {
-      if (getGroup(c) !== grp) return false;
-      const nombre = (tiendasAll[c].n || '').toUpperCase();
-      return c.indexOf(qup) >= 0 || nombre.indexOf(qup) >= 0;
-    }).slice(0, 8);
+    const res = buscarTiendas(tiendasAll, q, grp as 'rm' | 'costa' | 'fal');
     setSuggest(res);
     setShowSug(res.length > 0);
   }
 
-  function handleAgregar(cod: string) {
+  // Una tienda de otro grupo se agrega en SU pestaña: se cambia a ella antes de abrir los días.
+  // Así no se puede volver a guardar una tienda de Regiones en RM desde el buscador.
+  function handleAgregar(s: Sugerencia) {
     setSearch(''); setSuggest([]); setShowSug(false);
-    setPickerCod(cod); setPickerOpen(true);
+    if (s.grupo !== grp) setGrp(s.grupo);
+    setPickerCod(s.cod); setPickerOpen(true);
   }
 
   function handlePickerConfirm(cod: string, dia: string) {
@@ -337,36 +372,41 @@ export default function CalendarioColumnas({
   }
 
   async function handleSave() {
-    if (!local) return;
+    if (!local || !cal) return;
     setSaveStatus('saving');
     try {
+      // Lo que hay en la base AHORA, para no pisar lo que otro guardó desde que se abrió la pantalla.
+      // Si la base no contesta, se guarda lo local como antes.
+      const remoto = await leerRemoto().catch(() => null);
+      const aGuardar = remoto && !mismoCalendario(remoto, cal) ? fusionarCalendario(cal, local, remoto) : local;
       if (source === 'armado') {
-        await saveCalendarioArmado(local);
+        await saveCalendarioArmado(aGuardar);
         const calDespacho = await fetchCalendarioDespacho();
         if (calDespacho) {
-          const cambios = computeDiff(calDespacho, local);
-          await crearNotificacion(cambios, local);
+          const cambios = computeDiff(calDespacho, aGuardar);
+          await crearNotificacion(cambios, aGuardar);
         }
       } else if (source === 'congelados') {
-        await saveCalendarioCongelados(local);
+        await saveCalendarioCongelados(aGuardar);
         fetch('/api/calendario-congelados-write', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ calendario: local }),
+          body: JSON.stringify({ calendario: aGuardar }),
         }).catch(e => console.error('[CalendarioColumnas:sheets-congelados]', e));
       } else {
-        await saveCalendario(local);
-        writeCalendario(local);
+        await saveCalendario(aGuardar);
+        writeCalendario(aGuardar);
         fetch('/api/calendario-write', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ calendario: local }),
+          body: JSON.stringify({ calendario: aGuardar }),
         }).catch(e => console.error('[CalendarioColumnas:sheets]', e));
         // Resolve notifications that were locally applied
         const toResolve = pendingResolveRef.current.splice(0);
         for (const id of toResolve) void marcarNotificacionResuelta(id);
       }
-      setCal(local);
+      setCal(aGuardar);
+      setRemotoPendiente(null);
       setSaveStatus('success');
       setLastSaved(new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }));
       setTimeout(() => setSaveStatus('idle'), 3500);
@@ -539,6 +579,7 @@ export default function CalendarioColumnas({
   }
 
   const grpInfo = GRUPOS.find(g => g[0] === grp);
+  const TODAY_DIA = diaDeHoy();
 
   return (
     <>
@@ -660,6 +701,43 @@ export default function CalendarioColumnas({
         </div>
       )}
 
+      {/* ── Otra persona guardó mientras se editaba ── */}
+      {remotoPendiente && hasChanges && (
+        <div role="status" style={{
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 6,
+          padding: '8px 12px', marginBottom: 12, fontSize: 13, color: '#1E3A8A',
+        }}>
+          <span style={{ flex: 1, minWidth: 200 }}>
+            Otra persona guardó cambios en este calendario. Al guardar se juntan con los tuyos, sin borrar los de nadie.
+          </span>
+          <button type="button" onClick={() => { setCal(remotoPendiente); setRemotoPendiente(null); }}
+            style={{ height: 30, padding: '0 12px', borderRadius: 6, border: '1px solid #BFDBFE', background: '#fff', color: '#1E40AF', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            Descartar lo mío y ver lo nuevo
+          </button>
+        </div>
+      )}
+
+      {/* ── Tiendas en la pestaña equivocada ── */}
+      {fuera.length > 0 && (
+        <div role="alert" style={{
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 6,
+          padding: '8px 12px', marginBottom: 12, fontSize: 13, color: '#92400E',
+        }}>
+          <AlertTriangle size={15} aria-hidden="true" />
+          <span style={{ flex: 1, minWidth: 200 }}>
+            {[...new Set(fuera.map(f => `${displayCode(f.cod)} está en ${GRUPOS.find(g => g[0] === f.esta)?.[1]} y su sector dice ${GRUPOS.find(g => g[0] === f.va)?.[1]}`))].join(' · ')}
+          </span>
+          {!readOnly && (
+            <button type="button" onClick={moverFuera}
+              style={{ height: 30, padding: '0 12px', borderRadius: 6, border: 'none', background: '#B45309', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              Mover a su pestaña
+            </button>
+          )}
+        </div>
+      )}
+
       {/* ── Legend (oculta en General) ── */}
       {grp !== 'general' && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
@@ -702,12 +780,14 @@ export default function CalendarioColumnas({
             borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.10)',
             zIndex: 50, maxHeight: 260, overflowY: 'auto',
           }}>
-            {suggest.map(c => {
+            {suggest.map(s => {
+              const c = s.cod;
               const tipo = getTipo(c);
               const ts = TYPE_STYLE[tipo];
-              const yaEsta = DIAS.some(d => local[d]?.[grp as 'rm' | 'costa' | 'fal']?.includes(c));
+              const otroGrupo = s.grupo !== grp;
+              const yaEsta = DIAS.some(d => local[d]?.[s.grupo]?.includes(c));
               return (
-                <div key={c} role="option" aria-selected={false} onClick={() => handleAgregar(c)}
+                <div key={c} role="option" aria-selected={false} onClick={() => handleAgregar(s)}
                   style={{
                     padding: '10px 14px', cursor: 'pointer', display: 'flex',
                     alignItems: 'center', justifyContent: 'space-between',
@@ -728,6 +808,11 @@ export default function CalendarioColumnas({
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     {yaEsta && <span style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>ya existe</span>}
+                    {otroGrupo && (
+                      <span style={{ fontSize: 11, color: '#B45309', fontWeight: 600 }}>
+                        es de {GRUPOS.find(g => g[0] === s.grupo)?.[1]}
+                      </span>
+                    )}
                     <div style={{
                       width: 24, height: 24, borderRadius: 4,
                       background: '#1E40AF',

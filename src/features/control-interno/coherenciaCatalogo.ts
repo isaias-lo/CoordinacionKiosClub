@@ -12,7 +12,7 @@
 //
 // Puro y testeable: recibe el catálogo y el calendario ya cargados; acá no hay red.
 
-import { grupoDeSector } from '@/lib/sectores';
+import { grupoDeSector, zonaDeSector, LAT_CD_DEFAULT } from '@/lib/sectores';
 
 export interface TiendaCatalogo {
   codigo: string;
@@ -22,6 +22,8 @@ export interface TiendaCatalogo {
   activo?: boolean | null;
   /** `oficina` (y afines) no despachan: no se les exige estar en el calendario. */
   tipo?: string | null;
+  /** Latitud del GPS: contrasta «Región Sur» / «Región Norte» con dónde está de verdad. */
+  lat?: number | null;
 }
 
 /** El calendario tal como se guarda: día → grupo ('rm' | 'fal' | 'costa') → códigos. */
@@ -32,6 +34,7 @@ export type TipoIncoherencia =
   | 'inactiva-en-calendario'
   | 'sin-sector'
   | 'grupo-no-calza'
+  | 'sector-contra-gps'
   | 'dos-grupos'
   | 'fuera-del-calendario'
   | 'sin-region'
@@ -49,7 +52,7 @@ export interface Incoherencia {
 // un espacio de más en un nombre, no.
 const ORDEN: TipoIncoherencia[] = [
   'huerfana-en-calendario', 'inactiva-en-calendario', 'sin-sector', 'grupo-no-calza',
-  'dos-grupos', 'fuera-del-calendario', 'sin-region', 'espacios-sobrantes',
+  'sector-contra-gps', 'dos-grupos', 'fuera-del-calendario', 'sin-region', 'espacios-sobrantes',
 ];
 
 const norm = (s: unknown): string => String(s ?? '').trim().toUpperCase();
@@ -111,6 +114,7 @@ export function coherenciaCatalogo(
   const dosGrupos: string[] = [];
   const fuera: string[] = [];
   const espacios: string[] = [];
+  const contraGps: string[] = [];
 
   for (const t of tiendas) {
     const cod = norm(t.codigo);
@@ -123,6 +127,18 @@ export function coherenciaCatalogo(
 
     if (despacha && vacio(t.sector_comuna)) sinSector.push(cod);
     if (despacha && vacio(t.region))        sinRegion.push(cod);
+
+    // «Región Sur» con el GPS al norte del CD (o al revés): uno de los dos está mal. Medido el
+    // 20/10/2026: 61RIO dice «Región Sur» (correcto, está en Concepción) y su ficha traía GPS de
+    // Copiapó (−27,36) y región Atacama. Norte y sur los transporta gente distinta, y el GPS es lo
+    // que usa el Enrutador para ordenar las paradas.
+    const zona = zonaDeSector(t.sector_comuna);
+    if (despacha && (zona === 'sur' || zona === 'norte') && t.lat != null && Number.isFinite(t.lat)) {
+      const porGps = t.lat < LAT_CD_DEFAULT ? 'sur' : 'norte';
+      if (porGps !== zona) {
+        contraGps.push(`${cod} · su sector dice "${String(t.sector_comuna).trim()}", el GPS (${t.lat.toFixed(2)}) queda al ${porGps} del CD`);
+      }
+    }
 
     for (const [campo, valor] of [['código', t.codigo], ['nombre', t.nombre], ['región', t.region], ['sector', t.sector_comuna]] as const)
       if (sobra(valor)) espacios.push(`${cod} · ${campo}: "${valor}"`);
@@ -157,6 +173,9 @@ export function coherenciaCatalogo(
   agregar('grupo-no-calza', noCalza,
     'Una tienda está en un grupo que no le corresponde', 'tiendas están en un grupo que no les corresponde',
     'Se arma con el grupo equivocado y puede salir en un camión que no cubre su zona.');
+  agregar('sector-contra-gps', contraGps,
+    'El sector de una tienda contradice su GPS', 'tiendas tienen un sector que contradice su GPS',
+    'Norte y sur los transporta gente distinta: la tienda puede salir con el transportista equivocado.');
   agregar('dos-grupos', dosGrupos,
     'Una tienda aparece en dos grupos distintos', 'tiendas aparecen en dos grupos distintos',
     'Se puede armar y despachar dos veces el mismo día.');

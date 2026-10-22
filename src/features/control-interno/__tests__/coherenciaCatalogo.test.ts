@@ -146,3 +146,20 @@ describe('coherenciaCatalogo · los puntos no se revisan como tiendas', () => {
     expect(r.map(i => i.tipo)).toEqual(['espacios-sobrantes']);
   });
 });
+
+describe('coherenciaCatalogo · sector contra GPS', () => {
+  const cal: CalendarioPorDia = { LU: { fal: ['61RIO', '41ANA', '57CAS'] } };
+  it('61RIO: «Región Sur» con el GPS en Copiapó', () => {
+    const r = coherenciaCatalogo([
+      t('61RIO', { sector_comuna: 'Región Sur', region: 'Atacama', lat: -27.3627417 }),
+      t('41ANA', { sector_comuna: 'Región Norte', region: 'Antofagasta', lat: -23.67 }),
+      t('57CAS', { sector_comuna: 'Región', region: 'Los Lagos', lat: -42.48 }),
+    ], cal, soloOficina);
+    expect(tipos(r)).toEqual(['sector-contra-gps']);
+    expect(items(r, 'sector-contra-gps')?.[0]).toMatch(/^61RIO .*norte del CD/);
+  });
+  it('sin GPS no se afirma nada', () => {
+    const r = coherenciaCatalogo([t('61RIO', { sector_comuna: 'Región Sur', region: 'Atacama', lat: null })], cal, soloOficina);
+    expect(tipos(r)).not.toContain('sector-contra-gps');
+  });
+});
