@@ -11,6 +11,7 @@
 // que ese equipo editó; el alta local no pasaba por ahí.
 
 import { esSinPesar, esPalletWeb } from './sinPesar';
+import { juntadoMasCompleto, type Juntado } from './juntados';
 
 interface ItemConUnidad {
   pickingSlotId?: number;
@@ -19,6 +20,7 @@ interface ItemConUnidad {
   orden?: string;
   palletWeb?: boolean;
   unidos?: number;
+  juntado?: Juntado;
 }
 
 const MEDIDAS = ['peso', 'alto', 'largo', 'ancho', 'pesoVolumetrico', 'taraPallet'] as const;
@@ -31,7 +33,8 @@ const MEDIDAS = ['peso', 'alto', 'largo', 'ancho', 'pesoVolumetrico', 'taraPalle
  * - "Sin pesar" encima de un ítem pesado no borra el peso: 0 kg quiere decir "no se pesó", no
  *   "pesa 0". Se conservan las medidas que ya tenía.
  * - Un pallet web guardado otra vez sin peso sigue siendo pallet web.
- * - Una unidad unificada sigue siéndolo: volver a pesarla no deshace la unión (`unidos`).
+ * - Una unidad unificada sigue siéndolo: volver a pesarla no deshace la unión (`unidos`), ni
+ *   olvida lo que se le juntó (`juntado`).
  */
 export function fusionarConPrevio<T extends ItemConUnidad>(previo: T, nuevo: T): T {
   const out: T = { ...nuevo };
@@ -45,6 +48,8 @@ export function fusionarConPrevio<T extends ItemConUnidad>(previo: T, nuevo: T):
   // tipo de carga. Con peso deja de serlo, como en el Resumen.
   if (esPalletWeb(previo) && esSinPesar(out)) out.palletWeb = true;
   if ((previo.unidos ?? 0) > (out.unidos ?? 0)) out.unidos = previo.unidos;
+  const juntado = juntadoMasCompleto(previo.juntado, out.juntado);
+  if (juntado) out.juntado = juntado;
   if (previo.id !== undefined) out.id = previo.id;
   if (previo.orden !== undefined) out.orden = previo.orden;
   return out;

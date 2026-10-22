@@ -157,6 +157,22 @@ export function tipoDesdePicking(slot?: { picker_label?: string | null } | null)
 }
 
 /**
+ * El tipo de carga que vale para una unidad: el de la etiqueta de Picking si la armó Picking, salvo
+ * que se haya unificado. Al unir, Bodega junta los dos tipos (`unirTipos`) en el ítem, pero el
+ * slot que sobrevive sigue con el tipo de su etiqueta. Antes se leía siempre el del slot: un P1 de
+ * Comida unido con un P2 de Hogar se mostraba «Comida» en la fila, y al volver a guardarlo la
+ * planilla quedaba con «Comida» y el Hogar se perdía (análisis del 22/10/2026).
+ */
+export function tipoQueManda(
+  slot: { picker_label?: string | null; contenido?: string | null } | null | undefined,
+  propio: string,
+  unificada: boolean,
+): string {
+  if (!unificada && tipoDesdePicking(slot)) return slot!.contenido ?? propio;
+  return propio;
+}
+
+/**
  * El tipo que queda al unir dos unidades: lo que traían las dos. Comida + Aseo = Comida · Aseo.
  * El chocolate no entra en una mezcla: si las dos son chocolate sigue siéndolo, y si solo una lo
  * es manda la otra. Antes cualquier diferencia daba «Mixto» (comida y hogar) aunque no hubiera hogar.
