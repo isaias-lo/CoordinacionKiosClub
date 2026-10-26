@@ -96,6 +96,9 @@ describe('diaDeTrabajoActual · el singleton del navegador', () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.useFakeTimers();
+    // El singleton toma «hoy» del reloj. Sin fijarlo, VIERNES quedó fuera de los días hacia atrás
+    // que se aceptan y la prueba empezó a fallar sola el 26/10/2026.
+    vi.setSystemTime(new Date(`${HOY}T15:00:00Z`));
     recargar.mockClear();
     vi.stubGlobal('window', { location: { search: '', reload: recargar } });
     mod = await import('../diaDeTrabajoActual');
