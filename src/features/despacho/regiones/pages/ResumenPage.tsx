@@ -26,7 +26,8 @@ import { actualizarSlotPicking, camposDePeso, AVISO_SLOT_BORRADO } from '../../s
 import { esSinPesar, esPalletWeb } from '../../shared/sinPesar';
 import { etiquetaDeUnidad } from '../../shared/adquisicion';
 import { claseUnidad } from '../../shared/unidadVisual';
-import { confirmarCambioGuardado } from '../../shared/confirmarGuardado';
+import { confirmarCambioGuardado, pedidoRegistrarIgual } from '../../shared/confirmarGuardado';
+import { confirmar } from '../../shared/confirmar';
 import { taraTrasCorregir, textoPesoConTara } from '../../shared/pesoDelPallet';
 import { copiaParaOtraTienda, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
 import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTienda, ResumenVacio, UnidadResumen } from '../../shared/ResumenDiaUI';
@@ -318,8 +319,8 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
   );
 
   /* Reabrir el despacho ya registrado (mismo comportamiento que tenía el botón del header). */
-  const handleReopen = () => {
-    if (!confirm('¿Reabrir el despacho del día?')) return;
+  const handleReopen = async () => {
+    if (!(await confirmar({ titulo: '¿Reabrir el despacho del día?', detalle: 'Podrás modificar y volver a registrar.', aceptar: 'Reabrir' }))) return;
     try { localStorage.removeItem(REGIONES_TERMINADO_KEY); } catch {}
     dispatch({ type: 'SET_REGISTRADO', payload: false });
     showToast('Despacho reabierto', '#8896A8');
@@ -343,7 +344,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
         </button>
       ) : (
         <button type="button" disabled={names.length === 0}
-          onClick={() => { if (avisoRegistrar && !window.confirm(`${avisoRegistrar}\n\n¿Registrar igual?`)) return; onRegistrar?.(); }}
+          onClick={async () => { if (avisoRegistrar && !(await confirmar(pedidoRegistrarIgual(avisoRegistrar)))) return; onRegistrar?.(); }}
           className="min-h-[44px] px-5 bg-navy text-white rounded-btn text-cuerpo font-bold cursor-pointer active:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">
           Registrar despacho
         </button>
@@ -516,10 +517,10 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
                   detalle={detalle}
                   seleccion={{ activa: isSel, onToggle: () => dispatch({ type: 'TOGGLE_SELECTION', tienda: name, idx }) }}
                   bloqueada={cerrada} resaltada={isDropTarget} apagada={isDragging}
-                  onEditar={() => { if (confirmarCambioGuardado('editar', item.orden)) startEdit(name, idx); }}
+                  onEditar={async () => { if (await confirmarCambioGuardado('editar', item.orden)) startEdit(name, idx); }}
                   onCopiar={() => { setCopyModal({ tienda: name, item }); setCopyTargets(new Set()); setCopySearch(''); }}
-                  onEliminar={() => {
-                    if (!confirmarCambioGuardado('eliminar', item.orden)) return;
+                  onEliminar={async () => {
+                    if (!(await confirmarCambioGuardado('eliminar', item.orden))) return;
                     // Por id, no por la posición de cuando se pintó la fila: si otro equipo cambió
                     // la lista en el medio, se borraba otra unidad.
                     const pos = posicionDeUnidad(dispatchData[name] || [], item.id, idx);

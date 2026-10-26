@@ -12,6 +12,7 @@ import { fechaChile } from '@/lib/fechaChile';
 import { avisoNoRegistrado } from './escribirPlanilla';
 import { urlConDia } from './diaDeTrabajo';
 import { tituloPendientes } from './tituloPendientes';
+import { confirmar } from './confirmar';
 
 type Fuente = 'santiago' | 'regiones';
 
@@ -192,7 +193,8 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
   };
 
   const descartar = async (d: PendingDraft) => {
-    if (!confirm(`¿Descartar el borrador del ${fechaBonita(d.fecha)}? Esta acción no se puede deshacer.`)) return;
+    if (!(await confirmar({ titulo: `¿Descartar el borrador del ${fechaBonita(d.fecha)}?`, detalle: 'No se puede deshacer.',
+      aceptar: 'Descartar', tono: 'peligro' }))) return;
     setBusy(d.fecha);
     try {
       await marcarAtendido(d.fecha);

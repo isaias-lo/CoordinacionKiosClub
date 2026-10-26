@@ -48,7 +48,8 @@ import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTi
 import { useAvisoNuevasTrasTerminar } from '../../shared/avisoNuevasTrasTerminar';
 import { avisoAntesDeRegistrar, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
 import { AhoraUnidad, ChipUnificado, ChipSumados, CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, TiendaSinUnidades, type OpcionAgregar } from '../../shared/TiendaAbierta';
-import { confirmarCambioGuardado, confirmarQuitarSinGuardar } from '../../shared/confirmarGuardado';
+import { confirmarCambioGuardado, confirmarQuitarSinGuardar, PEDIDO_SIN_PESAR, PEDIDO_REABRIR_TIENDA, pedidoPesoRaro, pedidoRegistrarIgual } from '../../shared/confirmarGuardado';
+import { confirmar } from '../../shared/confirmar';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { mismaCargaEscrita } from '../../shared/adoptarItemRemoto';
 import { buscarPallet } from '../../shared/buscarPallet';
@@ -1520,7 +1521,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       const duro = pesoFueraDeRango(p, claseSantiago(row.tipo));
       if (duro) { showToast(`⚠ ${duro}`, '#D32F2F'); return; }
       const aviso = avisoDePeso(p, claseSantiago(row.tipo));
-      if (aviso && !window.confirm(`⚠ ${aviso.titulo}\n\n${aviso.detalle}\n\n¿Guardar así?`)) return;
+      if (aviso && !(await confirmar(pedidoPesoRaro(aviso)))) return;
       pesoV = Math.round((a * fL * fA) / 6000 * 100) / 100;
     }
     const cod = currentTienda.cod;
@@ -1693,9 +1694,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   };
 
   // Quitar un form row sin guardar (✕) — también borra su slot.
-  const removeUnsavedRow = (rowId: string) => {
+  const removeUnsavedRow = async (rowId: string) => {
     const row = formRows.find(r => r.id === rowId);
-    if (!confirmarQuitarSinGuardar(row ? labelDeFila(row, formRows) : 'esta unidad', row?.pickingSlotId != null)) return;
+    if (!(await confirmarQuitarSinGuardar(row ? labelDeFila(row, formRows) : 'esta unidad', row?.pickingSlotId != null))) return;
     // Sin pesar también se registra: esa unidad ya tiene una etiqueta IMPRESA de Picking, y si
     // desaparece sin rastro nadie puede saber si se unió a otra, se creó de más o alguien la sacó.
     deletePickingSlot(row?.pickingSlotId, { label: row ? labelDeFila(row, formRows) : undefined });
@@ -2813,9 +2814,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                             peso={sinPesoR ?? textoPesoConTara(item.peso, item.taraPallet)}
                             detalle={detalleR}
                             bloqueada={cerrada} resaltada={isRDrop} apagada={isRDragging}
-                            onEditar={() => { if (confirmarCambioGuardado('editar', item.orden)) rStartEdit(cod, idx); }}
-                            onEliminar={() => {
-                              if (!confirmarCambioGuardado('eliminar', item.orden)) return;
+                            onEditar={async () => { if (await confirmarCambioGuardado('editar', item.orden)) rStartEdit(cod, idx); }}
+                            onEliminar={async () => {
+                              if (!(await confirmarCambioGuardado('eliminar', item.orden))) return;
                               // Por id: si otro equipo cambió la lista en el medio, se borraba otra unidad.
                               const pos = posicionDeUnidad(items[cod] || [], item.id, idx);
                               if (pos < 0) { showToast('⚠ Esa unidad ya no está', '#D32F2F'); return; }
@@ -2849,14 +2850,14 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
             </button>
           ) : (
             <button
-              onClick={() => {
+              onClick={async () => {
                 // Lo que todavía no está cerrado del día: se avisa, no se bloquea.
                 const aviso = avisoAntesDeRegistrar({
                   sinTerminar: tiendasBarra.filter(t => !tiendaTerminada(t.cod)).map(t => t.tienda),
                   sinPesar: Object.values(items).flat().filter(esSinPesar).length,
                   sinGuardar: tiendasBarra.reduce((a, t) => a + unidadesSinGuardar(pickingSlotsFull[t.cod] ?? [], items[t.cod] || []).total, 0),
                 });
-                if (aviso && !window.confirm(`${aviso}\n\n¿Registrar igual?`)) return;
+                if (aviso && !(await confirmar(pedidoRegistrarIgual(aviso)))) return;
                 onRegistrar?.();
               }}
               className="ml-auto py-2.5 px-5 bg-red text-white border-none rounded-card font-barlow-condensed text-[15px] font-bold tracking-wide cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
@@ -2907,12 +2908,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       <CasillaMarcar marcada={mergeSel.has(row.id)} onCambiar={() => toggleMergeSel(row.id)} etiqueta={rowLabel} />
                     ) : undefined}>
                     <div className="flex gap-2 flex-wrap">
-                      <BotonAccion onClick={() => { if (confirmarCambioGuardado('editar', rowLabel)) editSavedRow(row.id); }}>Editar</BotonAccion>
+                      <BotonAccion onClick={async () => { if (await confirmarCambioGuardado('editar', rowLabel)) editSavedRow(row.id); }}>Editar</BotonAccion>
                       {row.tipo === 'Bulto' && (
                         <BotonAccion onClick={() => { setDupN(2); setDupRow(dupRow === row.id ? null : row.id); }}
                           title="Duplicar bulto (mismo peso y medidas)">Duplicar</BotonAccion>
                       )}
-                      <BotonAccion tono="peligro" onClick={() => { if (confirmarCambioGuardado('eliminar', rowLabel)) deleteSavedRow(row.id); }}>Eliminar</BotonAccion>
+                      <BotonAccion tono="peligro" onClick={async () => { if (await confirmarCambioGuardado('eliminar', rowLabel)) deleteSavedRow(row.id); }}>Eliminar</BotonAccion>
                     </div>
                     {dupRow === row.id && row.tipo === 'Bulto' && (
                       <div className="mt-2 pt-2 border-t border-black/[0.08] flex items-center gap-2 flex-wrap">
@@ -3083,7 +3084,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     onClick={async () => {
                       const tienePeso = (leerPeso(row.peso) ?? 0) > 0;
                       if (!tienePeso && !row.mergeReopened) {
-                        if (window.confirm('¿Agregar sin pesar? El peso y las medidas quedarán en 0.')) {
+                        if (await confirmar(PEDIDO_SIN_PESAR)) {
                           await saveRow(row, true);
                           showToast('Agregado sin pesar', '#D97706');
                         }
@@ -3166,7 +3167,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           {bloqueada && (
             <AvisoTiendaTerminada nuevas={nuevasDe(currentTienda.cod)}
-              onReabrir={() => { if (window.confirm('¿Reabrir esta tienda para pesar lo nuevo? Ya no se mostrará como lista para despachar.')) marcarTerminada(currentTienda.cod, false); }} />
+              onReabrir={async () => { if (await confirmar(PEDIDO_REABRIR_TIENDA)) marcarTerminada(currentTienda.cod, false); }} />
           )}
           {/* Terminada: todo lo de adentro queda deshabilitado de una vez (inputs y botones). */}
           <fieldset disabled={bloqueada} className="contents">

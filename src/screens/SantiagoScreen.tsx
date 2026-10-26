@@ -5,6 +5,7 @@ import { SantiagoProvider, useSantiago, SANTIAGO_TERMINADO_KEY } from '../featur
 import { SantiagoPage } from '../features/despacho/santiago/pages/SantiagoPage';
 import { SantiagoFinishModal } from '../features/despacho/santiago/components/SantiagoFinishModal';
 import { PendingDraftBanner } from '../features/despacho/shared/PendingDraftBanner';
+import { confirmar } from '../features/despacho/shared/confirmar';
 import { BodegaHeader } from '../features/despacho/shared/BodegaHeader';
 import { BandaDiaDeTrabajo } from '../features/despacho/shared/BandaDiaDeTrabajo';
 import { diaDeTrabajoActual, diaDeTrabajoEsDeliberado } from '../features/despacho/shared/diaDeTrabajoActual';
@@ -37,8 +38,8 @@ function SantiagoContent() {
   // badge local TERMINADO. Cualquiera marca el header como COMPLETADO → evita re-registro.
   const registered = terminated || state.registrado === true;
 
-  const handleReopen = () => {
-    if (!confirm('¿Reabrir el despacho del día? Podrás modificar y volver a registrar.')) return;
+  const handleReopen = async () => {
+    if (!(await confirmar({ titulo: '¿Reabrir el despacho del día?', detalle: 'Podrás modificar y volver a registrar.', aceptar: 'Reabrir' }))) return;
     localStorage.removeItem(SANTIAGO_TERMINADO_KEY);
     setTerminated(false);
     setTerminatedAt('');

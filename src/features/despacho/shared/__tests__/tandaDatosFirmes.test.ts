@@ -4,7 +4,7 @@ vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 import { pesoNetoDeTarjeta, taraDeTarjeta, taraTrasCorregir } from '../pesoDelPallet';
 import { camposDePeso } from '../actualizarSlotPicking';
 import { traeRegistrosNuevos } from '../registroPorFecha';
-import { confirmarQuitarSinGuardar, textoQuitarSinGuardar } from '../confirmarGuardado';
+import { confirmarQuitarSinGuardar } from '../confirmarGuardado';
 import { tiendasSinCatalogo } from '../../regiones/utils/sheetsRegiones';
 import type { DispatchItem } from '../../../../types';
 
@@ -52,11 +52,8 @@ describe('traeRegistrosNuevos: un registro de otro equipo no se descarta como ec
 });
 
 describe('la ✕ de una tarjeta sin guardar', () => {
-  it('sin pallet en Picking no pregunta', () => {
-    expect(confirmarQuitarSinGuardar('P3', false)).toBe(true);
-  });
-  it('el aviso dice que se borra de Picking', () => {
-    expect(textoQuitarSinGuardar('P3')).toContain('Se borra también de Picking');
+  it('sin pallet en Picking no pregunta', async () => {
+    await expect(confirmarQuitarSinGuardar('P3', false)).resolves.toBe(true);
   });
 });
 
