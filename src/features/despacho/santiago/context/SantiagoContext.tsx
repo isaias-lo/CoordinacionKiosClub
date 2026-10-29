@@ -7,7 +7,7 @@ import type {
   SantiagoState, SantiagoItem, TiendaSantiago, RegimenCarga,
 } from '../types';
 import { useAuth } from '@/components/AuthProvider';
-import { pushSessionStateResult, REINTENTO_PUSH_MS, fetchSessionStateMeta, subscribeToSessionState, remotoEsMasViejo } from '@/lib/userSessionState';
+import { pushSessionStateResult, pushSessionStateAlCerrar, REINTENTO_PUSH_MS, fetchSessionStateMeta, subscribeToSessionState, remotoEsMasViejo } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { mergeItemsByTienda, itemsFromSnapshot } from './mergeItems';
 import { tieneLapida, lapidasComoLista, absorberLapidas, anotarItemSinUnidad } from '../../shared/lapidasBorrado';
@@ -525,7 +525,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
    * banner avisaba «DESPACHO SIN REGISTRAR · 30 SEP» sobre un día que sí se había registrado — y
    * ofrecía registrarlo otra vez.
    */
-  const flushPending = useCallback((extra?: { registrado?: boolean; registros?: RegistroPorFecha }) => {
+  const flushPending = useCallback((extra?: { registrado?: boolean; registros?: RegistroPorFecha }, alCerrar = false) => {
     if (!isInitializedRef.current) return;
     const payload: SyncableState = {
       step: stateRef.current.step, regimen: stateRef.current.regimen, items: stateRef.current.items,
@@ -544,7 +544,11 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
     lastPushedFullRef.current = current;
     const pushedAt = Date.now();
     lastPushTimestampRef.current = pushedAt;
-    pushSessionStateResult('santiago', { ...payload, pushedAt, sessionDate: todayKey }, userId ?? undefined, todayKey)
+    // Al ocultarse o cerrarse la app, con keepalive (lib/subidaAlCerrar.ts); si no se puede, como siempre.
+    const estado = { ...payload, pushedAt, sessionDate: todayKey };
+    const subida = (alCerrar ? pushSessionStateAlCerrar('santiago', estado, userId ?? undefined, todayKey) : null)
+      ?? pushSessionStateResult('santiago', estado, userId ?? undefined, todayKey);
+    subida
       .then(({ ok, updatedAt: serverTs }) => {
         if (!ok) { pushFallido(current, prevPushed, prevFull); return; }
         if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); // [C3/RC-6]
@@ -555,7 +559,7 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
 
   // [P9] Al volver a la pestaña/app → catch-up con el estado remoto; al ocultarla → flush de pendientes.
   flushRef.current = () => flushPending();
-  useVisibilityRefetch(() => catchUpRef.current(), flushPending);
+  useVisibilityRefetch(() => catchUpRef.current(), () => flushPending(undefined, true));
 
   const catchUp = useCallback(() => catchUpRef.current(), []);
 

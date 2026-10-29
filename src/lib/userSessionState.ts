@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { fechaChile } from '@/lib/fechaChile';
+import { armarSubidaAlCerrar, marcaDeRespuesta } from './subidaAlCerrar';
 
 // 'rutas_reg' = marca de "este día ya se registró en el Enrutador" (para avisar de días sin registrar).
 // 'rutas_cerradas' = set de patentes CERRADAS individualmente en 1ª vuelta (cierre por vehículo), por fecha.
@@ -42,6 +43,40 @@ export async function pushSessionStateResult(fuente: Fuente, state: unknown, use
 
   if (error) { console.error('[sync:push]', fuente, error.message, error.details); return { ok: false, updatedAt: null }; }
   return { ok: true, updatedAt: data?.updated_at ? new Date(data.updated_at as string).getTime() : null };
+}
+
+// El token de la sesión, guardado a mano para la subida al cerrar: ahí no hay tiempo de esperar a
+// `getSession()`. Ver lib/subidaAlCerrar.ts.
+let tokenActual: string | null = null;
+if (typeof window !== 'undefined') {
+  supabase.auth.getSession().then(({ data }) => { tokenActual = data.session?.access_token ?? null; }).catch(() => {});
+  supabase.auth.onAuthStateChange((_evento, sesion) => { tokenActual = sesion?.access_token ?? null; });
+}
+
+/**
+ * Igual que `pushSessionStateResult`, pero para cuando la app se oculta o se cierra: la petición
+ * sale con `keepalive` y el navegador la termina aunque la página ya no esté. Devuelve `null`
+ * cuando no puede ir así (sin sesión todavía, o un estado más grande que el tope de keepalive):
+ * entonces hay que subir por el camino de siempre.
+ */
+export function pushSessionStateAlCerrar(fuente: Fuente, state: unknown, userId?: string, fecha: string = todayISO()): Promise<PushResult> | null {
+  if (typeof fetch === 'undefined') return null;
+  const pet = armarSubidaAlCerrar({
+    baseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
+    apiKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '',
+    token: tokenActual, fuente, fecha, state, userId,
+  });
+  if (!pet) return null;
+  try {
+    return fetch(pet.url, pet.init)
+      .then(async r => {
+        if (!r.ok) { console.error('[sync:push-al-cerrar]', fuente, r.status); return { ok: false, updatedAt: null }; }
+        return { ok: true, updatedAt: marcaDeRespuesta(await r.json().catch(() => null)) };
+      })
+      .catch(() => ({ ok: false, updatedAt: null }));
+  } catch {
+    return null;
+  }
 }
 
 /** Espera antes de reintentar un push al estado compartido que falló (sin red, sesión vencida). */

@@ -6,7 +6,7 @@ import { esperaDePush } from '@/lib/esperaDePush';
 import { renumerarSoloSinOrden } from '@/features/despacho/shared/numeroCard';
 import type { AppState, DispatchItem, TipoContenido, TipoPaquete, PdfData } from '../types';
 import { useAuth } from '@/components/AuthProvider';
-import { pushSessionStateResult, REINTENTO_PUSH_MS, subscribeToSessionState, fetchSessionStateMeta, remotoEsMasViejo } from '@/lib/userSessionState';
+import { pushSessionStateResult, pushSessionStateAlCerrar, REINTENTO_PUSH_MS, subscribeToSessionState, fetchSessionStateMeta, remotoEsMasViejo } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
 import { mergeEntriesByKey, mergeItemsByTienda } from '@/features/despacho/santiago/context/mergeItems';
 import { agregarSinDuplicar } from '@/features/despacho/shared/itemPorUnidad';
@@ -598,7 +598,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * banner avisaba «DESPACHO SIN REGISTRAR · 30 SEP» sobre un día que sí se había registrado — y
    * ofrecía registrarlo otra vez.
    */
-  const flushPending = useCallback((extra?: { registrado?: boolean; registros?: RegistroPorFecha }) => {
+  const flushPending = useCallback((extra?: { registrado?: boolean; registros?: RegistroPorFecha }, alCerrar = false) => {
     if (!isInitializedRef.current) return;
     const payload = { dispatch: stateRef.current.dispatch, pdfData: stateRef.current.pdfData, fechaDespacho: stateRef.current.fechaDespacho, registrado: stateRef.current.registrado, registros: stateRef.current.registros, decisiones: stateRef.current.decisiones, borrados: lapidasComoLista(), ...extra };
     const current = JSON.stringify(payload);
@@ -611,7 +611,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lastPushedFullRef.current = current;
     const pushedAt = Date.now();
     lastPushTimestampRef.current = pushedAt;
-    pushSessionStateResult('regiones', { ...payload, sessionDate: SESSION_DATE, pushedAt }, userId ?? undefined, SESSION_DATE)
+    // Al ocultarse o cerrarse la app, con keepalive (lib/subidaAlCerrar.ts); si no se puede, como siempre.
+    const estado = { ...payload, sessionDate: SESSION_DATE, pushedAt };
+    const subida = (alCerrar ? pushSessionStateAlCerrar('regiones', estado, userId ?? undefined, SESSION_DATE) : null)
+      ?? pushSessionStateResult('regiones', estado, userId ?? undefined, SESSION_DATE);
+    subida
       .then(({ ok, updatedAt: serverTs }) => {
         if (!ok) { pushFallido(current, prevPushed, prevFull); return; }
         if (serverTs != null) lastServerStampRef.current = Math.max(lastServerStampRef.current, serverTs); // [C3/RC-6]
@@ -623,7 +627,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // [P9] Al volver a la pestaña/app → catch-up con el estado remoto; al ocultarla → flush de pendientes.
   flushRef.current = () => flushPending();
-  useVisibilityRefetch(() => catchUpRef.current(), flushPending);
+  useVisibilityRefetch(() => catchUpRef.current(), () => flushPending(undefined, true));
 
   const catchUp = useCallback(() => catchUpRef.current(), []);
 
