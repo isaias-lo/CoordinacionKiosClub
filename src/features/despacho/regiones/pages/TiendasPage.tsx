@@ -40,7 +40,8 @@ import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
 import { avanceTienda, claseUnidad } from '@/features/despacho/shared/unidadVisual';
 import { useTarjetaActiva } from '@/features/despacho/shared/useTarjetaActiva';
 import { AhoraUnidad, ChipUnificado, ChipSumados, CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, TiendaSinUnidades } from '@/features/despacho/shared/TiendaAbierta';
-import { confirmarCambioGuardado, confirmarQuitarSinGuardar } from '@/features/despacho/shared/confirmarGuardado';
+import { confirmarCambioGuardado, confirmarQuitarSinGuardar, PEDIDO_SIN_PESAR, PEDIDO_REABRIR_TIENDA, pedidoPesoRaro } from '@/features/despacho/shared/confirmarGuardado';
+import { confirmar } from '@/features/despacho/shared/confirmar';
 import { FilaTienda, BarraDelDia, UnidadesDelDia, FechasBodega, RotuloLista, PieLista, BaldosaAgregar, GRILLA_MOSAICO } from '@/features/despacho/shared/ListaTiendasUI';
 import { usePlegarCabecera } from '@/features/despacho/shared/usePlegarCabecera';
 import { avisoAntesDeRegistrar } from '@/features/despacho/shared/resumenDia';
@@ -1543,7 +1544,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       const duro = pesoFueraDeRango(p, claseNacional(row.pkg));
       if (duro) { showToast(`⚠ ${duro}`, '#D32F2F'); return; }
       const aviso = avisoDePeso(p, claseNacional(row.pkg));
-      if (aviso && !window.confirm(`⚠ ${aviso.titulo}\n\n${aviso.detalle}\n\n¿Guardar así?`)) return;
+      if (aviso && !(await confirmar(pedidoPesoRaro(aviso)))) return;
 
     }
     // A diferencia de Santiago, este flujo no reintentaba crear el slot al confirmar: si
@@ -1707,9 +1708,9 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     if (borrado) armarUndo(`${ordenToLabel(borrado.orden)} eliminado`, () => reAgregarItem(borrado, tienda, slotAntes));
   };
 
-  const removeUnsavedRow = (rowId: string) => {
+  const removeUnsavedRow = async (rowId: string) => {
     const row = formRows.find(r => r.id === rowId);
-    if (!confirmarQuitarSinGuardar(row ? labelDeFila(row, formRows) : 'esta unidad', row?.pickingSlotId != null)) return;
+    if (!(await confirmarQuitarSinGuardar(row ? labelDeFila(row, formRows) : 'esta unidad', row?.pickingSlotId != null))) return;
     // Sin pesar también se registra: esa unidad ya tiene una etiqueta IMPRESA de Picking.
     deletePickingSlot(row?.pickingSlotId, { label: row ? labelDeFila(row, formRows) : undefined });
     setFormRows(prev => prev.filter(r => r.id !== rowId));
@@ -2215,12 +2216,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       <CasillaMarcar marcada={mergeSel.has(row.id)} onCambiar={() => toggleMergeSel(row.id)} etiqueta={rowLabel} />
                     ) : undefined}>
                     <div className="flex gap-2 flex-wrap">
-                      <BotonAccion onClick={() => { if (confirmarCambioGuardado('editar', rowLabel)) editSavedRow(row.id); }}>Editar</BotonAccion>
+                      <BotonAccion onClick={async () => { if (await confirmarCambioGuardado('editar', rowLabel)) editSavedRow(row.id); }}>Editar</BotonAccion>
                       {row.pkg === 'box' && (
                         <BotonAccion onClick={() => { setDupN(2); setDupRow(dupRow === row.id ? null : row.id); }}
                           title="Duplicar bulto (mismo peso y medidas)">Duplicar</BotonAccion>
                       )}
-                      <BotonAccion tono="peligro" onClick={() => { if (confirmarCambioGuardado('eliminar', rowLabel)) deleteSavedRow(row.id); }}>Eliminar</BotonAccion>
+                      <BotonAccion tono="peligro" onClick={async () => { if (await confirmarCambioGuardado('eliminar', rowLabel)) deleteSavedRow(row.id); }}>Eliminar</BotonAccion>
                     </div>
                     {dupRow === row.id && row.pkg === 'box' && (
                       <div className="mt-1.5 pt-1.5 border-t border-black/[0.08] flex items-center gap-1.5 flex-wrap">
@@ -2396,10 +2397,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                       (confirmación) → dimensiones en 0. En filas mergeReopened siempre hay peso
                       real de la unificación, así que van por el camino normal. */}
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       const tienePeso = (leerPeso(row.peso) ?? 0) > 0;
                       if (!tienePeso && !row.mergeReopened) {
-                        if (window.confirm('¿Agregar sin pesar? El peso y las medidas quedarán en 0.')) {
+                        if (await confirmar(PEDIDO_SIN_PESAR)) {
                           saveRow(row, true);
                           showToast('Agregado sin pesar', '#D97706');
                         }
@@ -2528,7 +2529,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
           {bloqueada && tienda?.cod && (
             <AvisoTiendaTerminada nuevas={nuevasDe({ name: selectedTienda ?? '', cod: tienda.cod })}
-              onReabrir={() => { if (window.confirm('¿Reabrir esta tienda para pesar lo nuevo? Ya no se mostrará como lista para despachar.')) marcarTerminada(tienda.cod, false); }} />
+              onReabrir={async () => { if (await confirmar(PEDIDO_REABRIR_TIENDA)) marcarTerminada(tienda.cod, false); }} />
           )}
           {/* Terminada: todo lo de adentro queda deshabilitado de una vez (inputs y botones). */}
           <fieldset disabled={bloqueada} className="contents">

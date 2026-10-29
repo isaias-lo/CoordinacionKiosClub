@@ -1,14 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import { textoConfirmacion, textoEliminarVarios } from '../confirmarGuardado';
+import { pedidoCambioGuardado, pedidoQuitarSinGuardar, textoEliminarVarios } from '../confirmarGuardado';
 import { avisoDeUnidad, avisoEnTerminada } from '../avisoUnidadEscaneada';
 
 describe('lo guardado pide confirmar antes de cambiar', () => {
-  it('editar nombra la unidad y pregunta', () => {
-    expect(textoConfirmacion('editar', 'P3')).toBe('P3 ya está guardado.\n\n¿Seguro que quieres editarlo?');
+  it('editar nombra la unidad en la pregunta y en el botón', () => {
+    expect(pedidoCambioGuardado('editar', 'P3')).toEqual({
+      titulo: '¿Editar P3?', detalle: 'P3 ya está guardado.', aceptar: 'Editar P3',
+    });
   });
 
-  it('eliminar nombra la unidad y pregunta', () => {
-    expect(textoConfirmacion('eliminar', 'CH2')).toContain('eliminarlo');
+  it('eliminar va en rojo y el botón dice qué borra', () => {
+    const p = pedidoCambioGuardado('eliminar', 'CH2');
+    expect(p.aceptar).toBe('Eliminar CH2');
+    expect(p.tono).toBe('peligro');
+  });
+
+  it('quitar una tarjeta sin guardar avisa que se borra de Picking', () => {
+    const p = pedidoQuitarSinGuardar('P3');
+    expect(p.aceptar).toBe('Quitar P3');
+    expect(p.detalle).toContain('Se borra también de Picking');
+    expect(p.tono).toBe('peligro');
   });
 
   it('eliminar varios dice cuántos', () => {

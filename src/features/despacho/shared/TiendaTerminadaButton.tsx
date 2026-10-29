@@ -3,6 +3,8 @@
 import { useAuth } from '@/components/AuthProvider';
 import type { TerminadaInfo } from './useTiendaTerminada';
 import type { ViendoInfo } from './usePresenciaTienda';
+import { confirmar } from './confirmar';
+import { PEDIDO_REABRIR_TIENDA, pedidoTerminarTienda } from './confirmarGuardado';
 
 /**
  * Botón/badge "Tienda Terminada" — marcador manual, NO bloquea edición (fase 1, ver
@@ -37,9 +39,9 @@ export function TiendaTerminadaButton({ cod, info, onToggle, itemCount, sinPesar
   const { profile } = useAuth();
   const terminada = info?.terminada === true;
 
-  const handleClick = () => {
+  const handleClick = async () => {
     if (terminada) {
-      if (!confirm('¿Reabrir esta tienda? Ya no se mostrará como lista para despachar.')) return;
+      if (!(await confirmar(PEDIDO_REABRIR_TIENDA))) return;
       onToggle(cod, false);
     } else {
       const avisos: string[] = [];
@@ -47,9 +49,7 @@ export function TiendaTerminadaButton({ cod, info, onToggle, itemCount, sinPesar
       if (sinPesarCount) avisos.push(`⚠ ${sinPesarCount} ítem${sinPesarCount > 1 ? 's' : ''} quedó${sinPesarCount > 1 ? 'n' : ''} "sin pesar" (peso en 0).`);
       if (sinGuardar) avisos.push(sinGuardar);
       if (viendo?.length) avisos.push(`⚠ ${viendo.map(v => v.name).join(', ')} ${viendo.length > 1 ? 'están viendo' : 'está viendo'} esta tienda ahora — puede estar a mitad de agregar algo.`);
-      const msg = (avisos.length ? avisos.join('\n') + '\n\n' : '')
-        + '¿Marcar esta tienda como "Terminada"?\n\nEn el Enrutador va a poder asignarse a un camión — solo hazlo si ya no le vas a agregar más carga.';
-      if (!confirm(msg)) return;
+      if (!(await confirmar(pedidoTerminarTienda(avisos)))) return;
       onToggle(cod, true, profile?.full_name ?? undefined);
     }
   };
