@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Lock } from 'lucide-react';
+import { AyudaBodega } from './AyudaBodega';
 import {
   TIPOS_SIMPLES, TIPOS_MEZCLA, componentesDe, esMezcla, abreviaturaContenido, nombreContenido,
   type ClaseContenido, type ComponenteCarga,
@@ -50,6 +51,7 @@ export function SelectorTipoCarga({ valor, bloqueado, onCambiar }: {
     <div className="mb-1.5">
       <div className="flex items-center gap-1.5 mb-1">
         <span className="text-rotulo font-bold text-text-sub uppercase">Tipo de carga</span>
+        <AyudaBodega tema="tipoCarga" />
         {bloqueado && (
           <span className="inline-flex items-center gap-1 rounded-full bg-bg-2 px-2 py-0.5 text-rotulo font-bold text-text-2">
             <Lock size={11} aria-hidden="true" /> de la etiqueta de Picking

@@ -5,6 +5,7 @@ import { unidadesSinRepetir, avisoRepetidas, esMismaUnidad } from '@/features/de
 import { slotsUnicos, agregarSlots } from '@/features/despacho/shared/slotsUnicos';
 import BarraSumarBultos, { CasillaMarcar } from '@/features/despacho/shared/BarraSumarBultos';
 import { JuntarCon } from '@/features/despacho/shared/JuntarCon';
+import { AyudaBodega } from '@/features/despacho/shared/AyudaBodega';
 import { conProducto } from '@/features/despacho/shared/productosBodega';
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -2611,7 +2612,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                 {pesadas.length > 0 && (
                   <>
                     <RotuloSeccion derecha={`${kgPesados.toLocaleString('es-CL', { maximumFractionDigits: 1 })} kg`}>
-                      {`Pesados ${pesadas.length}`}
+                      <>{`Pesados ${pesadas.length}`} <AyudaBodega tema="pesados" /></>
                     </RotuloSeccion>
                     <div className="rounded-card border border-border overflow-hidden divide-y divide-border">
                       {pesadas.map(row => renderUnidad(row))}

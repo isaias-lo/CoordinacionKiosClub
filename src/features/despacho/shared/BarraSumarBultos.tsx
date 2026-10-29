@@ -9,6 +9,7 @@
 // lo ya pesado (ver bodega-pallet-no-se-borra). Borrar una sigue en su línea, con su confirmación.
 
 import { Check } from 'lucide-react';
+import { AyudaBodega } from './AyudaBodega';
 
 export interface PalletDestino {
   id: string;
@@ -46,7 +47,7 @@ export default function BarraSumarBultos({ total, seleccionados, onTodos, pallet
           <span className="text-rotulo text-text-sub normal-case tracking-normal">Agrega un pallet con «+» para sumar</span>
         ) : (
           <>
-            <span className="text-apoyo font-bold text-text-2 mr-0.5">Sumar a</span>
+            <span className="text-apoyo font-bold text-text-2 mr-0.5 inline-flex items-center gap-1.5">Sumar a <AyudaBodega tema="sumarMarcados" /></span>
             {pallets.map(p => (
               <button key={p.id} type="button" disabled={!hay} onClick={() => onSumar(p.id)}
                 title={p.agregado ? `Sumar los marcados a ${p.etiqueta}` : `Sumar a ${p.etiqueta}, que todavía no está agregado: acuérdate de agregarlo`}

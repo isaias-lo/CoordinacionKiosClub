@@ -10,6 +10,7 @@
 // las mismas dos operaciones; esto solo dibuja.
 
 import { useEffect, useRef } from 'react';
+import { AyudaBodega } from './AyudaBodega';
 
 export interface DestinoJuntar {
   id: string;
@@ -49,7 +50,7 @@ export function JuntarCon({ origen, abierto, onAbrir, onCerrar, destinos }: {
   return (
     <div ref={panel} role="group" aria-label={`Juntar ${origen} con otra unidad`}
       className="mt-2 rounded-btn border-[1.5px] border-uni-pallet bg-uni-pallet-suave p-2 flex flex-col gap-2">
-      <div className="text-apoyo font-bold text-text">¿Con cuál juntas {origen}?</div>
+      <div className="flex items-center gap-2 text-apoyo font-bold text-text">¿Con cuál juntas {origen}? <AyudaBodega tema="juntar" /></div>
       <div className="flex flex-wrap gap-2">
         {destinos.map(d => (
           <button key={d.id} type="button" onClick={d.onElegir}
