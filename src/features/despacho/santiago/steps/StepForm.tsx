@@ -18,8 +18,9 @@ import { unidadesSinRepetir, avisoRepetidas, esMismaUnidad } from '@/features/de
 import { slotsUnicos, agregarSlots } from '@/features/despacho/shared/slotsUnicos';
 import BarraSumarBultos from '@/features/despacho/shared/BarraSumarBultos';
 import { conProducto } from '@/features/despacho/shared/productosBodega';
-import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE, clasificarContenido, nombreContenido, tipoDesdePicking, unirTipos } from '@/features/despacho/shared/contenidoCarga';
+import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE, clasificarContenido, nombreContenido, tipoDesdePicking, tipoQueManda, unirTipos } from '@/features/despacho/shared/contenidoCarga';
 import { unidosTrasUnir } from '@/features/despacho/shared/unifyPallets';
+import { juntadoTrasSumar, juntadoTrasUnir, juntadoDeTienda, type Juntado, type JuntadoTienda } from '@/features/despacho/shared/juntados';
 import { SelectorTipoCarga } from '@/features/despacho/shared/SelectorTipoCarga';
 import { tipoBloqueadoDeSlot } from '@/features/despacho/shared/tipoDeSlot';
 import { numeroParaUnidadNueva, numerarPorClase, contarPorClase, ordenDeItem, renumerarOrden, etiquetaCard, claseSantiago, bultosSantiago } from '@/features/despacho/shared/numeroCard';
@@ -45,7 +46,7 @@ import { useTarjetaActiva } from '../../shared/useTarjetaActiva';
 import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTienda, ResumenVacio, UnidadResumen } from '../../shared/ResumenDiaUI';
 import { useAvisoNuevasTrasTerminar } from '../../shared/avisoNuevasTrasTerminar';
 import { avisoAntesDeRegistrar, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
-import { AhoraUnidad, ChipUnificado, CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, TiendaSinUnidades, type OpcionAgregar } from '../../shared/TiendaAbierta';
+import { AhoraUnidad, ChipUnificado, ChipSumados, CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, TiendaSinUnidades, type OpcionAgregar } from '../../shared/TiendaAbierta';
 import { confirmarCambioGuardado, confirmarQuitarSinGuardar } from '../../shared/confirmarGuardado';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { mismaCargaEscrita } from '../../shared/adoptarItemRemoto';
@@ -178,6 +179,8 @@ interface FormRow {
   producto?: string;
   /** Unidades que se le unificaron; pasa al ítem al guardar. Ver `unidosTrasUnir`. */
   unidos?: number;
+  /** Lo que se le juntó (tipos unidos, B/CH sumados); pasa al ítem al guardar. Ver shared/juntados.ts. */
+  juntado?: Juntado;
   saved?: boolean;
   /** La tarjeta se reabrió porque se le SUMÓ algo: el guardado que viene no es trabajo rehecho.
    *  Ver `esReingresoDeVerdad`. Se limpia al guardar. */
@@ -234,7 +237,7 @@ function TiendaGridCard({
   bultoCount, adquisicionCount = 0, webRetiroCount = 0,
   despachoP, despachoB, despachoC, despachoCH, hasGuide, storeDoneOps = 0, storeTotalOps = 0,
   tipoCat, terminada, viendo, sinPesarCount, nuevas = 0,
-  onSelect, onAddToday, onRemoveFromToday, forma,
+  onSelect, onAddToday, onRemoveFromToday, forma, juntado,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
   tipoCat?: string;
@@ -260,6 +263,8 @@ function TiendaGridCard({
   bultoCount: number;
   adquisicionCount?: number;
   webRetiroCount?: number;
+  /** Unificados y B/CH dentro de un pallet. Ver `juntadoDeTienda`. */
+  juntado?: JuntadoTienda;
 }) {
   // El bulto ya NO sale por resta: así caían adentro las adquisiciones y los web/retiro. Lo que
   // falta es lo que Picking imprimió (o el despacho espera) y Bodega todavía no cargó.
@@ -278,7 +283,7 @@ function TiendaGridCard({
       agregados={{ adquisicion: adquisicionCount, webRetiro: webRetiroCount }}
       sinPesar={sinPesarCount ?? 0}
       odoo={isToday ? { done: storeDoneOps, total: storeTotalOps } : undefined}
-      viendo={viendo} onSelect={onSelect} accion={accion} forma={forma} />
+      viendo={viendo} onSelect={onSelect} accion={accion} forma={forma} juntado={juntado} />
   );
 }
 
@@ -1400,7 +1405,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const pesoVolumetrico = (alto * src.ancho * src.largo) / 6000;
     const merged: SantiagoItem = { ...src, id: `${tiendaCod}-${Date.now()}`, peso, alto, contenido, pesoVolumetrico, taraPallet: undefined, palletWeb: peso > 0 ? undefined : src.palletWeb,
       // Combinar también es unificar: queda marcada en Bodega. Ver `unidosTrasUnir`.
-      unidos: unidosTrasUnir(src, tgt) };
+      unidos: unidosTrasUnir(src, tgt),
+      juntado: juntadoTrasUnir({ juntado: src.juntado, tipo: src.contenido }, { juntado: tgt.juntado, tipo: tgt.contenido }) };
     // Misma regla que Nacional, en un solo sitio: el fusionado queda en la POSICIÓN del primero
     // de los dos, no al final. (Acá ya era así; se comparte para que no vuelvan a divergir.)
     const newList = combinarEnLista(allItems, srcIdx, tgtIdx, merged);
@@ -1564,13 +1570,16 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       .map(i => seqDeSlot(cod, i.pickingSlotId));
     const candidato: SantiagoItem = {
       id: `${cod}-${Date.now()}`, tiendaCod: cod, tipo: row.tipo,
-      // Si la armó Picking, el tipo es el de su etiqueta (la tarjeta lo muestra bloqueado).
-      contenido: tipoDesdePicking(pickingSlot) ? contenidoSantiago(pickingSlot!.contenido) : row.contenido,
+      // Si la armó Picking, el tipo es el de su etiqueta (la tarjeta lo muestra bloqueado), salvo
+      // que se haya unificado: ahí manda la mezcla de los dos. Ver `tipoQueManda`.
+      contenido: contenidoSantiago(tipoQueManda(pickingSlot, row.contenido,
+        (row.unidos ?? row.savedItem?.unidos ?? itemDeLaUnidad(existing, slotId)?.unidos ?? 0) > 0)),
       peso: p, alto: a, largo: fL, ancho: fA, taraPallet: tara,
       // El producto escaneado; al reabrir una guardada, el que ya tenía.
       producto: row.producto ?? row.savedItem?.producto,
       // Unificada sigue unificada al guardar la altura (o al editarla después).
       unidos: row.unidos ?? row.savedItem?.unidos,
+      juntado: row.juntado ?? row.savedItem?.juntado,
       pesoVolumetrico: pesoV, regimen,
       // El número impreso del slot, no su posición entre los que hay ahora.
       orden: ordenDeItem(row.tipo, numeroParaUnidadNueva(seqsHermanas, pickingSlot?.seq)),
@@ -1879,17 +1888,24 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       return;
     }
     const snap = snapshotSuma(cod, [bultoRow], palletRow, palletLabel, pesoActual);
+    // Que el pallet diga lo que lleva adentro: sin esto el CH desaparecía sin dejar rastro.
+    // El pallet puede estar reabierto sin guardar (tras otra suma o una unión): su tarjeta ya no
+    // tiene `savedItem`, pero el ítem sigue guardado. Antes se buscaba solo por `savedItem` y la suma
+    // no le llegaba al ítem: el bulto se borraba, el slot quedaba con el peso nuevo y Bodega con el
+    // de antes. Si nadie apretaba Agregar, esos kilos no se contaban (LAS BRUJAS, pruebas 22/10).
+    const palletItem = palletRow.savedItem ?? itemDeLaUnidad(items[cod] || [], palletRow.pickingSlotId);
+    const juntado = juntadoTrasSumar(palletItem?.juntado ?? palletRow.juntado, [bultoRow.tipo === 'Chocolate' ? 'CH' : 'B']);
 
     deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId, { yaRegistrado: true });
 
     // Contexto: un solo SET_ITEMS — quita el bulto guardado y suma el peso al pallet guardado,
     // luego renumera. El match es por id ESTABLE (id propio / pickingSlotId), que sobrevive al
     // renumerado tras un eco remoto (causa del "freeze").
-    if (bultoRow.savedItem || palletRow.savedItem) {
+    if (bultoRow.savedItem || palletItem) {
       const cur = items[cod] || [];
       const filtered = cur
         .filter(i => !(bultoRow.savedItem && i.id === bultoRow.savedItem.id))
-        .map(i => (palletRow.savedItem && i.id === palletRow.savedItem.id) ? { ...i, peso: nuevoPeso } : i);
+        .map(i => (palletItem && i.id === palletItem.id) ? { ...i, peso: nuevoPeso, juntado } : i);
       const renumbered = renumerarOrden(filtered, i => seqDeSlot(cod, i.pickingSlotId));
       dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: renumbered });
     }
@@ -1903,7 +1919,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       .filter(r => r.id !== bultoRowId && (r.id === palletRowId || !esMismaUnidad(r, bultoRow)))
       .map(r => r.id === palletRowId
         ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
-            alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
+            alto: altoPrevio ? String(altoPrevio) : '', juntado, mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
     // BD: actualizar el peso del slot del destino (si tiene slot de picking)
@@ -1949,6 +1965,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       return;
     }
     const snap = snapshotSuma(cod, bultoRows, palletRow, palletLabel, pesoActual);
+    // Reabierto sin guardar: el ítem se busca por su unidad. Ver `sumarBultoAPallet`.
+    const palletItem = palletRow.savedItem ?? itemDeLaUnidad(items[cod] || [], palletRow.pickingSlotId);
+    const juntado = juntadoTrasSumar(palletItem?.juntado ?? palletRow.juntado, bultoRows.map(r => r.tipo === 'Chocolate' ? 'CH' : 'B'));
 
     for (const bultoRow of bultoRows) {
       deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId, { yaRegistrado: true });
@@ -1956,12 +1975,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
 
     // Contexto: un solo SET_ITEMS — quita TODOS los bultos guardados seleccionados y suma el
     // peso total al pallet guardado, luego renumera. Mismo match por id ESTABLE que la single.
-    if (bultoRows.some(r => r.savedItem) || palletRow.savedItem) {
+    if (bultoRows.some(r => r.savedItem) || palletItem) {
       const cur = items[cod] || [];
       const bultoIds = new Set(bultoRows.map(r => r.savedItem?.id).filter((id): id is string => !!id));
       const filtered = cur
         .filter(i => !bultoIds.has(i.id))
-        .map(i => (palletRow.savedItem && i.id === palletRow.savedItem.id) ? { ...i, peso: nuevoPeso } : i);
+        .map(i => (palletItem && i.id === palletItem.id) ? { ...i, peso: nuevoPeso, juntado } : i);
       const renumbered = renumerarOrden(filtered, i => seqDeSlot(cod, i.pickingSlotId));
       dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: renumbered });
     }
@@ -1975,7 +1994,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       .filter(r => !bultoRowIdSet.has(r.id) && (r.id === palletRowId || !bultoRows.some(b => esMismaUnidad(r, b))))
       .map(r => r.id === palletRowId
         ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
-            alto: altoPrevio ? String(altoPrevio) : '', mergeReopened: true, mergeMotivo: 'suma' as const }
+            alto: altoPrevio ? String(altoPrevio) : '', juntado, mergeReopened: true, mergeMotivo: 'suma' as const }
         : r));
 
     // BD: un solo update del peso del slot destino
@@ -2017,6 +2036,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const mcont: ContenidoSantiago = contenidoSantiago(unirTipos(sourceRow.savedItem?.contenido ?? sourceRow.contenido, targetRow.savedItem?.contenido ?? targetRow.contenido));
     // Para que se vea unificado (chip y franja morada). Espejo de Nacional.
     const unidos = unidosTrasUnir(targetRow.savedItem ?? targetRow, sourceRow.savedItem ?? sourceRow);
+    // De qué tipo era cada uno, y lo que ya traían sumado. Ver `juntadoTrasUnir`.
+    const juntado = juntadoTrasUnir(
+      { juntado: targetRow.savedItem?.juntado ?? targetRow.juntado, tipo: targetRow.savedItem?.contenido ?? targetRow.contenido },
+      { juntado: sourceRow.savedItem?.juntado ?? sourceRow.juntado, tipo: sourceRow.savedItem?.contenido ?? sourceRow.contenido });
     // ── LA BASE PRIMERO (15/10/2026) ─────────────────────────────────────────────────────────
     // Antes la pantalla quitaba el ítem del origen y DESPUÉS mandaba la unión a la base, sin
     // esperarla. Si la base la rechazaba (el destino ya lo había borrado otro equipo), el peso del
@@ -2035,6 +2058,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     const itemsAntesUnion = [...(itemsAhora[cod] || [])];
     const sourceItemUnion = sourceRow.savedItem;
     const puedeRevertirUnion = !!(sourceItemUnion && targetRow.savedItem);
+    // Reabiertas sin guardar, los ítems se buscan por su unidad. Ver `sumarBultoAPallet`.
+    const srcItem = sourceRow.savedItem ?? itemDeLaUnidad(itemsAhora[cod] || [], srcSlot);
+    const tgtItem = targetRow.savedItem ?? itemDeLaUnidad(itemsAhora[cod] || [], tgtSlot);
 
     // 1) Items: quitar el del source y dejar el del target GUARDADO con el peso sumado, igual que
     //    al sumar un bulto. Antes el target también se quitaba («se re-agrega al Agregar»): si
@@ -2042,9 +2068,9 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     //    lápida, otro equipo la devolvía con el peso de antes de unir. Espejo de Nacional.
     const cur = itemsAhora[cod] || [];
     const filtered = cur
-      .filter(i => !(sourceRow.savedItem && i.id === sourceRow.savedItem.id))
-      .map(i => targetRow.savedItem && i.id === targetRow.savedItem.id ? { ...i, peso: nuevoPeso, contenido: mcont, unidos } : i);
-    if (filtered.length !== cur.length || targetRow.savedItem) {
+      .filter(i => !(srcItem && i.id === srcItem.id))
+      .map(i => tgtItem && i.id === tgtItem.id ? { ...i, peso: nuevoPeso, contenido: mcont, unidos, juntado } : i);
+    if (filtered.length !== cur.length || tgtItem) {
       const renumbered = renumerarOrden(filtered, i => seqDeSlot(cod, i.pickingSlotId));
       dispatch({ type: 'SET_ITEMS', tiendaCod: cod, items: renumbered });
     }
@@ -2077,7 +2103,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       .filter(r => r.id !== sourceRow.id)
       .map(r => r.id === targetRow.id
         ? { ...r, saved: false, savedItem: undefined, traSuma: true, peso: pesoEnTarjeta(nuevoPeso, taraDeTarjeta(r)), pesoPallet: taraEnTarjeta(taraDeTarjeta(r)),
-            alto: prevAlto ? String(prevAlto) : '', contenido: mcont, unidos, mergeReopened: true }
+            alto: prevAlto ? String(prevAlto) : '', contenido: mcont, unidos, juntado, mergeReopened: true }
         : r));
     setFormMergeState(null);
     showToast(`Unificado (+${srcPeso}kg) — ingresa la altura y Agregar`, '#2563EB');
@@ -2480,6 +2506,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   bultoCount={contarPorClase(tI, i => claseSantiago(i.tipo)).bulto}
                   adquisicionCount={contarPorClase(tI, i => claseSantiago(i.tipo)).adquisicion}
                   webRetiroCount={contarPorClase(tI, i => claseSantiago(i.tipo)).webretiro}
+                  juntado={juntadoDeTienda(tI)}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
                   hasGuide={!!guides[guideKey(t.cod)]} storeStatus={prog?.status ?? 'none'} storeDoneOps={storeDoneOpsSeco} storeTotalOps={storeTotalOpsSeco}
@@ -2523,6 +2550,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                   bultoCount={contarPorClase(tI, i => claseSantiago(i.tipo)).bulto}
                   adquisicionCount={contarPorClase(tI, i => claseSantiago(i.tipo)).adquisicion}
                   webRetiroCount={contarPorClase(tI, i => claseSantiago(i.tipo)).webretiro}
+                  juntado={juntadoDeTienda(tI)}
                   despachoP={pk?.p ?? dc?.p} despachoB={pk?.b ?? dc?.b} despachoC={pk?.c ?? dc?.c}
                   despachoCH={pkSlots.filter(s => s.tipo === 'CH').length}
                   hasGuide={!!guides[guideKey(t.cod)]} storeStatus="none" storeDoneOps={0} storeTotalOps={0}
@@ -2613,6 +2641,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                 <FilaResumenTienda key={cod} cod={formatCod(cod)} nombre={t?.tienda || cod}
                   sub={[t?.comuna, t?.ventanaHoraria].filter(Boolean).join(' · ')}
                   totales={totalesResumen(it, i => claseSantiago(i.tipo))} terminada={cerrada} abierta={isOpen}
+                  juntado={juntadoDeTienda(it)}
                   onToggle={() => { rCancelEdit(); toggleResumenExpanded(cod); }}>
                       {cerrada && <AvisoResumenTerminada />}
                       {it.map((item, idx) => {
@@ -2775,7 +2804,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                           },
                         };
                         return (
-                          <UnidadResumen key={item.id} unidos={item.unidos}
+                          <UnidadResumen key={item.id} unidos={item.unidos} juntado={item.juntado}
                             data-r-item-idx={idx} data-r-item-cod={cod}
                             {...arrastreR}
                             className={cerrada ? '' : rDragIdx !== null && rDragCod === cod ? 'cursor-grabbing' : 'cursor-grab'}
@@ -2849,12 +2878,12 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                 // Un pallet web va sin categoría; si la armó Picking, el tipo es el de su etiqueta.
                 const contenido = esPalletWeb(row.savedItem) ? ''
                   : row.savedItem.contenido === 'Chocolate' ? 'CH'
-                  : nombreContenido(tipoDesdePicking(slotDeFila) ? slotDeFila!.contenido : row.savedItem.contenido);
+                  : nombreContenido(tipoQueManda(slotDeFila, row.savedItem.contenido, (row.savedItem.unidos ?? 0) > 0));
                 return (
                   // [Handheld] El ancla también en la línea pesada: escanear una unidad ya pesada
                   // tiene que llegar a ella y mostrarla, no abrir la tienda y quedarse arriba.
                   <FilaPesada key={row.id} clase={claseUnidad(row.tipo)} etiqueta={rowLabel}
-                    slotId={row.pickingSlotId} unidos={row.savedItem.unidos}
+                    slotId={row.pickingSlotId} unidos={row.savedItem.unidos} juntado={row.savedItem.juntado}
                     resaltada={row.pickingSlotId != null && row.pickingSlotId === resaltado}
                     // Una adquisición no tiene peso ni medidas: escribir «0kg · 0cm» haría pasar la
                     // AUSENCIA de un dato por un dato. Dice qué es.
@@ -3005,6 +3034,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     {row.pickingSlotId ? <span className="font-mono text-cuerpo text-text">#{row.pickingSlotId}</span> : null}
                     {cajaDeFila && <ChipCaja caja={cajaDeFila} />}
                     <ChipUnificado unidos={row.unidos ?? row.savedItem?.unidos} grande />
+                    <ChipSumados juntado={row.juntado ?? row.savedItem?.juntado} grande />
                     <button onClick={() => removeUnsavedRow(row.id)} aria-label={`Quitar ${rowLabel}`}
                       className="ml-auto w-10 h-10 -mr-1 flex items-center justify-center rounded-btn text-text-sub bg-bg-2 active:bg-bg-3 cursor-pointer border-none text-cuerpo">✕</button>
                   </div>
@@ -3028,7 +3058,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     const slot = row.pickingSlotId ? (pickingSlotsFull[currentTienda?.cod ?? ''] ?? []).find(s => s.id === row.pickingSlotId) : undefined;
                     const bloqueado = tipoDesdePicking(slot);
                     return (
-                      <SelectorTipoCarga valor={clasificarContenido(bloqueado ? slot!.contenido : row.contenido)}
+                      <SelectorTipoCarga valor={clasificarContenido(tipoQueManda(slot, row.contenido, (row.unidos ?? row.savedItem?.unidos ?? 0) > 0))}
                         bloqueado={bloqueado} onCambiar={t => updateRow(row.id, 'contenido', contenidoSantiago(t))} />
                     );
                   })()}

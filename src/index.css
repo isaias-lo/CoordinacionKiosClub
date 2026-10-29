@@ -52,6 +52,7 @@
   --uni-chocolate:    #7C2D12;  --uni-chocolate-suave:  rgba(124,45,18,0.10);
   /* Unidad unificada (dos o más juntadas en una). Morado de «Unificó» en Actividad. */
   --unificado:        #6B21A8;  --unificado-suave:      rgba(107,33,168,0.10);  --unificado-letra: #FFFFFF;
+  --sumado-letra:     #FFFFFF;
 
   /* Aviso sobre la PANTALLA, no sobre la carga: la barra de «esta pantalla es de otro día».
      Familia aparte a propósito — no es `est-*` (estado) ni `uni-*` (tipo de unidad), y el ocre
@@ -138,6 +139,7 @@ html.dark {
   --uni-contenedor:   #C4B5FD;  --uni-contenedor-suave: rgba(196,181,253,0.14);
   --uni-chocolate:    #FDBA74;  --uni-chocolate-suave:  rgba(253,186,116,0.14);
   --unificado:        #D8B4FE;  --unificado-suave:      rgba(216,180,254,0.14);  --unificado-letra: #111E38;
+  --sumado-letra:     #111E38;
 }
 
 html.dark ::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.15); }
@@ -383,4 +385,10 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); 
 .chip-unificado {
   background: var(--unificado);
   color: var(--unificado-letra);
+}
+/* «+2 CH»: lo que se le sumó a un pallet, en el café del chocolate (análisis del 22/10/2026: sumar
+   un CH no dejaba rastro). Ver `ChipSumados` en TiendaAbierta.tsx. */
+.chip-sumado {
+  background: var(--uni-chocolate);
+  color: var(--sumado-letra);
 }

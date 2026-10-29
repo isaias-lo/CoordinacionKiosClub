@@ -33,6 +33,7 @@ import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTi
 import { AVISO_ERROR } from '../../shared/colorAviso';
 import { nombreContenido, unirTipos } from '../../shared/contenidoCarga';
 import { unidosTrasUnir } from '../../shared/unifyPallets';
+import { juntadoTrasUnir, juntadoDeTienda } from '../../shared/juntados';
 import { SelectorTipoCarga } from '../../shared/SelectorTipoCarga';
 import { tipoBloqueadoDeSlot } from '../../shared/tipoDeSlot';
 
@@ -192,7 +193,8 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
     // de los dos — la misma regla que usan los dos formularios, en un solo sitio.
     const merged: DispatchItem = { ...src, peso, alto, tipo: tipoMerge, guia, valor, taraPallet: undefined, palletWeb: peso > 0 ? undefined : src.palletWeb,
       // Combinar también es unificar: queda marcada en Bodega. Ver `unidosTrasUnir`.
-      unidos: unidosTrasUnir(src, tgt) };
+      unidos: unidosTrasUnir(src, tgt),
+      juntado: juntadoTrasUnir({ juntado: src.juntado, tipo: src.tipo }, { juntado: tgt.juntado, tipo: tgt.tipo }) };
     dispatch({ type: 'UPDATE_ITEMS', tienda, items: renumber(combinarEnLista(list, srcIdx, tgtIdx, merged)) });
     // El slot que sobrevive se queda con el peso combinado: el cruce con Odoo lee el slot.
     void actualizarSlotPicking(merged.pickingSlotId, camposDePeso(merged, esSinPesar(merged))).then(r => {
@@ -364,7 +366,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
         return (
           <FilaResumenTienda key={name} cod={t?.cod ? formatCod(t.cod) : ''} nombre={name} sub={t?.region}
             totales={tot} terminada={cerrada} abierta={isOpen}
-            seleccion={{ n: sel.size, total: items.length }}
+            seleccion={{ n: sel.size, total: items.length }} juntado={juntadoDeTienda(items)}
             onToggle={() => { cancelEdit(); toggleExpanded(name); }}>
             {cerrada && <AvisoResumenTerminada />}
             <div className="flex items-center gap-1.5 px-3.5 py-2 bg-bg">
@@ -505,7 +507,7 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
                 },
               };
               return (
-                <UnidadResumen key={item.id ?? idx} unidos={item.unidos}
+                <UnidadResumen key={item.id ?? idx} unidos={item.unidos} juntado={item.juntado}
                   data-item-idx={idx} data-item-tienda={name}
                   {...arrastre}
                   className={cerrada ? '' : dragIdx !== null && dragTienda === name ? 'cursor-grabbing' : 'cursor-grab'}

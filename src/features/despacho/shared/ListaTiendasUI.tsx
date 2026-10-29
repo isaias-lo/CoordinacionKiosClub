@@ -30,6 +30,7 @@ import { StoreProgressBar } from './StoreProgressBar';
 import type { ViendoInfo } from './usePresenciaTienda';
 import { chipFila, type EstadoLista, type FiltroLista, type ResumenDia, type TonoChip } from './listaTiendas';
 import { agregadosBaldosa, ariaBaldosa, detalleBaldosa, pctAnillo, pctOdoo } from './baldosaTienda';
+import { textoJuntadoTienda, type JuntadoTienda } from './juntados';
 
 const TONO_CHIP: Record<TonoChip, string> = {
   ok:      'text-est-ok bg-est-ok-suave',
@@ -60,6 +61,8 @@ export interface FilaTiendaProps {
   accion?: { tipo: 'agregar' | 'retirar'; onClick: () => void };
   /** «Hoy» va en baldosas (Mosaico); «Todas» sigue en filas. Mismas props, misma conducta. */
   forma?: 'fila' | 'baldosa';
+  /** Unificados y B/CH dentro de un pallet: se ve sin entrar a la tienda. Ver `juntadoDeTienda`. */
+  juntado?: JuntadoTienda;
 }
 
 /**
@@ -79,7 +82,8 @@ const CLASE_LETRA: Record<string, 'pallet' | 'bulto' | 'contenedor' | 'chocolate
 
 export function FilaTienda(props: FilaTiendaProps) {
   if (props.forma === 'baldosa') return <BaldosaTienda {...props} />;
-  const { cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, nuevas, odoo, viendo, onSelect, onDragStart, accion } = props;
+  const { cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, nuevas, odoo, viendo, onSelect, onDragStart, accion, juntado } = props;
+  const textoJuntado = textoJuntadoTienda(juntado);
   const chip = chipFila({ estado, sinPesar, conGuia, nuevas });
   const otros = agregados ? [
     agregados.adquisicion > 0 && { letra: 'A', n: agregados.adquisicion, titulo: 'Adquisiciones: no se pesan' },
@@ -119,6 +123,7 @@ export function FilaTienda(props: FilaTiendaProps) {
           {conGuia && estado !== 'lista' && (
             <span className="text-rotulo font-bold uppercase px-1.5 rounded-full bg-sky-600 text-white whitespace-nowrap" title="Ya tiene su guía">Guía</span>
           )}
+          {textoJuntado && <span className="font-semibold text-text-2 whitespace-nowrap">{textoJuntado}</span>}
         </span>
         {odoo && odoo.total > 0 && (
           <span className="col-start-2 col-span-2 flex items-center gap-2 text-rotulo text-text-sub" title="Movimientos de Odoo realizados">
@@ -177,7 +182,8 @@ function Centro({ sigla, numero, chico = false }: { sigla: string; numero: strin
   );
 }
 
-export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, nuevas, odoo, viendo, onSelect, onDragStart, accion }: FilaTiendaProps) {
+export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, nuevas, odoo, viendo, onSelect, onDragStart, accion, juntado }: FilaTiendaProps) {
+  const textoJuntado = textoJuntadoTienda(juntado);
   const chip = chipFila({ estado, sinPesar, conGuia, nuevas });
   const pct = pctAnillo(estado, avance);
   // `formatCod` deja «53 VAL»: las letras distinguen la tienda, el número va chico debajo.
@@ -192,7 +198,7 @@ export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avan
   return (
     <div draggable={!!onDragStart} onDragStart={onDragStart} className="relative min-w-0">
       <button type="button" onClick={onSelect} aria-current={activa ? 'true' : undefined}
-        aria-label={ariaBaldosa({ nombre, cod, estado, avance, chip: chip.texto, conGuia, agregados, odoo })}
+        aria-label={[ariaBaldosa({ nombre, cod, estado, avance, chip: chip.texto, conGuia, agregados, odoo }), textoJuntado].filter(Boolean).join(', ')}
         title={tipo ? `${nombre} · ${tipo.label}` : nombre}
         className={`w-full h-full min-h-[116px] rounded-card px-1.5 pt-2 pb-1.5 flex flex-col items-center gap-0.5 text-center cursor-pointer select-none transition-colors active:opacity-80 ${CAJA_BALDOSA[estado]} ${activa ? 'ring-2 ring-navy ring-offset-2 ring-offset-bg' : ''}`}>
         {/* Dos anillos: afuera lo pesado, adentro los movimientos de Odoo (ámbar mientras
@@ -217,6 +223,12 @@ export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avan
             <span key={i} className="whitespace-nowrap">{i > 0 ? '· ' : ''}{parte}</span>
           ))}
         </span>
+        {textoJuntado && (
+          <span aria-hidden="true" className="flex flex-wrap justify-center gap-x-1.5 text-rotulo tracking-normal font-bold leading-tight text-text-2">
+            {/* Sin «·»: en la baldosa angosta cada parte cae en su línea y el punto quedaba colgando. */}
+            {textoJuntado.split(' · ').map((parte, i) => <span key={i} className="whitespace-nowrap">{parte}</span>)}
+          </span>
+        )}
         {(aviso || (conGuia && estado !== 'lista') || otros.length > 0 || conOdoo) && (
           <span aria-hidden="true" className="flex flex-wrap justify-center gap-x-1.5 gap-y-0.5 text-rotulo tracking-normal leading-tight">
             {aviso && <span className="font-bold text-est-aviso">{aviso}</span>}

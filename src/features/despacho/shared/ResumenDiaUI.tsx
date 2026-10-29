@@ -19,7 +19,8 @@
 
 import type { HTMLAttributes, ReactNode } from 'react';
 import { Check, ChevronDown, Copy, Lock, Pencil, Trash2 } from 'lucide-react';
-import { ChipUnificado, EtiquetaUnidad } from './TiendaAbierta';
+import { ChipUnificado, ChipSumados, DetalleJuntado, EtiquetaUnidad } from './TiendaAbierta';
+import { textoJuntadoTienda, type Juntado, type JuntadoTienda } from './juntados';
 import { textoUnificado } from './unifyPallets';
 import { ESTILO_UNIDAD, LETRA_UNIDAD, type ClaseUnidad } from './unidadVisual';
 import { formatCLP, formatCLPCorto } from './formatoCLP';
@@ -125,7 +126,7 @@ export function BotonHerramienta({ children, onClick, title, activo }: { childre
 }
 
 /** La fila de una tienda en el resumen. Toca para desplegar sus unidades. */
-export function FilaResumenTienda({ cod, nombre, sub, totales, terminada, abierta, seleccion, onToggle, children }: {
+export function FilaResumenTienda({ cod, nombre, sub, totales, terminada, abierta, seleccion, juntado, onToggle, children }: {
   cod: string;
   nombre: string;
   sub?: string;
@@ -134,6 +135,8 @@ export function FilaResumenTienda({ cod, nombre, sub, totales, terminada, abiert
   abierta: boolean;
   /** Cuántas unidades están marcadas para exportar (solo Nacional). */
   seleccion?: { n: number; total: number };
+  /** Unificados y B/CH dentro de un pallet, para verlo plegado. Ver `juntadoDeTienda`. */
+  juntado?: JuntadoTienda;
   onToggle: () => void;
   /** Lo desplegado. */
   children?: ReactNode;
@@ -162,6 +165,7 @@ export function FilaResumenTienda({ cod, nombre, sub, totales, terminada, abiert
           {seleccion && seleccion.n > 0 && (
             <span className="text-rotulo font-bold text-est-ok bg-est-ok-suave px-1.5 rounded-full tabular-nums">✓ {seleccion.n}/{seleccion.total}</span>
           )}
+          {textoJuntadoTienda(juntado) && <span className="font-semibold text-text-2 whitespace-nowrap">{textoJuntadoTienda(juntado)}</span>}
         </span>
       </button>
       {abierta && children}
@@ -185,11 +189,13 @@ const BOTON_ACCION = 'w-10 h-10 flex items-center justify-center rounded-btn bg-
  * Una unidad del resumen. Los `HTMLAttributes` pasan derecho al contenedor: el arrastrar para
  * combinar (mouse y toque) lo maneja cada pantalla.
  */
-export function UnidadResumen({ clase, etiqueta, peso, detalle, unidos, seleccion, bloqueada, resaltada, apagada, onEditar, onCopiar, onEliminar, ...resto }: {
+export function UnidadResumen({ clase, etiqueta, peso, detalle, unidos, juntado, seleccion, bloqueada, resaltada, apagada, onEditar, onCopiar, onEliminar, ...resto }: {
   clase: ClaseUnidad;
   etiqueta: string;
   /** Unidades que se le unificaron: se marca morada, igual que en la tienda. Ver `ChipUnificado`. */
   unidos?: number;
+  /** Lo que se le juntó (tipos unidos, B/CH sumados). Ver `DetalleJuntado`. */
+  juntado?: Juntado;
   /** «300 kg», o lo que diga la unidad si no se pesa («Adquisición»). */
   peso: string;
   /** Contenido, medidas, guía, estado: la segunda línea. */
@@ -221,7 +227,9 @@ export function UnidadResumen({ clase, etiqueta, peso, detalle, unidos, seleccio
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-barlow-condensed text-cuerpo font-extrabold text-text tabular-nums leading-tight">{peso}</span>
           <ChipUnificado unidos={unidos} />
+          <ChipSumados juntado={juntado} />
         </div>
+        <DetalleJuntado juntado={juntado} />
         {detalle && <div className="text-apoyo text-text-sub truncate">{detalle}</div>}
       </div>
       {bloqueada ? (

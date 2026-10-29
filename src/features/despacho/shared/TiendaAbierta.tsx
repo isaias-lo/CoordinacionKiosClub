@@ -21,8 +21,9 @@
 // Nacional y RM/Costa usan estas mismas piezas: si cambian, cambian juntas.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { MoreHorizontal, Pencil, ChevronLeft, Lock, Plus, Layers } from 'lucide-react';
+import { MoreHorizontal, Pencil, ChevronLeft, Lock, Plus, Layers, PackagePlus } from 'lucide-react';
 import { textoUnificado } from './unifyPallets';
+import { lineaJuntado, textoSumados, type Juntado } from './juntados';
 import { ESTILO_UNIDAD, LETRA_UNIDAD, esCambioDeUnidad, type AvanceTienda, type ClaseUnidad } from './unidadVisual';
 
 /** «P1», «B3»: la etiqueta de la unidad, en el color de su tipo. */
@@ -350,6 +351,28 @@ export function ChipUnificado({ unidos, grande }: { unidos?: number | null; gran
   );
 }
 
+/**
+ * «+2 CH», en café lleno: lo que se le sumó a un pallet. Sin esto, sumar un chocolate solo cambiaba
+ * el peso y el CH desaparecía de la lista sin dejar rastro (análisis del 22/10/2026). Nada si no se
+ * le sumó nada. Ver `textoSumados`.
+ */
+export function ChipSumados({ juntado, grande }: { juntado?: Juntado | null; grande?: boolean }) {
+  const texto = textoSumados(juntado);
+  if (!texto) return null;
+  return (
+    <span className={`chip-sumado inline-flex items-center gap-1 rounded-full font-barlow-condensed font-extrabold uppercase leading-none flex-shrink-0 ${grande ? 'text-cuerpo px-3 h-8' : 'text-rotulo px-2.5 h-7'}`}>
+      <PackagePlus size={grande ? 16 : 14} aria-hidden="true" /> {texto}
+    </span>
+  );
+}
+
+/** «Se unió Comida + Aseo · se le sumaron 2 CH», en una línea propia. Nada si no hay qué contar. */
+export function DetalleJuntado({ juntado, className = '' }: { juntado?: Juntado | null; className?: string }) {
+  const linea = lineaJuntado(juntado);
+  if (!linea) return null;
+  return <div className={`text-apoyo font-semibold text-text-2 ${className}`}>{linea}</div>;
+}
+
 export interface FichaPendiente {
   id: string;
   clase: ClaseUnidad;
@@ -382,7 +405,7 @@ export function ColaPendientes({ fichas, onElegir }: { fichas: FichaPendiente[];
  * Recién escaneada (`resaltada`) y con `campos`, se muestra como la tarjeta grande pero celeste y
  * bloqueada: se ve lo guardado, no se puede escribir, y Editar (que pide confirmar) es la salida.
  */
-export function FilaPesada({ clase, etiqueta, slotId, resumen, detalle, aviso, resaltada, seleccion, campos, unidos, children }: {
+export function FilaPesada({ clase, etiqueta, slotId, resumen, detalle, aviso, resaltada, seleccion, campos, unidos, juntado, children }: {
   clase: ClaseUnidad;
   etiqueta: string;
   slotId?: number;
@@ -399,6 +422,8 @@ export function FilaPesada({ clase, etiqueta, slotId, resumen, detalle, aviso, r
   campos?: { rotulo: string; valor: string }[];
   /** Unidades que se le unificaron: la fila se marca para verse de lejos. Ver `ChipUnificado`. */
   unidos?: number;
+  /** Lo que se le juntó: el tipo de cada pallet unido y los B/CH sumados. Ver `DetalleJuntado`. */
+  juntado?: Juntado;
   children?: ReactNode;
 }) {
   const unificada = !!textoUnificado(unidos);
@@ -413,6 +438,7 @@ export function FilaPesada({ clase, etiqueta, slotId, resumen, detalle, aviso, r
           {slotId != null && <span className="font-mono text-apoyo text-text-sub">#{slotId}</span>}
           {aviso}
           <ChipUnificado unidos={unidos} />
+          <ChipSumados juntado={juntado} />
           <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-600 text-white px-2.5 py-1 text-rotulo font-bold uppercase">
             <Lock size={12} aria-hidden="true" /> Guardado
           </span>
@@ -425,6 +451,7 @@ export function FilaPesada({ clase, etiqueta, slotId, resumen, detalle, aviso, r
             </div>
           ))}
         </div>
+        <DetalleJuntado juntado={juntado} />
         {detalle && <div className="text-apoyo text-text-sub">{detalle}</div>}
         {children && <div className="flex flex-col gap-2">{children}</div>}
       </div>
@@ -440,8 +467,10 @@ export function FilaPesada({ clase, etiqueta, slotId, resumen, detalle, aviso, r
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-cuerpo font-semibold text-text tabular-nums">{resumen}</span>
             <ChipUnificado unidos={unidos} />
+            <ChipSumados juntado={juntado} />
             {aviso}
           </div>
+          <DetalleJuntado juntado={juntado} />
           {(detalle || slotId != null) && (
             <div className="text-apoyo text-text-sub truncate">
               {slotId != null && <span className="font-mono">#{slotId}</span>}
