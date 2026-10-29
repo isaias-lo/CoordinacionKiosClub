@@ -16,7 +16,8 @@ import { CHOCOLATE_DIMS as CHOCOLATE_DIMS_SHARED } from '@/features/despacho/sha
 import EscanearProducto from '@/features/despacho/shared/EscanearProducto';
 import { unidadesSinRepetir, avisoRepetidas, esMismaUnidad } from '@/features/despacho/shared/unidadesSinRepetir';
 import { slotsUnicos, agregarSlots } from '@/features/despacho/shared/slotsUnicos';
-import BarraSumarBultos from '@/features/despacho/shared/BarraSumarBultos';
+import BarraSumarBultos, { CasillaMarcar } from '@/features/despacho/shared/BarraSumarBultos';
+import { JuntarCon } from '@/features/despacho/shared/JuntarCon';
 import { conProducto } from '@/features/despacho/shared/productosBodega';
 import { CHOCOLATE_BULTO_DIMS, dimsAlCambiarContenido, contenidoSantiago, CONTENIDO_CHOCOLATE, clasificarContenido, nombreContenido, tipoDesdePicking, tipoQueManda, unirTipos } from '@/features/despacho/shared/contenidoCarga';
 import { unidosTrasUnir } from '@/features/despacho/shared/unifyPallets';
@@ -2701,7 +2702,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                                         onChange={e => setResumenEditing(prev => prev ? { ...prev, alto: e.target.value } : prev)}
                                         className={INPUT_CLS} />
                                       {excedeAltoMax(parseFloat(re.alto) || 0) && (
-                                        <div className="text-[10px] text-warn mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
+                                        <div className="text-rotulo font-semibold text-est-aviso mt-0.5 normal-case tracking-normal">⚠ máx {MAX_ALTO_CM} cm</div>
                                       )}
                                     </div>
                                   )}
@@ -2903,9 +2904,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                       </>
                     }
                     seleccion={(row.tipo === 'Bulto' || row.tipo === 'Chocolate') ? (
-                      <input type="checkbox" checked={mergeSel.has(row.id)} onChange={() => toggleMergeSel(row.id)}
-                        aria-label={`Seleccionar ${rowLabel} para sumar en masa`}
-                        className="w-5 h-5 cursor-pointer flex-shrink-0" style={{ accentColor: 'var(--uni-pallet)' }} />
+                      <CasillaMarcar marcada={mergeSel.has(row.id)} onCambiar={() => toggleMergeSel(row.id)} etiqueta={rowLabel} />
                     ) : undefined}>
                     <div className="flex gap-2 flex-wrap">
                       <BotonAccion onClick={() => { if (confirmarCambioGuardado('editar', rowLabel)) editSavedRow(row.id); }}>Editar</BotonAccion>
@@ -2917,95 +2916,34 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     </div>
                     {dupRow === row.id && row.tipo === 'Bulto' && (
                       <div className="mt-2 pt-2 border-t border-black/[0.08] flex items-center gap-2 flex-wrap">
-                        <span className="text-[10px] font-bold uppercase tracking-wide text-warn">Duplicar</span>
+                        <span className="text-rotulo font-bold uppercase text-text-2">Duplicar</span>
                         <div className="flex items-center border border-black/[0.15] rounded-lg overflow-hidden bg-white">
-                          <button onClick={() => setDupN(n => Math.max(1, n - 1))} className="w-7 h-8 text-navy font-bold text-[17px] leading-none">−</button>
+                          <button onClick={() => setDupN(n => Math.max(1, n - 1))} aria-label="Uno menos" className="w-[44px] h-[44px] text-navy font-bold text-titulo leading-none">−</button>
                           <span className="w-8 text-center font-barlow-condensed font-bold text-[16px] tabular-nums">{dupN}</span>
-                          <button onClick={() => setDupN(n => Math.min(20, n + 1))} className="w-7 h-8 text-navy font-bold text-[17px] leading-none">+</button>
+                          <button onClick={() => setDupN(n => Math.min(20, n + 1))} aria-label="Uno más" className="w-[44px] h-[44px] text-navy font-bold text-titulo leading-none">+</button>
                         </div>
                         <button onClick={() => { const n = dupN; setDupRow(null); void duplicarBulto(row, n); }}
-                          className="h-8 px-3 rounded-lg bg-warn text-white text-[12px] font-bold flex items-center gap-1">⧉ Duplicar {dupN}</button>
+                          className="min-h-[44px] px-3 rounded-btn bg-navy text-white text-apoyo font-bold flex items-center gap-1">⧉ Duplicar {dupN}</button>
                       </div>
                     )}
-                    {/* P1: Sumar a Pallet directo en la card guardada (B/CH) sin abrir ✎ */}
-                    {(row.tipo === 'Bulto' || row.tipo === 'Chocolate') && (() => {
-                      const palletTargets = formRows.filter(r => r.id !== row.id && r.tipo === 'Pallet');
-                      if (palletTargets.length === 0) return null;
-                      const getRowLabel = (r: typeof row) => {
-                        return labelDeFila(r, formRows);
-                      };
-                      const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
-                      return (
-                        <div className="mt-2 pt-2 border-t border-dashed" style={{ borderColor: 'rgba(37,99,235,0.30)' }}>
-                          {isExpanded ? (
-                            <div className="flex flex-col gap-1">
-                              <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">Sumar a Pallet…</div>
-                              <div className="flex flex-wrap gap-1">
-                                {palletTargets.map(pl => (
-                                  <button key={`sum-${pl.id}`}
-                                    onClick={() => sumarBultoAPallet(row.id, getRowLabel(pl), pl.id)}
-                                    className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
-                                    style={{ borderColor: 'rgba(37,99,235,0.45)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
-                                    → {getRowLabel(pl)}
-                                  </button>
-                                ))}
-                                <button onClick={() => setFormMergeState(null)}
-                                  className="px-2 py-1 rounded font-barlow-condensed text-[10px] cursor-pointer border transition-all"
-                                  style={{ borderColor: 'rgba(0,0,0,0.15)', color: '#9CA3AF', background: 'white' }}>✕</button>
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
-                              className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
-                              style={{ border: '1.5px dashed rgba(37,99,235,0.30)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
-                              SUMAR A PALLET
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })()}
-                    {/* P3 #1: Unificar directo en la card guardada (Pallet/Contenedor) sin abrir ✎ */}
-                    {(row.tipo === 'Pallet' || row.tipo === 'Contenedor') && (() => {
-                      const combineTargets = formRows.filter(r => r.id !== row.id && r.tipo === row.tipo);
-                      if (combineTargets.length === 0) return null;
-                      const getRowLabel = (r: typeof row) => {
-                        return labelDeFila(r, formRows);
-                      };
-                      const col = row.tipo === 'Contenedor'
-                        ? { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)', solid: 'rgba(107,33,168,0.45)' }
-                        : { border: 'rgba(37,99,235,0.30)', color: '#2563EB', bg: 'rgba(37,99,235,0.06)', solid: 'rgba(37,99,235,0.45)' };
-                      const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
-                      return (
-                        <div className="mt-2 pt-2 border-t border-dashed" style={{ borderColor: col.border }}>
-                          {isExpanded ? (
-                            <div className="flex flex-col gap-1">
-                              <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">Unificar con…</div>
-                              <div className="flex flex-wrap gap-1">
-                                {combineTargets.map(other => (
-                                  <button key={`uni-${other.id}`}
-                                    onClick={() => { if (window.confirm(`${getRowLabel(row)} ya está guardado.\n\n¿Seguro que quieres unificarlo con ${getRowLabel(other)}?`)) iniciarUnionInline(row, other, getRowLabel(row), getRowLabel(other)); }}
-                                    className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
-                                    style={{ borderColor: col.solid, color: col.color, background: col.bg }}>
-                                    {getRowLabel(other)}
-                                  </button>
-                                ))}
-                                <button onClick={() => setFormMergeState(null)}
-                                  className="px-2 py-1 rounded font-barlow-condensed text-[10px] cursor-pointer border transition-all"
-                                  style={{ borderColor: 'rgba(0,0,0,0.15)', color: '#9CA3AF', background: 'white' }}>✕</button>
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
-                              className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
-                              style={{ border: `1.5px dashed ${col.border}`, color: col.color, background: col.bg }}>
-                              UNIFICAR
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    {/* «Juntar con…» en la línea guardada, sin abrir ✎: un bulto o chocolate se suma a
+                        un pallet; un pallet o contenedor se une con otro de su tipo. Ver `JuntarCon`.
+                        Sin el confirm() del navegador que pedía unir: los dos tienen Deshacer. */}
+                    <JuntarCon origen={rowLabel}
+                      abierto={formMergeState?.sourceId === row.id && formMergeState.targetId === null}
+                      onAbrir={() => setFormMergeState({ sourceId: row.id, targetId: null })}
+                      onCerrar={() => setFormMergeState(null)}
+                      destinos={(row.tipo === 'Bulto' || row.tipo === 'Chocolate')
+                        ? formRows.filter(r => r.id !== row.id && r.tipo === 'Pallet').map(pl => {
+                            const etiqueta = labelDeFila(pl, formRows);
+                            return { id: pl.id, etiqueta, efecto: 'sumar' as const, onElegir: () => sumarBultoAPallet(row.id, etiqueta, pl.id) };
+                          })
+                        : (row.tipo === 'Pallet' || row.tipo === 'Contenedor')
+                          ? formRows.filter(r => r.id !== row.id && r.tipo === row.tipo).map(other => {
+                              const etiqueta = labelDeFila(other, formRows);
+                              return { id: other.id, etiqueta, efecto: 'unir' as const, onElegir: () => iniciarUnionInline(row, other, rowLabel, etiqueta) };
+                            })
+                          : []} />
                   </FilaPesada>
                 );
               }
@@ -3092,7 +3030,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                           placeholder="cm" inputMode="decimal" max={MAX_ALTO_CM} data-campo="alto"
                           className={CAMPO_GRANDE} />
                         {excedeAltoMax(parseFloat(row.alto) || 0) && (
-                          <div className="text-[10px] text-warn mt-0.5">⚠ máx {MAX_ALTO_CM} cm</div>
+                          <div className="text-rotulo font-semibold text-est-aviso mt-0.5 normal-case tracking-normal">⚠ máx {MAX_ALTO_CM} cm</div>
                         )}
                       </div>
                     )}
@@ -3157,64 +3095,28 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     className="w-full min-h-[50px] bg-navy text-white border-none rounded-btn font-barlow-condensed text-titulo font-bold cursor-pointer transition-transform active:scale-[0.98]">
                     {row.mergeReopened ? botonReapertura(row.mergeMotivo ?? 'union') : (pendientes.length > 1 ? 'Guardar y seguir' : 'Guardar')}
                   </button>
-                  {!row.mergeReopened && (() => {
-                    const esBultoOChoc = row.tipo === 'Bulto' || row.tipo === 'Chocolate';
-                    // Combinar: mismo tipo, sin guardar (combine dimensional)
-                    const combineTargets = (row.tipo === 'Pallet' || row.tipo === 'Bulto' || row.tipo === 'Contenedor')
-                      ? formRows.filter(r => !r.saved && r.id !== row.id && r.tipo === row.tipo)
-                      : [];
-                    // Sumar a Pallet: solo para Bulto/Chocolate → cualquier Pallet (guardado o no)
-                    const palletTargets = esBultoOChoc
-                      ? formRows.filter(r => r.id !== row.id && r.tipo === 'Pallet')
-                      : [];
-                    if (combineTargets.length === 0 && palletTargets.length === 0) return null;
-                    const gcStyle = row.tipo === 'Pallet'
-                      ? { border: 'rgba(37,99,235,0.30)', color: '#2563EB', bg: 'rgba(37,99,235,0.06)' }
-                      : row.tipo === 'Contenedor'
-                      ? { border: 'rgba(107,33,168,0.30)', color: '#6B21A8', bg: 'rgba(107,33,168,0.06)' }
-                      : { border: 'rgba(217,119,6,0.30)', color: '#D97706', bg: 'rgba(217,119,6,0.06)' };
-                    const isExpanded = formMergeState?.sourceId === row.id && formMergeState.targetId === null;
-                    const getRowLabel = (r: typeof row) => labelDeFila(r, formRows);
-                    return (
-                      <div className="mt-2 pt-2 border-t border-dashed" style={{ borderColor: gcStyle.border }}>
-                        {isExpanded ? (
-                          <div className="flex flex-col gap-1">
-                            <div className="text-[9px] text-text-3 uppercase tracking-wide font-bold mb-0.5">
-                              {palletTargets.length > 0 ? 'Sumar a Pallet / combinar…' : '¿Combinar con…?'}
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                              {palletTargets.map(pl => (
-                                <button key={`sum-${pl.id}`}
-                                  onClick={() => sumarBultoAPallet(row.id, getRowLabel(pl), pl.id)}
-                                  className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
-                                  style={{ borderColor: 'rgba(37,99,235,0.45)', color: '#2563EB', background: 'rgba(37,99,235,0.06)' }}>
-                                  → {getRowLabel(pl)}
-                                </button>
-                              ))}
-                              {combineTargets.map(other => (
-                                <button key={other.id}
-                                  onClick={() => iniciarUnionInline(row, other, getRowLabel(row), getRowLabel(other))}
-                                  className="flex-1 py-1 rounded font-barlow-condensed text-[11px] font-bold cursor-pointer border-2 transition-all active:scale-[0.97]"
-                                  style={{ borderColor: gcStyle.border, color: gcStyle.color, background: 'white' }}>
-                                  {getRowLabel(other)}
-                                </button>
-                              ))}
-                              <button onClick={() => setFormMergeState(null)}
-                                className="px-2 py-1 rounded font-barlow-condensed text-[10px] cursor-pointer border transition-all"
-                                style={{ borderColor: 'rgba(0,0,0,0.15)', color: '#9CA3AF', background: 'white' }}>✕</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setFormMergeState({ sourceId: row.id, targetId: null })}
-                            className="w-full py-1.5 rounded font-barlow-condensed text-[11px] font-bold tracking-widest cursor-pointer transition-all active:scale-[0.97]"
-                            style={{ border: `1.5px dashed ${gcStyle.border}`, color: gcStyle.color, background: gcStyle.bg }}>
-                            {palletTargets.length > 0 ? 'SUMAR / UNIFICAR' : 'UNIFICAR'}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })()}
+                  {/* «Juntar con…» en la tarjeta abierta. Un bulto o chocolate se suma a un pallet
+                      (guardado o no); dos sin guardar del mismo tipo se unen. Ver `JuntarCon`. */}
+                  {!row.mergeReopened && (
+                    <JuntarCon origen={rowLabel}
+                      abierto={formMergeState?.sourceId === row.id && formMergeState.targetId === null}
+                      onAbrir={() => setFormMergeState({ sourceId: row.id, targetId: null })}
+                      onCerrar={() => setFormMergeState(null)}
+                      destinos={[
+                        ...((row.tipo === 'Bulto' || row.tipo === 'Chocolate')
+                          ? formRows.filter(r => r.id !== row.id && r.tipo === 'Pallet').map(pl => {
+                              const etiqueta = labelDeFila(pl, formRows);
+                              return { id: `sum-${pl.id}`, etiqueta, efecto: 'sumar' as const, onElegir: () => sumarBultoAPallet(row.id, etiqueta, pl.id) };
+                            })
+                          : []),
+                        ...((row.tipo === 'Pallet' || row.tipo === 'Bulto' || row.tipo === 'Contenedor')
+                          ? formRows.filter(r => !r.saved && r.id !== row.id && r.tipo === row.tipo).map(other => {
+                              const etiqueta = labelDeFila(other, formRows);
+                              return { id: other.id, etiqueta, efecto: 'unir' as const, onElegir: () => iniciarUnionInline(row, other, rowLabel, etiqueta) };
+                            })
+                          : []),
+                      ]} />
+                  )}
                 </div>
               );
   };
@@ -3457,7 +3359,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                     else next.add(id);
                     return next;
                   })}
-                  className={`font-barlow-condensed text-apoyo font-extrabold min-w-[52px] px-3 py-2 cursor-pointer select-none transition-colors
+                  className={`font-barlow-condensed text-apoyo font-extrabold min-w-[52px] min-h-[44px] px-3 py-2 cursor-pointer select-none transition-colors
                     ${active ? 'bg-navy text-white' : 'bg-card text-text-sub'}`}>
                   {label}
                 </button>

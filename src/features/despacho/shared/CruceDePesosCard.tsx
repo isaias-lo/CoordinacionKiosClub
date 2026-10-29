@@ -95,11 +95,11 @@ export function CruceDePesosCard({ cruce, items, listo = true }: Props) {
       {/* Cabecera: es el botón que pliega. Plegada, a la derecha va la diferencia en vez de los
           movimientos, para que la línea sola diga si hay algo que mirar. */}
       <button type="button" onClick={tocar} aria-expanded={!plegadoAhora}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left">
+        className="w-full min-h-[44px] flex items-center gap-2 px-3 py-2 text-left">
         <span className="text-[10px] font-extrabold tracking-wider uppercase text-[#1C1C1E] whitespace-nowrap">
           Cruce de pesos
         </span>
-        <span className={`${vis.abierto('inline')} text-[9px] font-bold uppercase tracking-wide px-1.5 py-[2px] rounded text-[#6B7280] bg-[#F1F1F4] whitespace-nowrap`}>
+        <span className={`${vis.abierto('inline')} text-[9px] font-bold uppercase tracking-wide px-1.5 py-[2px] rounded text-text-sub bg-[#F1F1F4] whitespace-nowrap`}>
           solo administración
         </span>
         <span className={`${vis.abierto('inline')} ml-auto text-[11px] text-[#6B7280] tabular-nums whitespace-nowrap`}>

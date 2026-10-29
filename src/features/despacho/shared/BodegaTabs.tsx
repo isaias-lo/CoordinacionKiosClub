@@ -83,7 +83,9 @@ export function BodegaTabs() {
                     // eliminar/peligro (ver design_system.md) — la tab activa usa navy, el
                     // acento de marca real (`knavy`/`#1B2A6B`), no rojo.
                     : 'text-navy border-b-navy bg-[rgba(27,42,107,0.04)]')
-                : 'text-text-3 border-b-transparent hover:text-text-2 hover:bg-bg/50'
+                // text-sub y no text-3: el gris de antes (#8E8E93) daba 3,3:1 sobre blanco, bajo el
+                // mínimo de 4,5:1 (análisis de accesibilidad del 22/10/2026).
+                : 'text-text-sub border-b-transparent hover:text-text-2 hover:bg-bg/50'
               }`}>
             <span className="inline-flex items-center gap-1.5">
               {tab.label}

@@ -2,10 +2,12 @@
 
 import { progressTone } from './storeStatus';
 
-const TONE: Record<'red' | 'yellow' | 'green', string> = {
-  red:    '#D32F2F',
-  yellow: '#F08A00',
-  green:  '#16A34A',
+// Los tonos de estado de Bodega (index.css), que pasan 4,5:1 en claro y oscuro. Los de antes
+// (#D32F2F, #F08A00, #16A34A) daban 4:1, 2,4:1 y 3:1 sobre su propio fondo (revisión del 22/10/2026).
+const TONE: Record<'red' | 'yellow' | 'green', [string, string]> = {
+  red:    ['var(--est-error)', 'var(--est-error-suave)'],
+  yellow: ['var(--est-aviso)', 'var(--est-aviso-suave)'],
+  green:  ['var(--est-ok)',    'var(--est-ok-suave)'],
 };
 
 interface Props {
@@ -23,10 +25,10 @@ interface Props {
 export function SectionCount({ done, total, onColor = false, className = '' }: Props) {
   if (total <= 0) return null;
   const tone   = progressTone(total, done);
-  const color  = TONE[tone === 'none' ? 'red' : tone];
+  const [color, suave] = TONE[tone === 'none' ? 'red' : tone];
   const safe   = Math.max(0, Math.min(done, total));
   const fg     = onColor ? '#fff' : color;
-  const bg     = onColor ? 'rgba(255,255,255,0.22)' : `color-mix(in srgb, ${color} 15%, transparent)`;
+  const bg     = onColor ? 'rgba(255,255,255,0.22)' : suave;
   return (
     <span
       className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-extrabold tabular-nums leading-none ${className}`}
