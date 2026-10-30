@@ -8,6 +8,7 @@ import { fechaChile } from '@/lib/fechaChile';
 import { verifyOtpToken, verifyReciboEntrega } from '@/lib/otpToken';
 import { alcanceEntrega } from '@/lib/alcances';
 import { sendComprobanteEntregaEmail } from '@/lib/gmail';
+import { filtroDiaSalida, historialPorSalida } from './diaSalida';
 
 /** Suma `n` días a una fecha ISO YYYY-MM-DD (DST-safe vía UTC). */
 function addDaysIso(iso: string, n: number): string {
@@ -34,29 +35,21 @@ export async function GET(request: NextRequest) {
     const hasta = addDaysIso(fechaChile(), -1);
     const desde = addDaysIso(fechaChile(), -dias);
 
+    // Se agrupa por día de SALIDA (ver diaSalida.ts). El armado puede ser hasta 3 días antes
+    // (viernes → lunes) o más con una salida corregida a mano: se trae con 7 de margen y el
+    // recorte exacto lo hace `historialPorSalida`. El tope superior sigue siendo `hasta`.
     const { data, error } = await supabaseServer()
       .from('rutas_despacho')
-      .select('fecha, ruta_tiendas(estado_entrega)')
+      .select('fecha, fecha_salida, ruta_tiendas(estado_entrega)')
       .ilike('patente', patente.trim())
-      .gte('fecha', desde)
+      .gte('fecha', addDaysIso(desde, -7))
       .lte('fecha', hasta);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     // Se agrupa en JS, no en SQL: el volumen por chofer es chico (un par de rutas/día, unas pocas
     // paradas cada una) y el query-builder de supabase-js no expone GROUP BY/agregados — traer las
     // filas y sumar acá es más simple que una función RPC para un caso de bajo volumen.
-    const porFecha = new Map<string, { rutas: number; paradas: number; entregadas: number }>();
-    for (const r of (data ?? []) as { fecha: string; ruta_tiendas?: { estado_entrega: string }[] }[]) {
-      const cur = porFecha.get(r.fecha) ?? { rutas: 0, paradas: 0, entregadas: 0 };
-      const paradas = r.ruta_tiendas ?? [];
-      cur.rutas += 1;
-      cur.paradas += paradas.length;
-      cur.entregadas += paradas.filter(p => p.estado_entrega === 'entregado').length;
-      porFecha.set(r.fecha, cur);
-    }
-    const historialData = [...porFecha.entries()]
-      .map(([fecha, v]) => ({ fecha, ...v }))
-      .sort((a, b) => b.fecha.localeCompare(a.fecha));
+    const historialData = historialPorSalida(data ?? [], desde, hasta);
 
     return NextResponse.json({ data: historialData });
   }
@@ -64,11 +57,17 @@ export async function GET(request: NextRequest) {
   const fecha   = request.nextUrl.searchParams.get('fecha') ?? fechaChile();
   const patente = request.nextUrl.searchParams.get('patente');
 
+  // [Panel Conductor] `dia=salida`: las rutas que SALEN ese día, no las armadas ese día (ver
+  // diaSalida.ts). Solo lo pide /conductor-hub; el Enrutador y Seguimiento siguen por armado.
+  const porSalida = request.nextUrl.searchParams.get('dia') === 'salida';
+  const filtroSalida = porSalida ? filtroDiaSalida(fecha) : null;
+  if (porSalida && !filtroSalida) return NextResponse.json({ error: 'fecha inválida' }, { status: 400 });
+
   let query = supabaseServer()
     .from('rutas_despacho')
     .select('*, ruta_tiendas(*), ruta_guias(*)')
-    .eq('fecha', fecha)
     .order('created_at', { ascending: true });
+  query = filtroSalida ? query.or(filtroSalida) : query.eq('fecha', fecha);
 
   if (patente) query = query.ilike('patente', patente.trim());
 

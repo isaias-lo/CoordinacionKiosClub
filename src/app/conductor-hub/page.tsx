@@ -332,7 +332,7 @@ export default function ConductorHubPage() {
     setOffline(false);
     setVerFecha(fecha);
     try {
-      const res   = await fetch(`/api/rutas-despacho?fecha=${fecha}&patente=${encodeURIComponent(pat)}`);
+      const res   = await fetch(`/api/rutas-despacho?fecha=${fecha}&dia=salida&patente=${encodeURIComponent(pat)}`);
       if (!res.ok) throw new Error('Error de servidor');
       const json  = await res.json() as { data: RutaData[] };
       const data  = json.data ?? [];
