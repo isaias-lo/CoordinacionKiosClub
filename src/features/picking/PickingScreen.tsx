@@ -1267,6 +1267,22 @@ export function PickingScreen() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // [APERTURA] El efecto de arriba corre UNA vez al montar, y ahí `adelantos` todavía está
+  // vacío: esa primera consulta sale sin el mapa y pide el día de hoy. Para una apertura eso es
+  // cero movimientos, y nadie volvía a preguntar — la tienda se quedaba vacía con la carga ahí.
+  //
+  // Cuando el mapa aparece se vuelve a pedir SOLO las tiendas que tienen día propio. La firma
+  // evita el bucle: sin ella, cada respuesta cambiaría el estado y dispararía otra consulta.
+  const aperturasPedidas = useRef<string>('');
+  useEffect(() => {
+    const conDiaPropio = selectedCods.filter(c => aperturasPorCod.has(c.toUpperCase()));
+    if (!conDiaPropio.length) return;
+    const firma = conDiaPropio.map(c => `${c}:${aperturasPorCod.get(c.toUpperCase())}`).sort().join('|');
+    if (firma === aperturasPedidas.current) return;
+    aperturasPedidas.current = firma;
+    void fetchBatchOps(conDiaPropio);
+  }, [aperturasPorCod, selectedCods, fetchBatchOps]);
+
   // Cambio de día con la pestaña abierta: las tiendas elegidas son del día en que se eligieron, y
   // las de ayer no están en la lista de hoy (no se podrían quitar). Se sueltan y se vuelve a la
   // lista. Revisa cada minuto y al volver a la app; el picking se hace entre 9 y 20 h (medido en
