@@ -4,6 +4,7 @@ import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { fechaChileDe, limitesDiaChile } from '@/lib/fechaChile';
 import { verifyAuth } from '@/lib/apiAuth';
+import { diaParaConsultarOdoo } from '@/features/despacho/shared/diaDeOdoo';
 import { camposAPedir, camposMedidaDe, camposNumericosConValor, esTextoDeMedida, normalizarCodigo, productoDesdeOdoo, type DefinicionCampos } from '@/features/despacho/shared/productosBodega';
 
 // Credentials are read from server-side env vars only — never from the request body.
@@ -145,8 +146,11 @@ async function _fetchDayPickings(
   const uid    = _cachedUid;
   if (!uid || !url || !db || !apiKey) throw new Error('Config Odoo no disponible para batch');
 
-  // Picking type cache por fecha
-  if (_pickingTypeDateKey !== todayStr) {
+  // Picking type cache por fecha. La clave es el día REAL y no `todayStr`: desde que una petición
+  // puede pedir otro día (ver `diaDeOdoo.ts`), colgarla del día consultado hacía que alternar
+  // entre hoy y el viernes recargara los tipos en cada vuelta, sin que cambiaran nunca.
+  const clavePickingType = localDateStr(new Date());
+  if (_pickingTypeDateKey !== clavePickingType) {
     try {
       const ptRows = (await odooRpc(url, {
         service: 'object', method: 'execute_kw',
@@ -156,7 +160,7 @@ async function _fetchDayPickings(
         ],
       })) as Array<{ id: number }>;
       _pickingTypeIds    = ptRows.map(r => r.id);
-      _pickingTypeDateKey = todayStr;
+      _pickingTypeDateKey = clavePickingType;
     } catch { /* usa caché anterior */ }
   }
 
@@ -589,7 +593,9 @@ export async function POST(req: NextRequest) {
     // las tiendas — usado por /api/picking-store-progress para el semáforo completo.
     if (action === 'picking_today_operations') {
       const storeCod = (query || '').trim().toUpperCase();
-      const todayStr = localDateStr(new Date());
+      // El día lo puede pedir el cliente (día de trabajo del #734, o la apertura). Se valida
+      // contra la misma ventana: hoy, o hasta 7 días atrás; el futuro nunca. Ver `diaDeOdoo.ts`.
+      const todayStr = diaParaConsultarOdoo(body, localDateStr(new Date()));
 
       const dayPickings = await getDayPickings(todayStr, body.includeDoneToday ?? false);
       const pickings = storeCod ? dayPickings.filter(p => matchesStore(p, storeCod)) : dayPickings;
@@ -619,7 +625,8 @@ export async function POST(req: NextRequest) {
       const rawCods = ((body.cods as string[] | undefined) ?? []).map(c => c.toUpperCase()).filter(Boolean);
       if (!rawCods.length) return NextResponse.json({ byStore: {} });
 
-      const todayStr         = localDateStr(new Date());
+      // Mismo control que arriba: el día viene del cliente y se valida. Ver `diaDeOdoo.ts`.
+      const todayStr         = diaParaConsultarOdoo(body, localDateStr(new Date()));
       const includeDoneToday = body.includeDoneToday ?? false;
       // Ordenar cods no cambia el resultado (ya no forma parte de la cache key), pero mantiene
       // el orden determinista del objeto byStore devuelto.
