@@ -119,7 +119,13 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded, yaHoy
         body: JSON.stringify({ action: 'movimientos_apertura', cod }),
       });
       const json = await res.json() as { dias?: DiaDeApertura[] };
-      setAperturas(json.dias ?? []);
+      const dias = json.dias ?? [];
+      setAperturas(dias);
+      // Queda ELEGIDO solo. El 31/10/2026 el aviso decía «hay 13 preparados» y el botón era
+      // opcional: se agregó 62PLD sin tocarlo, la tienda pidió los movimientos de hoy —cero— y
+      // quedó vacía. Si el sistema encontró carga preparada y la tienda no tiene nada hoy, usarla
+      // es lo obvio; el botón sirve para QUITARLA, no para ponerla.
+      if (dias.length) setDiaMov(dias[0].dia);
     } catch {
       setAperturas([]);
     } finally {
@@ -268,7 +274,9 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded, yaHoy
                       style={{ minHeight: 44,
                         background: diaMov === aperturas[0].dia ? '#7C2D12' : '#B45309',
                         color: '#fff', border: 'none' }}>
-                      {diaMov === aperturas[0].dia ? '✓ Se usarán esos' : `Usar los del ${fechaCorta(aperturas[0].dia)}`}
+                      {diaMov === aperturas[0].dia
+                        ? `✓ Se usarán los del ${fechaCorta(aperturas[0].dia)}`
+                        : `Usar los del ${fechaCorta(aperturas[0].dia)}`}
                     </button>
                     <button type="button" onClick={() => setVerCalendario(true)}
                       className="rounded-lg px-3 text-[12.5px] font-bold cursor-pointer"
@@ -276,6 +284,11 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded, yaHoy
                       Otro día
                     </button>
                   </div>
+                  {diaMov !== aperturas[0].dia && (
+                    <div className="text-[12px] font-semibold mt-2" style={{ color: '#7C2D12' }}>
+                      Sin ellos la tienda entra vacía: hoy no tiene movimientos.
+                    </div>
+                  )}
                 </div>
               )}
 

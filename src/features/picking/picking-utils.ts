@@ -243,7 +243,12 @@ export function parseOrigin(origin: string): { categories: string[]; storeCode: 
 }
 
 export function isAbastecimientoOp(origin: string): boolean {
-  return ABAST_KEYWORDS.some(({ kw }) => origin.includes(kw));
+  if (ABAST_KEYWORDS.some(({ kw }) => origin.includes(kw))) return true;
+  // [Aperturas] Mismo agujero que en `parseOrigin`: los keywords llevan las dos palabras PEGADAS
+  // y una apertura dice 'Abastecimiento Apertura Comida'. Acá dolía más: este filtro decide qué
+  // operaciones se MUESTRAN, así que los 13 movimientos de 62PLD llegaban del servidor y se
+  // descartaban en el cliente — la tienda se veía vacía con la carga ahí.
+  return categoriaDeOrigin(origin) !== null;
 }
 
 /** True si un picking es de Abastecimiento Congelados. */
