@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { subtipoDeOrigin } from './utils/origenAuditoria';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ClipboardPlus, BarChart3, PackageOpen, Search, Clock, Settings2, History, Radio, TableProperties, Menu, PhoneOff, Circle, Smartphone, Camera, Lock, RefreshCw, Image as ImageIcon } from 'lucide-react';
@@ -608,12 +609,9 @@ export function AuditoriaScreen() {
     }
   };
 
-  // Carga un pallet por ID numérico desde picking_pallets y auto-rellena el formulario
-  const ORIGIN_CATS: { kw: string; st: SubTipo }[] = [
-    { kw: 'Abastecimiento Comida', st: 'comida' },
-    { kw: 'Abastecimiento Aseo',   st: 'aseo' },
-    { kw: 'Abastecimiento Hogar',  st: 'hogar' },
-  ];
+  // Carga un pallet por ID numérico desde picking_pallets y auto-rellena el formulario.
+  // La sección sale de `subtipoDeOrigin`, que entiende también las aperturas — acá se buscaba
+  // 'Abastecimiento Comida' con las dos palabras pegadas y una apertura no coincidía.
 
   // Obtiene datos de un pallet por ID: picker, tienda, mapa subtipo→código
   const fetchPalletCodeMap = async (idStr: string): Promise<{
@@ -644,9 +642,8 @@ export function AuditoriaScreen() {
             (p.responsible ?? '').toLowerCase().trim() === pickerKey
           );
           for (const op of matching) {
-            for (const { kw, st } of ORIGIN_CATS) {
-              if ((op.origin ?? '').includes(kw)) { codeBySubtipo[st] = op.name; break; }
-            }
+            const st = subtipoDeOrigin(op.origin);
+            if (st) codeBySubtipo[st] = op.name;
           }
         }
       } catch { /* sigue con fallback */ }
