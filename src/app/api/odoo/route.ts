@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { fechaChileDe, limitesDiaChile } from '@/lib/fechaChile';
+import { fechaChileDe, limitesDiaChile, odooDateToISO } from '@/lib/fechaChile';
 import { verifyAuth } from '@/lib/apiAuth';
 import { diaParaConsultarOdoo } from '@/features/despacho/shared/diaDeOdoo';
+import { agruparAperturas, esApertura, type MovimientoApertura } from '@/features/despacho/shared/aperturaOdoo';
 import { camposAPedir, camposMedidaDe, camposNumericosConValor, esTextoDeMedida, normalizarCodigo, productoDesdeOdoo, type DefinicionCampos } from '@/features/despacho/shared/productosBodega';
 
 // Credentials are read from server-side env vars only — never from the request body.
@@ -328,6 +329,9 @@ export async function POST(req: NextRequest) {
     /** [CRUCE PESOS] Día a cruzar, YYYY-MM-DD. Sin él, hoy. */
     fecha?: string;
       includeDoneToday?: boolean;
+    /** [APERTURAS] La tienda cuyos movimientos de apertura se buscan, y cuántos días atrás mirar. */
+    cod?: string;
+    dias?: number;
       // Se ignora: la URL del servidor sale siempre del entorno (ver list_databases).
       config?: { url?: string };
     };
@@ -618,6 +622,56 @@ export async function POST(req: NextRequest) {
         .filter(p => p.state === 'done')
         .map(p => ({ ref: p.name, origen: p.origin, destino: p.toLocation, kg: p.pesoTotal }));
       return NextResponse.json({ fecha, movimientos });
+    }
+
+    /* ── movimientos_apertura ──
+       Los movimientos de APERTURA de una tienda que siguen PREPARADOS, agrupados por el día en
+       que Abastecimiento los dejó. Ver `aperturaOdoo.ts` para el porqué de cada filtro.
+
+       Es una consulta PROPIA y no `getDayPickings`, porque esa pide un día y acá hay que mirar
+       varios para descubrir en cuál está la carga. Devuelve los días por separado: quien llama
+       elige uno. Nunca se suman entre sí. */
+    if (action === 'movimientos_apertura') {
+      const cod = String(body.cod ?? '').trim().toUpperCase();
+      if (!cod) return NextResponse.json({ dias: [] });
+
+      const hoy  = localDateStr(new Date());
+      const dias = Math.min(14, Math.max(1, Number(body.dias) || 7));
+      const desde = diaChileParaOdoo(fechaChileDe(new Date(Date.now() - dias * 864e5))).desde;
+      // `hasta` es el FIN de hoy: una apertura puede estar fechada hoy mismo y aun así no haber
+      // aparecido, si la tienda no está en el calendario.
+      const hasta = diaChileParaOdoo(hoy).hasta;
+
+      const url = SRV_URL_PROCESSED, db = SRV_DB, apiKey = SRV_API_KEY, uid = _cachedUid;
+      if (!uid || !url || !db || !apiKey) return NextResponse.json({ dias: [], error: 'Odoo no disponible' });
+
+      const filas = (await odooRpc(url, {
+        service: 'object', method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.picking', 'search_read', [[
+          // SOLO lo Preparado: lo procesado ya salió y lo cancelado no existe. Es la regla que
+          // impide que los tres lotes de 63CAL se mezclen en una sola lista.
+          ['state', '=', 'assigned'],
+          ['origin', 'ilike', 'Apertura'],
+          ['origin', 'not ilike', 'AUDITORIA'],
+          ['scheduled_date', '>=', desde], ['scheduled_date', '<', hasta],
+        ]], { fields: ['name', 'origin', 'scheduled_date', 'location_dest_id'], limit: 400, order: 'scheduled_date desc' }],
+      })) as Array<{ name: string; origin: string | false; scheduled_date: string | false;
+                     location_dest_id: [number, string] | false }>;
+
+      const movs: MovimientoApertura[] = [];
+      for (const f of filas) {
+        const origin = typeof f.origin === 'string' ? f.origin : '';
+        const destino = Array.isArray(f.location_dest_id) ? String(f.location_dest_id[1] ?? '') : '';
+        // La misma pregunta que `matchesStore`: por el texto o por el destino. Un `ilike` de Odoo
+        // no distingue 62PLD de 162PLD, así que se vuelve a comprobar acá.
+        if (!origin.toUpperCase().includes(cod) && !destino.toUpperCase().includes(cod)) continue;
+        if (!esApertura(origin)) continue;
+        const iso = typeof f.scheduled_date === 'string' ? odooDateToISO(f.scheduled_date) : null;
+        if (!iso) continue;
+        movs.push({ ref: f.name, origin, dia: fechaChileDe(new Date(iso)) });
+      }
+
+      return NextResponse.json({ cod, dias: agruparAperturas(movs) });
     }
 
     /* ── picking_batch_operations ── */

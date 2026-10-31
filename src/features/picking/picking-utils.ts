@@ -1,4 +1,5 @@
 import { canonicalDeSlot, stampDesdeISO } from '@/lib/canonicalSlot';
+import { categoriaDeOrigin } from '@/features/despacho/shared/aperturaOdoo';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import type { TodayStore, StoreGroupKey, PickerStatRow, PalletSlot } from './picking-types';
 import { CANONICAL_PICKER_KEYS } from './picking-types';
@@ -211,6 +212,14 @@ export function parseOrigin(origin: string): { categories: string[]; storeCode: 
   const categories: string[] = ABAST_KEYWORDS
     .filter(({ kw }) => origin.includes(kw))
     .map(({ cat }) => cat as string);
+  // [Aperturas] Los keywords de arriba llevan las dos palabras PEGADAS ('Abastecimiento Comida'),
+  // y una apertura dice 'Abastecimiento Apertura Comida': con la palabra en medio no coincidía
+  // ninguno, así que los 16 movimientos de 62PLD salían sin categoría. Se intenta DESPUÉS, solo
+  // cuando el camino de siempre no encontró nada, para no cambiar ningún caso que ya funcionaba.
+  if (categories.length === 0) {
+    const deApertura = categoriaDeOrigin(origin);
+    if (deApertura) categories.push(deApertura);
+  }
   if (categories.length === 0) {
     const m = origin.match(/\(([^)]+)\)/);
     if (m) m[1].split(',').forEach(c => { const t = c.trim(); if (t) categories.push(t); });
