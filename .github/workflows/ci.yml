@@ -9,6 +9,21 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    # El typecheck se quedaba sin memoria y tumbaba el CI de PRs que no tenían nada malo:
+    # «FATAL ERROR: Ineffective mark-compacts near heap limit», con el heap parado en ~2 GB, que
+    # es el techo por defecto de Node. Pasó en el #769 y pasaba o no según cómo cayera la
+    # recolección de basura ese día: reintentar el mismo commit, sin cambiar una línea, lo dejaba
+    # en verde.
+    #
+    # Medido el 31/10/2026 sobre `tsc --noEmit`: main 2,36 GB y la rama del #769 1,95 GB. O sea
+    # que el proyecto YA roza el techo por sí solo, sin que haga falta ningún cambio para
+    # empujarlo — y va a rozarlo más a medida que crezca.
+    #
+    # Va en el JOB y no en el step que falló: lint y los tests corren sobre el mismo árbol y se
+    # van a topar con lo mismo. 4 GB deja casi el doble de lo que hoy se usa, y entra de sobra en
+    # el runner.
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@v4
 
