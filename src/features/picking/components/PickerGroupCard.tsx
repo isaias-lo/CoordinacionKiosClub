@@ -69,7 +69,8 @@ interface Props {
   // se determina por las categorías del grupo, no por `sectionFilter` (que en la vista
   // "Todas" es 'all' para todas las cards sin importar la columna).
   isCongelados?: boolean;
-  adelanto?: { fecha_despacho: string | null }; // si la tienda es un adelanto
+  // si la tienda es un adelanto; `dia_movimientos` solo en las APERTURAS
+  adelanto?: { fecha_despacho: string | null; dia_movimientos?: string | null };
   otroDia?: boolean; // fecha del "Documento origen" en Odoo distinta a hoy — solo advertencia
   // Batch (Transferir Agrupación) manual — opcional, para encargados sin ese dato de Odoo.
   // Solo el número; el formato "BATCH/N" se aplica al mostrarlo/imprimirlo.
@@ -575,6 +576,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                           slotId={slot?.id}
                           canonicalId={buildCanonicalId(slotTipo, pNum, group.storeCod, todayISO())}
                           adelanto={!!adelanto} adelantoFecha={adelanto?.fecha_despacho ?? null}
+                          aperturaDia={adelanto?.dia_movimientos ?? null}
                           compact
                         />
                         {isSelected && (
