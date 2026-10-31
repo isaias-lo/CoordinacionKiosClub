@@ -12,6 +12,8 @@ import { fechaChile } from '@/lib/fechaChile';
 import { avisoNoRegistrado } from './escribirPlanilla';
 import { urlConDia } from './diaDeTrabajo';
 import { tituloPendientes } from './tituloPendientes';
+import { aFechaPlanilla } from '../rutas/utils/backlogSegundaVuelta';
+import { contarPesadoSinRegistrar, pedidoDescartarBorrador, type LoPesado } from './descartarBorrador';
 import { confirmar } from './confirmar';
 
 type Fuente = 'santiago' | 'regiones';
@@ -121,6 +123,43 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
 
   useEffect(() => { load(); }, [load]);
 
+  /**
+   * Lo que ese día pasó por la balanza y NO está en `despacho_*`. `null` si no se pudo averiguar.
+   *
+   * Se pregunta a la BALANZA (`picking_pallets`) y no al borrador: el borrador dice qué hay en la
+   * pantalla, que es lo que se descarta; la balanza dice qué trabajo ya se hizo y no está
+   * registrado en ninguna otra parte. Es la segunda la que duele — ver `descartarBorrador.ts`.
+   *
+   * Es del DÍA, no de este borrador: en Nacional la clave del estado es el nombre de la tienda y
+   * no su código, así que acotarlo al borrador obligaría a traducir nombres a códigos para ganar
+   * una precisión que la pregunta no promete («Ese día tiene…»).
+   */
+  const pesadoSinRegistrar = async (fechaISO: string): Promise<LoPesado | null> => {
+    try {
+      const planilla = aFechaPlanilla(fechaISO);
+      const [slots, rm, reg] = await Promise.all([
+        supabase.from('picking_pallets').select('id, peso_kg')
+          .eq('date', fechaISO).eq('is_active', true).in('tipo', ['P', 'B', 'CH']),
+        supabase.from('despacho_rm').select('picking_slot_id')
+          .eq('fecha', planilla).not('peso_kg', 'is', null),
+        supabase.from('despacho_regiones').select('picking_slot_id')
+          .eq('fecha', planilla).not('peso_kg', 'is', null),
+      ]);
+      if (slots.error || rm.error || reg.error) return null;
+      const registrados = new Set<number>();
+      for (const f of [...(rm.data ?? []), ...(reg.data ?? [])]) {
+        const id = (f as { picking_slot_id: number | null }).picking_slot_id;
+        if (typeof id === 'number') registrados.add(id);
+      }
+      return contarPesadoSinRegistrar(
+        (slots.data ?? []).map(x => ({ id: x.id as number, peso: x.peso_kg as number | null })),
+        registrados,
+      );
+    } catch {
+      return null;   // el aviso es una ayuda; si no se puede calcular, no bloquea el botón
+    }
+  };
+
   // Marca el borrador como atendido (upsert con state vacío) — evita depender de permisos DELETE
   const marcarAtendido = async (fecha: string) => {
     await supabase.from('shared_session_state').upsert(
@@ -193,8 +232,12 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
   };
 
   const descartar = async (d: PendingDraft) => {
-    if (!(await confirmar({ titulo: `¿Descartar el borrador del ${fechaBonita(d.fecha)}?`, detalle: 'No se puede deshacer.',
-      aceptar: 'Descartar', tono: 'peligro' }))) return;
+    // Se consulta ANTES de preguntar: el 22/10/2026 se descartó un día con 46 unidades pesadas y
+    // 8.557,9 kg sin registrar, y la pregunta de entonces solo decía «no se puede deshacer».
+    setBusy(d.fecha);
+    const pesado = await pesadoSinRegistrar(d.fecha);
+    setBusy(null);
+    if (!(await confirmar(pedidoDescartarBorrador(fechaBonita(d.fecha), pesado)))) return;
     setBusy(d.fecha);
     try {
       await marcarAtendido(d.fecha);
