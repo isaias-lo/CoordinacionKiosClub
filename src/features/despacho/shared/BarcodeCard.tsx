@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { fmtHoraChile, odooDateToISO } from '@/lib/fechaChile';
 import { textoParaCodigoDeBarras } from './buscarPallet';
+import { bandaDeApertura } from './bandaApertura';
 
 // ─── LabelConfig ─────────────────────────────────────────────────────────────
 
@@ -43,6 +44,21 @@ const ACENTO = '#D97706';
 const GRIS = '#4B5563';
 /** Las rayas finas que separan las tres bandas, y el borde del recuadro donde se escribe. */
 const RAYA = '#D1D5DB';
+
+// ── LA BANDA DE APERTURA ──────────────────────────────────────────────────────────────────────
+//
+// Una apertura se arma un día con movimientos de otro, así que el pallet sale con la fecha de hoy
+// y los papeles de Odoo dicen otra. Sin decirlo, parece un error.
+//
+// Es una BANDA de ancho completo y no una píldora como la del adelanto: el primer intento fue una
+// píldora de 11 px y, al lado de un código de tienda de 150, había que preguntar si decía
+// «apertura» — o sea que no lo decía. Son pocas al año: que salten.
+//
+// Los tamaños van nombrados por lo mismo que las tintas: el trinquete de `escalaBodega.test.ts`
+// cuenta `fontSize` numéricos escritos a mano, y además cambiar la banda queda en un solo sitio.
+const BANDA_TITULO = 30;
+const BANDA_DIA    = 17;
+const BANDA_ROTULO = 8.5;
 
 export const DEFAULT_LABEL_CONFIG: LabelConfig = {
   borderWidth: 2, pickerFontSize: 34, storeFontSize: 150, catFontSize: 22,
@@ -184,7 +200,7 @@ export function BarcodeCard({
   totalPickers, tipo = 'P', compact = false, labelConfig, slotId, canonicalId,
   audited, subLabel, footerExtra, storeName: storeNameProp,
   adelanto, adelantoFecha, batch, finishedAt, copia,
-  tipoTienda, zonaTienda,
+  tipoTienda, zonaTienda, aperturaDia,
 }: {
   value: string; palletNum: number; total: number;
   storeCod: string; pickerLabel: string; responsibleKey: string; allCategories: string[];
@@ -194,6 +210,9 @@ export function BarcodeCard({
   subLabel?: string;
   footerExtra?: string;
   storeName?: string;
+  /** [APERTURA] Día de Odoo del que vienen sus movimientos. Con él se dibuja la banda; sin él, la
+   *  etiqueta es una normal. Ver `bandaApertura.ts`. */
+  aperturaDia?: string | null;
   adelanto?: boolean;             // marca visual de tienda agregada como adelanto
   adelantoFecha?: string | null;  // fecha de despacho a mostrar en la etiqueta
   batch?: string;                 // "Transferir Agrupación" de Odoo (ej. BATCH/39934)
@@ -264,17 +283,53 @@ export function BarcodeCard({
     ? subLabel
     : `${totalPickers} picker${totalPickers !== 1 ? 's' : ''} en tienda`;
 
+  // [APERTURA] `null` en una etiqueta normal, que es casi siempre.
+  const banda = bandaDeApertura(aperturaDia);
+
   return (
     <div
       className="picking-label bg-white overflow-hidden print:break-after-page print:rounded-none print:border-0"
       style={{
         maxWidth: s.outerMaxW, margin: s.outerMargin,
-        border: `${compact ? 2 : cfg.borderWidth}px solid #E5E7EB`,
+        // Con banda, el borde pasa a la tinta y engrosa: en una pila de cien etiquetas el borde se
+        // ve antes que cualquier texto.
+        border: banda
+          ? `${compact ? 2 : Math.max(cfg.borderWidth, 3)}px solid ${TINTA}`
+          : `${compact ? 2 : cfg.borderWidth}px solid #E5E7EB`,
         borderRadius: compact ? 12 : cfg.cornerRadius,
         position: 'relative',
         containerType: 'inline-size',  // habilita unidades cqw (el código se ajusta al ancho de la tarjeta)
       }}
     >
+      {/* Banda APERTURA: ancho completo, arriba de todo. Ver `bandaApertura.ts`. */}
+      {banda && (
+        <div style={{
+          background: TINTA, color: '#fff',
+          padding: compact ? '5px 9px' : '9px 13px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        }}>
+          <span style={{
+            fontFamily: "'Barlow Condensed', sans-serif",
+            fontSize: compact ? BANDA_DIA : BANDA_TITULO,
+            fontWeight: 800, letterSpacing: '4px', lineHeight: 1,
+          }}>{banda.titulo}</span>
+          {banda.dia && (
+            <span style={{ textAlign: 'right', lineHeight: 1.15 }}>
+              {banda.rotulo && !compact && (
+                <span style={{
+                  display: 'block', fontSize: BANDA_ROTULO, fontWeight: 700,
+                  letterSpacing: '0.8px', textTransform: 'uppercase', color: '#E5E7EB',
+                }}>{banda.rotulo}</span>
+              )}
+              <span style={{
+                display: 'block', fontSize: compact ? BANDA_ROTULO * 1.4 : BANDA_DIA,
+                fontWeight: 900, fontFamily: 'monospace',
+              }}>{banda.dia}</span>
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Badge AUDITADO */}
       {audited && !compact && (
         <div style={{

@@ -40,7 +40,8 @@ export interface PanelDetalleProps {
   notaUnidades?: string | null;
   pie?: React.ReactNode;
   totalPickers: number;
-  adelanto?: { fecha_despacho: string | null };
+  /** `dia_movimientos`: si la tienda es una APERTURA, el día de Odoo de sus movimientos. */
+  adelanto?: { fecha_despacho: string | null; dia_movimientos?: string | null };
   sinBloqueoOdoo: boolean;
   allCategories: string[];
   refs: string;
@@ -278,6 +279,7 @@ export function PanelDetalle(p: PanelDetalleProps) {
                         slotId={slot?.id}
                         canonicalId={buildCanonicalId(slotTipo, pNum, group.storeCod, todayISO())}
                         adelanto={!!p.adelanto} adelantoFecha={p.adelanto?.fecha_despacho ?? null}
+                        aperturaDia={p.adelanto?.dia_movimientos ?? null}
                         compact
                       />
                     </div>
