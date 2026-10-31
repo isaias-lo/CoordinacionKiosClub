@@ -4,7 +4,7 @@ import { verifyAuth } from '@/lib/apiAuth';
 
 const UNAUTH = () => NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
-const FIELDS = 'id, fecha, store_cod, zona, tipo, fecha_despacho, creado_por, created_at';
+const FIELDS = 'id, fecha, store_cod, zona, tipo, fecha_despacho, creado_por, created_at, dia_movimientos';
 const ZONAS = new Set(['rm', 'costa', 'fal']);
 
 /**
@@ -37,6 +37,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json() as {
       fecha?: string; store_cod?: string; zona?: string;
       tipo?: string; fecha_despacho?: string | null; creado_por?: string;
+      /** [APERTURA] Día de Odoo del que vienen sus movimientos. Null = tienda normal. */
+      dia_movimientos?: string | null;
     };
     const fecha     = (body.fecha ?? '').trim();
     const storeCod  = (body.store_cod ?? '').trim().toUpperCase();
@@ -55,6 +57,10 @@ export async function POST(request: NextRequest) {
       tipo:           (body.tipo ?? 'adelanto').trim() || 'adelanto',
       fecha_despacho: body.fecha_despacho || null,
       creado_por:     body.creado_por ?? null,
+      // Solo si viene con forma de fecha: una cadena cualquiera dejaría a la tienda pidiendo un
+      // día que no existe, y sin movimientos, que es peor que no marcarla.
+      dia_movimientos: /^\d{4}-\d{2}-\d{2}$/.test(String(body.dia_movimientos ?? ''))
+        ? body.dia_movimientos : null,
     };
 
     // upsert por (fecha, store_cod): re-agregar la misma tienda actualiza, no duplica.

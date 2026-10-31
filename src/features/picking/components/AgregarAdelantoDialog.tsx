@@ -5,6 +5,7 @@ import { Zap, Search, X } from 'lucide-react';
 import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { mergeTiendas, type DbTiendaRow } from '@/features/despacho/rutas/data/tiendasMerge';
 import { addTiendaAdelanto, zonaForStore, type ZonaAdelanto } from '@/features/despacho/shared/tiendasAdelanto';
+import { desgloseEnPalabras, type DiaDeApertura } from '@/features/despacho/shared/aperturaOdoo';
 
 interface Props {
   /** Fecha (YYYY-MM-DD) en que la tienda entra al flujo (hoy). */
@@ -36,6 +37,12 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded, yaHoy
   const [fechaDesp, setFecha] = useState<string>(date);
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState<string | null>(null);
+  // [APERTURA] Lo que se encontró en Odoo para esta tienda, y el día que se va a usar.
+  // `buscando` arranca en false: solo se pone en true cuando hay una tienda elegida.
+  const [buscando, setBuscando] = useState(false);
+  const [aperturas, setAperturas] = useState<DiaDeApertura[]>([]);
+  const [diaMov, setDiaMov] = useState<string>('');
+  const [verCalendario, setVerCalendario] = useState(false);
 
   const panelRef       = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -93,6 +100,31 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded, yaHoy
     setSel(store);
     setZona(zonaForStore(store.cod, catalogo[store.cod])); // default desde catálogo fusionado (incluye BD)
     setError(null);
+    setAperturas([]); setDiaMov(''); setVerCalendario(false);
+    void buscarApertura(store.cod);
+  }
+
+  /**
+   * [APERTURA] Busca movimientos de apertura de días anteriores. Se dispara SOLO al elegir una
+   * tienda, no al escribir: una búsqueda por tecla pegaría a Odoo en cada letra.
+   *
+   * Si no encuentra nada no pasa nada: queda la línea discreta para elegir el día a mano. Un fallo
+   * tampoco bloquea — agregar la tienda tiene que seguir funcionando aunque Odoo no conteste.
+   */
+  async function buscarApertura(cod: string) {
+    setBuscando(true);
+    try {
+      const res = await fetch('/api/odoo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'movimientos_apertura', cod }),
+      });
+      const json = await res.json() as { dias?: DiaDeApertura[] };
+      setAperturas(json.dias ?? []);
+    } catch {
+      setAperturas([]);
+    } finally {
+      setBuscando(false);
+    }
   }
 
   async function confirm() {
@@ -104,11 +136,25 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded, yaHoy
       zona,
       fecha_despacho: fechaDesp || null,
       creado_por:     creadoPor,
+      dia_movimientos: diaMov || null,
     });
     setSaving(false);
     if (!res.ok) { setError(res.error ?? 'No se pudo agregar'); return; }
     onAdded();
     onClose();
+  }
+
+  /** «viernes 30 de octubre», como lo dice la gente. */
+  function fechaLarga(iso: string): string {
+    const d = new Date(`${iso}T12:00:00`);
+    return Number.isNaN(d.getTime()) ? iso
+      : d.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
+  }
+  /** «vie 30», para que entre en un botón. */
+  function fechaCorta(iso: string): string {
+    const d = new Date(`${iso}T12:00:00`);
+    return Number.isNaN(d.getTime()) ? iso
+      : d.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric' }).replace('.', '');
   }
 
   const bigBtn: React.CSSProperties = {
@@ -189,6 +235,89 @@ export function AgregarAdelantoDialog({ date, creadoPor, onClose, onAdded, yaHoy
                   ))}
                 </div>
               </div>
+
+              {/* ── APERTURA ────────────────────────────────────────────────────────────────
+                  UN bloque con dos estados, no dos controles. Cuando Odoo tiene movimientos de
+                  apertura preparados en otro día, se ofrece el más reciente con su desglose;
+                  cuando no, queda una línea discreta para elegir el día a mano.
+
+                  «Otro día» está en los DOS estados a propósito: si algún día Abastecimiento
+                  cambia la palabra «Apertura» y la detección deja de encontrar, el calendario
+                  sigue a mano y nadie queda encerrado en lo que el sistema propuso. */}
+              {buscando && (
+                <div className="rounded-xl px-3 py-2.5 text-[12.5px]" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569' }}>
+                  Buscando movimientos de apertura…
+                </div>
+              )}
+
+              {!buscando && aperturas.length > 0 && !verCalendario && (
+                <div className="rounded-xl px-3 py-3" style={{ background: '#FFFBEB', border: '1.5px solid #D97706' }}>
+                  <div className="text-[13px] font-bold" style={{ color: '#7C2D12' }}>
+                    {sel.cod} no tiene movimientos de hoy
+                  </div>
+                  <div className="text-[12.5px] mt-0.5" style={{ color: '#78350F' }}>
+                    Hay <strong>{aperturas[0].total} de apertura del {fechaLarga(aperturas[0].dia)}</strong>, preparados y sin salir.
+                  </div>
+                  <div className="rounded-lg px-2.5 py-1.5 mt-2 text-[12px]" style={{ background: '#fff', border: '1px solid #FCD34D', color: '#334155' }}>
+                    {desgloseEnPalabras(aperturas[0])}
+                  </div>
+                  <div className="flex gap-2 mt-2.5">
+                    <button type="button"
+                      onClick={() => setDiaMov(d => d === aperturas[0].dia ? '' : aperturas[0].dia)}
+                      className="flex-1 rounded-lg text-[13px] font-bold cursor-pointer"
+                      style={{ minHeight: 44,
+                        background: diaMov === aperturas[0].dia ? '#7C2D12' : '#B45309',
+                        color: '#fff', border: 'none' }}>
+                      {diaMov === aperturas[0].dia ? '✓ Se usarán esos' : `Usar los del ${fechaCorta(aperturas[0].dia)}`}
+                    </button>
+                    <button type="button" onClick={() => setVerCalendario(true)}
+                      className="rounded-lg px-3 text-[12.5px] font-bold cursor-pointer"
+                      style={{ minHeight: 44, background: '#fff', color: '#78350F', border: '1.5px solid #FCD34D' }}>
+                      Otro día
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!buscando && aperturas.length === 0 && !verCalendario && (
+                <div className="rounded-xl px-3 py-2.5 flex items-center gap-2.5"
+                  style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                  <div className="flex-1">
+                    <div className="text-[13px] font-bold" style={{ color: '#334155' }}>¿Es una apertura?</div>
+                    <div className="text-[12px]" style={{ color: '#475569' }}>Trae sus movimientos de otro día</div>
+                  </div>
+                  <button type="button" onClick={() => setVerCalendario(true)}
+                    className="rounded-lg px-3.5 text-[12.5px] font-bold cursor-pointer"
+                    style={{ minHeight: 44, background: '#fff', color: '#334155', border: '1.5px solid #CBD5E1' }}>
+                    Elegir día
+                  </button>
+                </div>
+              )}
+
+              {verCalendario && (
+                <div className="rounded-xl px-3 py-3" style={{ background: '#FFFBEB', border: '1.5px solid #D97706' }}>
+                  <label htmlFor="dia-mov" className="block text-[11px] font-bold uppercase tracking-wide mb-1.5" style={{ color: '#78350F' }}>
+                    Traer movimientos del día
+                  </label>
+                  <input id="dia-mov" type="date" value={diaMov} max={date} onChange={e => setDiaMov(e.target.value)}
+                    className="w-full rounded-lg px-3 py-2 text-[14px] outline-none"
+                    style={{ border: '1.5px solid #D97706', color: '#0F172A', background: '#fff' }} />
+                  {diaMov && (
+                    <div className="rounded-lg px-2.5 py-1.5 mt-2 text-[12.5px] flex items-center justify-between"
+                      style={{ background: '#fff', border: '1px solid #FCD34D', color: '#334155' }}>
+                      <span>Preparados ese día</span>
+                      <strong style={{ color: '#7C2D12' }}>
+                        {aperturas.find(d => d.dia === diaMov)?.total ?? 0}
+                      </strong>
+                    </div>
+                  )}
+                  <button type="button" onClick={() => { setVerCalendario(false); setDiaMov(''); }}
+                    className="mt-2 text-[12px] font-bold cursor-pointer underline"
+                    style={{ color: '#78350F', background: 'none', border: 'none' }}>
+                    Quitar
+                  </button>
+                </div>
+              )}
 
               {/* Fecha de despacho */}
               <div>
