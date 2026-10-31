@@ -13,6 +13,8 @@ export interface TiendaAdelanto {
   fecha_despacho: string | null; // YYYY-MM-DD (cuándo se despacharía)
   creado_por:     string | null;
   created_at:     string;
+  /** [APERTURA] Día de Odoo del que vienen sus movimientos. `null` en una tienda normal. */
+  dia_movimientos?: string | null;
 }
 
 /**
@@ -62,7 +64,7 @@ export function getTiendasAdelantoHoy(dia?: string): Promise<TiendaAdelanto[]> {
 
 export async function addTiendaAdelanto(input: {
   fecha: string; store_cod: string; zona: ZonaAdelanto;
-  tipo?: string; fecha_despacho?: string | null; creado_por?: string;
+  tipo?: string; fecha_despacho?: string | null; creado_por?: string; dia_movimientos?: string | null;
 }): Promise<{ ok: boolean; data?: TiendaAdelanto; error?: string }> {
   try {
     const res = await fetch('/api/tiendas-adelanto', {

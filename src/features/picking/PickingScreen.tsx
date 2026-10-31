@@ -297,12 +297,25 @@ export function PickingScreen() {
   const armedPrintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (armedPrintTimerRef.current) clearTimeout(armedPrintTimerRef.current); }, []);
 
+  // Las tiendas agregadas al día. Se declara ACÁ y no más abajo porque de ella sale el mapa de
+  // aperturas que necesita `usePickingOdoo`, que se monta justo después.
+  const [adelantos, setAdelantos]         = useState<TiendaAdelanto[]>([]);
+  // [APERTURA] `cod` → el día de Odoo del que vienen SUS movimientos. Solo las tiendas de apertura
+  // están acá; para el resto el mapa no las tiene y se les pide hoy. Ver `consultasPorDia.ts`.
+  const aperturasPorCod = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const a of adelantos) {
+      const dia = String(a.dia_movimientos ?? '').trim();
+      if (dia) m.set(String(a.store_cod ?? '').toUpperCase(), dia);
+    }
+    return m;
+  }, [adelantos]);
+
   const {
     hasOdoo, odooDesactivado, opsMap, loadingCods, errorCods, lastRefresh, refreshingId,
     fetchBatchOps, fetchOpsForStore, refreshOp,
-  } = usePickingOdoo({ selectedCods, initialOpsMap: session.opsMap ?? {} });
+  } = usePickingOdoo({ selectedCods, initialOpsMap: session.opsMap ?? {}, aperturas: aperturasPorCod });
   const [calStores, setCalStores]         = useState<TodayStore[]>([]);
-  const [adelantos, setAdelantos]         = useState<TiendaAdelanto[]>([]);
   const [adelantoDialogOpen, setAdelantoDialogOpen] = useState(false);
   const [storesLoading, setStoresLoading] = useState(false);
   // Nombres de tiendas desde Supabase — sobreescriben el hardcoded TIENDAS_INICIAL

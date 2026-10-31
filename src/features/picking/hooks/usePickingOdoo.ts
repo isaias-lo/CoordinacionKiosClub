@@ -5,10 +5,22 @@ import type { PickingOperation } from '../picking-types';
 import { AUTO_REFRESH_MS } from '../picking-types';
 import { isAbastecimientoOp, parseOrigin, resolveStoreCode } from '../picking-utils';
 import { useOdooActivo } from '@/hooks/useOdooActivo';
+import { agruparConsultasPorDia } from '@/features/despacho/shared/consultasPorDia';
+import { fechaChile } from '@/lib/fechaChile';
 
 interface UsePickingOdooParams {
   selectedCods:   string[];
   initialOpsMap?: Record<string, PickingOperation[]>;
+  /** [APERTURA] `cod` → día de Odoo del que vienen SUS movimientos. Ver `consultasPorDia.ts`. */
+  aperturas?: ReadonlyMap<string, string>;
+}
+
+/** La forma cruda de una operación como la devuelve `/api/odoo`. */
+interface OpCruda {
+  id: number; name: string; origin: string; partner: string;
+  fromLocation: string; toLocation: string; state: string;
+  scheduledDate: string; dateDone: string | null; pickingType: string;
+  responsible: string; responsibleId: number | null; lineCount: number; batch?: string;
 }
 
 interface UsePickingOdooResult {
@@ -26,7 +38,7 @@ interface UsePickingOdooResult {
   refreshAllOps:    (ops: PickingOperation[], storeCod: string) => Promise<void>;
 }
 
-export function usePickingOdoo({ selectedCods, initialOpsMap = {} }: UsePickingOdooParams): UsePickingOdooResult {
+export function usePickingOdoo({ selectedCods, initialOpsMap = {}, aperturas }: UsePickingOdooParams): UsePickingOdooResult {
   const odooActivo = useOdooActivo(); // interruptor del administrador (/admin/sistema)
   const odooConfigurado = !!process.env.NEXT_PUBLIC_ODOO_URL;
   const hasOdoo = odooConfigurado && odooActivo;
@@ -46,22 +58,24 @@ export function usePickingOdoo({ selectedCods, initialOpsMap = {} }: UsePickingO
     if (!hasOdoo || !cods.length) return;
     setLoadingCods(prev => [...prev, ...cods.filter(c => !prev.includes(c))]);
     try {
-      const res = await fetch('/api/odoo', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'picking_batch_operations', cods }),
-      });
-      const data = (await res.json()) as {
-        byStore?: Record<string, Array<{
-          id: number; name: string; origin: string; partner: string;
-          fromLocation: string; toLocation: string; state: string;
-          scheduledDate: string; dateDone: string | null; pickingType: string;
-          responsible: string; responsibleId: number | null; lineCount: number; batch?: string;
-        }>>;
-        error?: string;
-      };
-      if (!res.ok || data.error) throw new Error(data.error ?? 'Error Odoo');
+      // [APERTURA] Una llamada POR DÍA, no un rango: una tienda de apertura necesita el día en que
+      // Abastecimiento dejó sus movimientos, y las demás el de hoy. Sin aperturas esto es UNA
+      // sola llamada con todas, igual que siempre. Ver `consultasPorDia.ts`.
+      const grupos = agruparConsultasPorDia(cods, aperturas, fechaChile());
+      const respuestas = await Promise.all(grupos.map(async g => {
+        const r = await fetch('/api/odoo', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'picking_batch_operations', cods: g.cods, fecha: g.dia }),
+        });
+        return { ok: r.ok, json: await r.json() as { byStore?: Record<string, OpCruda[]>; error?: string } };
+      }));
+      const malas = respuestas.filter(r => !r.ok || r.json.error);
+      if (malas.length === respuestas.length) throw new Error(malas[0]?.json.error ?? 'Error Odoo');
+      const byStore: Record<string, OpCruda[]> = {};
+      for (const r of respuestas) Object.assign(byStore, r.json.byStore ?? {});
+
       const updates: Record<string, PickingOperation[]> = {};
-      for (const [cod, pickings] of Object.entries(data.byStore ?? {})) {
+      for (const [cod, pickings] of Object.entries(byStore)) {
         updates[cod] = pickings
           .filter(p => isAbastecimientoOp(p.origin) && !p.origin.toUpperCase().startsWith('AUDITORIA'))
           .map(p => {
@@ -78,7 +92,7 @@ export function usePickingOdoo({ selectedCods, initialOpsMap = {} }: UsePickingO
     } finally {
       setLoadingCods(prev => prev.filter(c => !cods.includes(c)));
     }
-  }, [hasOdoo]);
+  }, [hasOdoo, aperturas]);
 
   // ─── Single-store fetch (al agregar una tienda individualmente) ───────────────
 
@@ -88,7 +102,9 @@ export function usePickingOdoo({ selectedCods, initialOpsMap = {} }: UsePickingO
     try {
       const res = await fetch('/api/odoo', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'picking_today_operations', query: cod }),
+        body: JSON.stringify({ action: 'picking_today_operations', query: cod,
+          // [APERTURA] Su día, si lo tiene; si no, el servidor usa hoy.
+          fecha: aperturas?.get(cod.toUpperCase()) }),
       });
       const data = (await res.json()) as {
         pickings?: Array<{
@@ -115,7 +131,7 @@ export function usePickingOdoo({ selectedCods, initialOpsMap = {} }: UsePickingO
     } finally {
       setLoadingCods(prev => prev.filter(c => c !== cod));
     }
-  }, [hasOdoo]);
+  }, [hasOdoo, aperturas]);
 
   // ─── Refresh individual picking ───────────────────────────────────────────────
 
