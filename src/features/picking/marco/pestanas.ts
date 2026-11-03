@@ -1,10 +1,10 @@
-// Las siete pestañas de Picking y cómo se agrupan en el menú lateral. Puro y testeable.
+// Las ocho pestañas de Picking y cómo se agrupan en el menú lateral. Puro y testeable.
 //
 // La clave de cada una es la que guarda `usePestanaRecordada('picking_tab')`: no se cambian, para
 // que quien recargue vuelva a la misma pestaña que tenía antes del rediseño.
 
 export type PestanaPicking =
-  | 'monitoreo' | 'congelados' | 'actividad' | 'historial' | 'estadisticas' | 'configuracion' | 'calendario';
+  | 'monitoreo' | 'congelados' | 'actividad' | 'hoja' | 'historial' | 'estadisticas' | 'configuracion' | 'calendario';
 
 export type GrupoPestanas = 'Operación' | 'Seguimiento' | 'Ajustes';
 
@@ -15,6 +15,9 @@ export const PESTANAS: Pestana[] = [
   { key: 'monitoreo',     label: 'Seco',          grupo: 'Operación'   },
   { key: 'congelados',    label: 'Congelados',    grupo: 'Operación'   },
   { key: 'actividad',     label: 'Actividad',     grupo: 'Seguimiento' },
+  // La clave es 'hoja' y el rótulo «Planilla»: en PickingScreen `panelView === 'planilla'` ya significa
+  // otra cosa (el área de trabajo del teléfono), y dos «planilla» distintas en un archivo no se leen.
+  { key: 'hoja',          label: 'Planilla',      grupo: 'Seguimiento' },
   { key: 'historial',     label: 'Historial',     grupo: 'Seguimiento' },
   { key: 'estadisticas',  label: 'Estadísticas',  grupo: 'Seguimiento' },
   { key: 'calendario',    label: 'Calendario',    grupo: 'Ajustes'     },

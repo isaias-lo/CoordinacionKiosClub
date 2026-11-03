@@ -67,6 +67,7 @@ import { usePickingOdoo }     from './hooks/usePickingOdoo';
 import { StatsTab }           from './components/StatsTab';
 import { HistorialTab }       from './components/HistorialTab';
 import { ActivityTab } from './components/ActivityTab';
+import { PlanillaTab } from './components/PlanillaTab';
 import { ConfigTab }          from './components/ConfigTab';
 import CalendarioColumnas     from '@/features/control-interno/CalendarioColumnas';
 import { PickerGroupCard }    from './components/PickerGroupCard';
@@ -160,7 +161,7 @@ export function PickingScreen() {
   // pestaña para volver al comportamiento automático.
   const [selectorAbiertoManual, setSelectorAbiertoManual] = useState(false);
   const [rightTab, setRightTab]   = usePestanaRecordada('picking_tab',
-    ['monitoreo', 'congelados', 'actividad', 'estadisticas', 'historial', 'configuracion', 'calendario'] as const, 'monitoreo');
+    ['monitoreo', 'congelados', 'actividad', 'hoja', 'estadisticas', 'historial', 'configuracion', 'calendario'] as const, 'monitoreo');
   // [P6] El monitoreo se separó en dos tabs que comparten la MISMA vista: 'monitoreo' (Seco:
   // aseo/comida, hogar y chocolates) y 'congelados'. `esTabCongelados` decide qué operaciones
   // se muestran y de qué calendario salen las tiendas del panel izquierdo.
@@ -1232,6 +1233,10 @@ export function PickingScreen() {
     }
     return base;
   }, [calStores, calStoresCong, esTabCongelados, adelantos, tiendaOverrides]);
+
+  // [PLANILLA] Los códigos del día, memoizados: `todayStores.map(...)` suelto en el JSX crea un
+  // arreglo nuevo en cada render y el tab volvería a pedirle el día a Odoo cada vez.
+  const codsPlanilla = useMemo(() => todayStores.map(s => s.cod), [todayStores]);
 
   // Lookup store_cod → adelanto (para marcar la etiqueta de esa tienda).
   const adelantoByCod = useMemo(() => {
@@ -2357,6 +2362,11 @@ export function PickingScreen() {
                 nombreTienda={nameFor}
               />
             </div>
+          )}
+
+          {/* ── Tab content: Planilla (clave 'hoja': 'planilla' ya es un valor de `panelView`) ── */}
+          {rightTab === 'hoja' && (
+            <PlanillaTab cods={codsPlanilla} aperturas={aperturasPorCod} />
           )}
 
           {/* ── Tab content: Historial ── */}

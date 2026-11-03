@@ -9,8 +9,9 @@ describe('accionDeTecla', () => {
   it('los números van a las pestañas en el orden del menú', () => {
     expect(accionDeTecla({ key: '1' }, false)).toEqual({ tipo: 'pestana', key: 'monitoreo' });
     expect(accionDeTecla({ key: '2' }, false)).toEqual({ tipo: 'pestana', key: 'congelados' });
-    expect(accionDeTecla({ key: '7' }, false)).toEqual({ tipo: 'pestana', key: 'configuracion' });
-    expect(accionDeTecla({ key: '8' }, false)).toBeNull();
+    expect(accionDeTecla({ key: '4' }, false)).toEqual({ tipo: 'pestana', key: 'hoja' });
+    expect(accionDeTecla({ key: '8' }, false)).toEqual({ tipo: 'pestana', key: 'configuracion' });
+    expect(accionDeTecla({ key: '9' }, false)).toBeNull();
     expect(accionDeTecla({ key: '0' }, false)).toBeNull();
   });
   it('no hace nada mientras se escribe ni con modificadores', () => {

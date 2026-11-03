@@ -59,6 +59,7 @@ export const GUIA: TemaAyuda[] = [
     titulo: 'Seguimiento',
     pasos: [
       'Actividad: lo que pasó en el día (impresiones, unidades creadas y eliminadas, errores), filtrable por cuenta, tienda y picker.',
+      'Planilla: la hoja del día, una fila por tienda del calendario con el picker y los registros de cada sección. Se ve como Planilla o como Detalle (con horas), y el botón imprime o baja la vista que tengas abierta.',
       'Historial: las etiquetas impresas hoy por cada encargado y los cambios de nombre.',
       'Estadísticas: rendimiento por picker con datos de Odoo.',
     ],
