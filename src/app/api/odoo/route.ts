@@ -350,6 +350,8 @@ export async function POST(req: NextRequest) {
     /** [APERTURAS] La tienda cuyos movimientos de apertura se buscan, y cuántos días atrás mirar. */
     cod?: string;
     dias?: number;
+    /** [PLANILLA] Los días que la hoja necesita: hoy, más el de cada apertura. YYYY-MM-DD. */
+    fechas?: string[];
       // Se ignora: la URL del servidor sale siempre del entorno (ver list_databases).
       config?: { url?: string };
     };
@@ -655,7 +657,7 @@ export async function POST(req: NextRequest) {
     // A este endpoint NO se le aplica la ventana de 7 días de `diaDeOdoo.ts` (ver el comentario de
     // ese archivo): la fecha llega ya resuelta y se usa tal cual sobre `scheduled_date`.
     if (action === 'planilla_dia') {
-      const pedidas = (body as { fechas?: unknown }).fechas;
+      const pedidas: unknown = body.fechas;
       const fechas = Array.isArray(pedidas)
         ? [...new Set(pedidas.filter((d): d is string =>
             typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)))]
