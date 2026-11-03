@@ -461,20 +461,30 @@ Crear `src/features/picking/planilla/armarPlanilla.ts`:
 
 import type { ZonaPlanilla } from './zonaPlanilla';
 
-export type Seccion = 'Comida' | 'Aseo' | 'Hogar' | 'Chocolates';
+export type SeccionPlanilla = 'Comida' | 'Aseo' | 'Hogar' | 'Chocolates';
 
 /** El orden de las columnas, igual que en el papel. */
-export const SECCIONES: Seccion[] = ['Comida', 'Aseo', 'Hogar', 'Chocolates'];
+export const SECCIONES: SeccionPlanilla[] = ['Comida', 'Aseo', 'Hogar', 'Chocolates'];
 
 /** Un movimiento de Odoo con lo que la planilla necesita, ya normalizado. */
 export interface MovimientoPlanilla {
+  /**
+   * El código CANÓNICO del catálogo, como lo devuelve `resolveStoreCode`. Acá se compara con
+   * `===` contra el de la tienda: un código sin canonizar («23PEN» en vez de «23PEÑ») no calzaría
+   * con ninguna y la tienda saldría «sin carga» teniéndola, sin ningún aviso.
+   */
   cod: string;
-  seccion: Seccion;
+  seccion: SeccionPlanilla;
   /** `move_ids.length`: el número que muestra Odoo. NO el `lineCount` filtrado por estado. */
   registros: number;
   /** El nombre ya traducido por `picker_canonical_names`; `''` si todavía no se asignó. */
   picker: string;
   asignadoEn: string | null;
+  /**
+   * La hora de validación. Este módulo no la usa —la matriz no muestra horas—, pero es parte de la
+   * forma compartida del movimiento: la vista Detalle y el CSV consumen la MISMA lista de
+   * movimientos, no las celdas, así que no hay dos listas en paralelo que mantener.
+   */
   validadoEn: string | null;
   estado: string;
 }
@@ -484,23 +494,40 @@ export interface CeldaPlanilla { registros: number; picker: string }
 export interface FilaPlanilla {
   cod: string;
   zona: ZonaPlanilla;
-  celdas: Record<Seccion, CeldaPlanilla[]>;
+  celdas: Record<SeccionPlanilla, CeldaPlanilla[]>;
   /** Está en el calendario del día y no tiene ningún movimiento real. */
   sinCarga: boolean;
 }
 
 export interface Planilla {
   filas: FilaPlanilla[];
-  totales: Record<Seccion, number>;
-  descartados: { anulados: number; sinLiberar: number };
-  /** Movimientos de tiendas que no son del día. Se ignoran, pero se cuentan. */
-  fueraDelDia: number;
+  totales: Record<SeccionPlanilla, number>;
+  /**
+   * Lo que no entró a la hoja, contado. Ninguna rama descarta en silencio: `otros` junta los
+   * estados que no son ninguno de los cuatro conocidos —`waiting`, por ejemplo—, porque una hoja
+   * que se firma no puede perder un movimiento sin dejar rastro.
+   */
+  descartados: { anulados: number; sinLiberar: number; otros: number };
+  /** Movimientos de tiendas que no están en el calendario del día. Se ignoran, pero se cuentan. */
+  fueraDelCalendario: number;
 }
 
-/** Los dos estados que son trabajo real. */
+/**
+ * Los dos estados que son trabajo real.
+ *
+ * No es lo mismo que `PICKEABLE_STATES` de `picking-utils.ts`, que agrega
+ * `partially_available`: esa es la lista blanca del semáforo y mira `stock.move`, mientras que
+ * acá se miran `stock.picking`, donde ese estado no existe.
+ */
 const ESTADOS_REALES = new Set(['assigned', 'done']);
 
-/** Los asignados primero, en orden de asignación; los sin asignar al final. */
+/**
+ * Los asignados primero, en orden de asignación; los sin asignar al final.
+ *
+ * Compara las fechas como TEXTO, lo que vale solo porque son el naive UTC de Odoo
+ * («YYYY-MM-DD HH:MM:SS»): ancho fijo y de mayor a menor significancia, así que el orden
+ * lexicográfico y el cronológico coinciden. Con cualquier otro formato habría que parsear.
+ */
 function porAsignacion(a: MovimientoPlanilla, b: MovimientoPlanilla): number {
   if (!a.asignadoEn && !b.asignadoEn) return 0;
   if (!a.asignadoEn) return 1;
@@ -508,7 +535,7 @@ function porAsignacion(a: MovimientoPlanilla, b: MovimientoPlanilla): number {
   return a.asignadoEn < b.asignadoEn ? -1 : a.asignadoEn > b.asignadoEn ? 1 : 0;
 }
 
-function celdasVacias(): Record<Seccion, CeldaPlanilla[]> {
+function celdasVacias(): Record<SeccionPlanilla, CeldaPlanilla[]> {
   return { Comida: [], Aseo: [], Hogar: [], Chocolates: [] };
 }
 
@@ -521,24 +548,34 @@ export function armarPlanilla(
   movimientos: MovimientoPlanilla[],
   tiendas: Array<{ cod: string; zona: ZonaPlanilla }>,
 ): Planilla {
-  const porCod = new Map<string, MovimientoPlanilla[]>();
-  for (const t of tiendas) porCod.set(t.cod, []);
+  // Una tienda repetida en la entrada daría DOS filas con la misma carga y, peor, sumaría su carga
+  // dos veces en los totales: la hoja firmada mostraría el doble. `todayStores` deduplica los
+  // adelantos contra el calendario, pero el calendario mismo no lo garantiza, así que se hace acá.
+  const unicas: Array<{ cod: string; zona: ZonaPlanilla }> = [];
+  const vistas = new Set<string>();
+  for (const t of tiendas) {
+    if (vistas.has(t.cod)) continue;
+    vistas.add(t.cod);
+    unicas.push(t);
+  }
 
-  const descartados = { anulados: 0, sinLiberar: 0 };
-  let fueraDelDia = 0;
+  const porCod = new Map<string, MovimientoPlanilla[]>();
+  for (const t of unicas) porCod.set(t.cod, []);
+
+  const descartados = { anulados: 0, sinLiberar: 0, otros: 0 };
+  let fueraDelCalendario = 0;
 
   for (const m of movimientos) {
     if (m.estado === 'cancel')    { descartados.anulados++;   continue; }
     if (m.estado === 'confirmed') { descartados.sinLiberar++; continue; }
-    if (!ESTADOS_REALES.has(m.estado)) continue;
+    // Cualquier otro estado —`waiting`, `draft`— también se cuenta: ninguna rama descarta callada.
+    if (!ESTADOS_REALES.has(m.estado)) { descartados.otros++; continue; }
     const lista = porCod.get(m.cod);
-    if (!lista) { fueraDelDia++; continue; }
+    if (!lista) { fueraDelCalendario++; continue; }
     lista.push(m);
   }
 
-  const totales: Record<Seccion, number> = { Comida: 0, Aseo: 0, Hogar: 0, Chocolates: 0 };
-
-  const filas: FilaPlanilla[] = tiendas.map(t => {
+  const filas: FilaPlanilla[] = unicas.map(t => {
     const suyos = porCod.get(t.cod) ?? [];
     const celdas = celdasVacias();
     for (const s of SECCIONES) {
@@ -546,12 +583,20 @@ export function armarPlanilla(
         .filter(m => m.seccion === s)
         .sort(porAsignacion)
         .map(m => ({ registros: m.registros, picker: m.picker }));
-      for (const c of celdas[s]) totales[s] += c.registros;
     }
     return { cod: t.cod, zona: t.zona, celdas, sinCarga: suyos.length === 0 };
   });
 
-  return { filas, totales, descartados, fueraDelDia };
+  // Los totales salen DE LAS FILAS, no de un acumulador dentro del `map`: así el total no puede
+  // divergir de lo que la hoja muestra.
+  const totales: Record<SeccionPlanilla, number> = { Comida: 0, Aseo: 0, Hogar: 0, Chocolates: 0 };
+  for (const fila of filas) {
+    for (const s of SECCIONES) {
+      for (const c of fila.celdas[s]) totales[s] += c.registros;
+    }
+  }
+
+  return { filas, totales, descartados, fueraDelCalendario };
 }
 ```
 
@@ -916,6 +961,10 @@ agregar (reemplazando `traerPickingsDelDia` por el nombre real del paso 1):
             ref: p.name, origin: p.origin, estado: p.state,
             registros: p.lineTotal, responsable: p.responsible,
             asignadoEn: p.assignedAt, validadoEn: p.dateDone,
+            // [PLANILLA] El destino y el partner van porque `resolveStoreCode` los necesita: el
+            // `origin` es texto escrito a mano y `location_dest_id` es dato estructurado. Ver el
+            // comentario de `resolveStoreCode` en `picking-utils.ts`.
+            toLocation: p.toLocation, partner: p.partner,
             // El día que se pidió, no el `scheduled_date` crudo: es la clave con la que
             // `movimientosDesdeOdoo` decide si ese movimiento le corresponde a esa tienda.
             dia: fecha,
@@ -1014,7 +1063,8 @@ function crudo(p: Partial<MovimientoOdoo>): MovimientoOdoo {
   return {
     ref: '99REC/DT/146059', origin: 'Abastecimiento Comida 27MCH 03/11/2026',
     estado: 'done', registros: 134, responsable: 'Pickers 1',
-    asignadoEn: '2026-11-03 11:51:12', validadoEn: '2026-11-03 13:52:10', dia: HOY, ...p,
+    asignadoEn: '2026-11-03 11:51:12', validadoEn: '2026-11-03 13:52:10', dia: HOY,
+    toLocation: '', partner: '', ...p,
   };
 }
 /** Todas las tiendas piden hoy, salvo las que se pasen distinto. */
@@ -1114,14 +1164,14 @@ describe('movimientosDesdeOdoo: cada tienda solo toma los movimientos de SU día
 Run: `npx vitest run src/features/picking/planilla/__tests__/desdeOdoo.test.ts`
 Expected: FAIL — `Failed to resolve import "../desdeOdoo"`
 
-- [ ] **Step 3: Comprobar que `extractStoreCode` se exporta**
+- [ ] **Step 3: Comprobar que `resolveStoreCode` se exporta y qué hace**
 
 ```bash
-grep -n "export function extractStoreCode\|^function extractStoreCode" src/features/picking/picking-utils.ts
+grep -n -B 8 "export function resolveStoreCode" src/features/picking/picking-utils.ts
 ```
 
-Si aparece sin `export`, agregárselo: es la función que `parseOrigin` ya usa internamente (línea
-229) y exportarla no cambia su comportamiento.
+Leé su comentario completo antes de usarla: dice en qué orden mira las tres fuentes y por qué
+canoniza la Ñ. Ya está exportada.
 
 - [ ] **Step 4: Escribir la implementación**
 
@@ -1133,10 +1183,19 @@ Crear `src/features/picking/planilla/desdeOdoo.ts`:
 // ── LO QUE NO SE PUEDE LEER SE DESCARTA ───────────────────────────────────────────────────────
 //
 // El `origin` es texto escrito a mano en Odoo. La sección sale de `categoriaDeOrigin`, que ya cubre
-// las aperturas («Abastecimiento Apertura Hogar»), y el código de `extractStoreCode`, que trata la
-// Ñ como letra de palabra — `\b` no lo hace y 23PEÑ se perdía. Un «Merma Abastecimiento
-// 14PF/INT/02745» no es un movimiento de la planilla: ponerle una sección por defecto metería una
-// fila falsa en una hoja que se firma.
+// las aperturas («Abastecimiento Apertura Hogar»). Un «Merma Abastecimiento 14PF/INT/02745» no es un
+// movimiento de la planilla: ponerle una sección por defecto metería una fila falsa en una hoja que
+// se firma.
+//
+// ── EL CÓDIGO SALE DE `resolveStoreCode`, NO DE `extractStoreCode` ──────────────────────────────
+//
+// `extractStoreCode` solo pone en mayúsculas y aplica la regex: NO canoniza la Ñ. `resolveStoreCode`
+// sí, y su comentario dice por qué: «para que el semáforo/bodega (que usan el código del catálogo,
+// p. ej. "37VIÑ") hagan match aunque Odoo use otra grafía de la Ñ (p. ej. "37VIN")». Además mira
+// primero `location_dest_id`, que es dato estructurado, y recién después el `origin` manual.
+//
+// Sin eso el fallo es SILENCIOSO: un movimiento de 23PEÑ que llegue como `23PEN` no calza con
+// ninguna tienda del día, cae en `fueraDelCalendario` y la tienda aparece «sin carga» teniéndola.
 //
 // ── CADA TIENDA TOMA LOS MOVIMIENTOS DE SU DÍA ────────────────────────────────────────────────
 //
@@ -1147,8 +1206,8 @@ Crear `src/features/picking/planilla/desdeOdoo.ts`:
 // normal sumaría dos veces: sus movimientos de hoy y los del día de la apertura.
 
 import { categoriaDeOrigin } from '@/features/despacho/shared/aperturaOdoo';
-import { extractStoreCode } from '@/features/picking/picking-utils';
-import { SECCIONES, type MovimientoPlanilla, type Seccion } from './armarPlanilla';
+import { resolveStoreCode } from '@/features/picking/picking-utils';
+import { SECCIONES, type MovimientoPlanilla, type SeccionPlanilla } from './armarPlanilla';
 
 /** Un movimiento tal como lo devuelve la acción `planilla_dia`. */
 export interface MovimientoOdoo {
@@ -1161,6 +1220,10 @@ export interface MovimientoOdoo {
   validadoEn: string | null;
   /** El día que se le pidió a Odoo. Es la clave para saber a qué tienda le corresponde. */
   dia: string;
+  /** `location_dest_id`: dato estructurado, la primera fuente del código de tienda. */
+  toLocation: string;
+  /** El partner del picking: la última fuente del código, si las dos anteriores fallan. */
+  partner: string;
 }
 
 const ES_SECCION = new Set<string>(SECCIONES);
@@ -1184,13 +1247,13 @@ export function movimientosDesdeOdoo(
     const cat = categoriaDeOrigin(m.origin);
     // Congelados tiene su propia pestaña: no es de esta planilla.
     if (!cat || !ES_SECCION.has(cat)) continue;
-    const cod = extractStoreCode(m.origin);
+    const cod = resolveStoreCode({ toLocation: m.toLocation, origin: m.origin, partner: m.partner });
     if (!cod) continue;
     const suDia = diaPorTienda.get(cod);
     if (!suDia || suDia !== m.dia) continue;
     out.push({
       cod,
-      seccion: cat as Seccion,
+      seccion: cat as SeccionPlanilla,
       registros: m.registros,
       picker: m.responsable ? (nombres[m.responsable] ?? m.responsable) : '',
       asignadoEn: m.asignadoEn,
