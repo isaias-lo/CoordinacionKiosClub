@@ -57,3 +57,35 @@ describe('formatearDuracion', () => {
     expect(formatearDuracion(null)).toBe('—');
   });
 });
+
+describe('horaChile: el cambio de horario', () => {
+  it('cruza el salto de septiembre sin restar un offset fijo', () => {
+    // Chile adelanta el 06/09/2026 a las 04:00 UTC. Medido: 03:30 UTC es 23:30 del día anterior
+    // (UTC-4) y 05:30 UTC ya es 02:30 (UTC-3). Un offset fijo erraría uno de los dos.
+    expect(horaChile('2026-09-06 03:30:00')).toBe('23:30');
+    expect(horaChile('2026-09-06 05:30:00')).toBe('02:30');
+  });
+
+  it('acepta el `false` con el que Odoo dice «sin fecha»', () => {
+    // `date_done` de un movimiento sin validar llega como false, no como null.
+    expect(horaChile(false)).toBe('');
+    expect(duracionMinutos('2026-11-03 11:00:00', false)).toBeNull();
+  });
+});
+
+describe('duracionMinutos: lo que un firmante puede verificar a mano', () => {
+  it('trunca los segundos, así la resta coincide con las horas impresas', () => {
+    // La hoja muestra 08:33 y 10:59: restar a mano da 146. Con los segundos crudos daba 145.
+    expect(horaChile('2026-11-03 11:33:50')).toBe('08:33');
+    expect(horaChile('2026-11-03 13:59:10')).toBe('10:59');
+    expect(duracionMinutos('2026-11-03 11:33:50', '2026-11-03 13:59:10')).toBe(146);
+  });
+
+  it('mide tiempo real aunque la hora de pared se repita', () => {
+    // Medido: el 05/04/2026 las 02:30 y las 03:30 UTC muestran las dos «23:30», porque Chile
+    // vuelve a UTC-4. Restar lo impreso daría 0; pasaron 60 minutos.
+    expect(horaChile('2026-04-05 02:30:00')).toBe('23:30');
+    expect(horaChile('2026-04-05 03:30:00')).toBe('23:30');
+    expect(duracionMinutos('2026-04-05 02:30:00', '2026-04-05 03:30:00')).toBe(60);
+  });
+});
