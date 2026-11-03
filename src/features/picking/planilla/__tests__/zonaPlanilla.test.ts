@@ -43,3 +43,36 @@ describe('zonaPlanilla: la zona con la que se pinta una tienda', () => {
     expect(Object.keys(COLOR_ZONA)).toHaveLength(5);
   });
 });
+
+describe('zonaPlanilla: el tipo tal como viene del catálogo', () => {
+  it('reconoce el mall con minúsculas, espacios o un nombre más largo', () => {
+    // El catálogo se carga a mano; `esMall` es la fuente única que ya usa el calendario.
+    expect(zonaPlanilla({ sector: 'Las Condes', lat: -33.4, tipo: 'mall' })).toBe('mall');
+    expect(zonaPlanilla({ sector: 'Las Condes', lat: -33.4, tipo: ' MALL ' })).toBe('mall');
+    expect(zonaPlanilla({ sector: 'Las Condes', lat: -33.4, tipo: 'Mall Plaza' })).toBe('mall');
+  });
+
+  it('«punto» y «oficina» no son mall: caen en rm', () => {
+    // Existen en el catálogo y no son tiendas de abastecimiento.
+    expect(zonaPlanilla({ sector: 'Santiago', lat: -33.44, tipo: 'punto' })).toBe('rm');
+    expect(zonaPlanilla({ sector: 'Santiago', lat: -33.44, tipo: 'oficina' })).toBe('rm');
+  });
+
+  it('sin tipo cae en rm', () => {
+    expect(zonaPlanilla({ sector: 'Corredor Sur', lat: -33.5 })).toBe('rm');
+  });
+});
+
+describe('zonaPlanilla: la prioridad de la zona sobre el tipo', () => {
+  it('Costa + MALL va a costa, no a mall', () => {
+    // La otra mitad de la regla: la zona manda sobre el tipo en Costa igual que en Regiones.
+    expect(zonaPlanilla({ sector: 'Costa', lat: -33.04, tipo: 'MALL' })).toBe('costa');
+  });
+
+  it('«Región» a secas y sin latitud cae en sur', () => {
+    // `sectores.ts` lo decide así: sin GPS, el sur es lo más común. Se fija acá para que no
+    // cambie en silencio. 61RIO está en la base sin lat.
+    expect(zonaPlanilla({ sector: 'Región', lat: null, tipo: 'STRIPCENTER' })).toBe('sur');
+    expect(zonaPlanilla({ sector: 'Región Sur', lat: null, tipo: 'STRIPCENTER' })).toBe('sur');
+  });
+});
