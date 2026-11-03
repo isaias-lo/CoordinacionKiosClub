@@ -21,9 +21,13 @@ describe('csvVistaPlanilla', () => {
     expect(lineas[0]).toBe('Fecha,#,Tienda,Zona,Comida,Usuario Comida,Aseo,Usuario Aseo,Hogar,Usuario Hogar,Chocolates,Usuario Chocolates');
   });
 
-  it('una celda con dos movimientos NO rompe las columnas: van entre comillas y separados por " / "', () => {
-    expect(lineas[1]).toContain('"63 / 46"');
-    expect(lineas[1]).toContain('"Marcelo Vergara / Marcelo Vergara"');
+  it('una celda con dos movimientos no rompe las columnas', () => {
+    // Los dos valores van en UNA celda separados por « / ». No se entrecomillan porque el
+    // separador no es una coma: entrecomillar sin necesidad va contra el RFC 4180 y obliga a
+    // mantener un segundo camino de escape. Lo que importa es que la línea siga teniendo 12
+    // campos, y eso es lo que se mide.
+    expect(lineas[1]).toContain('63 / 46');
+    expect(lineas[1]).toContain('Marcelo Vergara / Marcelo Vergara');
     // 12 encabezados ⇒ 11 comas fuera de las comillas.
     expect(lineas[1].replace(/"[^"]*"/g, 'X').split(',')).toHaveLength(12);
   });

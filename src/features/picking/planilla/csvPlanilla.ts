@@ -1,16 +1,16 @@
 // El archivo que se baja, una función por vista. Módulo puro.
 //
 // La celda de una sección puede llevar DOS movimientos (los dos Hogar de 38SP2). En el CSV van en
-// una sola celda, separados por « / » y entre comillas: una coma suelta ahí correría todas las
+// una sola celda, separados por « / »: el separador NO es una coma justamente para que la celda no
+// necesite comillas y la línea conserve sus 12 campos. Si fuera «63, 46» correría todas las
 // columnas que siguen y el archivo se abriría torcido en la planilla de cálculo.
+//
+// El entrecomillado queda solo donde el RFC 4180 lo pide: cuando el texto trae una coma, una
+// comilla o un salto de línea. Eso pasa de verdad con un nombre como «Vergara, Marcelo».
 
 import { SECCIONES, type Planilla, type MovimientoPlanilla } from './armarPlanilla';
 import { COLOR_ZONA } from './zonaPlanilla';
 import { horaChile, duracionMinutos, formatearDuracion } from './horasPlanilla';
-
-/** Texto que ya viene escapado: `fila` lo escribe tal cual, sin volver a entrecomillarlo. */
-interface Crudo { crudo: string }
-type Valor = string | number | Crudo;
 
 /** Entre comillas solo si hace falta, y las comillas de adentro se duplican (RFC 4180). */
 function campo(v: string | number): string {
@@ -19,18 +19,7 @@ function campo(v: string | number): string {
   return '"' + s.replace(/"/g, '""') + '"';
 }
 
-/**
- * Los valores de una celda de la matriz. Con más de un movimiento van SIEMPRE entre comillas,
- * aunque «63 / 46» no tenga coma: es lo que avisa a quien lee el archivo que son dos datos en
- * una celda, y protege si el separador algún día cambia a uno que sí la tenga.
- */
-function celdaCsv(valores: Array<string | number>): Crudo {
-  const s = valores.join(' / ');
-  return { crudo: valores.length > 1 ? '"' + s.replace(/"/g, '""') + '"' : s };
-}
-
-const fila = (cs: Array<Valor>): string =>
-  cs.map(v => (typeof v === 'object' ? v.crudo : campo(v))).join(',');
+const fila = (cs: Array<string | number>): string => cs.map(campo).join(',');
 
 /** La matriz: una línea por tienda y la de totales al final. */
 export function csvVistaPlanilla(p: Planilla, fecha: string): string {
@@ -40,16 +29,16 @@ export function csvVistaPlanilla(p: Planilla, fecha: string): string {
   const lineas = [encabezados.join(',')];
 
   p.filas.forEach((f, i) => {
-    const cs: Array<Valor> = [fecha, i + 1, f.cod, COLOR_ZONA[f.zona].label];
+    const cs: Array<string | number> = [fecha, i + 1, f.cod, COLOR_ZONA[f.zona].label];
     for (const s of SECCIONES) {
       const celda = f.celdas[s];
-      cs.push(celdaCsv(celda.map(c => c.registros)));
-      cs.push(celdaCsv(celda.map(c => c.picker)));
+      cs.push(celda.map(c => c.registros).join(' / '));
+      cs.push(celda.map(c => c.picker).join(' / '));
     }
     lineas.push(fila(cs));
   });
 
-  const tot: Array<Valor> = [fecha, '', 'TOTAL', ''];
+  const tot: Array<string | number> = [fecha, '', 'TOTAL', ''];
   for (const s of SECCIONES) tot.push(p.totales[s], '');
   lineas.push(fila(tot));
 
