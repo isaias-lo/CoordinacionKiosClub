@@ -642,6 +642,53 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ fecha, movimientos });
     }
 
+    // [PLANILLA] Los movimientos de uno o varios días, para la planilla de Picking.
+    //
+    // Recibe VARIOS días porque una tienda de apertura tiene sus movimientos fechados en otro día
+    // (62PLD los tuvo el 30/10 con la planilla del 03/11). Los días salen de
+    // `agruparConsultasPorDia`, que ya es la regla de qué día pide cada tienda.
+    //
+    // Devuelve CRUDO, con el estado y el día de cada movimiento: filtrar y agrupar es de
+    // `armarPlanilla` y `movimientosDesdeOdoo`, que son puros y testeados. Acá no se decide nada,
+    // para que la regla de qué cuenta como trabajo viva en un solo lugar.
+    //
+    // A este endpoint NO se le aplica la ventana de 7 días de `diaDeOdoo.ts` (ver el comentario de
+    // ese archivo): la fecha llega ya resuelta y se usa tal cual sobre `scheduled_date`.
+    if (action === 'planilla_dia') {
+      const pedidas = (body as { fechas?: unknown }).fechas;
+      const fechas = Array.isArray(pedidas)
+        ? [...new Set(pedidas.filter((d): d is string =>
+            typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)))]
+        : [];
+      if (fechas.length === 0) {
+        return NextResponse.json({ ok: false, error: 'fechas inválidas' }, { status: 400 });
+      }
+      // Tope duro: hoy más una apertura son dos. Más de cuatro es un pedido mal armado y serían
+      // cuatro consultas a Odoo por cada apertura de más.
+      if (fechas.length > 4) {
+        return NextResponse.json({ ok: false, error: 'demasiadas fechas' }, { status: 400 });
+      }
+      const movimientos: Array<Record<string, unknown>> = [];
+      for (const fecha of fechas) {
+        const ops = await getDayPickings(fecha, true);
+        for (const p of ops) {
+          movimientos.push({
+            ref: p.name, origin: p.origin, estado: p.state,
+            registros: p.lineTotal, responsable: p.responsible,
+            asignadoEn: p.assignedAt, validadoEn: p.dateDone,
+            // [PLANILLA] El destino y el partner van porque `resolveStoreCode` los necesita: el
+            // `origin` es texto escrito a mano y `location_dest_id` es dato estructurado. Ver el
+            // comentario de `resolveStoreCode` en `picking-utils.ts`.
+            toLocation: p.toLocation, partner: p.partner,
+            // El día que se pidió, no el `scheduled_date` crudo: es la clave con la que
+            // `movimientosDesdeOdoo` decide si ese movimiento le corresponde a esa tienda.
+            dia: fecha,
+          });
+        }
+      }
+      return NextResponse.json({ ok: true, movimientos });
+    }
+
     /* ── movimientos_apertura ──
        Los movimientos de APERTURA de una tienda que siguen PREPARADOS, agrupados por el día en
        que Abastecimiento los dejó. Ver `aperturaOdoo.ts` para el porqué de cada filtro.
