@@ -807,8 +807,9 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 las líneas con stock reservado: crece durante el día y recién calza cuando el movimiento se cierra.
 Medido: el 29/10, día cerrado, los dos conteos coinciden en los 157 movimientos; el 03/11, día en
 curso, difieren en 53 de 149. El número de Odoo —y el que calzó con la hoja de papel— es
-`move_ids.length`. **`lineCount` no se toca**: se agrega un campo al lado, porque hay otros
-consumidores (línea 770).
+`move_ids.length`. **`lineCount` no se toca**: se agrega un campo al lado, porque lo lee el semáforo
+de Picking a través de `BatchPicking` y cambiarle el significado movería un número que la operación
+ya mira todos los días.
 
 - [ ] **Step 1: Agregar los dos campos al tipo**
 
@@ -884,9 +885,11 @@ resultado y 2 en el mapeador (8 líneas en total, algunas con dos términos).
 - [ ] **Step 5: Typecheck**
 
 Run: `npx tsc --noEmit`
-Expected: sin errores. Si aparece «Property 'lineTotal' is missing» en la línea ~770, es el otro
-consumidor de `BatchPicking`: agregarle `lineTotal: u.lines` y `assignedAt: null` ahí, porque esa
-rama arma el objeto a mano y no pasa por el mapeador.
+Expected: sin errores, y **sin tocar ningún otro archivo**.
+
+Verificado: el otro `lineCount` del archivo (línea 770) **no** es un `BatchPicking` — es el objeto
+de estadísticas por picker de `get_picker_stats`, que tiene su propia forma. No hay que agregarle
+nada. El único sitio que construye un `BatchPicking` es el mapeador del paso 3.
 
 - [ ] **Step 6: Commit**
 
@@ -914,22 +917,27 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 sin carga aunque la tenga. Recibe la lista de días que el día de hoy necesita, que normalmente es
 uno solo.
 
-- [ ] **Step 1: Ver el nombre real de la función que trae un día**
+- [ ] **Step 1: Leer la función que ya trae un día**
 
-El bloque de `cruce_pesos_dia` ya trae los pickings de una fecha. Hay que usar **esa misma**
-función, no escribir otra:
+La función es `getDayPickings(fecha, includeDoneToday)` (declarada en la línea 277), la misma que usa
+`cruce_pesos_dia` en la línea 620 con `getDayPickings(fecha, true)`. **No escribir otra:** duplicar el
+fetch sería un segundo lugar donde arreglar el dominio de Odoo.
+
+Leerla antes de usarla, porque trae dos cosas que importan:
 
 ```bash
-sed -n '617,633p' src/app/api/odoo/route.ts
+sed -n '264,300p' src/app/api/odoo/route.ts
 ```
 
-Anotar el nombre que aparece ahí (en los pasos de abajo se la llama `traerPickingsDelDia`) y usarlo
-tal cual. Duplicar el fetch sería un segundo lugar donde arreglar el dominio de Odoo.
+1. Está envuelta en `unstable_cache` con `revalidate: 30`, así que dos pedidos del mismo día dentro
+   de 30 segundos no llegan a Odoo. Para la planilla eso está bien y no hay que desactivarlo.
+2. El segundo argumento, `includeDoneToday`, va en `true`: la planilla necesita los movimientos ya
+   validados, que son la mayoría de la hoja al cerrar el día.
 
 - [ ] **Step 2: Escribir la acción**
 
-En `src/app/api/odoo/route.ts`, después del cierre del bloque `if (action === 'cruce_pesos_dia') { … }`,
-agregar (reemplazando `traerPickingsDelDia` por el nombre real del paso 1):
+En `src/app/api/odoo/route.ts`, después del cierre del bloque `if (action === 'cruce_pesos_dia') { … }`
+(termina en la línea 625), agregar:
 
 ```ts
     // [PLANILLA] Los movimientos de uno o varios días, para la planilla de Picking.
@@ -960,7 +968,7 @@ agregar (reemplazando `traerPickingsDelDia` por el nombre real del paso 1):
       }
       const movimientos: Array<Record<string, unknown>> = [];
       for (const fecha of fechas) {
-        const ops = await traerPickingsDelDia(fecha);
+        const ops = await getDayPickings(fecha, true);
         for (const p of ops) {
           movimientos.push({
             ref: p.name, origin: p.origin, estado: p.state,
