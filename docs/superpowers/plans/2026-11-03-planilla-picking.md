@@ -527,8 +527,12 @@ const ESTADOS_REALES = new Set(['assigned', 'done']);
  * Compara las fechas como TEXTO, lo que vale solo porque son el naive UTC de Odoo
  * («YYYY-MM-DD HH:MM:SS»): ancho fijo y de mayor a menor significancia, así que el orden
  * lexicográfico y el cronológico coinciden. Con cualquier otro formato habría que parsear.
+ *
+ * Se exporta porque la vista Detalle y el CSV ordenan con el MISMO criterio. Estaba escrita tres
+ * veces —acá, en `csvPlanilla` y en el tab— y tres copias de un comparador son tres formas de
+ * que el papel y la pantalla terminen con las filas en distinto orden.
  */
-function porAsignacion(a: MovimientoPlanilla, b: MovimientoPlanilla): number {
+export function porAsignacion(a: MovimientoPlanilla, b: MovimientoPlanilla): number {
   if (!a.asignadoEn && !b.asignadoEn) return 0;
   if (!a.asignadoEn) return 1;
   if (!b.asignadoEn) return -1;
@@ -718,7 +722,7 @@ Crear `src/features/picking/planilla/csvPlanilla.ts`:
 // El entrecomillado queda solo donde el RFC 4180 lo pide: cuando el texto trae una coma, una
 // comilla o un salto de línea. Eso pasa de verdad con un nombre como «Vergara, Marcelo».
 
-import { SECCIONES, type Planilla, type MovimientoPlanilla } from './armarPlanilla';
+import { SECCIONES, porAsignacion, type Planilla, type MovimientoPlanilla } from './armarPlanilla';
 import { COLOR_ZONA } from './zonaPlanilla';
 import { horaChile, duracionMinutos, formatearDuracion } from './horasPlanilla';
 
@@ -759,14 +763,7 @@ export function csvVistaPlanilla(p: Planilla, fecha: string): string {
 export function csvVistaDetalle(movimientos: MovimientoPlanilla[], fecha: string): string {
   const lineas = ['Fecha,Tienda,Seccion,Usuario,Registros,Inicio,Validado,Duracion,Estado'];
 
-  const ordenados = [...movimientos].sort((a, b) => {
-    if (!a.asignadoEn && !b.asignadoEn) return 0;
-    if (!a.asignadoEn) return 1;
-    if (!b.asignadoEn) return -1;
-    return a.asignadoEn < b.asignadoEn ? -1 : a.asignadoEn > b.asignadoEn ? 1 : 0;
-  });
-
-  for (const m of ordenados) {
+  for (const m of [...movimientos].sort(porAsignacion)) {
     lineas.push(fila([
       fecha, m.cod, m.seccion, m.picker, m.registros,
       horaChile(m.asignadoEn), horaChile(m.validadoEn),
@@ -1363,7 +1360,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Printer, Download, Loader2 } from 'lucide-react';
 import { fechaISOLocal } from '@/features/despacho/shared/fechaLocal';
 import { agruparConsultasPorDia } from '@/features/despacho/shared/consultasPorDia';
-import { armarPlanilla, SECCIONES, type MovimientoPlanilla, type Planilla } from '../planilla/armarPlanilla';
+import { armarPlanilla, SECCIONES, porAsignacion, type MovimientoPlanilla, type Planilla } from '../planilla/armarPlanilla';
 import { movimientosDesdeOdoo, type MovimientoOdoo } from '../planilla/desdeOdoo';
 import { COLOR_ZONA, ZONAS, zonaPlanilla, type ZonaPlanilla } from '../planilla/zonaPlanilla';
 import { horaChile, duracionMinutos, formatearDuracion } from '../planilla/horasPlanilla';
@@ -1625,7 +1622,7 @@ function TablaPlanilla({ planilla }: { planilla: Planilla }) {
 
 /** El detalle: una fila por movimiento, con horas y duración. */
 function TablaDetalle({ movimientos }: { movimientos: MovimientoPlanilla[] }) {
-  const filas = [...movimientos].sort(porHoraDeInicio);
+  const filas = [...movimientos].sort(porAsignacion);
   return (
     <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11, overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -1660,14 +1657,6 @@ function TablaDetalle({ movimientos }: { movimientos: MovimientoPlanilla[] }) {
       </table>
     </div>
   );
-}
-
-/** Los asignados primero, en orden; los sin asignar al final. */
-function porHoraDeInicio(a: MovimientoPlanilla, b: MovimientoPlanilla): number {
-  if (!a.asignadoEn && !b.asignadoEn) return 0;
-  if (!a.asignadoEn) return 1;
-  if (!b.asignadoEn) return -1;
-  return a.asignadoEn < b.asignadoEn ? -1 : a.asignadoEn > b.asignadoEn ? 1 : 0;
 }
 
 const TH       = { padding: '7px 10px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
@@ -1782,7 +1771,7 @@ function htmlPlanilla(p: Planilla, fecha: string): string {
 
 /** La lista con horas de la vista DETALLE. */
 function htmlDetalle(movs: MovimientoPlanilla[], fecha: string): string {
-  const trs = [...movs].sort(porHoraDeInicio).map(m => `<tr>
+  const trs = [...movs].sort(porAsignacion).map(m => `<tr>
       <td class="cod">${esc(m.cod)}</td>
       <td>${esc(m.seccion)}</td>
       <td>${esc(m.picker || '—')}</td>
