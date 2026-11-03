@@ -1290,7 +1290,7 @@ Crear `src/features/picking/components/PlanillaTab.tsx`:
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Printer, Download, Loader2 } from 'lucide-react';
-import { fechaISOLocal } from '@/features/despacho/shared/fechaChile';
+import { fechaISOLocal } from '@/features/despacho/shared/fechaLocal';
 import { agruparConsultasPorDia } from '@/features/despacho/shared/consultasPorDia';
 import { armarPlanilla, SECCIONES, type MovimientoPlanilla, type Planilla } from '../planilla/armarPlanilla';
 import { movimientosDesdeOdoo, type MovimientoOdoo } from '../planilla/desdeOdoo';
