@@ -17,15 +17,22 @@
 
 import type { ZonaPlanilla } from './zonaPlanilla';
 
-export type Seccion = 'Comida' | 'Aseo' | 'Hogar' | 'Chocolates';
+/**
+ * Las cuatro secciones de la planilla, con los valores que devuelve `categoriaDeOrigin`.
+ *
+ * Se llama `SeccionPlanilla` y no `Seccion` porque `picking-secciones.ts` ya exporta un `Seccion`
+ * con los valores en minúscula y con `congelados` incluido. Son dos cosas distintas: ese describe
+ * las secciones de la pantalla de Picking, y este las cuatro columnas de la hoja.
+ */
+export type SeccionPlanilla = 'Comida' | 'Aseo' | 'Hogar' | 'Chocolates';
 
 /** El orden de las columnas, igual que en el papel. */
-export const SECCIONES: Seccion[] = ['Comida', 'Aseo', 'Hogar', 'Chocolates'];
+export const SECCIONES: SeccionPlanilla[] = ['Comida', 'Aseo', 'Hogar', 'Chocolates'];
 
 /** Un movimiento de Odoo con lo que la planilla necesita, ya normalizado. */
 export interface MovimientoPlanilla {
   cod: string;
-  seccion: Seccion;
+  seccion: SeccionPlanilla;
   /** `move_ids.length`: el número que muestra Odoo. NO el `lineCount` filtrado por estado. */
   registros: number;
   /** El nombre ya traducido por `picker_canonical_names`; `''` si todavía no se asignó. */
@@ -40,14 +47,14 @@ export interface CeldaPlanilla { registros: number; picker: string }
 export interface FilaPlanilla {
   cod: string;
   zona: ZonaPlanilla;
-  celdas: Record<Seccion, CeldaPlanilla[]>;
+  celdas: Record<SeccionPlanilla, CeldaPlanilla[]>;
   /** Está en el calendario del día y no tiene ningún movimiento real. */
   sinCarga: boolean;
 }
 
 export interface Planilla {
   filas: FilaPlanilla[];
-  totales: Record<Seccion, number>;
+  totales: Record<SeccionPlanilla, number>;
   descartados: { anulados: number; sinLiberar: number };
   /** Movimientos de tiendas que no son del día. Se ignoran, pero se cuentan. */
   fueraDelDia: number;
@@ -64,7 +71,7 @@ function porAsignacion(a: MovimientoPlanilla, b: MovimientoPlanilla): number {
   return a.asignadoEn < b.asignadoEn ? -1 : a.asignadoEn > b.asignadoEn ? 1 : 0;
 }
 
-function celdasVacias(): Record<Seccion, CeldaPlanilla[]> {
+function celdasVacias(): Record<SeccionPlanilla, CeldaPlanilla[]> {
   return { Comida: [], Aseo: [], Hogar: [], Chocolates: [] };
 }
 
@@ -92,7 +99,7 @@ export function armarPlanilla(
     lista.push(m);
   }
 
-  const totales: Record<Seccion, number> = { Comida: 0, Aseo: 0, Hogar: 0, Chocolates: 0 };
+  const totales: Record<SeccionPlanilla, number> = { Comida: 0, Aseo: 0, Hogar: 0, Chocolates: 0 };
 
   const filas: FilaPlanilla[] = tiendas.map(t => {
     const suyos = porCod.get(t.cod) ?? [];
