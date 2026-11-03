@@ -1326,8 +1326,20 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 tableros «Vista PLANILLA», «Impresa» y «Vista DETALLE».
 
 **El selector de tiendas no se toca:** `CON_SELECTOR` (`selectorTiendas.ts:11`) es una lista blanca
-de dos pestañas (`monitoreo`, `congelados`), así que `planilla` se repliega sola, como Calendario y
-Actividad.
+de dos pestañas (`monitoreo`, `congelados`), así que la pestaña nueva se repliega sola, como
+Calendario y Actividad.
+
+**La clave de la pestaña es `'hoja'`, no `'planilla'`.** En `PickingScreen.tsx` la palabra «planilla»
+**ya está tomada con otro sentido**: `panelView` (línea 157) vale `'stores' | 'planilla'` y describe
+qué muestra el panel en el teléfono — la lista para elegir tiendas, o el área de trabajo. El
+comentario de la línea 1411 lo dice: «Seco y Congelados muestran la planilla si ya hay tiendas
+elegidas, y si no, la lista para elegirlas».
+
+Si la pestaña se llamara igual, `panelView === 'planilla'` y `rightTab === 'planilla'` serían dos
+cosas distintas y las dos ciertas a la vez en un archivo de 2.440 líneas. Se usa `'hoja'`, que es la
+palabra con la que ya hablan los comentarios de los cinco módulos («la hoja del día», «una hoja que
+se firma»). **El rótulo que ve el coordinador sigue siendo «Planilla».** No se renombra `panelView`:
+tocar seis sitios de un archivo de producción por una mejora de lectura es más riesgo que valor.
 
 **El catálogo se pide dentro del tab.** `PickingScreen` tiene `tiendaTipoInfo` (línea 324) con
 `{tipo, d, z}`, pero **sin `lat`** — y hoy 8 de las 11 tiendas de Regiones tienen el sector «Región»
@@ -1337,18 +1349,18 @@ pide él mismo y no se le agrega estado a una pantalla de 2.440 líneas.
 
 - [ ] **Step 1: Agregar la pestaña al arreglo**
 
-En `src/features/picking/PickingScreen.tsx`, línea 163, agregar `'planilla'` después de
-`'actividad'` (el coordinador la pidió «abajo de actividad»):
+En `src/features/picking/PickingScreen.tsx`, línea 163, agregar `'hoja'` después de `'actividad'`
+(el coordinador la pidió «abajo de actividad»):
 
 ```ts
   const [rightTab, setRightTab]   = usePestanaRecordada('picking_tab',
-    ['monitoreo', 'congelados', 'actividad', 'planilla', 'estadisticas', 'historial', 'configuracion', 'calendario'] as const, 'monitoreo');
+    ['monitoreo', 'congelados', 'actividad', 'hoja', 'estadisticas', 'historial', 'configuracion', 'calendario'] as const, 'monitoreo');
 ```
 
 - [ ] **Step 2: Verificar que el cambio llegó**
 
 ```bash
-grep -n "'actividad', 'planilla'" src/features/picking/PickingScreen.tsx
+grep -n "'actividad', 'hoja'" src/features/picking/PickingScreen.tsx
 ```
 
 Expected: una coincidencia en la línea 163. Si no aparece, el reemplazo no encontró su objetivo:
@@ -1825,7 +1837,7 @@ Y en el render, junto a donde se monta `<ActivityTab` (línea 2353), agregar el 
 planilla con la misma forma condicional que usan los demás tabs:
 
 ```tsx
-          {rightTab === 'planilla' && (
+          {rightTab === 'hoja' && (
             <PlanillaTab cods={codsPlanilla} aperturas={aperturasPorCod} />
           )}
 ```
@@ -1861,7 +1873,7 @@ Expected: los cuatro sin errores, y `vitest` mostrando los 5 archivos de prueba 
 
 - [ ] **Step 9: Probarlo en el navegador**
 
-`npm run dev`, entrar a Picking → pestaña **Planilla**. Contra la medición del 03/11/2026:
+`npm run dev`, entrar a Picking → pestaña **Planilla** (clave interna `hoja`). Contra la medición del 03/11/2026:
 
 - **29 filas**, con 75PUC atenuada y sin números.
 - **38SP2 Hogar con 63 y 46**, los dos de Marcelo Vergara, en la misma celda.
