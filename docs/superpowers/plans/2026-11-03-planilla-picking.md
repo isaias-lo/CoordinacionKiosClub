@@ -653,9 +653,13 @@ describe('csvVistaPlanilla', () => {
     expect(lineas[0]).toBe('Fecha,#,Tienda,Zona,Comida,Usuario Comida,Aseo,Usuario Aseo,Hogar,Usuario Hogar,Chocolates,Usuario Chocolates');
   });
 
-  it('una celda con dos movimientos NO rompe las columnas: van entre comillas y separados por " / "', () => {
-    expect(lineas[1]).toContain('"63 / 46"');
-    expect(lineas[1]).toContain('"Marcelo Vergara / Marcelo Vergara"');
+  it('una celda con dos movimientos no rompe las columnas', () => {
+    // Los dos valores van en UNA celda separados por « / ». No se entrecomillan porque el
+    // separador no es una coma: entrecomillar sin necesidad va contra el RFC 4180 y obliga a
+    // mantener un segundo camino de escape. Lo que importa es que la línea siga teniendo 12
+    // campos, y eso es lo que se mide.
+    expect(lineas[1]).toContain('63 / 46');
+    expect(lineas[1]).toContain('Marcelo Vergara / Marcelo Vergara');
     // 12 encabezados ⇒ 11 comas fuera de las comillas.
     expect(lineas[1].replace(/"[^"]*"/g, 'X').split(',')).toHaveLength(12);
   });
@@ -707,8 +711,12 @@ Crear `src/features/picking/planilla/csvPlanilla.ts`:
 // El archivo que se baja, una función por vista. Módulo puro.
 //
 // La celda de una sección puede llevar DOS movimientos (los dos Hogar de 38SP2). En el CSV van en
-// una sola celda, separados por « / » y entre comillas: una coma suelta ahí correría todas las
+// una sola celda, separados por « / »: el separador NO es una coma justamente para que la celda no
+// necesite comillas y la línea conserve sus 12 campos. Si fuera «63, 46» correría todas las
 // columnas que siguen y el archivo se abriría torcido en la planilla de cálculo.
+//
+// El entrecomillado queda solo donde el RFC 4180 lo pide: cuando el texto trae una coma, una
+// comilla o un salto de línea. Eso pasa de verdad con un nombre como «Vergara, Marcelo».
 
 import { SECCIONES, type Planilla, type MovimientoPlanilla } from './armarPlanilla';
 import { COLOR_ZONA } from './zonaPlanilla';
