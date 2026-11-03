@@ -65,7 +65,7 @@ describe('armarPlanilla: una fila por tienda, en el orden que se le pasa', () =>
   it('un movimiento de una tienda que no está en el día se ignora', () => {
     const p = armarPlanilla([mov({ cod: '99XXX' })], TIENDAS);
     expect(p.filas.every(f => f.sinCarga)).toBe(true);
-    expect(p.fueraDelDia).toBe(1);
+    expect(p.fueraDelCalendario).toBe(1);
   });
 
   it('los totales suman los registros de cada sección', () => {
@@ -89,5 +89,58 @@ describe('armarPlanilla: una fila por tienda, en el orden que se le pasa', () =>
   it('un picker vacío queda vacío: no se pone un nombre por defecto', () => {
     const p = armarPlanilla([mov({ picker: '', estado: 'assigned', asignadoEn: null })], TIENDAS);
     expect(p.filas.find(f => f.cod === '38SP2')!.celdas.Comida[0].picker).toBe('');
+  });
+});
+
+describe('armarPlanilla: lo que no puede salir mal en una hoja que se firma', () => {
+  it('una tienda repetida no duplica la fila ni el total', () => {
+    // Pasó al revisar: dos filas con la misma carga y el total sumado dos veces.
+    const p = armarPlanilla([mov({ registros: 10 })], [
+      { cod: '38SP2', zona: 'sur' as const },
+      { cod: '38SP2', zona: 'sur' as const },
+    ]);
+    expect(p.filas).toHaveLength(1);
+    expect(p.totales.Comida).toBe(10);
+  });
+
+  it('un estado desconocido se cuenta, no desaparece', () => {
+    // `waiting` llega de Odoo y antes se descartaba sin dejar rastro.
+    const p = armarPlanilla([mov({ estado: 'waiting', registros: 7 })], TIENDAS);
+    expect(p.descartados.otros).toBe(1);
+    expect(p.descartados.anulados).toBe(0);
+    expect(p.descartados.sinLiberar).toBe(0);
+    expect(p.filas.find(f => f.cod === '38SP2')!.sinCarga).toBe(true);
+  });
+
+  it('una tienda con solo movimientos anulados queda sinCarga', () => {
+    const p = armarPlanilla([
+      mov({ estado: 'cancel', registros: 15 }),
+      mov({ estado: 'cancel', registros: 2, seccion: 'Hogar' }),
+    ], TIENDAS);
+    expect(p.filas.find(f => f.cod === '38SP2')!.sinCarga).toBe(true);
+    expect(p.descartados.anulados).toBe(2);
+    expect(p.totales.Comida).toBe(0);
+  });
+
+  it('dos secciones con dos movimientos cada una no se mezclan', () => {
+    const p = armarPlanilla([
+      mov({ seccion: 'Comida', registros: 64,  asignadoEn: '2026-11-03 10:00:00' }),
+      mov({ seccion: 'Comida', registros: 160, asignadoEn: '2026-11-03 12:00:00' }),
+      mov({ seccion: 'Hogar',  registros: 63,  asignadoEn: '2026-11-03 11:00:00' }),
+      mov({ seccion: 'Hogar',  registros: 46,  asignadoEn: '2026-11-03 14:00:00' }),
+    ], TIENDAS);
+    const f = p.filas.find(x => x.cod === '38SP2')!;
+    expect(f.celdas.Comida.map(c => c.registros)).toEqual([64, 160]);
+    expect(f.celdas.Hogar.map(c => c.registros)).toEqual([63, 46]);
+    expect(p.totales.Comida).toBe(224);
+    expect(p.totales.Hogar).toBe(109);
+  });
+
+  it('un código que no coincide exacto cae fuera del calendario, no se parece a nadie', () => {
+    // Acá la comparación es `===`. Por eso la Tarea 7 debe canonizar con `resolveStoreCode`:
+    // un «23PEN» sin canonizar no es «23PEÑ» y la tienda saldría sin carga teniéndola.
+    const p = armarPlanilla([mov({ cod: '38sp2' })], TIENDAS);
+    expect(p.fueraDelCalendario).toBe(1);
+    expect(p.filas.find(f => f.cod === '38SP2')!.sinCarga).toBe(true);
   });
 });

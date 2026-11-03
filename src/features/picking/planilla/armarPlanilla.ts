@@ -31,6 +31,11 @@ export const SECCIONES: SeccionPlanilla[] = ['Comida', 'Aseo', 'Hogar', 'Chocola
 
 /** Un movimiento de Odoo con lo que la planilla necesita, ya normalizado. */
 export interface MovimientoPlanilla {
+  /**
+   * El código CANÓNICO del catálogo, como lo devuelve `resolveStoreCode`. Acá se compara con
+   * `===` contra el de la tienda: un código sin canonizar («23PEN» en vez de «23PEÑ») no calzaría
+   * con ninguna y la tienda saldría «sin carga» teniéndola, sin ningún aviso.
+   */
   cod: string;
   seccion: SeccionPlanilla;
   /** `move_ids.length`: el número que muestra Odoo. NO el `lineCount` filtrado por estado. */
@@ -38,6 +43,11 @@ export interface MovimientoPlanilla {
   /** El nombre ya traducido por `picker_canonical_names`; `''` si todavía no se asignó. */
   picker: string;
   asignadoEn: string | null;
+  /**
+   * La hora de validación. Este módulo no la usa —la matriz no muestra horas—, pero es parte de la
+   * forma compartida del movimiento: la vista Detalle y el CSV consumen la MISMA lista de
+   * movimientos, no las celdas, así que no hay dos listas en paralelo que mantener.
+   */
   validadoEn: string | null;
   estado: string;
 }
@@ -55,15 +65,32 @@ export interface FilaPlanilla {
 export interface Planilla {
   filas: FilaPlanilla[];
   totales: Record<SeccionPlanilla, number>;
-  descartados: { anulados: number; sinLiberar: number };
-  /** Movimientos de tiendas que no son del día. Se ignoran, pero se cuentan. */
-  fueraDelDia: number;
+  /**
+   * Lo que no entró a la hoja, contado. Ninguna rama descarta en silencio: `otros` junta los
+   * estados que no son ninguno de los cuatro conocidos —`waiting`, por ejemplo—, porque una hoja
+   * que se firma no puede perder un movimiento sin dejar rastro.
+   */
+  descartados: { anulados: number; sinLiberar: number; otros: number };
+  /** Movimientos de tiendas que no están en el calendario del día. Se ignoran, pero se cuentan. */
+  fueraDelCalendario: number;
 }
 
-/** Los dos estados que son trabajo real. */
+/**
+ * Los dos estados que son trabajo real.
+ *
+ * No es lo mismo que `PICKEABLE_STATES` de `picking-utils.ts`, que agrega
+ * `partially_available`: esa es la lista blanca del semáforo y mira `stock.move`, mientras que
+ * acá se miran `stock.picking`, donde ese estado no existe.
+ */
 const ESTADOS_REALES = new Set(['assigned', 'done']);
 
-/** Los asignados primero, en orden de asignación; los sin asignar al final. */
+/**
+ * Los asignados primero, en orden de asignación; los sin asignar al final.
+ *
+ * Compara las fechas como TEXTO, lo que vale solo porque son el naive UTC de Odoo
+ * («YYYY-MM-DD HH:MM:SS»): ancho fijo y de mayor a menor significancia, así que el orden
+ * lexicográfico y el cronológico coinciden. Con cualquier otro formato habría que parsear.
+ */
 function porAsignacion(a: MovimientoPlanilla, b: MovimientoPlanilla): number {
   if (!a.asignadoEn && !b.asignadoEn) return 0;
   if (!a.asignadoEn) return 1;
@@ -84,24 +111,34 @@ export function armarPlanilla(
   movimientos: MovimientoPlanilla[],
   tiendas: Array<{ cod: string; zona: ZonaPlanilla }>,
 ): Planilla {
-  const porCod = new Map<string, MovimientoPlanilla[]>();
-  for (const t of tiendas) porCod.set(t.cod, []);
+  // Una tienda repetida en la entrada daría DOS filas con la misma carga y, peor, sumaría su carga
+  // dos veces en los totales: la hoja firmada mostraría el doble. `todayStores` deduplica los
+  // adelantos contra el calendario, pero el calendario mismo no lo garantiza, así que se hace acá.
+  const unicas: Array<{ cod: string; zona: ZonaPlanilla }> = [];
+  const vistas = new Set<string>();
+  for (const t of tiendas) {
+    if (vistas.has(t.cod)) continue;
+    vistas.add(t.cod);
+    unicas.push(t);
+  }
 
-  const descartados = { anulados: 0, sinLiberar: 0 };
-  let fueraDelDia = 0;
+  const porCod = new Map<string, MovimientoPlanilla[]>();
+  for (const t of unicas) porCod.set(t.cod, []);
+
+  const descartados = { anulados: 0, sinLiberar: 0, otros: 0 };
+  let fueraDelCalendario = 0;
 
   for (const m of movimientos) {
     if (m.estado === 'cancel')    { descartados.anulados++;   continue; }
     if (m.estado === 'confirmed') { descartados.sinLiberar++; continue; }
-    if (!ESTADOS_REALES.has(m.estado)) continue;
+    // Cualquier otro estado —`waiting`, `draft`— también se cuenta: ninguna rama descarta callada.
+    if (!ESTADOS_REALES.has(m.estado)) { descartados.otros++; continue; }
     const lista = porCod.get(m.cod);
-    if (!lista) { fueraDelDia++; continue; }
+    if (!lista) { fueraDelCalendario++; continue; }
     lista.push(m);
   }
 
-  const totales: Record<SeccionPlanilla, number> = { Comida: 0, Aseo: 0, Hogar: 0, Chocolates: 0 };
-
-  const filas: FilaPlanilla[] = tiendas.map(t => {
+  const filas: FilaPlanilla[] = unicas.map(t => {
     const suyos = porCod.get(t.cod) ?? [];
     const celdas = celdasVacias();
     for (const s of SECCIONES) {
@@ -109,10 +146,18 @@ export function armarPlanilla(
         .filter(m => m.seccion === s)
         .sort(porAsignacion)
         .map(m => ({ registros: m.registros, picker: m.picker }));
-      for (const c of celdas[s]) totales[s] += c.registros;
     }
     return { cod: t.cod, zona: t.zona, celdas, sinCarga: suyos.length === 0 };
   });
 
-  return { filas, totales, descartados, fueraDelDia };
+  // Los totales salen DE LAS FILAS, no de un acumulador dentro del `map`: así el total no puede
+  // divergir de lo que la hoja muestra.
+  const totales: Record<SeccionPlanilla, number> = { Comida: 0, Aseo: 0, Hogar: 0, Chocolates: 0 };
+  for (const fila of filas) {
+    for (const s of SECCIONES) {
+      for (const c of fila.celdas[s]) totales[s] += c.registros;
+    }
+  }
+
+  return { filas, totales, descartados, fueraDelCalendario };
 }
