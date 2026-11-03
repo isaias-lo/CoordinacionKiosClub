@@ -8,7 +8,7 @@
 // El entrecomillado queda solo donde el RFC 4180 lo pide: cuando el texto trae una coma, una
 // comilla o un salto de línea. Eso pasa de verdad con un nombre como «Vergara, Marcelo».
 
-import { SECCIONES, type Planilla, type MovimientoPlanilla } from './armarPlanilla';
+import { SECCIONES, porAsignacion, type Planilla, type MovimientoPlanilla } from './armarPlanilla';
 import { COLOR_ZONA } from './zonaPlanilla';
 import { horaChile, duracionMinutos, formatearDuracion } from './horasPlanilla';
 
@@ -49,14 +49,7 @@ export function csvVistaPlanilla(p: Planilla, fecha: string): string {
 export function csvVistaDetalle(movimientos: MovimientoPlanilla[], fecha: string): string {
   const lineas = ['Fecha,Tienda,Seccion,Usuario,Registros,Inicio,Validado,Duracion,Estado'];
 
-  const ordenados = [...movimientos].sort((a, b) => {
-    if (!a.asignadoEn && !b.asignadoEn) return 0;
-    if (!a.asignadoEn) return 1;
-    if (!b.asignadoEn) return -1;
-    return a.asignadoEn < b.asignadoEn ? -1 : a.asignadoEn > b.asignadoEn ? 1 : 0;
-  });
-
-  for (const m of ordenados) {
+  for (const m of [...movimientos].sort(porAsignacion)) {
     lineas.push(fila([
       fecha, m.cod, m.seccion, m.picker, m.registros,
       horaChile(m.asignadoEn), horaChile(m.validadoEn),

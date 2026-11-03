@@ -90,8 +90,12 @@ const ESTADOS_REALES = new Set(['assigned', 'done']);
  * Compara las fechas como TEXTO, lo que vale solo porque son el naive UTC de Odoo
  * («YYYY-MM-DD HH:MM:SS»): ancho fijo y de mayor a menor significancia, así que el orden
  * lexicográfico y el cronológico coinciden. Con cualquier otro formato habría que parsear.
+ *
+ * Se exporta porque la vista Detalle y el CSV ordenan con el MISMO criterio. Estaba escrita tres
+ * veces —acá, en `csvPlanilla` y en el tab— y tres copias de un comparador son tres formas de
+ * que el papel y la pantalla terminen con las filas en distinto orden.
  */
-function porAsignacion(a: MovimientoPlanilla, b: MovimientoPlanilla): number {
+export function porAsignacion(a: MovimientoPlanilla, b: MovimientoPlanilla): number {
   if (!a.asignadoEn && !b.asignadoEn) return 0;
   if (!a.asignadoEn) return 1;
   if (!b.asignadoEn) return -1;
