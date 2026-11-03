@@ -38,6 +38,21 @@ describe('movimientosDesdeOdoo', () => {
     expect(m.picker).toBe('Cristobal Labra');
   });
 
+  it('la grafía ASCII de la Ñ se canoniza: 23PEN cae en la tienda 23PEÑ', () => {
+    // ESTE es el caso que obliga a usar `resolveStoreCode` y no `extractStoreCode`. El test de
+    // arriba pasa el código ya con Ñ, así que pasaría igual sin canonizar: no prueba nada.
+    // Odoo escribe a veces «23PEN», y sin canonizar el movimiento no calzaría con ninguna tienda
+    // del día: caería en `fueraDelCalendario` y 23PEÑ saldría «sin carga» teniéndola.
+    // Comprobado: `canonicalStoreCode('23PEN')` devuelve `'23PEÑ'`.
+    const desdeDestino = movimientosDesdeOdoo(
+      [crudo({ origin: 'Abastecimiento Aseo 03/11/2026', toLocation: '23PEN' })], NOMBRES, dias());
+    expect(desdeDestino[0].cod).toBe('23PEÑ');
+
+    const desdeOrigin = movimientosDesdeOdoo(
+      [crudo({ origin: 'Abastecimiento Aseo 23PEN 03/11/2026' })], NOMBRES, dias());
+    expect(desdeOrigin[0].cod).toBe('23PEÑ');
+  });
+
   it('Congelados no es de esta planilla y se deja fuera', () => {
     expect(movimientosDesdeOdoo(
       [crudo({ origin: 'Abastecimiento Congelados 01TPS 03/11/2026' })], NOMBRES, dias()),
