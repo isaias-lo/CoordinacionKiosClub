@@ -23,6 +23,7 @@ import { avisoFisico } from '@/lib/avisoFisico';
 import { logActividad } from '@/lib/actividad';
 import { buscarPallet, variantesDeCodigo, type PalletEncontrado, type SlotDePallet } from './buscarPallet';
 import type { AvisoUnidad } from './avisoUnidadEscaneada';
+import { textoPendientesAlEscanear } from './sinGuardarEnBodega';
 import { ConfirmacionDoble } from './lectorBodega';
 import { useLectorBodega, tarjetaAMedias, type DiagnosticoLectura } from './useLectorBodega';
 import { avisoSiEsDeOtraBodega } from './vetoEscaneo';
@@ -67,6 +68,8 @@ export interface OpcionesEscaneo<Slot extends SlotDePallet> {
   slotsPorTienda: Record<string, readonly Slot[]>;
   /** Qué decir de la unidad (ya pesada, sin pesar). */
   avisoDe: (p: PalletEncontrado<Slot>) => AvisoUnidad;
+  /** Cuántas unidades de su tienda siguen sin guardar, y si la escaneada es una. Ver `unidadesSinGuardar`. */
+  pendientesDe?: (p: PalletEncontrado<Slot>) => { total: number; estaFalta: boolean };
   /** Abrir la tienda y saltar a la tarjeta. `false` si esta pantalla no tiene esa tienda. */
   irA: (p: PalletEncontrado<Slot>) => boolean;
   /** Abrir el diálogo de preexistente con el número puesto. `false` si la tienda no es de esta pantalla.
@@ -156,7 +159,10 @@ export function useEscaneoBodega<Slot extends SlotDePallet>(opts: OpcionesEscane
       return;
     }
     avisoFisico(aviso.advertir ? 'aviso' : 'ok');
-    if (aviso.texto) opts.showToast(`#${p.slot.id} · ${aviso.texto}`, aviso.advertir ? AMBAR : VERDE);
+    // Cuánto le falta a la tienda, en el mismo aviso: con la pistola es lo único que se mira.
+    const pend = opts.pendientesDe?.(p);
+    const partes = [aviso.texto, pend ? textoPendientesAlEscanear(pend.total, pend.estaFalta) : null].filter(Boolean);
+    if (partes.length) opts.showToast(`#${p.slot.id} · ${partes.join(' · ')}`, aviso.advertir ? AMBAR : VERDE);
   }
 
   useLectorBodega({

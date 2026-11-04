@@ -1450,6 +1450,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       const aviso = avisoDeUnidad(itemDeLaUnidad(dispatchData[p.claveTienda] ?? [], p.slot.id));
       return tiendaTerminada(TIENDAS[p.claveTienda]?.cod) ? avisoEnTerminada(aviso) : aviso;
     },
+    pendientesDe: p => ({
+      total: unidadesSinGuardar(slotsUnicos(pickingSlotsFull[p.claveTienda] ?? []), dispatchData[p.claveTienda] || []).total,
+      estaFalta: !itemDeLaUnidad(dispatchData[p.claveTienda] ?? [], p.slot.id),
+    }),
     bloqueada: cod => tiendaTerminada(cod),
     // Acá los mapas se indexan por NOMBRE de tienda; la pertenencia se decide por código.
     codDeClave: c => TIENDAS[c]?.cod,

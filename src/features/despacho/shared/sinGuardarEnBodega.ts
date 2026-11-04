@@ -45,6 +45,16 @@ export function unidadesSinGuardar(
   return out;
 }
 
+/**
+ * Al escanear: cuántas le faltan a la tienda, además de la escaneada (pedido de Isaias, 4/11/2026).
+ * `total` = `unidadesSinGuardar(...).total`; `estaFalta` = la escaneada también está sin guardar.
+ */
+export function textoPendientesAlEscanear(total: number, estaFalta: boolean): string {
+  const otras = Math.max(0, total - (estaFalta ? 1 : 0));
+  if (otras === 0) return estaFalta ? 'es la última que falta en esta tienda' : 'no le falta nada a esta tienda';
+  return `${otras === 1 ? 'falta 1 más' : `faltan ${otras} más`} en esta tienda`;
+}
+
 /** El aviso para el momento de marcar la tienda terminada. `null` si no falta ninguna. */
 export function avisoSinGuardar(conteo: ConteoSinGuardar): string | null {
   if (conteo.total === 0) return null;

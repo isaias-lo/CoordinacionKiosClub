@@ -2398,6 +2398,10 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       const aviso = avisoDeUnidad(itemDeLaUnidad(items[p.claveTienda] ?? [], p.slot.id));
       return tiendaTerminada(p.claveTienda) ? avisoEnTerminada(aviso) : aviso;
     },
+    pendientesDe: p => ({
+      total: unidadesSinGuardar(slotsUnicos(pickingSlotsFull[p.claveTienda] ?? []), items[p.claveTienda] || []).total,
+      estaFalta: !itemDeLaUnidad(items[p.claveTienda] ?? [], p.slot.id),
+    }),
     bloqueada: cod => tiendaTerminada(cod),
     // Acá los mapas se indexan por código, así que la clave ya ES el código.
     codDeClave: c => c,
