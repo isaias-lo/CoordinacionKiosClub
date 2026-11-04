@@ -50,9 +50,20 @@ export interface MovimientoPlanilla {
    */
   validadoEn: string | null;
   estado: string;
+  /** El id de su fila en `planilla_movimientos`, si tiene una. Es lo que se edita. */
+  id?: number;
+  /** De dónde salió el número: Odoo en vivo, la foto al asignar, una corrección, o a mano.
+   *  Lo pone `conCorrecciones`; la pantalla lo usa para marcar la celda. */
+  origen?: 'vivo' | 'foto' | 'corregido' | 'manual';
 }
 
-export interface CeldaPlanilla { registros: number; picker: string }
+export interface CeldaPlanilla {
+  registros: number;
+  picker: string;
+  /** El id de la fila que hay que editar para corregir esta celda. */
+  id?: number;
+  origen?: MovimientoPlanilla['origen'];
+}
 
 export interface FilaPlanilla {
   cod: string;
@@ -149,7 +160,7 @@ export function armarPlanilla(
       celdas[s] = suyos
         .filter(m => m.seccion === s)
         .sort(porAsignacion)
-        .map(m => ({ registros: m.registros, picker: m.picker }));
+        .map(m => ({ registros: m.registros, picker: m.picker, id: m.id, origen: m.origen }));
     }
     return { cod: t.cod, zona: t.zona, celdas, sinCarga: suyos.length === 0 };
   });
