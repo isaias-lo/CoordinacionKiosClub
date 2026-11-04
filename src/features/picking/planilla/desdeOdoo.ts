@@ -72,6 +72,7 @@ export function movimientosDesdeOdoo(
     const suDia = diaPorTienda.get(cod);
     if (!suDia || suDia !== m.dia) continue;
     out.push({
+      ref: m.ref,
       cod,
       seccion: cat as SeccionPlanilla,
       registros: m.registros,

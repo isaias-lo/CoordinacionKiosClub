@@ -22,7 +22,9 @@ import { Printer, Download, Loader2, RotateCcw } from 'lucide-react';
 import { AUTO_REFRESH_MS } from '../picking-types';
 import { fechaISOLocal } from '@/features/despacho/shared/fechaLocal';
 import { agruparConsultasPorDia } from '@/features/despacho/shared/consultasPorDia';
-import { armarPlanilla, SECCIONES, porAsignacion, type MovimientoPlanilla, type Planilla } from '../planilla/armarPlanilla';
+import { armarPlanilla, SECCIONES, porAsignacion, type CeldaPlanilla, type MovimientoPlanilla, type Planilla, type SeccionPlanilla } from '../planilla/armarPlanilla';
+import { conCorrecciones, type FilaGuardada } from '../planilla/conCorrecciones';
+import { validarCorreccion, textoConfirmacion, type PedidoCorreccion } from '../planilla/correccionPicker';
 import { movimientosDesdeOdoo, type MovimientoOdoo } from '../planilla/desdeOdoo';
 import { COLOR_ZONA, ZONAS, zonaPlanilla, type ZonaPlanilla } from '../planilla/zonaPlanilla';
 import { horaChile, duracionMinutos, formatearDuracion } from '../planilla/horasPlanilla';
@@ -47,6 +49,10 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
   const [error, setError]     = useState<string | null>(null);
   const [actualizado, setActualizado] = useState<Date | null>(null);
   const [cargando, setCargando]       = useState(false);
+  const [guardados, setGuardados]     = useState<FilaGuardada[]>([]);
+  // La celda que se está corrigiendo. `null` = no hay cuadro abierto.
+  const [corrigiendo, setCorrigiendo] = useState<PedidoCorreccion | null>(null);
+  const [guardandoCorr, setGuardandoCorr] = useState(false);
 
   // Qué día pide cada tienda: hoy, salvo las aperturas.
   const consultas = useMemo(
@@ -76,13 +82,14 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
     setCargando(true);
     {
       try {
-        const [rOdoo, rNombres, rTiendas] = await Promise.all([
+        const [rOdoo, rNombres, rTiendas, rCorr] = await Promise.all([
           fetch('/api/odoo', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'planilla_dia', fechas }),
           }),
           fetch('/api/picker-canonical-names'),
           fetch('/api/tiendas'),
+          fetch(`/api/planilla-picker?fecha=${fecha}`),
         ]);
         const jOdoo = await rOdoo.json();
         if (!vivo) return;
@@ -104,6 +111,22 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
           if (t?.codigo) porCod[String(t.codigo)] = t as FichaTienda;
         }
         if (vivo) setFichas(porCod);
+
+        // Las correcciones a mano. Si fallan, la hoja igual sirve: muestra lo que dice Odoo.
+        const jCorr = await rCorr.json().catch(() => null);
+        if (vivo && jCorr?.ok) {
+          setGuardados((jCorr.filas ?? []).map((r: Record<string, unknown>): FilaGuardada => ({
+            id: Number(r.id),
+            ref: r.ref ? String(r.ref) : null,
+            cod: String(r.cod ?? ''),
+            seccion: String(r.seccion ?? '') as SeccionPlanilla,
+            registrosOdoo: r.registros_odoo == null ? null : Number(r.registros_odoo),
+            pickerOdoo: r.picker_odoo == null ? null : String(r.picker_odoo),
+            asignadoEn: r.asignado_en == null ? null : String(r.asignado_en),
+            registros: r.registros == null ? null : Number(r.registros),
+            picker: r.picker == null ? null : String(r.picker),
+          })));
+        }
         if (vivo) { setError(null); setActualizado(new Date()); }
       } catch {
         if (vivo) setError('No se pudo traer el día de Odoo');
@@ -111,7 +134,7 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
         setCargando(false);
       }
     }
-  }, [claveFechas]);
+  }, [claveFechas, fecha]);
 
   // Primera carga, y después cada 3 minutos — la MISMA cadencia que ya usa el resto de Picking
   // (`AUTO_REFRESH_MS`). No le agrega carga a Odoo: `getDayPickings` tiene caché de 30 s y dedup
@@ -135,16 +158,65 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
     }),
     [cods, fichas]);
 
-  const movimientos: MovimientoPlanilla[] = useMemo(
-    () => (crudos ? movimientosDesdeOdoo(crudos, nombres, diaPorTienda) : []),
-    [crudos, nombres, diaPorTienda]);
+  const movimientos: MovimientoPlanilla[] = useMemo(() => {
+    if (!crudos) return [];
+    const vivos = movimientosDesdeOdoo(crudos, nombres, diaPorTienda);
+    // `conCorrecciones` necesita la referencia de Odoo para cruzar: las que no la tienen no se
+    // pueden corregir y pasan tal cual.
+    const conRef = vivos.filter((m): m is MovimientoPlanilla & { ref: string } => !!m.ref);
+    const sinRef = vivos.filter(m => !m.ref);
+    return [...conCorrecciones(conRef, guardados), ...sinRef];
+  }, [crudos, nombres, diaPorTienda, guardados]);
 
   const planilla = useMemo(() => armarPlanilla(movimientos, tiendas), [movimientos, tiendas]);
+
+  // Cuántos nombres se cambiaron a mano hoy. Va al pie: si no, habría que buscarlos a ojo.
+  const corregidos = useMemo(
+    () => movimientos.filter(m => m.origen === 'corregido').length,
+    [movimientos]);
 
   // Solo lo que está en la hoja: los descartados no van al detalle.
   const delDia = useMemo(
     () => movimientos.filter(m => m.estado === 'done' || m.estado === 'assigned'),
     [movimientos]);
+
+  // La lista de personas para elegir sale de Config · Pickers: escribir libre dejaría entrar dos
+  // grafías del mismo nombre, y después esos dos no se pueden sumar en ninguna métrica.
+  const personas = useMemo(
+    () => [...new Set(Object.values(nombres).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [nombres]);
+
+  const abrirCorreccion = useCallback(
+    (celda: CeldaPlanilla, cod: string, seccion: SeccionPlanilla) => {
+      if (!celda.ref) return;
+      setError(null);
+      setCorrigiendo({
+        ref: celda.ref, fecha, cod, seccion,
+        pickerActual: celda.picker ?? '',
+        pickerNuevo: '',
+      });
+    }, [fecha]);
+
+  const guardarCorreccion = useCallback(async () => {
+    if (!corrigiendo) return;
+    const v = validarCorreccion(corrigiendo);
+    if (!v.ok) { setError(v.motivo); return; }
+    setGuardandoCorr(true);
+    try {
+      const r = await fetch('/api/planilla-picker', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(corrigiendo),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.ok) { setError(j?.error ?? 'No se pudo guardar la corrección'); return; }
+      setCorrigiendo(null);
+      await cargar();
+    } catch {
+      setError('No se pudo guardar la corrección');
+    } finally {
+      setGuardandoCorr(false);
+    }
+  }, [corrigiendo, cargar]);
 
   const bajar = useCallback(() => {
     const texto = vista === 'planilla'
@@ -240,7 +312,7 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
           que impide que se comprima a cero cuando la ventana es corta: ese fue el bug del 04/11. */}
       <div style={{ flex: 1, minHeight: 220, display: 'flex', padding: '11px 16px 0' }}>
         {vista === 'planilla'
-          ? <TablaPlanilla planilla={planilla} />
+          ? <TablaPlanilla planilla={planilla} onCorregir={abrirCorreccion} />
           : <TablaDetalle movimientos={delDia} />}
       </div>
 
@@ -249,7 +321,21 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
                     border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 14px' }}>
         Fuera de la hoja: <strong>{planilla.descartados.anulados}</strong> anulados y{' '}
         <strong>{planilla.descartados.sinLiberar}</strong> sin stock liberado.
+        {corregidos > 0 && (
+          <> · <strong>{corregidos}</strong> {corregidos === 1 ? 'picker corregido' : 'pickers corregidos'} a mano.</>
+        )}
       </div>
+
+      {corrigiendo && (
+        <CuadroCorreccion
+          pedido={corrigiendo}
+          personas={personas}
+          guardando={guardandoCorr}
+          onElegir={n => setCorrigiendo(c => (c ? { ...c, pickerNuevo: n } : c))}
+          onCancelar={() => setCorrigiendo(null)}
+          onConfirmar={() => void guardarCorreccion()}
+        />
+      )}
     </div>
   );
 }
@@ -262,7 +348,10 @@ const BTN_SEC = { ...BTN_BASE, background: '#fff', color: '#334155', border: '1.
 const BTN_PRI = { ...BTN_BASE, background: '#0F172A', color: '#fff', border: 'none' };
 
 /** La matriz: una fila por tienda; una celda con varios movimientos los apila. */
-function TablaPlanilla({ planilla }: { planilla: Planilla }) {
+function TablaPlanilla({ planilla, onCorregir }: {
+  planilla: Planilla;
+  onCorregir: (celda: CeldaPlanilla, cod: string, seccion: SeccionPlanilla) => void;
+}) {
   return (
     <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11,
                   flex: 1, minHeight: 0, overflow: 'auto' }}>
@@ -303,9 +392,8 @@ function TablaPlanilla({ planilla }: { planilla: Planilla }) {
                       </td>
                       <td style={{ ...TD, background: fondo }}>
                         {celda.map((x, k) => (
-                          <div key={k} style={x.picker ? undefined : ESTILO_SIN_ASIGNAR}>
-                            {x.picker || '— sin asignar'}
-                          </div>
+                          <CeldaPicker key={k} celda={x} cod={f.cod} seccion={s}
+                                       onCorregir={onCorregir} />
                         ))}
                       </td>
                     </Fragment>
@@ -373,6 +461,117 @@ function TablaDetalle({ movimientos }: { movimientos: MovimientoPlanilla[] }) {
 // `sticky` va en cada celda y no en el `<thead>`: con `border-collapse: collapse` un thead
 // pegado no funciona en todos los navegadores, y las celdas sí. El fondo es obligatorio, o las
 // filas se ven por debajo al scrollear.
+/**
+ * El nombre de la celda, como botón.
+ *
+ * Es un botón y no un texto con onClick: así se llega con el teclado y los lectores de pantalla
+ * dicen que se puede activar. Una celda sin referencia de Odoo —una línea agregada a mano— no se
+ * puede corregir por acá y se muestra como texto.
+ */
+function CeldaPicker({ celda, cod, seccion, onCorregir }: {
+  celda: CeldaPlanilla;
+  cod: string;
+  seccion: SeccionPlanilla;
+  onCorregir: (celda: CeldaPlanilla, cod: string, seccion: SeccionPlanilla) => void;
+}) {
+  const corregido = celda.origen === 'corregido';
+  const texto = celda.picker || '— sin asignar';
+  if (!celda.ref) return <div style={celda.picker ? undefined : ESTILO_SIN_ASIGNAR}>{texto}</div>;
+  return (
+    <div>
+      <button type="button" onClick={() => onCorregir(celda, cod, seccion)}
+              title="Corregir quién hizo este movimiento"
+              style={{
+                background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer',
+                textAlign: 'left', textDecorationLine: 'underline',
+                textDecorationStyle: corregido ? 'solid' : 'dotted',
+                textDecorationColor: corregido ? '#B45309' : '#CBD5E1',
+                textUnderlineOffset: 3,
+                ...(celda.picker ? { color: corregido ? '#92400E' : '#334155' } : ESTILO_SIN_ASIGNAR),
+                ...(corregido ? { fontWeight: 700 } : null),
+              }}>
+        {texto}
+      </button>
+      {corregido && celda.pickerOdoo && (
+        // El nombre original queda A LA VISTA: la hoja no reemplaza en silencio lo que dijo Odoo.
+        <div style={{ fontSize: 10.5, color: '#B45309' }}>Odoo decía: {celda.pickerOdoo}</div>
+      )}
+    </div>
+  );
+}
+
+/** El cuadro que pregunta antes de cambiar quién hizo un movimiento. */
+function CuadroCorreccion({ pedido, personas, guardando, onElegir, onCancelar, onConfirmar }: {
+  pedido: PedidoCorreccion;
+  personas: string[];
+  guardando: boolean;
+  onElegir: (nombre: string) => void;
+  onCancelar: () => void;
+  onConfirmar: () => void;
+}) {
+  const t = textoConfirmacion(pedido);
+  const v = validarCorreccion(pedido);
+
+  // Escape cierra. Un cuadro del que solo se sale con el mouse deja atrapado a quien usa teclado.
+  useEffect(() => {
+    const alTecla = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancelar(); };
+    document.addEventListener('keydown', alTecla);
+    return () => document.removeEventListener('keydown', alTecla);
+  }, [onCancelar]);
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label={t.titulo}
+         style={{ position: 'fixed', inset: 0, zIndex: 50,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      {/* El fondo es un BOTÓN y no un div con onClick: así se alcanza con el teclado y los
+          lectores de pantalla dicen qué hace. */}
+      <button type="button" onClick={onCancelar} aria-label="Cerrar sin cambiar nada"
+              style={{ position: 'absolute', inset: 0, border: 'none', cursor: 'default',
+                       background: 'rgba(15,23,42,0.45)' }} />
+      <div style={{ position: 'relative', background: '#fff', borderRadius: 14, padding: '20px 22px',
+                    width: 420, maxWidth: '100%', boxShadow: '0 20px 50px rgba(15,23,42,0.3)' }}>
+        <div style={{ fontSize: 16.5, fontWeight: 800, color: '#0F172A', lineHeight: 1.25 }}>{t.titulo}</div>
+
+        <div style={{ margin: '13px 0', padding: '11px 13px', background: '#F8FAFC',
+                      border: '1px solid #E2E8F0', borderRadius: 10, fontSize: 13.5,
+                      color: '#334155', lineHeight: 1.65 }}>
+          {t.lineas.map((l, i) => <div key={i} style={i === 0 ? { fontWeight: 700, color: '#0F172A' } : undefined}>{l}</div>)}
+        </div>
+
+        <label htmlFor="pk-correccion-persona"
+               style={{ display: 'block', fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase',
+                        letterSpacing: '.06em', color: '#64748B', marginBottom: 5 }}>
+          Quién lo hizo de verdad
+        </label>
+        <select id="pk-correccion-persona" value={pedido.pickerNuevo} onChange={e => onElegir(e.target.value)}
+                style={{ width: '100%', minHeight: 44, padding: '0 10px', fontSize: 14,
+                         fontFamily: 'inherit', borderRadius: 10, border: '1.5px solid #CBD5E1' }}>
+          <option value="">Elegir persona…</option>
+          {personas.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+
+        <div style={{ margin: '13px 0 16px', padding: '10px 13px', background: '#FFFBEB',
+                      border: '1px solid #FDE68A', borderRadius: 10, fontSize: 12.5,
+                      color: '#78350F', lineHeight: 1.55 }}>
+          {t.aviso}
+        </div>
+
+        {!v.ok && pedido.pickerNuevo.trim() !== '' && (
+          <div style={{ marginBottom: 12, fontSize: 12.5, color: '#B91C1C' }}>{v.motivo}</div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onCancelar} style={BTN_SEC}>Cancelar</button>
+          <button type="button" onClick={onConfirmar} disabled={!v.ok || guardando}
+                  style={{ ...BTN_PRI, opacity: (!v.ok || guardando) ? 0.5 : 1 }}>
+            {guardando ? 'Guardando…' : 'Sí, cambiarlo'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const TH       = { position: 'sticky', top: 0, zIndex: 1, background: '#F8FAFC',
                    padding: '7px 10px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
                    letterSpacing: '.06em', color: '#475569', textAlign: 'left',
