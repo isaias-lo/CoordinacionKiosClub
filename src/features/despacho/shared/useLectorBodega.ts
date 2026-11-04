@@ -24,7 +24,7 @@
 // `beforeinput` cuando la tecla no traía el carácter, y `keyup` como respaldo del Enter.
 
 import { useEffect, useRef } from 'react';
-import { Rafaga, LECTOR, siguienteCampo } from './lectorBodega';
+import { Rafaga, LECTOR, siguienteCampo, puedeSerLecturaLenta, type Cierre } from './lectorBodega';
 
 interface Marca {
   el: HTMLInputElement | HTMLTextAreaElement | null;
@@ -195,6 +195,10 @@ export function useLectorBodega({ activo, reconoce, alEscanear }: OpcionesLector
     let teclaSumada = false;
     // El Enter ya se atendió en keydown: el keyup no lo repite.
     let enterAtendido = false;
+    // Hora de la última tecla sin carácter (IME). Su carácter llega después en `beforeinput`, cuya
+    // hora es la de cuando la página lo atendió: con el equipo ocupado eso suma pausas que el lector
+    // no hizo y cortaba la lectura. Se usa la hora de la tecla.
+    let horaTeclaIme: number | null = null;
 
     const marcar = (): Marca => {
       const el = document.activeElement;
@@ -208,6 +212,24 @@ export function useLectorBodega({ activo, reconoce, alEscanear }: OpcionesLector
       cb.current.alEscanear(codigo);
     };
 
+    /**
+     * Qué se lee de una ráfaga. Primero lo escrito lento, si calza con una etiqueta (ver
+     * `puedeSerLecturaLenta`): con una frenada en medio, la parte rápida es solo la cola de la
+     * etiqueta y daba «no encontrada». Si no, la del lector si fue rápida y empezó en un campo de
+     * escaneo. `rapidaAjena`: el lector escribió en otro campo (Guía): se deja pasar como texto.
+     */
+    const lecturaDe = ({ rapida, lenta }: Cierre<Marca>, exigirEtiqueta: boolean) => {
+      if (lenta && campoDeEscaneo(lenta.marca.el)
+        && puedeSerLecturaLenta(lenta.codigo, !!lenta.marca.el?.hasAttribute('data-campo'))
+        && cb.current.reconoce(lenta.codigo)) return { lectura: lenta, rapidaAjena: false };
+      if (rapida) {
+        if (!campoDeEscaneo(rapida.marca.el)) return { lectura: null, rapidaAjena: true };
+        if (exigirEtiqueta && !cb.current.reconoce(rapida.codigo)) return { lectura: null, rapidaAjena: false };
+        return { lectura: rapida, rapidaAjena: false };
+      }
+      return { lectura: null, rapidaAjena: false };
+    };
+
     const cancelarSilencio = () => {
       if (silencio) { clearTimeout(silencio); silencio = null; }
     };
@@ -218,8 +240,10 @@ export function useLectorBodega({ activo, reconoce, alEscanear }: OpcionesLector
       cancelarSilencio();
       silencio = setTimeout(() => {
         silencio = null;
-        const r = rafaga.cerrar();
-        if (r && campoDeEscaneo(r.marca.el) && cb.current.reconoce(r.codigo)) entregar(r);
+        // Sin vaciar si no calza: puede ser una pausa del equipo en medio de la lectura, y el resto
+        // (con su Enter) todavía viene. Ver `puedeSerLecturaLenta`.
+        const { lectura } = lecturaDe(rafaga.mirar(), true);
+        if (lectura) { rafaga.descartar(); entregar(lectura); }
       }, LECTOR.silencioMs);
     };
 
@@ -228,36 +252,39 @@ export function useLectorBodega({ activo, reconoce, alEscanear }: OpcionesLector
       if (e.key === 'Enter' || e.key === 'Tab') {
         cancelarSilencio();
         enterAtendido = e.key === 'Enter';
-        const r = rafaga.cerrar();
-        if (r && campoDeEscaneo(r.marca.el)) {
+        const { lectura, rapidaAjena } = lecturaDe(rafaga.cerrarConLenta(), false);
+        if (lectura) {
           e.preventDefault();
           e.stopImmediatePropagation();
-          entregar(r);
+          entregar(lectura);
           return;
         }
-        if (r) return; // lectura en otro campo: sigue su camino normal
+        if (rapidaAjena) return; // lectura en otro campo: sigue su camino normal
         if (e.key === 'Enter' && avanzarCampo(e.target)) e.preventDefault();
         return;
       }
       if (e.key.length === 1) {
         rafaga.agregar(e.key, horaDe(e), marcar);
         teclaSumada = true;
+        horaTeclaIme = null;
         esperarSilencio();
         return;
       }
       // "Unidentified" / "Process": el carácter llega en beforeinput.
       teclaSumada = false;
+      horaTeclaIme = horaDe(e);
     };
 
     const onBeforeInput = (e: Event) => {
       const ie = e as InputEvent;
       if (teclaSumada) { teclaSumada = false; return; }
       if (!ie.data) return;
-      rafaga.agregar(ie.data, horaDe(ie), marcar);
+      rafaga.agregar(ie.data, horaTeclaIme ?? horaDe(ie), marcar);
+      horaTeclaIme = null;
       if (/[\r\n]/.test(ie.data)) {
         cancelarSilencio();
-        const r = rafaga.cerrar();
-        if (r && campoDeEscaneo(r.marca.el)) { ie.preventDefault(); entregar(r); }
+        const { lectura } = lecturaDe(rafaga.cerrarConLenta(), false);
+        if (lectura) { ie.preventDefault(); entregar(lectura); }
         return;
       }
       esperarSilencio();
@@ -269,9 +296,9 @@ export function useLectorBodega({ activo, reconoce, alEscanear }: OpcionesLector
       if (enterAtendido) { enterAtendido = false; return; }
       // El keydown del Enter llegó sin identificar (IME): se atiende acá.
       cancelarSilencio();
-      const r = rafaga.cerrar();
-      if (r && campoDeEscaneo(r.marca.el)) entregar(r);
-      else if (!r) avanzarCampo(e.target);
+      const { lectura, rapidaAjena } = lecturaDe(rafaga.cerrarConLenta(), false);
+      if (lectura) entregar(lectura);
+      else if (!rapidaAjena) avanzarCampo(e.target);
     };
 
     window.addEventListener('keydown', onKeyDown, true);

@@ -48,7 +48,8 @@ import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTi
 import { useAvisoNuevasTrasTerminar } from '../../shared/avisoNuevasTrasTerminar';
 import { avisoAntesDeRegistrar, formatoMedidas, posicionDeUnidad, totalesResumen } from '../../shared/resumenDia';
 import { AhoraUnidad, ChipUnificado, ChipSumados, CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, TiendaSinUnidades, type OpcionAgregar } from '../../shared/TiendaAbierta';
-import { confirmarCambioGuardado, confirmarQuitarSinGuardar, PEDIDO_SIN_PESAR, PEDIDO_REABRIR_TIENDA, pedidoPesoRaro, pedidoRegistrarIgual } from '../../shared/confirmarGuardado';
+import { indicesABorrar } from '../../shared/borrarVarios';
+import { confirmarCambioGuardado, confirmarEliminarVarios, confirmarQuitarSinGuardar, PEDIDO_SIN_PESAR, PEDIDO_REABRIR_TIENDA, pedidoPesoRaro, pedidoRegistrarIgual } from '../../shared/confirmarGuardado';
 import { confirmar } from '../../shared/confirmar';
 import { reconciliarFormRows, findItemForRow } from '../../shared/formRowsReconcile';
 import { mismaCargaEscrita } from '../../shared/adoptarItemRemoto';
@@ -1694,6 +1695,33 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   };
 
   // Quitar un form row sin guardar (✕) — también borra su slot.
+  // «Eliminar» de la barra de sumar: los bultos/CH marcados, de una vez. Ver `borrarVarios.ts`.
+  const eliminarMarcados = async (rowIds: string[]) => {
+    if (!currentTienda) return;
+    const cod = currentTienda.cod;
+    const { unicas: filas } = unidadesSinRepetir(formRows.filter(r => rowIds.includes(r.id) && r.saved && r.savedItem));
+    if (!(await confirmarEliminarVarios(filas.map(r => labelDeFila(r, formRows))))) return;
+    for (const idx of indicesABorrar(items[cod] || [], filas, (i, r) => i.id === r.savedItem?.id)) {
+      dispatch({ type: 'DELETE_ITEM', tiendaCod: cod, idx });
+    }
+    const deshacer: { item: SantiagoItem; slotAntes?: PickingSlot }[] = [];
+    for (const row of filas) {
+      // El número (seq) se lee ANTES de borrar el slot, como en `deleteSavedRow`.
+      const slotId = row.pickingSlotId ?? row.savedItem?.pickingSlotId;
+      const slotAntes = slotId != null ? (pickingSlotsFullRef.current[cod] ?? []).find(s => s.id === slotId) : undefined;
+      deletePickingSlot(slotId, { label: row.savedItem?.orden ?? labelDeFila(row, formRows) });
+      if (row.savedItem) deshacer.push({ item: row.savedItem, slotAntes });
+    }
+    const ids = new Set(rowIds);
+    setFormRows(prev => prev.filter(r => !ids.has(r.id) && !filas.some(f => esMismaUnidad(r, f))));
+    setMergeSel(new Set());
+    if (deshacer.length > 0) {
+      armarUndo(`${deshacer.length} eliminado${deshacer.length > 1 ? 's' : ''}`, async () => {
+        for (const d of deshacer) await reAgregarItem(d.item, d.slotAntes);
+      });
+    }
+  };
+
   const removeUnsavedRow = async (rowId: string) => {
     const row = formRows.find(r => r.id === rowId);
     if (!(await confirmarQuitarSinGuardar(row ? labelDeFila(row, formRows) : 'esta unidad', row?.pickingSlotId != null))) return;
@@ -1716,7 +1744,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       seqOriginal: slotAntes?.seq, canonicalOriginal: slotAntes?.canonical_id ?? item.canonical_id,
       peso: item.peso, alto: item.alto, largo: item.largo, ancho: item.ancho,
     });
-    if (nuevoSlot) setPickingSlotsFull(prev => ({ ...prev, [cod]: [...(prev[cod] ?? []), nuevoSlot] }));
+    // Sin repetir: la recarga de Picking puede haberlo traído ya (60PBL). Ver `slotsUnicos.ts`.
+    if (nuevoSlot) setPickingSlotsFull(prev => ({ ...prev, [cod]: agregarSlots(prev[cod], [nuevoSlot]) }));
     // Un CH que no recuperó su número toma el nuevo también en el `orden`: si no, la card y el ID de
     // Sheets dirían CH3 mientras la caja y el slot dicen otra cosa.
     const orden = item.tipo === 'Chocolate' && nuevoSlot?.seq && !conservoNumero
@@ -3273,7 +3302,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
                 // Mismo número que la tarjeta (su `seq`). Contar la posición hacía que, borrado P1,
                 // el botón «P2» sumara al pallet que la tarjeta llama P3.
                 pallets={palletRows.map(r => ({ id: r.id, etiqueta: labelDeFila(r, formRows), agregado: !!r.savedItem }))}
-                onSumar={id => sumarVariosAPallet([...mergeSel], id)} />
+                onSumar={id => sumarVariosAPallet([...mergeSel], id)}
+                onEliminar={() => { void eliminarMarcados(sumableRows.filter(r => mergeSel.has(r.id)).map(r => r.id)); }} />
             );
           })()}
           </fieldset>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pedidoCambioGuardado, pedidoQuitarSinGuardar, textoEliminarVarios } from '../confirmarGuardado';
+import { pedidoCambioGuardado, pedidoQuitarSinGuardar, textoEliminarVarios, pedidoEliminarVarios } from '../confirmarGuardado';
 import { avisoDeUnidad, avisoEnTerminada } from '../avisoUnidadEscaneada';
 
 describe('lo guardado pide confirmar antes de cambiar', () => {
@@ -34,5 +34,22 @@ describe('escanear en una tienda terminada', () => {
     expect(a.advertir).toBe(true);
     expect(a.texto).toMatch(/terminada/i);
     expect(a.estado).toBe('sin-cargar');
+  });
+});
+
+describe('pedidoEliminarVarios', () => {
+  it('nombra cada unidad marcada', () => {
+    const p = pedidoEliminarVarios(['CH1', 'CH2', 'CH4']);
+    expect(p.titulo).toBe('¿Eliminar 3 marcados?');
+    expect(p.detalle).toBe('CH1, CH2, CH4. Ya están guardados y se borran también de Picking.');
+    expect(p.aceptar).toBe('Eliminar 3');
+    expect(p.tono).toBe('peligro');
+  });
+  it('con una sola, la nombra en el botón', () => {
+    expect(pedidoEliminarVarios(['CH3']).aceptar).toBe('Eliminar CH3');
+  });
+  it('con muchas, resume el resto', () => {
+    const p = pedidoEliminarVarios(Array.from({ length: 11 }, (_, i) => `CH${i + 1}`));
+    expect(p.detalle).toMatch(/^CH1, .*CH8 y 3 más\./);
   });
 });

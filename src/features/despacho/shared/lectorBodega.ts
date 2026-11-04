@@ -33,7 +33,35 @@ export const LECTOR = {
   minLargo: 4,
   /** Sin Enter: tras este silencio se evalúa lo leído (equipos configurados sin sufijo). */
   silencioMs: 120,
+  /** La lectura «lenta» (ver `puedeSerLecturaLenta`) se corta recién con esta pausa. */
+  maxPausaLentaMs: 800,
+  /** Lo mínimo para aceptar una lectura lenta dentro de la tarjeta: una etiqueta completa. */
+  minLargoLenta: 8,
 } as const;
+
+/**
+ * ¿Se puede aceptar como lectura algo que llegó más lento de lo que escribe el lector?
+ *
+ * ── POR QUÉ (4/11/2026) ───────────────────────────────────────────────────────────────────────────
+ *
+ * Los asistentes de Bodega contaron que a veces la pistola «no lee» y un rato después sí, con la
+ * misma etiqueta. Cuando el equipo está ocupado (otra persona crea pallets en Picking y la lista se
+ * recarga, o la tarjeta se re-dibuja con cada carácter) las teclas del lector llegan con pausas de
+ * más de `maxPausaMs`: la lectura se corta, ningún trozo pasa por lector y no pasa NADA, ni pitido.
+ *
+ * La segunda oportunidad: si lo escrito desde la última pausa larga calza con una etiqueta de hoy
+ * (`reconoce`, en el hook), se toma como lectura aunque haya llegado lento. Nadie teclea a mano
+ * `P130PHU21102026P` en el campo Peso, y en el buscador teclearlo es justamente pedir ese pallet.
+ *
+ * Dentro de un campo de la tarjeta (Peso, Alto…) se exige una etiqueta con letras y de largo
+ * completo: un peso tecleado no puede tomarse por el número de un slot, así que ahí un código solo
+ * de dígitos tiene que llegar rápido, como siempre. Fuera de la tarjeta (buscador, o sin cursor)
+ * escribir un número de pallet y Enter es pedir ese pallet: basta el largo mínimo de siempre.
+ */
+export function puedeSerLecturaLenta(codigo: string, enCampoDeTarjeta: boolean, opts = LECTOR): boolean {
+  if (!enCampoDeTarjeta) return codigo.length >= opts.minLargo;
+  return codigo.length >= opts.minLargoLenta && !/^[\d.,\s]+$/.test(codigo);
+}
 
 /** Lo que se lee de un evento: los caracteres y cuándo llegaron. */
 export interface Tramo {
@@ -61,6 +89,16 @@ export function esLecturaDeLector(tramos: readonly Tramo[], opts = LECTOR): bool
 }
 
 /**
+ * Una lectura cerrada: el último tramo rápido (`rapida`) y lo escrito desde la última pausa larga
+ * (`lenta`), esta solo si es más largo. Con una frenada en medio de la lectura, `rapida` es la cola
+ * mocha de la etiqueta («U21102026P») y `lenta` la etiqueta entera: decide el llamador.
+ */
+export interface Cierre<Marca> {
+  rapida: { codigo: string; marca: Marca } | null;
+  lenta: { codigo: string; marca: Marca } | null;
+}
+
+/**
  * Acumula lo que se va leyendo y dice, al cerrar, si fue el lector.
  *
  * `Marca` es lo que el llamador quiera guardar al empezar una lectura —en el hook, el campo que
@@ -70,6 +108,9 @@ export function esLecturaDeLector(tramos: readonly Tramo[], opts = LECTOR): bool
 export class Rafaga<Marca> {
   private tramos: Tramo[] = [];
   private marca: Marca | null = null;
+  /** Lo escrito desde la última pausa LARGA, para la lectura lenta. Ver `puedeSerLecturaLenta`. */
+  private lentos: Tramo[] = [];
+  private marcaLenta: Marca | null = null;
 
   constructor(private readonly opts = LECTOR) {}
 
@@ -77,10 +118,17 @@ export class Rafaga<Marca> {
   agregar(texto: string, t: number, marcar: () => Marca): void {
     const limpio = texto.replace(/[\r\n]/g, '');
     if (!limpio) return;
+    const ultimoLento = this.lentos.at(-1);
+    let marcaNueva: Marca | null = null;
+    if (!ultimoLento || t - ultimoLento.t > this.opts.maxPausaLentaMs) {
+      this.lentos = [];
+      this.marcaLenta = marcaNueva = marcar();
+    }
+    this.lentos.push({ texto: limpio, t });
     const ultimo = this.tramos.at(-1);
     if (!ultimo || t - ultimo.t > this.opts.maxPausaMs) {
       this.tramos = [];
-      this.marca = marcar();
+      this.marca = marcaNueva ?? marcar();
     }
     this.tramos.push({ texto: limpio, t });
   }
@@ -100,16 +148,35 @@ export class Rafaga<Marca> {
    * una persona o no había nada. Siempre deja el acumulador vacío.
    */
   cerrar(): { codigo: string; marca: Marca } | null {
+    return this.cerrarConLenta().rapida;
+  }
+
+  /**
+   * Como `cerrar`, y además lo escrito desde la última pausa larga (`lenta`), para que el llamador
+   * decida con `puedeSerLecturaLenta` y su `reconoce`. Ver `Cierre`.
+   */
+  cerrarConLenta(): Cierre<Marca> {
+    const c = this.mirar();
+    this.descartar();
+    return c;
+  }
+
+  /** Lo mismo que `cerrarConLenta`, sin vaciar: la lectura puede seguir llegando. */
+  mirar(): Cierre<Marca> {
     const fue = esLecturaDeLector(this.tramos, this.opts);
     const codigo = this.texto.trim();
-    const marca = this.marca;
-    this.descartar();
-    return fue && codigo && marca !== null ? { codigo, marca } : null;
+    const codigoLento = this.lentos.map(tr => tr.texto).join('').trim();
+    const rapida = fue && codigo && this.marca !== null ? { codigo, marca: this.marca } : null;
+    const lenta = codigoLento && this.marcaLenta !== null && (!rapida || codigoLento.length > codigo.length)
+      ? { codigo: codigoLento, marca: this.marcaLenta } : null;
+    return { rapida, lenta };
   }
 
   descartar(): void {
     this.tramos = [];
     this.marca = null;
+    this.lentos = [];
+    this.marcaLenta = null;
   }
 }
 

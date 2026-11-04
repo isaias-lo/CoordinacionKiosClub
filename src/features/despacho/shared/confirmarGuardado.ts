@@ -17,6 +17,26 @@ export function textoEliminarVarios(n: number): string {
     : `¿Seguro que quieres eliminar los ${n} seleccionados?`;
 }
 
+/** Cuántas etiquetas se nombran en el aviso antes de resumir con «y N más». */
+const MAX_NOMBRADOS = 8;
+
+/**
+ * «Eliminar marcados» de la barra de sumar (pedido de Isaias del 4/11/2026: al marcar varios
+ * chocolates, poder borrarlos de una vez). Nombra cuáles son, porque lo marcado puede estar fuera
+ * de la pantalla, y avisa que se borran también de Picking.
+ */
+export function pedidoEliminarVarios(etiquetas: readonly string[]): PedidoConfirmacion {
+  const n = etiquetas.length;
+  const nombrados = etiquetas.slice(0, MAX_NOMBRADOS).join(', ');
+  const resto = n > MAX_NOMBRADOS ? ` y ${n - MAX_NOMBRADOS} más` : '';
+  return {
+    titulo: n === 1 ? `¿Eliminar ${etiquetas[0]}?` : `¿Eliminar ${n} marcados?`,
+    detalle: `${nombrados}${resto}. Ya están guardados y se borran también de Picking.`,
+    aceptar: n === 1 ? `Eliminar ${etiquetas[0]}` : `Eliminar ${n}`,
+    tono: 'peligro',
+  };
+}
+
 /** La pregunta antes de tocar algo guardado. El botón dice qué hace: «Editar P3», «Eliminar P3». */
 export function pedidoCambioGuardado(accion: CambioGuardado, etiqueta: string): PedidoConfirmacion {
   return accion === 'editar'
@@ -29,9 +49,9 @@ export function confirmarCambioGuardado(accion: CambioGuardado, etiqueta: string
   return confirmar(pedidoCambioGuardado(accion, etiqueta));
 }
 
-export function confirmarEliminarVarios(n: number): Promise<boolean> {
-  if (n <= 0) return Promise.resolve(false);
-  return confirmar({ titulo: textoEliminarVarios(n), aceptar: 'Eliminar', tono: 'peligro' });
+export function confirmarEliminarVarios(etiquetas: readonly string[]): Promise<boolean> {
+  if (etiquetas.length === 0) return Promise.resolve(false);
+  return confirmar(pedidoEliminarVarios(etiquetas));
 }
 
 /**
