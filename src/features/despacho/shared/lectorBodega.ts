@@ -37,7 +37,27 @@ export const LECTOR = {
   maxPausaLentaMs: 800,
   /** Lo mínimo para aceptar una lectura lenta dentro de la tarjeta: una etiqueta completa. */
   minLargoLenta: 8,
+  /**
+   * Promedio entre caracteres por debajo del cual una lectura lenta con forma de etiqueta es del
+   * lector aunque no calce con la carga de hoy (de otro día, borrada): el lector frenado por el
+   * equipo promedia 30-40 ms; una persona, 80 ms o más.
+   */
+  maxPromedioLentaMs: 70,
 } as const;
+
+/** ¿Tiene forma de etiqueta de Picking? Letras y dígitos, largo completo (`1B28TEM22092026B`). */
+export function pareceEtiqueta(codigo: string, opts = LECTOR): boolean {
+  return codigo.length >= opts.minLargoLenta && /[a-z]/i.test(codigo) && /\d/.test(codigo);
+}
+
+/** La pausa más larga y el promedio entre caracteres de unos tramos. */
+export function pausasDe(tramos: readonly Tramo[]): { maxMs: number; promedioMs: number } {
+  const largo = tramos.reduce((n, tr) => n + tr.texto.length, 0);
+  let max = 0;
+  for (let i = 1; i < tramos.length; i++) max = Math.max(max, tramos.at(i)!.t - tramos.at(i - 1)!.t);
+  const total = tramos.length > 1 ? tramos.at(-1)!.t - tramos.at(0)!.t : 0;
+  return { maxMs: Math.round(max), promedioMs: largo > 1 ? total / (largo - 1) : 0 };
+}
 
 /**
  * ¿Se puede aceptar como lectura algo que llegó más lento de lo que escribe el lector?
@@ -95,7 +115,7 @@ export function esLecturaDeLector(tramos: readonly Tramo[], opts = LECTOR): bool
  */
 export interface Cierre<Marca> {
   rapida: { codigo: string; marca: Marca } | null;
-  lenta: { codigo: string; marca: Marca } | null;
+  lenta: { codigo: string; marca: Marca; maxMs: number; promedioMs: number } | null;
 }
 
 /**
@@ -168,7 +188,7 @@ export class Rafaga<Marca> {
     const codigoLento = this.lentos.map(tr => tr.texto).join('').trim();
     const rapida = fue && codigo && this.marca !== null ? { codigo, marca: this.marca } : null;
     const lenta = codigoLento && this.marcaLenta !== null && (!rapida || codigoLento.length > codigo.length)
-      ? { codigo: codigoLento, marca: this.marcaLenta } : null;
+      ? { codigo: codigoLento, marca: this.marcaLenta, ...pausasDe(this.lentos) } : null;
     return { rapida, lenta };
   }
 

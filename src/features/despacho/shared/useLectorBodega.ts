@@ -24,7 +24,7 @@
 // `beforeinput` cuando la tecla no traía el carácter, y `keyup` como respaldo del Enter.
 
 import { useEffect, useRef } from 'react';
-import { Rafaga, LECTOR, siguienteCampo, puedeSerLecturaLenta, type Cierre } from './lectorBodega';
+import { Rafaga, LECTOR, siguienteCampo, puedeSerLecturaLenta, pareceEtiqueta, type Cierre } from './lectorBodega';
 
 interface Marca {
   el: HTMLInputElement | HTMLTextAreaElement | null;
@@ -37,6 +37,22 @@ export interface OpcionesLector {
   /** ¿Calza con una etiqueta? Solo se consulta cuando la lectura llega sin Enter. */
   reconoce: (codigo: string) => boolean;
   alEscanear: (codigo: string) => void;
+  /** Lo que la pistola casi pierde: lecturas rescatadas y descartadas. Ver `DiagnosticoLectura`. */
+  alDiagnosticar?: (d: DiagnosticoLectura) => void;
+}
+
+/**
+ * Para medir cuántas veces «la pistola no lee» (pedido de Isaias, 4/11/2026), en vez de depender
+ * de lo que se cuenta de palabra:
+ *   · `rescatada`: llegó con frenadas y antes se habría perdido; ahora se leyó.
+ *   · `descartada`: tenía forma de etiqueta pero llegó tan lento que no se tomó. Si una persona la
+ *     tecleó, no es un problema; si son muchas, los umbrales de `LECTOR` quedaron cortos.
+ */
+export interface DiagnosticoLectura {
+  resultado: 'rescatada' | 'descartada';
+  codigo: string;
+  maxMs: number;
+  promedioMs: number;
 }
 
 /** ¿Una lectura que empezó con el foco acá es de Bodega? Sin foco en un campo, siempre. */
@@ -182,10 +198,10 @@ function horaDe(e: Event): number {
   return e.timeStamp > 0 ? e.timeStamp : performance.now();
 }
 
-export function useLectorBodega({ activo, reconoce, alEscanear }: OpcionesLector): void {
+export function useLectorBodega({ activo, reconoce, alEscanear, alDiagnosticar }: OpcionesLector): void {
   // Las funciones cambian en cada render de la pantalla; los listeners se registran una vez.
-  const cb = useRef({ reconoce, alEscanear });
-  useEffect(() => { cb.current = { reconoce, alEscanear }; });
+  const cb = useRef({ reconoce, alEscanear, alDiagnosticar });
+  useEffect(() => { cb.current = { reconoce, alEscanear, alDiagnosticar }; });
 
   useEffect(() => {
     if (!activo || typeof window === 'undefined') return;
@@ -207,9 +223,10 @@ export function useLectorBodega({ activo, reconoce, alEscanear }: OpcionesLector
         : { el: null, valor: '' };
     };
 
-    const entregar = ({ codigo, marca }: { codigo: string; marca: Marca }) => {
+    const entregar = ({ codigo, marca, rescate }: { codigo: string; marca: Marca; rescate?: DiagnosticoLectura }) => {
       if (marca.el?.isConnected && marca.el.value !== marca.valor) escribirEnCampo(marca.el, marca.valor);
       cb.current.alEscanear(codigo);
+      if (rescate) cb.current.alDiagnosticar?.(rescate);
     };
 
     /**
@@ -219,13 +236,24 @@ export function useLectorBodega({ activo, reconoce, alEscanear }: OpcionesLector
      * escaneo. `rapidaAjena`: el lector escribió en otro campo (Guía): se deja pasar como texto.
      */
     const lecturaDe = ({ rapida, lenta }: Cierre<Marca>, exigirEtiqueta: boolean) => {
-      if (lenta && campoDeEscaneo(lenta.marca.el)
-        && puedeSerLecturaLenta(lenta.codigo, !!lenta.marca.el?.hasAttribute('data-campo'))
-        && cb.current.reconoce(lenta.codigo)) return { lectura: lenta, rapidaAjena: false };
+      // Al cerrar con Enter (no en el silencio, que puede ser solo una pausa), una lectura lenta con
+      // forma de etiqueta y ritmo de lector también vale aunque no sea de la carga de hoy: así cae
+      // en «de otro día» / «borrado» / «no encontrada» con su aviso, en vez de no hacer nada.
+      const lentaValida = !!lenta && campoDeEscaneo(lenta.marca.el)
+        && puedeSerLecturaLenta(lenta.codigo, !!lenta.marca.el?.hasAttribute('data-campo'));
+      if (lenta && lentaValida && (cb.current.reconoce(lenta.codigo)
+        // Sin tramo rápido: si lo hay, la lectura del lector es esa y lo de antes era otra cosa.
+        || (!exigirEtiqueta && !rapida && pareceEtiqueta(lenta.codigo) && lenta.promedioMs <= LECTOR.maxPromedioLentaMs))) {
+        const { codigo, maxMs, promedioMs } = lenta;
+        return { lectura: { ...lenta, rescate: { resultado: 'rescatada' as const, codigo, maxMs, promedioMs: Math.round(promedioMs) } }, rapidaAjena: false };
+      }
       if (rapida) {
         if (!campoDeEscaneo(rapida.marca.el)) return { lectura: null, rapidaAjena: true };
         if (exigirEtiqueta && !cb.current.reconoce(rapida.codigo)) return { lectura: null, rapidaAjena: false };
         return { lectura: rapida, rapidaAjena: false };
+      }
+      if (!exigirEtiqueta && lenta && campoDeEscaneo(lenta.marca.el) && pareceEtiqueta(lenta.codigo)) {
+        cb.current.alDiagnosticar?.({ resultado: 'descartada', codigo: lenta.codigo, maxMs: lenta.maxMs, promedioMs: Math.round(lenta.promedioMs) });
       }
       return { lectura: null, rapidaAjena: false };
     };

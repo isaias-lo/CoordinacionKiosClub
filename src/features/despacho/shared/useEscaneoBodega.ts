@@ -20,10 +20,11 @@ import { useAuth } from '@/components/AuthProvider';
 import { isPathAllowed } from '@/config/routes';
 import { supabase } from '@/lib/supabase';
 import { avisoFisico } from '@/lib/avisoFisico';
+import { logActividad } from '@/lib/actividad';
 import { buscarPallet, variantesDeCodigo, type PalletEncontrado, type SlotDePallet } from './buscarPallet';
 import type { AvisoUnidad } from './avisoUnidadEscaneada';
 import { ConfirmacionDoble } from './lectorBodega';
-import { useLectorBodega, tarjetaAMedias } from './useLectorBodega';
+import { useLectorBodega, tarjetaAMedias, type DiagnosticoLectura } from './useLectorBodega';
 import { avisoSiEsDeOtraBodega } from './vetoEscaneo';
 import { NOMBRE_ESPEJO, type EspejoBodega } from './duenoDeTienda';
 import { RUTA_ESPEJO, anotarEscaneoPendiente, avisoDeSalto, otroEspejo, tomarEscaneoPendiente } from './saltoEntreBodegas';
@@ -88,6 +89,13 @@ export interface OpcionesEscaneo<Slot extends SlotDePallet> {
 
 export function useEscaneoBodega<Slot extends SlotDePallet>(opts: OpcionesEscaneo<Slot>): void {
   const confirmacion = useRef(new ConfirmacionDoble());
+
+  // Diagnóstico de la pistola (ver `DiagnosticoLectura`). Sin `espejo` no se sabe de qué Bodega es.
+  function diagnosticar(d: Pick<DiagnosticoLectura, 'codigo'> & { resultado: DiagnosticoLectura['resultado'] | 'no_encontrada'; maxMs?: number; promedioMs?: number }) {
+    if (!opts.espejo) return;
+    logActividad({ accion: 'lectura_pistola', fuente: opts.espejo, label: d.codigo.slice(0, 40),
+      sourceLabel: d.resultado, pausaMaxMs: d.maxMs, promedioMs: d.promedioMs });
+  }
 
   const { profile } = useAuth();
 
@@ -155,6 +163,7 @@ export function useEscaneoBodega<Slot extends SlotDePallet>(opts: OpcionesEscane
     activo: opts.activo,
     reconoce: codigo => !!buscarPallet(opts.slotsPorTienda, codigo),
     alEscanear: codigo => procesar(codigo, false),
+    alDiagnosticar: diagnosticar,
   });
 
   // ── La lectura que llegó desde el otro espejo ──────────────────────────────────────────────────
@@ -221,6 +230,7 @@ export function useEscaneoBodega<Slot extends SlotDePallet>(opts: OpcionesEscane
       if (borrado) pallet = borrado;
     }
     avisoFisico('error');
+    if (!pallet) diagnosticar({ resultado: 'no_encontrada', codigo });
     opts.showToast(pallet
       ? `El pallet #${pallet.id} es de ${pallet.store_cod}, que no está en esta bodega.`
       : `Etiqueta ${codigo} no encontrada.`, ROJO);

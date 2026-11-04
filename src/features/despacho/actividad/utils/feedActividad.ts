@@ -40,7 +40,7 @@ import { nombreContenido } from '@/features/despacho/shared/contenidoCarga';
  * Se listan por nombre y no por descarte: así, una acción nueva de persona entra al feed sola, y
  * una de diagnóstico hay que agregarla acá a propósito. El olvido barato es el correcto.
  */
-export const ACCIONES_DIAGNOSTICO: readonly string[] = ['merge_descarte', 'conteo_borrado'];
+export const ACCIONES_DIAGNOSTICO: readonly string[] = ['merge_descarte', 'conteo_borrado', 'lectura_pistola'];
 
 export function esDiagnostico(accion: string): boolean {
   return ACCIONES_DIAGNOSTICO.includes(accion);

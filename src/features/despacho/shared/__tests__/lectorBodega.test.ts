@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { esLecturaDeLector, Rafaga, ConfirmacionDoble, siguienteCampo, puedeSerLecturaLenta } from '../lectorBodega';
+import { esLecturaDeLector, Rafaga, ConfirmacionDoble, siguienteCampo, puedeSerLecturaLenta, pareceEtiqueta, pausasDe } from '../lectorBodega';
 
 // Caracteres de `texto` separados por `paso` ms, desde `t0`.
 function tecleo(texto: string, paso: number, t0 = 1000) {
@@ -124,7 +124,7 @@ describe('lectura lenta (equipo ocupado, 4/11/2026)', () => {
     [...'P130PHU21102026P'].forEach((c, i) => r.agregar(c, t[i]!, () => `m${++n}`));
     const { rapida, lenta } = r.cerrarConLenta();
     expect(rapida?.codigo).toBe('U21102026P');
-    expect(lenta).toEqual({ codigo: 'P130PHU21102026P', marca: 'm1' });
+    expect(lenta).toMatchObject({ codigo: 'P130PHU21102026P', marca: 'm1', maxMs: 300 });
     expect(r.pendiente).toBe(false);
   });
 
@@ -141,7 +141,7 @@ describe('lectura lenta (equipo ocupado, 4/11/2026)', () => {
     let n = 0;
     r.agregar('9', 0, () => ++n);
     for (const { texto, t } of tecleo('P130PHU21102026P', 100, 1000)) r.agregar(texto, t, () => ++n);
-    expect(r.cerrarConLenta().lenta).toEqual({ codigo: 'P130PHU21102026P', marca: 2 });
+    expect(r.cerrarConLenta().lenta).toMatchObject({ codigo: 'P130PHU21102026P', marca: 2 });
   });
 
   it('mirar no vacía: la lectura puede seguir llegando', () => {
@@ -168,5 +168,17 @@ describe('puedeSerLecturaLenta', () => {
   it('fuera de la tarjeta, un número de pallet alcanza', () => {
     expect(puedeSerLecturaLenta('4127', false)).toBe(true);
     expect(puedeSerLecturaLenta('412', false)).toBe(false);
+  });
+});
+
+describe('pareceEtiqueta y pausasDe', () => {
+  it('una etiqueta de Picking tiene letras, dígitos y largo completo', () => {
+    expect(pareceEtiqueta('P130PHU21102026P')).toBe(true);
+    expect(pareceEtiqueta('4127')).toBe(false);
+    expect(pareceEtiqueta('Hogar-Aseo')).toBe(false);
+  });
+  it('mide la pausa más larga y el promedio', () => {
+    expect(pausasDe(tecleo('ABCD', 10))).toEqual({ maxMs: 10, promedioMs: 10 });
+    expect(pausasDe([{ texto: 'AB', t: 0 }, { texto: 'C', t: 300 }])).toEqual({ maxMs: 300, promedioMs: 150 });
   });
 });
