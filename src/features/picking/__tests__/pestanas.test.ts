@@ -2,15 +2,15 @@ import { describe, it, expect } from 'vitest';
 import { PESTANAS, GRUPOS, pestana, fechaCorta, textoConexion, textoConexionCorto } from '../marco/pestanas';
 
 describe('pestañas de Picking', () => {
-  it('mantiene las siete claves guardadas', () => {
+  it('mantiene las ocho claves guardadas', () => {
     expect(PESTANAS.map(p => p.key).sort()).toEqual(
-      ['actividad', 'calendario', 'configuracion', 'congelados', 'estadisticas', 'historial', 'monitoreo']);
+      ['actividad', 'calendario', 'configuracion', 'congelados', 'estadisticas', 'historial', 'hoja', 'monitoreo']);
   });
   it('agrupa como el diseño', () => {
     const por = (g: string) => PESTANAS.filter(p => p.grupo === g).map(p => p.label);
     expect(GRUPOS).toEqual(['Operación', 'Seguimiento', 'Ajustes']);
     expect(por('Operación')).toEqual(['Seco', 'Congelados']);
-    expect(por('Seguimiento')).toEqual(['Actividad', 'Historial', 'Estadísticas']);
+    expect(por('Seguimiento')).toEqual(['Actividad', 'Planilla', 'Historial', 'Estadísticas']);
     expect(por('Ajustes')).toEqual(['Calendario', 'Configuración']);
   });
   it('Seco es la pestaña monitoreo', () => {

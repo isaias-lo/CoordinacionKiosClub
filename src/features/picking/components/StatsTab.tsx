@@ -99,9 +99,10 @@ export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames, esc
         body:    JSON.stringify({ action: 'picking_stats_range', dateFrom: from, dateTo: to }),
         signal:  AbortSignal.timeout(90_000),
       });
-      const data = (await res.json()) as { stats?: PickerStatRow[]; error?: string };
+      const data = (await res.json()) as { stats?: PickerStatRow[]; error?: string; sinMedir?: number };
       if (!res.ok || data.error) throw new Error(data.error ?? 'Error Odoo');
-      const newCache: StatsCache = { cachedAt: new Date().toISOString(), rows: data.stats ?? [], desde: from, hasta: to };
+      const newCache: StatsCache = { cachedAt: new Date().toISOString(), rows: data.stats ?? [], desde: from, hasta: to,
+        sinMedir: data.sinMedir };
       setCache(newCache);
       localStorage.setItem(STATS_CACHE_KEY, JSON.stringify(newCache));
     } catch (e) {
@@ -221,7 +222,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
           void loadStats(desde, hasta);
         }}
         onActualizar={() => void loadStats()} onImprimir={exportStats}
-        cargando={loading} hayDatos={!!cache} actualizado={cachedAt} error={error}
+        cargando={loading} hayDatos={!!cache} actualizado={cachedAt} error={error} sinMedir={cache?.sinMedir ?? 0}
         sinOdoo={hasOdoo ? null : avisoOdoo(motivoOdoo(odooDesactivado), 'no se pueden cargar las estadísticas')} />
     );
   }

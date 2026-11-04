@@ -5,6 +5,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { fechaChileDe, limitesDiaChile, odooDateToISO } from '@/lib/fechaChile';
 import { verifyAuth } from '@/lib/apiAuth';
 import { diaParaConsultarOdoo } from '@/features/despacho/shared/diaDeOdoo';
+import { rendimientoPorPicker } from '@/features/picking/seguimiento/rendimiento';
 import { agruparAperturas, esApertura, type MovimientoApertura } from '@/features/despacho/shared/aperturaOdoo';
 import { camposAPedir, camposMedidaDe, camposNumericosConValor, esTextoDeMedida, normalizarCodigo, productoDesdeOdoo, type DefinicionCampos } from '@/features/despacho/shared/productosBodega';
 
@@ -67,6 +68,16 @@ type BatchPicking = {
   /** [CRUCE PESOS] `total_weight` de Odoo — la columna «Peso Total» de Traslados internos.
    *  Viene en la MISMA consulta que ya se hacía: es un campo más, no una llamada más. */
   pesoTotal: number;
+  /** [PLANILLA] Todas las líneas del movimiento: el número que muestra Odoo.
+   *
+   *  `lineCount` filtra por estado del `stock.move`, así que cuenta solo las líneas con stock
+   *  reservado y crece durante el día. Medido el 29/10 (día cerrado) los dos coinciden en 157 de
+   *  157; el 03/11 (en curso) difieren en 53 de 149. La planilla necesita el total, que es el que
+   *  calzó con la hoja de papel (24SPP Comida 111, 38SP2 Comida 119, 31TLC Hogar 100). */
+  lineTotal: number;
+  /** [PLANILLA] `user_assigned_date`: cuándo se le dio el movimiento a un picker. UTC, como todo
+   *  lo que guarda Odoo. `null` cuando todavía no se asignó a nadie. */
+  assignedAt: string | null;
 };
 
 /**
@@ -192,7 +203,11 @@ async function _fetchDayPickings(
       // agrega trabajo a una consulta que ya traía estos once campos.
       fields: ['name', 'origin', 'partner_id', 'location_id', 'location_dest_id',
                'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id', 'batch_id',
-               'total_weight'],
+               'total_weight',
+               // [PLANILLA] `move_ids` son ids, no registros: no agrega una consulta. Con su
+               // largo se cuenta sin filtrar por estado. `user_assigned_date` es la hora de
+               // asignación, lo único que la planilla no podía sacar de ningún otro campo.
+               'move_ids', 'user_assigned_date'],
       limit: 2000,
       order: 'scheduled_date asc',
     }],
@@ -204,6 +219,8 @@ async function _fetchDayPickings(
     picking_type_id: [number, string]; user_id: [number, string] | false;
     batch_id: [number, string] | false;
     total_weight: number | false;
+    move_ids: number[];
+    user_assigned_date: string | false;
   }>;
 
   const allIds = allPickings.map(p => p.id);
@@ -241,6 +258,8 @@ async function _fetchDayPickings(
     lineCount:     linesByPicking[p.id] ?? 0,
     batch:         Array.isArray(p.batch_id) ? p.batch_id[1] : '',
     pesoTotal:     typeof p.total_weight === 'number' ? p.total_weight : 0,
+    lineTotal:     Array.isArray(p.move_ids) ? p.move_ids.length : 0,
+    assignedAt:    typeof p.user_assigned_date === 'string' ? p.user_assigned_date : null,
   }));
 }
 
@@ -332,6 +351,8 @@ export async function POST(req: NextRequest) {
     /** [APERTURAS] La tienda cuyos movimientos de apertura se buscan, y cuántos días atrás mirar. */
     cod?: string;
     dias?: number;
+    /** [PLANILLA] Los días que la hoja necesita: hoy, más el de cada apertura. YYYY-MM-DD. */
+    fechas?: string[];
       // Se ignora: la URL del servidor sale siempre del entorno (ver list_databases).
       config?: { url?: string };
     };
@@ -624,6 +645,53 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ fecha, movimientos });
     }
 
+    // [PLANILLA] Los movimientos de uno o varios días, para la planilla de Picking.
+    //
+    // Recibe VARIOS días porque una tienda de apertura tiene sus movimientos fechados en otro día
+    // (62PLD los tuvo el 30/10 con la planilla del 03/11). Los días salen de
+    // `agruparConsultasPorDia`, que ya es la regla de qué día pide cada tienda.
+    //
+    // Devuelve CRUDO, con el estado y el día de cada movimiento: filtrar y agrupar es de
+    // `armarPlanilla` y `movimientosDesdeOdoo`, que son puros y testeados. Acá no se decide nada,
+    // para que la regla de qué cuenta como trabajo viva en un solo lugar.
+    //
+    // A este endpoint NO se le aplica la ventana de 7 días de `diaDeOdoo.ts` (ver el comentario de
+    // ese archivo): la fecha llega ya resuelta y se usa tal cual sobre `scheduled_date`.
+    if (action === 'planilla_dia') {
+      const pedidas: unknown = body.fechas;
+      const fechas = Array.isArray(pedidas)
+        ? [...new Set(pedidas.filter((d): d is string =>
+            typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)))]
+        : [];
+      if (fechas.length === 0) {
+        return NextResponse.json({ ok: false, error: 'fechas inválidas' }, { status: 400 });
+      }
+      // Tope duro: hoy más una apertura son dos. Más de cuatro es un pedido mal armado y serían
+      // cuatro consultas a Odoo por cada apertura de más.
+      if (fechas.length > 4) {
+        return NextResponse.json({ ok: false, error: 'demasiadas fechas' }, { status: 400 });
+      }
+      const movimientos: Array<Record<string, unknown>> = [];
+      for (const fecha of fechas) {
+        const ops = await getDayPickings(fecha, true);
+        for (const p of ops) {
+          movimientos.push({
+            ref: p.name, origin: p.origin, estado: p.state,
+            registros: p.lineTotal, responsable: p.responsible,
+            asignadoEn: p.assignedAt, validadoEn: p.dateDone,
+            // [PLANILLA] El destino y el partner van porque `resolveStoreCode` los necesita: el
+            // `origin` es texto escrito a mano y `location_dest_id` es dato estructurado. Ver el
+            // comentario de `resolveStoreCode` en `picking-utils.ts`.
+            toLocation: p.toLocation, partner: p.partner,
+            // El día que se pidió, no el `scheduled_date` crudo: es la clave con la que
+            // `movimientosDesdeOdoo` decide si ese movimiento le corresponde a esa tienda.
+            dia: fecha,
+          });
+        }
+      }
+      return NextResponse.json({ ok: true, movimientos });
+    }
+
     /* ── movimientos_apertura ──
        Los movimientos de APERTURA de una tienda que siguen PREPARADOS, agrupados por el día en
        que Abastecimiento los dejó. Ver `aperturaOdoo.ts` para el porqué de cada filtro.
@@ -704,14 +772,17 @@ export async function POST(req: NextRequest) {
       const rawPickings = (await odooRpc(url, {
         service: 'object', method: 'execute_kw',
         args: [db, uid, apiKey, 'stock.picking', 'search_read', [domainPick], {
-          fields: ['id', 'user_id', 'scheduled_date', 'date_done'],
+          // [RENDIMIENTO] `user_assigned_date` es desde cuándo cuenta el tiempo de la persona.
+          // `scheduled_date` ya no se pide: era el día PLANIFICADO del movimiento y medir desde
+          // ahí daba una duración que no es la de nadie.
+          fields: ['id', 'user_id', 'date_done', 'user_assigned_date'],
           limit: 8000, order: 'id asc',
         }],
       })) as Array<{
         id: number;
         user_id: [number, string] | false;
-        scheduled_date: string | false;
         date_done: string | false;
+        user_assigned_date: string | false;
       }>;
 
       if (!rawPickings.length) {
@@ -739,41 +810,29 @@ export async function POST(req: NextRequest) {
         mlByPicking[g.picking_id[0]] = { units: g.qty_done ?? 0, lines: g.picking_id_count ?? 0 };
       }
 
-      // 3. Aggregate by user
-      const byUser: Record<number, {
-        name: string; ops: number;
-        totalMinutes: number; units: number; lines: number;
-      }> = {};
+      // 3. La cuenta vive en `seguimiento/rendimiento.ts`, que es puro y está testeado. Acá solo
+      //    se traduce la forma de Odoo a la suya. Ver el comentario de ese archivo: la versión que
+      //    estaba acá medía desde `scheduled_date`, descartaba el 14% en silencio y dividía la
+      //    suma de las que contó por el total de todas.
+      const { filas, sinMedir, sinResponsable } = rendimientoPorPicker(
+        rawPickings.map(p => {
+          const ml = mlByPicking[p.id];
+          return {
+            userId:   Array.isArray(p.user_id) ? p.user_id[0] : 0,
+            userName: Array.isArray(p.user_id) ? p.user_id[1] : '',
+            asignadoEn: p.user_assigned_date,
+            validadoEn: p.date_done,
+            units: ml?.units ?? 0,
+            lines: ml?.lines ?? 0,
+          };
+        }),
+      );
 
-      for (const p of rawPickings) {
-        if (!Array.isArray(p.user_id)) continue;
-        const [userId, userName] = p.user_id;
-        if (!byUser[userId]) byUser[userId] = { name: userName, ops: 0, totalMinutes: 0, units: 0, lines: 0 };
-        const u = byUser[userId];
-        u.ops++;
-        if (typeof p.scheduled_date === 'string' && typeof p.date_done === 'string') {
-          const diffMin = (new Date(p.date_done).getTime() - new Date(p.scheduled_date).getTime()) / 60_000;
-          // Sólo contar duraciones razonables (> 0 y < 8h)
-          if (diffMin > 0 && diffMin < 480) u.totalMinutes += diffMin;
-        }
-        const ml = mlByPicking[p.id];
-        if (ml) { u.units += ml.units; u.lines += ml.lines; }
-      }
-
-      const stats = Object.values(byUser)
-        .map(u => ({
-          name:              u.name,
-          ops:               u.ops,
-          totalMinutes:      Math.round(u.totalMinutes),
-          avgMinutesPerOp:   u.ops   > 0 ? Math.round(u.totalMinutes / u.ops)   : 0,
-          units:             Math.round(u.units),
-          lineCount:         u.lines,
-          avgSecondsPerLine: u.lines > 0 ? Math.round((u.totalMinutes * 60) / u.lines) : 0,
-          cph:               u.totalMinutes > 0 ? Math.round((u.units / u.totalMinutes) * 60) : 0,
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name));
-
-      return NextResponse.json({ stats, dateFrom, dateTo, total: rawPickings.length });
+      return NextResponse.json({
+        stats: filas, dateFrom, dateTo, total: rawPickings.length,
+        // Lo que no se pudo medir se informa; la pantalla lo muestra en vez de esconderlo.
+        sinMedir, sinResponsable,
+      });
     }
 
     /* ── picking_check_state ── */
