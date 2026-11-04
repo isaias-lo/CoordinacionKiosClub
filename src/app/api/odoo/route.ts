@@ -5,6 +5,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { fechaChileDe, limitesDiaChile, odooDateToISO } from '@/lib/fechaChile';
 import { verifyAuth } from '@/lib/apiAuth';
 import { diaParaConsultarOdoo } from '@/features/despacho/shared/diaDeOdoo';
+import { rendimientoPorPicker } from '@/features/picking/seguimiento/rendimiento';
 import { agruparAperturas, esApertura, type MovimientoApertura } from '@/features/despacho/shared/aperturaOdoo';
 import { camposAPedir, camposMedidaDe, camposNumericosConValor, esTextoDeMedida, normalizarCodigo, productoDesdeOdoo, type DefinicionCampos } from '@/features/despacho/shared/productosBodega';
 
@@ -771,14 +772,17 @@ export async function POST(req: NextRequest) {
       const rawPickings = (await odooRpc(url, {
         service: 'object', method: 'execute_kw',
         args: [db, uid, apiKey, 'stock.picking', 'search_read', [domainPick], {
-          fields: ['id', 'user_id', 'scheduled_date', 'date_done'],
+          // [RENDIMIENTO] `user_assigned_date` es desde cuándo cuenta el tiempo de la persona.
+          // `scheduled_date` ya no se pide: era el día PLANIFICADO del movimiento y medir desde
+          // ahí daba una duración que no es la de nadie.
+          fields: ['id', 'user_id', 'date_done', 'user_assigned_date'],
           limit: 8000, order: 'id asc',
         }],
       })) as Array<{
         id: number;
         user_id: [number, string] | false;
-        scheduled_date: string | false;
         date_done: string | false;
+        user_assigned_date: string | false;
       }>;
 
       if (!rawPickings.length) {
@@ -806,41 +810,29 @@ export async function POST(req: NextRequest) {
         mlByPicking[g.picking_id[0]] = { units: g.qty_done ?? 0, lines: g.picking_id_count ?? 0 };
       }
 
-      // 3. Aggregate by user
-      const byUser: Record<number, {
-        name: string; ops: number;
-        totalMinutes: number; units: number; lines: number;
-      }> = {};
+      // 3. La cuenta vive en `seguimiento/rendimiento.ts`, que es puro y está testeado. Acá solo
+      //    se traduce la forma de Odoo a la suya. Ver el comentario de ese archivo: la versión que
+      //    estaba acá medía desde `scheduled_date`, descartaba el 14% en silencio y dividía la
+      //    suma de las que contó por el total de todas.
+      const { filas, sinMedir, sinResponsable } = rendimientoPorPicker(
+        rawPickings.map(p => {
+          const ml = mlByPicking[p.id];
+          return {
+            userId:   Array.isArray(p.user_id) ? p.user_id[0] : 0,
+            userName: Array.isArray(p.user_id) ? p.user_id[1] : '',
+            asignadoEn: p.user_assigned_date,
+            validadoEn: p.date_done,
+            units: ml?.units ?? 0,
+            lines: ml?.lines ?? 0,
+          };
+        }),
+      );
 
-      for (const p of rawPickings) {
-        if (!Array.isArray(p.user_id)) continue;
-        const [userId, userName] = p.user_id;
-        if (!byUser[userId]) byUser[userId] = { name: userName, ops: 0, totalMinutes: 0, units: 0, lines: 0 };
-        const u = byUser[userId];
-        u.ops++;
-        if (typeof p.scheduled_date === 'string' && typeof p.date_done === 'string') {
-          const diffMin = (new Date(p.date_done).getTime() - new Date(p.scheduled_date).getTime()) / 60_000;
-          // Sólo contar duraciones razonables (> 0 y < 8h)
-          if (diffMin > 0 && diffMin < 480) u.totalMinutes += diffMin;
-        }
-        const ml = mlByPicking[p.id];
-        if (ml) { u.units += ml.units; u.lines += ml.lines; }
-      }
-
-      const stats = Object.values(byUser)
-        .map(u => ({
-          name:              u.name,
-          ops:               u.ops,
-          totalMinutes:      Math.round(u.totalMinutes),
-          avgMinutesPerOp:   u.ops   > 0 ? Math.round(u.totalMinutes / u.ops)   : 0,
-          units:             Math.round(u.units),
-          lineCount:         u.lines,
-          avgSecondsPerLine: u.lines > 0 ? Math.round((u.totalMinutes * 60) / u.lines) : 0,
-          cph:               u.totalMinutes > 0 ? Math.round((u.units / u.totalMinutes) * 60) : 0,
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name));
-
-      return NextResponse.json({ stats, dateFrom, dateTo, total: rawPickings.length });
+      return NextResponse.json({
+        stats: filas, dateFrom, dateTo, total: rawPickings.length,
+        // Lo que no se pudo medir se informa; la pantalla lo muestra en vez de esconderlo.
+        sinMedir, sinResponsable,
+      });
     }
 
     /* ── picking_check_state ── */

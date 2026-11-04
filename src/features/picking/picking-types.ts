@@ -108,7 +108,12 @@ export interface PickerStatRow {
 
 // `desde`/`hasta`: el período de esas filas. Sin él, al volver a la pestaña se mostraban los números
 // de «Hoy» bajo el título del mes (el período se reiniciaba y las filas no).
-export interface StatsCache { cachedAt: string; rows: PickerStatRow[]; desde?: string; hasta?: string; }
+export interface StatsCache {
+  cachedAt: string; rows: PickerStatRow[]; desde?: string; hasta?: string;
+  /** Operaciones con responsable que no tienen hora de asignación: no entran en los promedios.
+   *  Se guarda para poder DECIRLO en pantalla; antes se descartaban sin que nadie se enterara. */
+  sinMedir?: number;
+}
 
 export type PickerType = 'P' | 'C' | 'B' | 'CH' | 'CC' | 'CN';
 // COMIDA y ASEO son DOS secciones, no una.

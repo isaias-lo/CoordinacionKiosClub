@@ -39,10 +39,14 @@ interface Props {
   error: string | null;
   /** Aviso cuando Odoo no está; null si está. */
   sinOdoo: { titulo: string; detalle: string } | null;
+  /** Operaciones sin hora de asignación en Odoo: se cuentan en «Ops» pero no en los promedios.
+   *  Se muestra para que el promedio se lea sabiendo sobre cuántas está hecho. */
+  sinMedir: number;
 }
 
 export function VistaEstadisticas({
   rows, canonicalNames, desde, hasta, onPeriodo, onActualizar, onImprimir, cargando, hayDatos, actualizado, error, sinOdoo,
+  sinMedir,
 }: Props) {
   const ahora = useMemo(() => new Date(), []);
   const periodo = periodoDe(desde, hasta, ahora);
@@ -122,6 +126,12 @@ export function VistaEstadisticas({
       </div>
 
       <div className="pk-content">
+        {sinMedir > 0 && (
+          <div className="pk-alert warn" role="status"><span>
+            <b>{sinMedir} {sinMedir === 1 ? 'operación' : 'operaciones'} sin hora de asignación en Odoo.</b>{' '}
+            Cuentan en «Ops» pero no en los promedios de tiempo, porque no se sabe cuándo empezaron.
+          </span></div>
+        )}
         {sinOdoo && (
           <div className="pk-alert warn" role="status"><span><b>{sinOdoo.titulo}</b> {sinOdoo.detalle}</span></div>
         )}
