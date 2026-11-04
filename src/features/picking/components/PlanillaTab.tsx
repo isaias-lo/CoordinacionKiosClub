@@ -153,12 +153,21 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
   );
 
   return (
-    // `flex: 1` + `minHeight: 0` para que la hoja quede del alto del panel y scrollee adentro.
-    // Sin esto crecía al alto de sus 29 filas y el `overflow-hidden` del contenedor cortaba las
-    // últimas: en la pantalla no se podía pasar de 75PUC, aunque la impresión salía completa. Es el
-    // mismo bug que ya le había pasado a Actividad el 14/10/2026 — ver el comentario en PickingScreen.
-    <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+    // ── EL SCROLL ES UNO SOLO: EL DE ESTA CAJA ────────────────────────────────────────────────
+    //
+    // Hubo dos intentos antes. El primero dejaba que la hoja creciera al alto de sus 29 filas y el
+    // `overflow-hidden` del panel cortaba las últimas: no se podía pasar de 75PUC, aunque la
+    // impresión salía completa. El segundo le dio `flex: 1` a la tabla para que scrolleara adentro,
+    // y arregló ese caso pero creó otro: en una ventana corta —o cuando los botones se parten en
+    // dos líneas y la cabecera crece— la tabla se comprimía hasta cero, porque en una columna flex
+    // los hijos encogen por defecto y `minHeight: 0` la dejaba desaparecer.
+    //
+    // Ahora scrollea la hoja entera y nada puede colapsar. La barra de botones va `sticky` para
+    // seguir a mano con la tabla corrida, y cada bloque lleva `flexShrink: 0`.
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 2, flexShrink: 0, background: '#fff',
+                    borderBottom: '1px solid #E2E8F0', padding: '14px 16px 11px',
+                    display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', border: '1.5px solid #CBD5E1', borderRadius: 10, overflow: 'hidden' }}>
           {(['planilla', 'detalle'] as Vista[]).map(v => (
             <button key={v} type="button" onClick={() => setVista(v)} style={{
@@ -176,7 +185,8 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
       </div>
 
       {/* Las cinco zonas siempre: una que no aparece se leería como un dato que falta. */}
-      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center',
+                    flexShrink: 0, padding: '11px 16px 0' }}>
         {ZONAS.map(z => {
           const n = planilla.filas.filter(f => f.zona === z).length;
           const c = COLOR_ZONA[z];
@@ -191,11 +201,14 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
         })}
       </div>
 
-      {vista === 'planilla'
-        ? <TablaPlanilla planilla={planilla} />
-        : <TablaDetalle movimientos={delDia} />}
+      <div style={{ flexShrink: 0, padding: '11px 16px 0' }}>
+        {vista === 'planilla'
+          ? <TablaPlanilla planilla={planilla} />
+          : <TablaDetalle movimientos={delDia} />}
+      </div>
 
-      <div style={{ fontSize: 12.5, color: '#78350F', background: '#FFFBEB',
+      <div style={{ flexShrink: 0, margin: '11px 16px 16px',
+                    fontSize: 12.5, color: '#78350F', background: '#FFFBEB',
                     border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 14px' }}>
         Fuera de la hoja: <strong>{planilla.descartados.anulados}</strong> anulados y{' '}
         <strong>{planilla.descartados.sinLiberar}</strong> sin stock liberado.
@@ -215,7 +228,7 @@ const BTN_PRI = { ...BTN_BASE, background: '#0F172A', color: '#fff', border: 'no
 function TablaPlanilla({ planilla }: { planilla: Planilla }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11,
-                  flex: 1, minHeight: 0, overflow: 'auto' }}>
+                  overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1020 }}>
         <thead>
           <tr style={{ background: '#F8FAFC' }}>
@@ -285,7 +298,7 @@ function TablaDetalle({ movimientos }: { movimientos: MovimientoPlanilla[] }) {
   const filas = [...movimientos].sort(porAsignacion);
   return (
     <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11,
-                  flex: 1, minHeight: 0, overflow: 'auto' }}>
+                  overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
