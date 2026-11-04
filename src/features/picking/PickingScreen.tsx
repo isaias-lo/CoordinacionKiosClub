@@ -2366,7 +2366,12 @@ export function PickingScreen() {
 
           {/* ── Tab content: Planilla (clave 'hoja': 'planilla' ya es un valor de `panelView`) ── */}
           {rightTab === 'hoja' && (
-            <PlanillaTab cods={codsPlanilla} aperturas={aperturasPorCod} />
+            // Mismo envoltorio que Actividad: el panel recorta y el hijo scrollea adentro. Acá el
+            // `flex flex-col` va SIEMPRE, no solo en escritorio, porque la hoja tiene su propia
+            // cabecera y pie fijos y necesita la cadena de altos también en el teléfono.
+            <div className="flex-1 overflow-hidden min-h-0 flex flex-col">
+              <PlanillaTab cods={codsPlanilla} aperturas={aperturasPorCod} />
+            </div>
           )}
 
           {/* ── Tab content: Historial ── */}

@@ -153,7 +153,11 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
   );
 
   return (
-    <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+    // `flex: 1` + `minHeight: 0` para que la hoja quede del alto del panel y scrollee adentro.
+    // Sin esto crecía al alto de sus 29 filas y el `overflow-hidden` del contenedor cortaba las
+    // últimas: en la pantalla no se podía pasar de 75PUC, aunque la impresión salía completa. Es el
+    // mismo bug que ya le había pasado a Actividad el 14/10/2026 — ver el comentario en PickingScreen.
+    <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', border: '1.5px solid #CBD5E1', borderRadius: 10, overflow: 'hidden' }}>
           {(['planilla', 'detalle'] as Vista[]).map(v => (
@@ -210,7 +214,8 @@ const BTN_PRI = { ...BTN_BASE, background: '#0F172A', color: '#fff', border: 'no
 /** La matriz: una fila por tienda; una celda con varios movimientos los apila. */
 function TablaPlanilla({ planilla }: { planilla: Planilla }) {
   return (
-    <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11, overflowX: 'auto' }}>
+    <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11,
+                  flex: 1, minHeight: 0, overflow: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1020 }}>
         <thead>
           <tr style={{ background: '#F8FAFC' }}>
@@ -279,7 +284,8 @@ function TablaPlanilla({ planilla }: { planilla: Planilla }) {
 function TablaDetalle({ movimientos }: { movimientos: MovimientoPlanilla[] }) {
   const filas = [...movimientos].sort(porAsignacion);
   return (
-    <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11, overflowX: 'auto' }}>
+    <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11,
+                  flex: 1, minHeight: 0, overflow: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
