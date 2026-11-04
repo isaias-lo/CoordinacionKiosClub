@@ -18,7 +18,8 @@
 // ventana. Cada vista imprime en SU formato, porque el botón imprime la vista en la que estás.
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { Printer, Download, Loader2 } from 'lucide-react';
+import { Printer, Download, Loader2, RotateCcw } from 'lucide-react';
+import { AUTO_REFRESH_MS } from '../picking-types';
 import { fechaISOLocal } from '@/features/despacho/shared/fechaLocal';
 import { agruparConsultasPorDia } from '@/features/despacho/shared/consultasPorDia';
 import { armarPlanilla, SECCIONES, porAsignacion, type MovimientoPlanilla, type Planilla } from '../planilla/armarPlanilla';
@@ -44,6 +45,8 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
   const [nombres, setNombres] = useState<Record<string, string>>({});
   const [fichas, setFichas]   = useState<Record<string, FichaTienda>>({});
   const [error, setError]     = useState<string | null>(null);
+  const [actualizado, setActualizado] = useState<Date | null>(null);
+  const [cargando, setCargando]       = useState(false);
 
   // Qué día pide cada tienda: hoy, salvo las aperturas.
   const consultas = useMemo(
@@ -63,11 +66,15 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
   // parar. La clave cambia solo cuando cambian los días de verdad.
   const claveFechas = fechas.join(',');
 
-  useEffect(() => {
+  // La carga es una función aparte para poder repetirla: la hoja se mira todo el día y los
+  // movimientos se van asignando y validando mientras tanto. Sin esto, una celda que ya tiene
+  // picker seguía diciendo «sin asignar» hasta recargar la página entera.
+  const cargar = useCallback(async () => {
     if (!claveFechas) { setCrudos([]); return; }
     const fechas = claveFechas.split(',');
-    let vivo = true;
-    (async () => {
+    const vivo = true;
+    setCargando(true);
+    {
       try {
         const [rOdoo, rNombres, rTiendas] = await Promise.all([
           fetch('/api/odoo', {
@@ -97,12 +104,29 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
           if (t?.codigo) porCod[String(t.codigo)] = t as FichaTienda;
         }
         if (vivo) setFichas(porCod);
+        if (vivo) { setError(null); setActualizado(new Date()); }
       } catch {
         if (vivo) setError('No se pudo traer el día de Odoo');
+      } finally {
+        setCargando(false);
       }
-    })();
-    return () => { vivo = false; };
+    }
   }, [claveFechas]);
+
+  // Primera carga, y después cada 3 minutos — la MISMA cadencia que ya usa el resto de Picking
+  // (`AUTO_REFRESH_MS`). No le agrega carga a Odoo: `getDayPickings` tiene caché de 30 s y dedup
+  // en vuelo, así que varias pestañas abiertas comparten la misma consulta.
+  //
+  // Solo con la pestaña a la vista: refrescar contra Odoo una pantalla que nadie mira es gasto.
+  useEffect(() => {
+    void cargar();
+    const id = setInterval(() => {
+      if (document.visibilityState !== 'hidden') void cargar();
+    }, AUTO_REFRESH_MS);
+    const alVolver = () => { if (document.visibilityState === 'visible') void cargar(); };
+    document.addEventListener('visibilitychange', alVolver);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', alVolver); };
+  }, [cargar]);
 
   const tiendas = useMemo(
     () => cods.map(cod => {
@@ -178,6 +202,17 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
             }}>{v === 'planilla' ? 'Planilla' : 'Detalle'}</button>
           ))}
         </div>
+        <button type="button" onClick={() => void cargar()} disabled={cargando}
+                style={{ ...BTN_SEC, opacity: cargando ? 0.6 : 1 }}
+                title="Volver a pedirle el día a Odoo">
+          <RotateCcw size={15} style={cargando ? { animation: 'spin 1s linear infinite' } : undefined} />
+          Actualizar
+        </button>
+        {actualizado && (
+          <span style={{ fontSize: 11.5, color: '#64748B', whiteSpace: 'nowrap' }}>
+            {horaChile(actualizado.toISOString())} · se actualiza sola cada 3 min
+          </span>
+        )}
         <button type="button" onClick={bajar} style={BTN_SEC}><Download size={15} /> Bajar archivo</button>
         <button type="button" onClick={imprimir} style={BTN_PRI}>
           <Printer size={15} /> {vista === 'planilla' ? 'Imprimir planilla' : 'Imprimir detalle'}
@@ -201,7 +236,9 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
         })}
       </div>
 
-      <div style={{ flexShrink: 0, padding: '11px 16px 0' }}>
+      {/* La tabla scrollea adentro para que su cabecera pueda quedar fija. `minHeight` es el piso
+          que impide que se comprima a cero cuando la ventana es corta: ese fue el bug del 04/11. */}
+      <div style={{ flex: 1, minHeight: 220, display: 'flex', padding: '11px 16px 0' }}>
         {vista === 'planilla'
           ? <TablaPlanilla planilla={planilla} />
           : <TablaDetalle movimientos={delDia} />}
@@ -228,7 +265,7 @@ const BTN_PRI = { ...BTN_BASE, background: '#0F172A', color: '#fff', border: 'no
 function TablaPlanilla({ planilla }: { planilla: Planilla }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11,
-                  overflowX: 'auto' }}>
+                  flex: 1, minHeight: 0, overflow: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1020 }}>
         <thead>
           <tr style={{ background: '#F8FAFC' }}>
@@ -298,7 +335,7 @@ function TablaDetalle({ movimientos }: { movimientos: MovimientoPlanilla[] }) {
   const filas = [...movimientos].sort(porAsignacion);
   return (
     <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11,
-                  overflowX: 'auto' }}>
+                  flex: 1, minHeight: 0, overflow: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
@@ -333,8 +370,13 @@ function TablaDetalle({ movimientos }: { movimientos: MovimientoPlanilla[] }) {
   );
 }
 
-const TH       = { padding: '7px 10px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
-                   letterSpacing: '.06em', color: '#475569', textAlign: 'left' } as const;
+// `sticky` va en cada celda y no en el `<thead>`: con `border-collapse: collapse` un thead
+// pegado no funciona en todos los navegadores, y las celdas sí. El fondo es obligatorio, o las
+// filas se ven por debajo al scrollear.
+const TH       = { position: 'sticky', top: 0, zIndex: 1, background: '#F8FAFC',
+                   padding: '7px 10px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
+                   letterSpacing: '.06em', color: '#475569', textAlign: 'left',
+                   boxShadow: 'inset 0 -2px 0 #E2E8F0' } as const;
 const TH_TENUE = { ...TH, color: '#94A3B8' } as const;
 const TH_DER   = { ...TH, textAlign: 'right', padding: '7px 6px' } as const;
 const TH_NUM   = { ...TH, textAlign: 'center', padding: '7px 4px', color: '#64748B' } as const;
