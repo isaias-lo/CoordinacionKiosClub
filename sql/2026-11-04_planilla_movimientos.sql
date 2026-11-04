@@ -1,47 +1,43 @@
--- La planilla de Picking: la foto del conteo al ASIGNAR, y las correcciones del coordinador.
+-- La planilla de Picking: las correcciones a mano del coordinador.
 -- Pedido de Erick el 03-04/11/2026.
 --
--- ── POR QUÉ HACE FALTA GUARDAR ALGO ───────────────────────────────────────────────────────────
+-- ── QUÉ GUARDA Y QUÉ NO ───────────────────────────────────────────────────────────────────────
 --
--- El coordinador pidió que la planilla registre «el número que ves en Odoo al asignar». Leer Odoo
--- en vivo NO lo cumple: el conteo BAJA cuando el picker valida, y las líneas se borran.
+-- La hoja se arma leyendo Odoo en vivo. Acá SOLO vive lo que el coordinador corrige a mano, más
+-- las líneas que agrega para algo que se pickeó y no quedó en Odoo.
 --
--- Medido el 03/11/2026 comparando los mismos 221 movimientos a dos horas de distancia:
--- 52 bajaron de registros y 0 subieron, todos en el salto `assigned → done`.
+-- Decidido el 04/11/2026: **la hoja se queda con lo VALIDADO**, que es lo que la persona
+-- efectivamente hizo. Por eso no hay captura automática de nada.
 --
---   34SMB Comida      253 → 251
---   34SMB Chocolate    50 →  47
---   10TRQ Congelados   50 →  20
+-- ── POR QUÉ ESTUVO A PUNTO DE SER OTRA COSA ───────────────────────────────────────────────────
 --
--- Y no se pueden recuperar: contar `stock.move` del picking sin filtrar estado devuelve el mismo
--- número reducido (251 líneas, todas `done`). Las líneas no quedan canceladas, desaparecen.
--- Por eso la foto hay que tomarla mientras el movimiento TODAVÍA está `assigned`.
+-- Primero se midió que el conteo de registros BAJA al validar —52 de 221 movimientos el 03/11, 0
+-- subieron— y se concluyó que las líneas se borraban y había que fotografiar el número mientras el
+-- movimiento estaba asignado. Esa conclusión estaba incompleta: **las líneas no se borran, se
+-- mudan a un backorder**. Comprobado en 34SMB del 03/11:
+--
+--   99REC/DT/146140  done    251 líneas
+--   99REC/DT/146421  cancel    4 líneas   backorder_id = 146140
+--
+-- Odoo valida lo que se pickeó y manda el resto a un movimiento nuevo, que aparece en la hoja como
+-- otra línea pendiente. No se pierde nada, y el número de lo validado es el correcto.
 --
 -- ── QUIÉN ESCRIBE CADA COLUMNA ────────────────────────────────────────────────────────────────
 --
--- Las columnas `*_odoo` son la FOTO del sistema y no se tocan nunca: se escriben una sola vez, la
--- primera vez que el servidor ve ese movimiento en estado `assigned`. Las otras son la CORRECCIÓN
--- del coordinador, y mandan sobre la foto cuando existen.
+-- Las columnas `*_odoo` guardan **lo que Odoo decía en el momento de corregir**, y no se tocan
+-- después. Las otras son la corrección, y mandan sobre ellas — también en los KPI, porque si se
+-- corrige es porque Odoo estaba equivocado.
 --
--- Están separadas a propósito. Es la misma lección de CRUCE PESOS, ya documentada en este
--- repositorio: cuando una columna que dice «medido» se llena con algo escrito a mano, se pierde la
--- capacidad de saber cuál era cuál. Acá el valor efectivo es `COALESCE(registros, registros_odoo)`
--- y los dos quedan a la vista.
---
--- ── DE DÓNDE SALE LA FOTO ─────────────────────────────────────────────────────────────────────
---
--- No hay tarea programada. La pantalla de Picking ya le pide a Odoo el día entero cada 3 minutos
--- mientras alguien la tiene abierta, y en el CD está abierta todo el día: la foto se escribe desde
--- esa consulta que ya ocurre, sin agregarle ni una llamada a Odoo.
---
--- Solo se fotografía lo que está en `assigned`. Un movimiento que nunca se vio asignado no tiene
--- fila acá y la planilla cae al número en vivo, marcándolo: es preferible a guardar el número de
--- después de validar bajo una columna que dice «al asignar».
+-- Están separadas a propósito. Es la lección de CRUCE PESOS, ya documentada en este repositorio:
+-- cuando una columna que dice «medido» se llena con algo escrito a mano, se pierde la capacidad de
+-- saber cuál era cuál. Acá el valor efectivo es `COALESCE(registros, registros_odoo)` y los dos
+-- quedan a la vista.
 --
 -- RLS activo y SIN políticas, igual que `productos_bodega` y `rutas_despacho`: se lee y escribe
 -- solo desde el servidor con service role.
 --
--- Aditivo, se puede correr más de una vez.
+-- Aditivo, se puede correr más de una vez. APLICADO en producción (epiwlmegimfftivqzzup) el
+-- 04/11/2026, con el control de `max(date)` para confirmar que era el proyecto vivo.
 
 CREATE TABLE IF NOT EXISTS public.planilla_movimientos (
   id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -57,12 +53,12 @@ CREATE TABLE IF NOT EXISTS public.planilla_movimientos (
   cod             text NOT NULL CHECK (cod = upper(btrim(cod)) AND cod <> ''),
   seccion         text NOT NULL CHECK (seccion IN ('Comida', 'Aseo', 'Hogar', 'Chocolates')),
 
-  -- ── La foto del sistema. Se escribe una vez y no se toca. ──
+  -- ── Lo que Odoo decía al momento de corregir. Se escribe una vez y no se toca. ──
   registros_odoo  integer CHECK (registros_odoo IS NULL OR registros_odoo >= 0),
   picker_odoo     text,
   asignado_en     timestamptz,
   validado_en     timestamptz,
-  capturado_en    timestamptz,
+  capturado_en    timestamptz,   -- cuándo se leyó de Odoo lo de arriba
 
   -- ── La corrección del coordinador. NULL = no se corrigió. ──
   registros       integer CHECK (registros IS NULL OR registros >= 0),
