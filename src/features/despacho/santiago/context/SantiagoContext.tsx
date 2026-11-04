@@ -9,6 +9,7 @@ import type {
 import { useAuth } from '@/components/AuthProvider';
 import { pushSessionStateResult, REINTENTO_PUSH_MS, fetchSessionStateMeta, subscribeToSessionState, remotoEsMasViejo } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
+import { pedirKeepalive } from '@/lib/subidaAlCerrar';
 import { mergeItemsByTienda, itemsFromSnapshot } from './mergeItems';
 import { tieneLapida, lapidasComoLista, absorberLapidas, anotarItemSinUnidad } from '../../shared/lapidasBorrado';
 import { agregarSinDuplicar } from '../../shared/itemPorUnidad';
@@ -555,7 +556,8 @@ export function SantiagoProvider({ children }: { children: ReactNode }) {
 
   // [P9] Al volver a la pestaña/app → catch-up con el estado remoto; al ocultarla → flush de pendientes.
   flushRef.current = () => flushPending();
-  useVisibilityRefetch(() => catchUpRef.current(), flushPending);
+  // Al ocultarse, la subida sale con keepalive: si se está cerrando la app, igual llega. Ver `subidaAlCerrar.ts`.
+  useVisibilityRefetch(() => catchUpRef.current(), () => { pedirKeepalive(); flushPending(); });
 
   const catchUp = useCallback(() => catchUpRef.current(), []);
 
