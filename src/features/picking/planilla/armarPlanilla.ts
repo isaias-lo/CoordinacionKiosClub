@@ -50,19 +50,28 @@ export interface MovimientoPlanilla {
    */
   validadoEn: string | null;
   estado: string;
-  /** El id de su fila en `planilla_movimientos`, si tiene una. Es lo que se edita. */
+  /** La referencia de Odoo (`99REC/DT/146059`). Es lo que identifica el movimiento al corregir
+   *  quién lo hizo. Las líneas agregadas a mano no tienen. */
+  ref?: string;
+  /** El id de su fila en `planilla_movimientos`, si tiene una. */
   id?: number;
-  /** De dónde salió el número: Odoo en vivo, la foto al asignar, una corrección, o a mano.
+  /** De dónde salió lo que se muestra: Odoo en vivo o una corrección a mano.
    *  Lo pone `conCorrecciones`; la pantalla lo usa para marcar la celda. */
   origen?: 'vivo' | 'foto' | 'corregido' | 'manual';
+  /** El picker que decía Odoo, cuando el que se muestra es una corrección. */
+  pickerOdoo?: string;
 }
 
 export interface CeldaPlanilla {
   registros: number;
   picker: string;
-  /** El id de la fila que hay que editar para corregir esta celda. */
+  /** La referencia de Odoo del movimiento de esta celda: es lo que se manda al corregir. */
+  ref?: string;
+  /** El id de su fila en `planilla_movimientos`, si ya se corrigió antes. */
   id?: number;
   origen?: MovimientoPlanilla['origen'];
+  /** Lo que decía Odoo antes de corregir. Se muestra al lado del nombre nuevo. */
+  pickerOdoo?: string;
 }
 
 export interface FilaPlanilla {
@@ -160,7 +169,8 @@ export function armarPlanilla(
       celdas[s] = suyos
         .filter(m => m.seccion === s)
         .sort(porAsignacion)
-        .map(m => ({ registros: m.registros, picker: m.picker, id: m.id, origen: m.origen }));
+        .map(m => ({ registros: m.registros, picker: m.picker, ref: m.ref, id: m.id,
+                     origen: m.origen, pickerOdoo: m.pickerOdoo }));
     }
     return { cod: t.cod, zona: t.zona, celdas, sinCarga: suyos.length === 0 };
   });

@@ -105,3 +105,27 @@ describe('conCorrecciones: qué existe y qué no', () => {
     expect(m.registros).toBe(63);
   });
 });
+
+describe('conCorrecciones: lo que decía Odoo antes de corregir', () => {
+  it('un picker corregido deja a la vista el nombre original', () => {
+    const [m] = conCorrecciones(
+      [vivo({ picker: 'Marcelo Vergara' })],
+      [guardada({ picker: 'Cristobal Labra', pickerOdoo: 'Marcelo Vergara' })],
+    );
+    expect(m.picker).toBe('Cristobal Labra');
+    expect(m.pickerOdoo).toBe('Marcelo Vergara');
+  });
+
+  it('sin corregir no hay nombre original que mostrar', () => {
+    const [m] = conCorrecciones([vivo()], [guardada()]);
+    expect(m.pickerOdoo).toBeUndefined();
+  });
+
+  it('si la fila guardada no trae el original, se cae a lo que Odoo dice hoy', () => {
+    const [m] = conCorrecciones(
+      [vivo({ picker: 'Marcelo Vergara' })],
+      [guardada({ picker: 'Cristobal Labra', pickerOdoo: null })],
+    );
+    expect(m.pickerOdoo).toBe('Marcelo Vergara');
+  });
+});

@@ -75,6 +75,10 @@ export function conCorrecciones(
       id: g.id,
       registros: g.registros ?? g.registrosOdoo ?? v.registros,
       picker: g.picker ?? v.picker,
+      // Lo que decía Odoo, para mostrarlo al lado del nombre corregido. Sale de la fila guardada,
+      // que lo capturó al corregir; si esa fila es vieja y no lo tiene, se cae a lo que Odoo dice
+      // hoy, que es lo más cercano.
+      pickerOdoo: g.picker !== null ? (g.pickerOdoo ?? v.picker) : undefined,
       origen: (corregido ? 'corregido' : g.registrosOdoo !== null ? 'foto' : 'vivo') as OrigenDato,
     };
   });
