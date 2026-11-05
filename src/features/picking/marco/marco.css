@@ -18,14 +18,27 @@
 .pk-fecha{font-size:13px;color:#4B5160;white-space:nowrap}
 
 /* Menú lateral */
-.pk-nav{width:200px;flex-shrink:0;background:#FFFFFF;border-right:1px solid #E4E7EC;padding:14px 10px;display:flex;flex-direction:column;gap:2px;overflow-y:auto}
-.pk-navg{font-size:11px;font-weight:700;letter-spacing:.08em;color:#8A91A1;padding:12px 10px 6px;text-transform:uppercase}
-.pk-navi{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:#3D4350;font-weight:500;font-size:14px;background:transparent;border:0;text-align:left;cursor:pointer;width:100%}
-.pk-navi:hover{background:#F5F6F8}
-.pk-navi .dot{width:8px;height:8px;border-radius:2px;background:#C3C8D3;flex-shrink:0}
-.pk-navi .n{margin-left:auto;font-size:12px;color:#8A91A1;font-weight:500}
-.pk-navi.on{background:#EEF1FB;color:#1C2E7A;font-weight:700}
-.pk-navi.on .dot{background:#3B5BDB}
+
+/* ── Menú de arriba (escritorio) ──────────────────────────────────────────────────────────────
+   Reemplaza a .pk-nav, que ocupaba 201 px de ancho que la planilla necesita. Los grupos son
+   desplegables; dentro de un grupo abierto cambiar de pestaña sigue siendo un clic. */
+.pk-menu{display:flex;align-items:center;gap:4px;min-width:0}
+.pk-menug{position:relative}
+.pk-menub{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;border:0;background:transparent;color:#3D4350;font-weight:600;font-size:14px;font-family:inherit;cursor:pointer;white-space:nowrap}
+.pk-menub:hover{background:#F5F6F8}
+.pk-menub.on{background:#EEF1FB;color:#1C2E7A;font-weight:700}
+.pk-menub[aria-expanded="true"]{background:#EEF1FB;color:#1C2E7A}
+.pk-menub .car{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;opacity:.55}
+.pk-menub.ayuda{color:#6B7280;font-weight:500;margin-left:6px}
+
+/* El desplegable va por encima de la planilla, no la empuja. */
+.pk-menud{position:absolute;top:calc(100% + 5px);left:0;z-index:30;min-width:196px;background:#FFFFFF;border:1px solid #E4E7EC;border-radius:10px;padding:6px;box-shadow:0 12px 28px rgba(15,23,42,.14);display:flex;flex-direction:column;gap:1px}
+.pk-menui{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:#3D4350;font-weight:500;font-size:14px;font-family:inherit;background:transparent;border:0;text-align:left;cursor:pointer;width:100%;white-space:nowrap}
+.pk-menui:hover{background:#F5F6F8}
+.pk-menui .dot{width:8px;height:8px;border-radius:2px;background:#C3C8D3;flex-shrink:0}
+.pk-menui .n{margin-left:auto;font-size:12px;color:#8A91A1;font-weight:500}
+.pk-menui.on{background:#EEF1FB;color:#1C2E7A;font-weight:700}
+.pk-menui.on .dot{background:#3B5BDB}
 
 /* Lista de tiendas */
 .pk-stores{background:#FFFFFF;display:flex;flex-direction:column;min-height:0;height:100%;font-size:14px}
@@ -91,7 +104,6 @@ button.pk-sg:hover .acc{color:#2B4BC8}
 .pk-atajos td{padding:6px 0;border-bottom:1px solid #EEF0F3;color:#3D4350}
 .pk-atajos td:first-child{width:72px}
 .pk-atajos kbd{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;border:1px solid #D7DBE3;border-bottom-width:2px;border-radius:5px;padding:1px 7px;background:#F8F9FB;color:#2B303B}
-.pk-navi.ayuda{color:#6B7280;font-size:13px}
 
 /* Filtros de la lista de tiendas */
 .pk-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:20;width:230px;background:#FFFFFF;border:1px solid #E4E7EC;border-radius:10px;box-shadow:0 8px 24px rgba(16,24,40,.12);padding:6px}

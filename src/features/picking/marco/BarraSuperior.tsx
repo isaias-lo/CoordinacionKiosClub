@@ -3,6 +3,7 @@
 import React from 'react';
 import { fechaCorta, pestana, textoConexion, textoConexionCorto, type PestanaPicking } from './pestanas';
 import { Ayudita } from './Ayudita';
+import { MenuArriba } from './MenuArriba';
 
 interface Props {
   tab: PestanaPicking;
@@ -11,10 +12,13 @@ interface Props {
   pendientes: number;
   /** Teléfono y handheld, con la planilla abierta: volver a la lista de tiendas. */
   onVolverATiendas?: () => void;
+  /** Escritorio: el menú de secciones vive acá desde que se sacó el lateral, que ocupaba 201 px
+   *  que la planilla necesita. En teléfono no se pasa: ahí el menú es `BarraInferior`. */
+  menu?: { onTab: (t: PestanaPicking) => void; tiendasElegidas: number; onAyuda: () => void };
 }
 
 /** Franja superior blanca: ruta a la izquierda; conexión y fecha a la derecha. */
-export function BarraSuperior({ tab, online, pendientes, onVolverATiendas }: Props) {
+export function BarraSuperior({ tab, online, pendientes, onVolverATiendas, menu }: Props) {
   const p = pestana(tab);
   return (
     <header className="pk-top mobile-menu-safe print:hidden">
@@ -23,7 +27,13 @@ export function BarraSuperior({ tab, online, pendientes, onVolverATiendas }: Pro
           ← Tiendas
         </button>
       )}
-      <span className="pk-crumb"><span className="max-lg:hidden">{p.grupo} / </span><b>{p.label}</b></span>
+      {menu && (
+        <MenuArriba tab={tab} onTab={menu.onTab}
+                    tiendasElegidas={menu.tiendasElegidas} onAyuda={menu.onAyuda} />
+      )}
+      {/* Con el menú arriba, el grupo ya se ve resaltado ahí: repetirlo en la ruta sería decir dos
+          veces lo mismo en la misma franja. En teléfono no hay menú y la ruta queda entera. */}
+      <span className="pk-crumb">{!menu && <span className="max-lg:hidden">{p.grupo} / </span>}<b>{p.label}</b></span>
       <span className="pk-sp" />
       <span className={`pk-sync${online ? '' : ' off'}`} role="status" title={textoConexion(online, pendientes)}>
         <i aria-hidden="true" />

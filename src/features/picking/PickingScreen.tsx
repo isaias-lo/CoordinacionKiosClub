@@ -73,7 +73,6 @@ import CalendarioColumnas     from '@/features/control-interno/CalendarioColumna
 import { PickerGroupCard }    from './components/PickerGroupCard';
 import { StoreListPanel }     from './components/StoreListPanel';
 import { BarraSuperior }      from './marco/BarraSuperior';
-import { MenuLateral }        from './marco/MenuLateral';
 import { AyudaPanel }         from './marco/AyudaPanel';
 import { EVENTO_ABRIR_GUIA }  from './marco/ayudaContexto';
 import { accionDeTecla, estaEscribiendo } from './marco/ayuda';
@@ -2224,7 +2223,11 @@ export function PickingScreen() {
 
       {/* ── Franja superior ── */}
       <BarraSuperior tab={rightTab} online={isOnline} pendientes={pendientesCola}
-        onVolverATiendas={panelView === 'planilla' && usaSelectorDeTiendas(rightTab) ? () => setPanelView('stores') : undefined} />
+        onVolverATiendas={panelView === 'planilla' && usaSelectorDeTiendas(rightTab) ? () => setPanelView('stores') : undefined}
+        // Solo en escritorio: en teléfono el menú es la barra de abajo.
+        menu={isDesktop
+          ? { onTab: setRightTab, tiendasElegidas: selectedCods.length, onAyuda: () => setAyudaAbierta(true) }
+          : undefined} />
 
       {/* ── Alerta cambios calendario ── */}
       {notifCount > 0 && (
@@ -2245,9 +2248,6 @@ export function PickingScreen() {
 
       {/* ── Split body ── */}
       <div className="flex-1 flex overflow-hidden">
-
-        {/* Menú lateral: reemplaza la fila de pestañas en escritorio. */}
-        {isDesktop && <MenuLateral tab={rightTab} onTab={setRightTab} tiendasElegidas={selectedCods.length} onAyuda={() => setAyudaAbierta(true)} />}
 
         {/* LEFT PANEL */}
         <div
