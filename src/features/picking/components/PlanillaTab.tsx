@@ -249,7 +249,10 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
     w.print();
   }, [vista, planilla, delDia, fecha]);
 
-  if (error) return <div style={{ padding: 20, color: '#B91C1C' }}>{error}</div>;
+  // Un refresco fallido NO borra la hoja. Antes cualquier error reemplazaba todo por un mensaje
+  // rojo: una sesión que caducó un momento, y el coordinador perdía la planilla que estaba
+  // mirando. Si hay datos, se siguen mostrando y el aviso va arriba diciendo de cuándo son.
+  if (error && !crudos) return <div style={{ padding: 20, color: '#B91C1C' }}>{error}</div>;
   if (!crudos) return (
     <div style={{ padding: 20, display: 'flex', gap: 8, alignItems: 'center', color: '#475569' }}>
       <Loader2 size={16} /> Trayendo el día…
@@ -289,8 +292,10 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
           Actualizar
         </button>
         {actualizado && (
-          <span style={{ fontSize: 11.5, color: '#64748B', whiteSpace: 'nowrap' }}>
-            {horaChile(actualizado.toISOString())} · se actualiza sola cada 3 min
+          <span style={{ fontSize: 11.5, color: error ? '#B91C1C' : '#64748B', whiteSpace: 'nowrap' }}
+                title="Se actualiza sola cada 3 minutos con la pestaña a la vista. Odoo cachea 30 segundos, así que un cambio puede tardar hasta unos 3 minutos y medio en verse.">
+            Datos de las {horaChile(actualizado.toISOString())}
+            {error ? ' · sin actualizar' : ' · cada 3 min'}
           </span>
         )}
         <button type="button" onClick={bajar} style={BTN_SEC}><Download size={15} /> Bajar archivo</button>
@@ -298,6 +303,17 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
           <Printer size={15} /> {vista === 'planilla' ? 'Imprimir planilla' : 'Imprimir detalle'}
         </button>
       </div>
+
+      {error && crudos && (
+        <div role="status" style={{ flexShrink: 0, margin: '11px 16px 0', padding: '9px 13px',
+                                    background: '#FEF2F2', border: '1px solid #FECACA',
+                                    borderRadius: 10, fontSize: 12.5, color: '#991B1B',
+                                    lineHeight: 1.5 }}>
+          <strong>No se pudo actualizar.</strong> {error} Lo que ves es de las{' '}
+          {actualizado ? horaChile(actualizado.toISOString()) : '—'} y puede estar desactualizado:
+          un movimiento anulado o recién asignado todavía no se refleja.
+        </div>
+      )}
 
       {/* Las cinco zonas siempre: una que no aparece se leería como un dato que falta. */}
       <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center',

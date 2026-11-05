@@ -68,13 +68,18 @@ type BatchPicking = {
   /** [CRUCE PESOS] `total_weight` de Odoo — la columna «Peso Total» de Traslados internos.
    *  Viene en la MISMA consulta que ya se hacía: es un campo más, no una llamada más. */
   pesoTotal: number;
-  /** [PLANILLA] Todas las líneas del movimiento: el número que muestra Odoo.
+  /** [PLANILLA] Los «registros» del movimiento: exactamente el número que Odoo muestra en su
+   *  lista, que es de donde el coordinador los copia a mano.
    *
-   *  `lineCount` filtra por estado del `stock.move`, así que cuenta solo las líneas con stock
-   *  reservado y crece durante el día. Medido el 29/10 (día cerrado) los dos coinciden en 157 de
-   *  157; el 03/11 (en curso) difieren en 53 de 149. La planilla necesita el total, que es el que
-   *  calzó con la hoja de papel (24SPP Comida 111, 38SP2 Comida 119, 31TLC Hogar 100). */
-  lineTotal: number;
+   *  Es `move_line_ids` —las operaciones— y NO `move_ids`, que es la demanda. Comprobado el
+   *  05/11 contra la pantalla de Odoo: `99REC/DT/148722` tiene 33 `move_ids` y 16
+   *  `move_line_ids`, y Odoo dice «16 registros»; `99REC/DT/148735` tiene 10 y 1, y Odoo dice
+   *  «1 registro».
+   *
+   *  La diferencia es grande en lo que está en curso —el 05/11, 66 de 80 movimientos `assigned`
+   *  difieren, algunos 43 contra 2— y chica en lo ya validado. Por eso la primera medición, hecha
+   *  solo contra movimientos `done`, no la detectó: ahí los dos campos suelen coincidir. */
+  registros: number;
   /** [PLANILLA] `user_assigned_date`: cuándo se le dio el movimiento a un picker. UTC, como todo
    *  lo que guarda Odoo. `null` cuando todavía no se asignó a nadie. */
   assignedAt: string | null;
@@ -204,10 +209,10 @@ async function _fetchDayPickings(
       fields: ['name', 'origin', 'partner_id', 'location_id', 'location_dest_id',
                'state', 'scheduled_date', 'date_done', 'picking_type_id', 'user_id', 'batch_id',
                'total_weight',
-               // [PLANILLA] `move_ids` son ids, no registros: no agrega una consulta. Con su
-               // largo se cuenta sin filtrar por estado. `user_assigned_date` es la hora de
+               // [PLANILLA] `move_line_ids` son ids, no registros: no agrega una consulta. Su largo
+               // es el número que Odoo muestra en su lista. `user_assigned_date` es la hora de
                // asignación, lo único que la planilla no podía sacar de ningún otro campo.
-               'move_ids', 'user_assigned_date'],
+               'move_line_ids', 'user_assigned_date'],
       limit: 2000,
       order: 'scheduled_date asc',
     }],
@@ -219,7 +224,7 @@ async function _fetchDayPickings(
     picking_type_id: [number, string]; user_id: [number, string] | false;
     batch_id: [number, string] | false;
     total_weight: number | false;
-    move_ids: number[];
+    move_line_ids: number[];
     user_assigned_date: string | false;
   }>;
 
@@ -258,7 +263,7 @@ async function _fetchDayPickings(
     lineCount:     linesByPicking[p.id] ?? 0,
     batch:         Array.isArray(p.batch_id) ? p.batch_id[1] : '',
     pesoTotal:     typeof p.total_weight === 'number' ? p.total_weight : 0,
-    lineTotal:     Array.isArray(p.move_ids) ? p.move_ids.length : 0,
+    registros:     Array.isArray(p.move_line_ids) ? p.move_line_ids.length : 0,
     assignedAt:    typeof p.user_assigned_date === 'string' ? p.user_assigned_date : null,
   }));
 }
@@ -677,7 +682,7 @@ export async function POST(req: NextRequest) {
         for (const p of ops) {
           movimientos.push({
             ref: p.name, origin: p.origin, estado: p.state,
-            registros: p.lineTotal, responsable: p.responsible,
+            registros: p.registros, responsable: p.responsible,
             asignadoEn: p.assignedAt, validadoEn: p.dateDone,
             // [PLANILLA] El destino y el partner van porque `resolveStoreCode` los necesita: el
             // `origin` es texto escrito a mano y `location_dest_id` es dato estructurado. Ver el
