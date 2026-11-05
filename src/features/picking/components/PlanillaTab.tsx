@@ -18,6 +18,7 @@
 // ventana. Cada vista imprime en SU formato, porque el botón imprime la vista en la que estás.
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Printer, Download, Loader2, RotateCcw } from 'lucide-react';
 import { AUTO_REFRESH_MS } from '../picking-types';
 import { fechaISOLocal } from '@/features/despacho/shared/fechaLocal';
@@ -53,6 +54,13 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
   // La celda que se está corrigiendo. `null` = no hay cuadro abierto.
   const [corrigiendo, setCorrigiendo] = useState<PedidoCorreccion | null>(null);
   const [guardandoCorr, setGuardandoCorr] = useState(false);
+  // El cuadro va por PORTAL a document.body. Sin eso queda DENTRO de la pestaña, y el AppShell
+  // tiene `overflow: hidden` y un `transform`: un transform en un ancestro rompe el
+  // `position: fixed` —el elemento se posiciona contra ese ancestro, no contra la ventana— así
+  // que el cuadro se abría recortado y no se veía. Es el mismo motivo por el que PickingScreen
+  // portea sus etiquetas de impresión; su comentario lo dice.
+  const [montado, setMontado] = useState(false);
+  useEffect(() => { setMontado(true); }, []);
 
   // Qué día pide cada tienda: hoy, salvo las aperturas.
   const consultas = useMemo(
@@ -313,7 +321,7 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
       <div style={{ flex: 1, minHeight: 220, display: 'flex', padding: '11px 16px 0' }}>
         {vista === 'planilla'
           ? <TablaPlanilla planilla={planilla} onCorregir={abrirCorreccion} />
-          : <TablaDetalle movimientos={delDia} />}
+          : <TablaDetalle movimientos={delDia} onCorregir={abrirCorreccion} />}
       </div>
 
       <div style={{ flexShrink: 0, margin: '11px 16px 16px',
@@ -326,7 +334,7 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
         )}
       </div>
 
-      {corrigiendo && (
+      {montado && corrigiendo && createPortal(
         <CuadroCorreccion
           pedido={corrigiendo}
           personas={personas}
@@ -334,7 +342,8 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
           onElegir={n => setCorrigiendo(c => (c ? { ...c, pickerNuevo: n } : c))}
           onCancelar={() => setCorrigiendo(null)}
           onConfirmar={() => void guardarCorreccion()}
-        />
+        />,
+        document.body,
       )}
     </div>
   );
@@ -419,7 +428,10 @@ function TablaPlanilla({ planilla, onCorregir }: {
 }
 
 /** El detalle: una fila por movimiento, con horas y duración. */
-function TablaDetalle({ movimientos }: { movimientos: MovimientoPlanilla[] }) {
+function TablaDetalle({ movimientos, onCorregir }: {
+  movimientos: MovimientoPlanilla[];
+  onCorregir: (celda: CeldaPlanilla, cod: string, seccion: SeccionPlanilla) => void;
+}) {
   const filas = [...movimientos].sort(porAsignacion);
   return (
     <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11,
@@ -441,7 +453,13 @@ function TablaDetalle({ movimientos }: { movimientos: MovimientoPlanilla[] }) {
               <tr key={`${m.cod}-${m.seccion}-${i}`} style={{ borderBottom: '1px solid #F1F5F9' }}>
                 <td style={{ ...TD, fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: '#1E40AF' }}>{m.cod}</td>
                 <td style={TD}>{m.seccion}</td>
-                <td style={m.picker ? TD : { ...TD, ...ESTILO_SIN_ASIGNAR }}>{m.picker || '— sin asignar'}</td>
+                <td style={TD}>
+                  {/* El mismo botón que en la matriz: el picker se corrige desde las dos vistas. */}
+                  <CeldaPicker
+                    celda={{ registros: m.registros, picker: m.picker, ref: m.ref,
+                             id: m.id, origen: m.origen, pickerOdoo: m.pickerOdoo }}
+                    cod={m.cod} seccion={m.seccion} onCorregir={onCorregir} />
+                </td>
                 <td style={{ ...TD_DER, fontWeight: 700 }}>{m.registros}</td>
                 <td style={{ ...TD, fontFamily: 'ui-monospace, monospace' }}>{horaChile(m.asignadoEn) || '—'}</td>
                 <td style={{ ...TD, fontFamily: 'ui-monospace, monospace' }}>{horaChile(m.validadoEn) || '—'}</td>
@@ -479,14 +497,15 @@ function CeldaPicker({ celda, cod, seccion, onCorregir }: {
   if (!celda.ref) return <div style={celda.picker ? undefined : ESTILO_SIN_ASIGNAR}>{texto}</div>;
   return (
     <div>
+      {/* Se ve que se puede tocar: borde punteado y fondo al pasar por encima. Antes era un
+          subrayado fino que se leía como texto común y nadie adivinaba que era un botón. */}
       <button type="button" onClick={() => onCorregir(celda, cod, seccion)}
-              title="Corregir quién hizo este movimiento"
+              title="Tocar para corregir quién hizo este movimiento"
               style={{
-                background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer',
-                textAlign: 'left', textDecorationLine: 'underline',
-                textDecorationStyle: corregido ? 'solid' : 'dotted',
-                textDecorationColor: corregido ? '#B45309' : '#CBD5E1',
-                textUnderlineOffset: 3,
+                font: 'inherit', cursor: 'pointer', textAlign: 'left',
+                padding: '1px 5px', marginLeft: -5, borderRadius: 5,
+                border: `1px dashed ${corregido ? '#FCD34D' : '#CBD5E1'}`,
+                background: corregido ? '#FFFBEB' : 'transparent',
                 ...(celda.picker ? { color: corregido ? '#92400E' : '#334155' } : ESTILO_SIN_ASIGNAR),
                 ...(corregido ? { fontWeight: 700 } : null),
               }}>
