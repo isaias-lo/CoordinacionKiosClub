@@ -28,6 +28,7 @@
 import { categoriaDeOrigin } from '@/features/despacho/shared/aperturaOdoo';
 import { resolveStoreCode } from '@/features/picking/picking-utils';
 import { SECCIONES, type MovimientoPlanilla, type SeccionPlanilla } from './armarPlanilla';
+import { indiceRegistros, resolverOrigen } from './backorders';
 
 /** Un movimiento tal como lo devuelve la acción `planilla_dia`. */
 export interface MovimientoOdoo {
@@ -44,6 +45,8 @@ export interface MovimientoOdoo {
   toLocation: string;
   /** El partner del picking: la última fuente del código, si las dos anteriores fallan. */
   partner: string;
+  /** La referencia del movimiento del que este quedó, si es un backorder. Ver `backorders.ts`. */
+  backorderDe?: string | null;
 }
 
 const ES_SECCION = new Set<string>(SECCIONES);
@@ -62,6 +65,11 @@ export function movimientosDesdeOdoo(
   nombres: Record<string, string>,
   diaPorTienda: ReadonlyMap<string, string>,
 ): MovimientoPlanilla[] {
+  // El índice se arma sobre TODOS los crudos, antes de descartar: el original de un backorder
+  // suele estar `done`, pero puede estar `cancel` y entonces no llega a la hoja. Armándolo
+  // después del descarte, la etiqueta quedaría sin su número justo en esos casos.
+  const indice = indiceRegistros(crudos);
+
   const out: MovimientoPlanilla[] = [];
   for (const m of crudos) {
     const cat = categoriaDeOrigin(m.origin);
@@ -80,6 +88,9 @@ export function movimientosDesdeOdoo(
       asignadoEn: m.asignadoEn,
       validadoEn: m.validadoEn,
       estado: m.estado,
+      // `?? undefined` y no el `null` que devuelve `resolverOrigen`: el campo es opcional, y un
+      // `null` explícito pasaría los chequeos de `!= null` de la pantalla como si fuera un dato.
+      backorderDe: resolverOrigen(m.backorderDe, indice) ?? undefined,
     });
   }
   return out;

@@ -46,21 +46,49 @@ describe('csvVistaDetalle', () => {
   const lineas = csv.split('\n');
 
   it('la primera línea son los encabezados', () => {
-    expect(lineas[0]).toBe('Fecha,Tienda,Seccion,Usuario,Registros,Inicio,Validado,Duracion,Estado');
+    expect(lineas[0]).toBe('Fecha,Tienda,Seccion,Usuario,Registros,Inicio,Validado,Duracion,Estado,Resto de');
   });
 
   it('una fila por movimiento, ordenada por hora de inicio', () => {
     expect(lineas).toHaveLength(4);   // encabezado + 3
-    expect(lineas[1]).toBe('2026-11-03,38SP2,Hogar,Marcelo Vergara,63,08:00,10:26,2 h 26,done');
+    expect(lineas[1]).toBe('2026-11-03,38SP2,Hogar,Marcelo Vergara,63,08:00,10:26,2 h 26,done,');
   });
 
   it('un movimiento sin validar deja la duración en raya y la hora vacía', () => {
-    expect(lineas[3]).toBe('2026-11-03,38SP2,Hogar,Marcelo Vergara,46,11:00,,—,assigned');
+    expect(lineas[3]).toBe('2026-11-03,38SP2,Hogar,Marcelo Vergara,46,11:00,,—,assigned,');
   });
 
   it('un nombre con coma iría entre comillas', () => {
     const uno = csvVistaDetalle(
       [{ ...MOVS[0], picker: 'Vergara, Marcelo' }], '2026-11-03').split('\n')[1];
     expect(uno).toContain('"Vergara, Marcelo"');
+  });
+
+  it('un backorder trae la referencia del movimiento del que quedó', () => {
+    // En el detalle hay espacio para la referencia entera, que es con lo que se busca el
+    // original en Odoo. La columna va al final para no correr las que ya existían.
+    const uno = csvVistaDetalle([{
+      ...MOVS[1], backorderDe: { ref: '99REC/DT/148618', registros: 4 },
+    }], '2026-11-03').split('\n')[1];
+    expect(uno.endsWith(',99REC/DT/148618')).toBe(true);
+  });
+});
+
+describe('csvVistaPlanilla con backorders', () => {
+  it('la marca ↳ va pegada al nombre, sin agregar columnas', () => {
+    const csv = csvVistaPlanilla(armarPlanilla([
+      { ...MOVS[0], backorderDe: { ref: '99REC/DT/148618', registros: 4 } },
+    ], TIENDAS), '2026-11-03');
+    const linea = csv.split('\n')[1];
+    expect(linea).toContain('↳4 Marcelo Vergara');
+    // Lo que importa: sigue teniendo 12 campos. Una columna de más correría todo lo que sigue.
+    expect(linea.replace(/"[^"]*"/g, 'X').split(',')).toHaveLength(12);
+  });
+
+  it('un backorder sin picker queda con la marca sola', () => {
+    const csv = csvVistaPlanilla(armarPlanilla([
+      { ...MOVS[1], picker: '', backorderDe: { ref: '99REC/DT/148618', registros: 4 } },
+    ], TIENDAS), '2026-11-03');
+    expect(csv.split('\n')[1]).toContain('↳4 ');
   });
 });

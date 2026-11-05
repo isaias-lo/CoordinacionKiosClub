@@ -9,6 +9,7 @@
 // comilla o un salto de línea. Eso pasa de verdad con un nombre como «Vergara, Marcelo».
 
 import { SECCIONES, porAsignacion, type Planilla, type MovimientoPlanilla } from './armarPlanilla';
+import { marcaBackorder } from './backorders';
 import { COLOR_ZONA } from './zonaPlanilla';
 import { horaChile, duracionMinutos, formatearDuracion } from './horasPlanilla';
 
@@ -33,7 +34,10 @@ export function csvVistaPlanilla(p: Planilla, fecha: string): string {
     for (const s of SECCIONES) {
       const celda = f.celdas[s];
       cs.push(celda.map(c => c.registros).join(' / '));
-      cs.push(celda.map(c => c.picker).join(' / '));
+      // La marca ↳4 va pegada al nombre, igual que en el papel: la columna del archivo es la
+      // misma, y separarla en otra columna correría todas las que siguen.
+      cs.push(celda.map(c =>
+        (c.backorderDe ? marcaBackorder(c.backorderDe) + ' ' : '') + c.picker).join(' / '));
     }
     lineas.push(fila(cs));
   });
@@ -47,7 +51,11 @@ export function csvVistaPlanilla(p: Planilla, fecha: string): string {
 
 /** El detalle: una línea por movimiento, ordenada por hora de inicio. */
 export function csvVistaDetalle(movimientos: MovimientoPlanilla[], fecha: string): string {
-  const lineas = ['Fecha,Tienda,Seccion,Usuario,Registros,Inicio,Validado,Duracion,Estado'];
+  // «Resto de» va en una COLUMNA propia y no como marca pegada al nombre: en el detalle hay
+  // espacio, y la referencia del movimiento original sirve para buscarlo en Odoo. La columna
+  // nueva va AL FINAL — las hojas de este proyecto se escriben por posición y una columna al
+  // medio corre todo lo que sigue.
+  const lineas = ['Fecha,Tienda,Seccion,Usuario,Registros,Inicio,Validado,Duracion,Estado,Resto de'];
 
   for (const m of [...movimientos].sort(porAsignacion)) {
     lineas.push(fila([
@@ -55,6 +63,7 @@ export function csvVistaDetalle(movimientos: MovimientoPlanilla[], fecha: string
       horaChile(m.asignadoEn), horaChile(m.validadoEn),
       formatearDuracion(duracionMinutos(m.asignadoEn, m.validadoEn)),
       m.estado,
+      m.backorderDe ? m.backorderDe.ref : '',
     ]));
   }
 
