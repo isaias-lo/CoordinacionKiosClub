@@ -165,7 +165,10 @@ const STORE_NAME_TO_CODE: Record<string, string> = Object.fromEntries(
 );
 
 // Forma "plana" de un código: sin acentos ni Ñ (Ñ→N), mayúsculas. "37VIÑ" y "37VIN" → "37VIN".
-function flatCode(code: string): string {
+// Se exporta porque el buscador de la planilla compara con la MISMA regla: escribir "pen" tiene
+// que encontrar 23PEÑ. Una segunda copia de esta expresión en otro archivo no fallaría al
+// compilar — simplemente dejaría de encontrar las tiendas con Ñ, sin ningún aviso.
+export function flatCode(code: string): string {
   return (code ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
 }
 

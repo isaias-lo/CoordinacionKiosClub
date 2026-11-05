@@ -142,3 +142,15 @@ button.pk-sg:hover .acc{color:#2B4BC8}
 .pk-franja{align-items:flex-start}
 .pk-franja-i{width:18px;height:18px;border-radius:50%;background:#2B4BC8;color:#FFFFFF;font:700 11px/18px 'IBM Plex Sans',system-ui,sans-serif;text-align:center;flex-shrink:0;margin-top:1px}
 .pk-franja-x{border:0;background:transparent;color:#5A6BB0;cursor:pointer;padding:2px;display:flex;flex-shrink:0}
+
+/* La planilla (PlanillaTab.tsx): el resalte de la fila al pasar el mouse.
+   Va en CSS y no en un onMouseEnter con estado porque así cada movimiento del mouse volvería a
+   dibujar las 29 filas. Los fondos de celda (sin carga, dos movimientos, demorada) bajaron del
+   estilo en línea a estas clases por un motivo concreto: un estilo en línea le gana a cualquier
+   selector, así que mientras estuvieron ahí el resalte no se veía sobre las celdas grises.
+   `tr.fila` deja fuera la fila de totales, y `:focus-within` resalta igual cuando se llega con
+   el teclado al botón del picker. */
+.pk-hoja td.vacia{background:#F8FAFC}
+.pk-hoja td.doble{background:#EFF6FF}
+.pk-hoja td.largo{background:#FFFBEB}
+.pk-hoja tbody tr.fila:hover>td,.pk-hoja tbody tr.fila:focus-within>td{background:#E7EDF5}

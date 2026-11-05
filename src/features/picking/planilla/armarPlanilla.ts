@@ -175,14 +175,25 @@ export function armarPlanilla(
     return { cod: t.cod, zona: t.zona, celdas, sinCarga: suyos.length === 0 };
   });
 
-  // Los totales salen DE LAS FILAS, no de un acumulador dentro del `map`: así el total no puede
-  // divergir de lo que la hoja muestra.
+  return { filas, totales: totalesDeFilas(filas), descartados, fueraDelCalendario };
+}
+
+/**
+ * Los totales por sección, sumados DE LAS FILAS.
+ *
+ * Sale de las filas y no de un acumulador dentro del `map` de arriba: así el total no puede
+ * divergir de lo que la hoja muestra.
+ *
+ * Se exporta porque `filtrarPlanilla` los recalcula sobre las filas que quedan. Con una segunda
+ * copia de esta suma, el día que cambie una —por ejemplo si los chocolates dejaran de sumar
+ * registros— la pantalla filtrada y la sin filtrar mostrarían totales distintos.
+ */
+export function totalesDeFilas(filas: FilaPlanilla[]): Record<SeccionPlanilla, number> {
   const totales: Record<SeccionPlanilla, number> = { Comida: 0, Aseo: 0, Hogar: 0, Chocolates: 0 };
   for (const fila of filas) {
     for (const s of SECCIONES) {
       for (const c of fila.celdas[s]) totales[s] += c.registros;
     }
   }
-
-  return { filas, totales, descartados, fueraDelCalendario };
+  return totales;
 }
