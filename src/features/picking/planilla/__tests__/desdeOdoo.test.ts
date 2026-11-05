@@ -117,3 +117,50 @@ describe('movimientosDesdeOdoo: cada tienda solo toma los movimientos de SU día
     expect(out).toHaveLength(0);
   });
 });
+
+describe('movimientosDesdeOdoo: los backorders', () => {
+  // El caso real medido el 05/11/2026: al validar, Odoo cerró 148618 con 4 registros y mandó el
+  // resto —1 registro— a 148785, con backorder_id apuntando al primero.
+  const ORIGINAL = crudo({ ref: '99REC/DT/148618', estado: 'done', registros: 4 });
+  const RESTO = crudo({
+    ref: '99REC/DT/148785', estado: 'assigned', registros: 1, responsable: '',
+    validadoEn: null, backorderDe: '99REC/DT/148618',
+  });
+
+  it('lo que no es backorder no trae el campo', () => {
+    const [m] = movimientosDesdeOdoo([ORIGINAL], NOMBRES, dias());
+    expect(m.backorderDe).toBeUndefined();
+  });
+
+  it('el resto dice de qué movimiento quedó y con cuántos registros', () => {
+    const out = movimientosDesdeOdoo([ORIGINAL, RESTO], NOMBRES, dias());
+    expect(out).toHaveLength(2);
+    expect(out[1].backorderDe).toEqual({ ref: '99REC/DT/148618', registros: 4 });
+  });
+
+  it('el índice se arma antes de descartar: un original ANULADO igual da su número', () => {
+    // El original suele estar `done`, pero puede estar `cancel` y entonces no llega a la hoja.
+    // Si el índice se armara después del descarte, la etiqueta quedaría sin número justo ahí.
+    const out = movimientosDesdeOdoo(
+      [{ ...ORIGINAL, estado: 'cancel' }, RESTO], NOMBRES, dias());
+    expect(out.find(m => m.ref === '99REC/DT/148785')?.backorderDe)
+      .toEqual({ ref: '99REC/DT/148618', registros: 4 });
+  });
+
+  it('si el original no vino, sigue marcado como resto pero sin número', () => {
+    const [m] = movimientosDesdeOdoo([RESTO], NOMBRES, dias());
+    expect(m.backorderDe).toEqual({ ref: '99REC/DT/148618', registros: null });
+  });
+
+  it('el original de OTRA tienda no se usa para resolver', () => {
+    // El índice es por referencia, que es única en Odoo; esto fija que no se resuelva por
+    // tienda o por sección, que sí se repiten.
+    const out = movimientosDesdeOdoo([
+      crudo({ ref: '99REC/DT/148618', origin: 'Abastecimiento Comida 34SMB 03/11/2026', registros: 4 }),
+      { ...RESTO, origin: 'Abastecimiento Comida 27MCH 03/11/2026' },
+    ], NOMBRES, dias());
+    const resto = out.find(m => m.ref === '99REC/DT/148785');
+    expect(resto?.cod).toBe('27MCH');
+    expect(resto?.backorderDe).toEqual({ ref: '99REC/DT/148618', registros: 4 });
+  });
+});

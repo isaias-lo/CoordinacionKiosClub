@@ -79,6 +79,8 @@ export function conCorrecciones(
       // que lo capturó al corregir; si esa fila es vieja y no lo tiene, se cae a lo que Odoo dice
       // hoy, que es lo más cercano.
       pickerOdoo: g.picker !== null ? (g.pickerOdoo ?? v.picker) : undefined,
+      // `backorderDe` sale de `...v` y no se toca acá: de qué movimiento quedó este es un hecho
+      // de Odoo, y corregir quién lo hizo no lo cambia.
       origen: (corregido ? 'corregido' : g.registrosOdoo !== null ? 'foto' : 'vivo') as OrigenDato,
     };
   });

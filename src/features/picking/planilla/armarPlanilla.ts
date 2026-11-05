@@ -15,6 +15,7 @@
 // quedan fuera 50 anulados y 25 sin liberar. Los descartados se devuelven contados, no escondidos:
 // la hoja dice al pie cuántos hay.
 
+import type { OrigenBackorder } from './backorders';
 import type { ZonaPlanilla } from './zonaPlanilla';
 
 /**
@@ -60,6 +61,8 @@ export interface MovimientoPlanilla {
   origen?: 'vivo' | 'foto' | 'corregido' | 'manual';
   /** El picker que decía Odoo, cuando el que se muestra es una corrección. */
   pickerOdoo?: string;
+  /** De qué movimiento quedó este, cuando es un backorder. Ver `backorders.ts`. */
+  backorderDe?: OrigenBackorder;
 }
 
 export interface CeldaPlanilla {
@@ -72,6 +75,8 @@ export interface CeldaPlanilla {
   origen?: MovimientoPlanilla['origen'];
   /** Lo que decía Odoo antes de corregir. Se muestra al lado del nombre nuevo. */
   pickerOdoo?: string;
+  /** De qué movimiento quedó. Una celda con esto NO es trabajo sin empezar. */
+  backorderDe?: OrigenBackorder;
 }
 
 export interface FilaPlanilla {
@@ -170,7 +175,7 @@ export function armarPlanilla(
         .filter(m => m.seccion === s)
         .sort(porAsignacion)
         .map(m => ({ registros: m.registros, picker: m.picker, ref: m.ref, id: m.id,
-                     origen: m.origen, pickerOdoo: m.pickerOdoo }));
+                     origen: m.origen, pickerOdoo: m.pickerOdoo, backorderDe: m.backorderDe }));
     }
     return { cod: t.cod, zona: t.zona, celdas, sinCarga: suyos.length === 0 };
   });

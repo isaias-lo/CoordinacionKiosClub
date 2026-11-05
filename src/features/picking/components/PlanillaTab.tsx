@@ -30,6 +30,7 @@ import { movimientosDesdeOdoo, type MovimientoOdoo } from '../planilla/desdeOdoo
 import { COLOR_ZONA, ZONAS, zonaPlanilla, type ZonaPlanilla } from '../planilla/zonaPlanilla';
 import { contarPorZona, describirFiltro, filtrarMovimientos, filtrarPlanilla, sinFiltro,
          type FiltroPlanilla } from '../planilla/filtrarPlanilla';
+import { marcaBackorder, textoBackorder, tituloBackorder } from '../planilla/backorders';
 import { horaChile, duracionMinutos, formatearDuracion } from '../planilla/horasPlanilla';
 import { csvVistaPlanilla, csvVistaDetalle } from '../planilla/csvPlanilla';
 
@@ -224,6 +225,15 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
   // Cuántos nombres se cambiaron a mano hoy. Va al pie: si no, habría que buscarlos a ojo.
   const corregidos = useMemo(
     () => movimientos.filter(m => m.origen === 'corregido').length,
+    [movimientos]);
+
+  // Cuántas líneas de la hoja son el resto de un movimiento ya validado. Se cuenta sobre los que
+  // ENTRAN a la hoja, no sobre todos: el 05/11 había 92 backorders en Odoo y solo 15 llegaban a
+  // la pantalla —el resto eran `cancel` o `confirmed`—, así que el 92 no diría nada de lo que
+  // se está mirando.
+  const restos = useMemo(
+    () => movimientos.filter(m =>
+      m.backorderDe && (m.estado === 'done' || m.estado === 'assigned')).length,
     [movimientos]);
 
   // Solo lo que está en la hoja: los descartados no van al detalle. Y el mismo filtro que la
@@ -488,6 +498,11 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
         {corregidos > 0 && (
           <> · <strong>{corregidos}</strong> {corregidos === 1 ? 'picker corregido' : 'pickers corregidos'} a mano.</>
         )}
+        {restos > 0 && (
+          // Dicho al pie porque la marca ↳ de la celda no alcanza para contarlas de un vistazo.
+          <> · <strong>{restos}</strong> {restos === 1 ? 'línea es' : 'líneas son'} el resto de un
+          movimiento ya validado (↳), no trabajo sin empezar.</>
+        )}
       </div>
 
       {montado && corrigiendo && createPortal(
@@ -661,24 +676,39 @@ function CeldaPicker({ celda, cod, seccion, onCorregir }: {
   onCorregir: (celda: CeldaPlanilla, cod: string, seccion: SeccionPlanilla) => void;
 }) {
   const corregido = celda.origen === 'corregido';
-  const texto = celda.picker || '— sin asignar';
-  if (!celda.ref) return <div style={celda.picker ? undefined : ESTILO_SIN_ASIGNAR}>{texto}</div>;
+  const bo = celda.backorderDe;
+  // Un backorder sin picker NO es trabajo sin empezar: es lo que quedó de un movimiento que ya se
+  // validó, y Odoo lo creó solo. Mostrarlo como «— sin asignar» en naranja era leerlo al revés.
+  const texto = celda.picker || (bo ? `↳ ${textoBackorder(bo)}` : '— sin asignar');
+  const estiloTexto = celda.picker ? undefined : bo ? ESTILO_RESTO : ESTILO_SIN_ASIGNAR;
+  if (!celda.ref) return <div style={estiloTexto}>{texto}</div>;
   return (
     <div>
       {/* Se ve que se puede tocar: borde punteado y fondo al pasar por encima. Antes era un
           subrayado fino que se leía como texto común y nadie adivinaba que era un botón. */}
       <button type="button" onClick={() => onCorregir(celda, cod, seccion)}
-              title="Tocar para corregir quién hizo este movimiento"
+              title={bo
+                // Las dos cosas: qué es esta línea Y que se puede tocar. Dejando solo la
+                // explicación del resto, la celda perdía la única señal de que es un botón.
+                ? `${tituloBackorder(bo)} · Tocar para corregir quién lo hizo.`
+                : 'Tocar para corregir quién hizo este movimiento'}
               style={{
                 font: 'inherit', cursor: 'pointer', textAlign: 'left',
                 padding: '1px 5px', marginLeft: -5, borderRadius: 5,
                 border: `1px dashed ${corregido ? '#FCD34D' : '#CBD5E1'}`,
                 background: corregido ? '#FFFBEB' : 'transparent',
-                ...(celda.picker ? { color: corregido ? '#92400E' : '#334155' } : ESTILO_SIN_ASIGNAR),
+                ...(celda.picker ? { color: corregido ? '#92400E' : '#334155' } : estiloTexto),
                 ...(corregido ? { fontWeight: 700 } : null),
               }}>
         {texto}
       </button>
+      {bo && celda.picker && (
+        // Con picker, el nombre manda y la marca va debajo: igual hay que saber que esta línea
+        // es el resto de otra y no un segundo movimiento entero.
+        <div title={tituloBackorder(bo)} style={{ fontSize: 10.5, color: '#1E40AF' }}>
+          ↳ {textoBackorder(bo)}
+        </div>
+      )}
       {corregido && celda.pickerOdoo && (
         // El nombre original queda A LA VISTA: la hoja no reemplaza en silencio lo que dijo Odoo.
         <div style={{ fontSize: 10.5, color: '#B45309' }}>Odoo decía: {celda.pickerOdoo}</div>
@@ -774,6 +804,9 @@ const TD_DER   = { padding: '4px 6px', textAlign: 'right', color: '#0F172A', ver
 const TD_NUM   = { padding: '4px 4px', textAlign: 'center', color: '#94A3B8', fontSize: 10.5,
                    verticalAlign: 'top' } as const;
 const ESTILO_SIN_ASIGNAR = { color: '#B45309', fontStyle: 'italic', fontWeight: 600 } as const;
+// Azul y no el naranja de «sin asignar»: el naranja es la alarma de trabajo que nadie tomó, y un
+// resto de un movimiento ya validado no es eso.
+const ESTILO_RESTO = { color: '#1E40AF', fontWeight: 600 } as const;
 
 /** Escapa lo que va al HTML de impresión: los nombres y los códigos vienen de Odoo. */
 function esc(s: string | number): string {
@@ -832,7 +865,9 @@ function cabecera(fecha: string, titulo: string, resumen: string, recorte = ''):
 const FIRMAS = `<div class="firmas">
   <div style="flex:1;font-size:8.5px;line-height:1.45">Una fila por tienda. Cuando una sección tiene
   dos movimientos van apilados en la misma celda. El color de la tienda es su zona, el mismo del
-  calendario impreso. Las celdas en gris no llevan carga.</div>
+  calendario impreso. Las celdas en gris no llevan carga.
+  <strong>↳4</strong> = esa línea es el resto de un movimiento que ya se validó con 4 registros;
+  Odoo lo creó solo al validar, no es trabajo sin empezar.</div>
   <div class="firma"><div class="linea"></div><div class="rot">Supervisor de Picking</div></div>
   <div class="firma"><div class="linea"></div><div class="rot">Coordinador</div></div>
 </div>`;
@@ -856,7 +891,12 @@ function htmlPlanilla(p: Planilla, fecha: string, recorte = ''): string {
       const clase = celda.length === 0 ? 'nada' : '';
       tds.push(`<td class="der ${clase}">${celda.map(x => esc(x.registros)).join('<br>')}</td>`);
       tds.push(`<td class="${clase}" style="font-size:9px">${
-        celda.map(x => esc(x.picker ? corto(x.picker) : '—')).join('<br>')}</td>`);
+        celda.map(x => {
+          // La marca ↳4 va ANTES del nombre: en papel la columna es angosta y lo primero que se
+          // lee tiene que ser que esta línea quedó de otra.
+          const m = x.backorderDe ? esc(marcaBackorder(x.backorderDe)) + ' ' : '';
+          return m + esc(x.picker ? corto(x.picker) : x.backorderDe ? '' : '—');
+        }).join('<br>')}</td>`);
     }
     return '<tr>' + tds.join('') + '</tr>';
   });
@@ -878,7 +918,7 @@ function htmlDetalle(movs: MovimientoPlanilla[], fecha: string, recorte = ''): s
   const trs = [...movs].sort(porAsignacion).map(m => `<tr>
       <td class="cod">${esc(m.cod)}</td>
       <td>${esc(m.seccion)}</td>
-      <td>${esc(m.picker || '—')}</td>
+      <td>${m.backorderDe ? esc(marcaBackorder(m.backorderDe)) + ' ' : ''}${esc(m.picker || (m.backorderDe ? '' : '—'))}</td>
       <td class="der">${m.registros}</td>
       <td>${esc(horaChile(m.asignadoEn) || '—')}</td>
       <td>${esc(horaChile(m.validadoEn) || '—')}</td>

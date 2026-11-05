@@ -83,6 +83,21 @@ type BatchPicking = {
   /** [PLANILLA] `user_assigned_date`: cuándo se le dio el movimiento a un picker. UTC, como todo
    *  lo que guarda Odoo. `null` cuando todavía no se asignó a nadie. */
   assignedAt: string | null;
+  /** [PLANILLA] La REFERENCIA del movimiento del que este quedó, cuando es un backorder.
+   *
+   *  Al validar, Odoo cierra lo pickeado y manda el resto a un movimiento NUEVO con
+   *  `backorder_id` apuntando al original. En la planilla ese movimiento nuevo se veía como una
+   *  segunda línea sin picker en la misma celda, indistinguible de trabajo que nadie empezó.
+   *
+   *  Medido el 05/11/2026 sobre tres días: son muchísimos —92 de 263 movimientos ese día— pero
+   *  casi todos quedan fuera de la hoja por estado (`cancel` o `confirmed`). Los que SÍ entran
+   *  y no tienen picker fueron 15 el 05/11, 1 el 04/11 y 0 el 03/11.
+   *
+   *  Se guarda el `name` y no el id porque es lo que la hoja ya usa para identificar un
+   *  movimiento, y porque el original viene en la misma respuesta: medido los tres días, 100%
+   *  de los backorders tienen su original en el mismo día y con el mismo `origin`, así que
+   *  caen en la misma celda y el número del original se puede resolver sin otra consulta. */
+  backorderDe: string | null;
 };
 
 /**
@@ -212,7 +227,10 @@ async function _fetchDayPickings(
                // [PLANILLA] `move_line_ids` son ids, no registros: no agrega una consulta. Su largo
                // es el número que Odoo muestra en su lista. `user_assigned_date` es la hora de
                // asignación, lo único que la planilla no podía sacar de ningún otro campo.
-               'move_line_ids', 'user_assigned_date'],
+               'move_line_ids', 'user_assigned_date',
+               // [PLANILLA] `backorder_id` es un many2one almacenado: viene como [id, name] en
+               // esta misma consulta, sin agregar ninguna llamada.
+               'backorder_id'],
       limit: 2000,
       order: 'scheduled_date asc',
     }],
@@ -226,6 +244,7 @@ async function _fetchDayPickings(
     total_weight: number | false;
     move_line_ids: number[];
     user_assigned_date: string | false;
+    backorder_id: [number, string] | false;
   }>;
 
   const allIds = allPickings.map(p => p.id);
@@ -265,6 +284,7 @@ async function _fetchDayPickings(
     pesoTotal:     typeof p.total_weight === 'number' ? p.total_weight : 0,
     registros:     Array.isArray(p.move_line_ids) ? p.move_line_ids.length : 0,
     assignedAt:    typeof p.user_assigned_date === 'string' ? p.user_assigned_date : null,
+    backorderDe:   Array.isArray(p.backorder_id) ? p.backorder_id[1] : null,
   }));
 }
 
@@ -688,6 +708,8 @@ export async function POST(req: NextRequest) {
             // `origin` es texto escrito a mano y `location_dest_id` es dato estructurado. Ver el
             // comentario de `resolveStoreCode` en `picking-utils.ts`.
             toLocation: p.toLocation, partner: p.partner,
+            // De qué movimiento quedó, si quedó de uno. Ver `backorders.ts`.
+            backorderDe: p.backorderDe,
             // El día que se pidió, no el `scheduled_date` crudo: es la clave con la que
             // `movimientosDesdeOdoo` decide si ese movimiento le corresponde a esa tienda.
             dia: fecha,
