@@ -8,6 +8,7 @@ import type { AppState, DispatchItem, TipoContenido, TipoPaquete, PdfData } from
 import { useAuth } from '@/components/AuthProvider';
 import { pushSessionStateResult, REINTENTO_PUSH_MS, subscribeToSessionState, fetchSessionStateMeta, remotoEsMasViejo } from '@/lib/userSessionState';
 import { useVisibilityRefetch } from '@/hooks/useVisibilityRefetch';
+import { pedirKeepalive } from '@/lib/subidaAlCerrar';
 import { mergeEntriesByKey, mergeItemsByTienda } from '@/features/despacho/santiago/context/mergeItems';
 import { agregarSinDuplicar } from '@/features/despacho/shared/itemPorUnidad';
 import { stableItemKey } from '@/features/despacho/shared/formRowsReconcile';
@@ -623,7 +624,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // [P9] Al volver a la pestaña/app → catch-up con el estado remoto; al ocultarla → flush de pendientes.
   flushRef.current = () => flushPending();
-  useVisibilityRefetch(() => catchUpRef.current(), flushPending);
+  // Al ocultarse, la subida sale con keepalive: si se está cerrando la app, igual llega. Ver `subidaAlCerrar.ts`.
+  useVisibilityRefetch(() => catchUpRef.current(), () => { pedirKeepalive(); flushPending(); });
 
   const catchUp = useCallback(() => catchUpRef.current(), []);
 

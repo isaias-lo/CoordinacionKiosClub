@@ -7,8 +7,12 @@
 // Los dos se fueron a pedido suyo. «+ Nuevo» repetía el «+» de la cabecera de la tienda, y
 // «Eliminar» borraba varias unidades guardadas de un golpe, justo lo que no tiene que pasar con
 // lo ya pesado (ver bodega-pallet-no-se-borra). Borrar una sigue en su línea, con su confirmación.
+//
+// 4/11/2026, Isaias: al marcar varios chocolates, poder borrarlos de una vez. Vuelve «Eliminar»,
+// pero solo con algo marcado, a un lado de «Sumar a», con una confirmación que nombra cada unidad y
+// con Deshacer (`pedidoEliminarVarios`, `borrarVarios.ts`).
 
-import { Check } from 'lucide-react';
+import { Check, Trash2 } from 'lucide-react';
 
 export interface PalletDestino {
   id: string;
@@ -17,12 +21,14 @@ export interface PalletDestino {
   agregado: boolean;
 }
 
-export default function BarraSumarBultos({ total, seleccionados, onTodos, pallets, onSumar }: {
+export default function BarraSumarBultos({ total, seleccionados, onTodos, pallets, onSumar, onEliminar }: {
   total: number;
   seleccionados: number;
   onTodos: () => void;
   pallets: PalletDestino[];
   onSumar: (palletId: string) => void;
+  /** Borrar los marcados. Pregunta antes quien llama. */
+  onEliminar?: () => void;
 }) {
   const todos = seleccionados > 0 && seleccionados === total;
   const hay = seleccionados > 0;
@@ -40,6 +46,14 @@ export default function BarraSumarBultos({ total, seleccionados, onTodos, pallet
           {hay ? `${seleccionados} de ${total} marcados` : 'Marca los bultos y chocolates que van dentro de un pallet'}
         </span>
       </button>
+
+      {hay && onEliminar && (
+        <button type="button" onClick={onEliminar}
+          title={seleccionados === 1 ? 'Eliminar el marcado' : `Eliminar los ${seleccionados} marcados`}
+          className="min-h-[44px] px-3 rounded-btn border border-border bg-card text-est-error font-barlow-condensed text-apoyo font-bold flex items-center gap-1.5 cursor-pointer active:scale-[0.98] transition-transform">
+          <Trash2 size={15} aria-hidden="true" /> Eliminar
+        </button>
+      )}
 
       <div className="ml-auto flex items-center gap-1.5 flex-wrap">
         {pallets.length === 0 ? (

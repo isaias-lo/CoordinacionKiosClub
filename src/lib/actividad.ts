@@ -35,6 +35,11 @@ export const ACCIONES_ACTIVIDAD = [
   // qué frecuencia. Tocar un borrado por una teoría es exactamente lo que este repositorio ya
   // pagó caro.
   'conteo_borrado',
+  // [Instrumentación, 4/11] La pistola de Bodega «a veces no lee». Cuenta lo que casi se pierde
+  // (`rescatada`: llegó con frenadas y se leyó igual), lo que se perdió (`descartada`: forma de
+  // etiqueta, demasiado lento para tomarlo) y lo que se leyó pero no existe (`no_encontrada`).
+  // Ver `DiagnosticoLectura` en useLectorBodega.ts.
+  'lectura_pistola',
 ] as const;
 
 export type AccionActividad = typeof ACCIONES_ACTIVIDAD[number];
@@ -61,6 +66,9 @@ export interface ActividadCtx {
   tiendas?: number;
   pallets?: number;
   bultos?: number;
+  // lectura_pistola: qué pasó (`sourceLabel` lleva el resultado, `label` el código) y el ritmo.
+  pausaMaxMs?: number;
+  promedioMs?: number;
 }
 
 /** Convierte el `orden` interno (pallet1/bulto1/contenedor1/chocolate1) a etiqueta P1/B1/C1/CH1. */
@@ -133,6 +141,13 @@ export function buildActividadMensaje(accion: AccionActividad, ctx: ActividadCtx
     case 'conteo_borrado':
       return `Se borró el conteo de ${ctx.tiendas ?? 0} tienda${ctx.tiendas === 1 ? '' : 's'}`
            + `${ctx.label ? ` (${ctx.label})` : ''} — este equipo las tenía en pantalla sin unidades`;
+    case 'lectura_pistola': {
+      const que = ctx.sourceLabel === 'rescatada' ? 'leída con frenadas'
+        : ctx.sourceLabel === 'descartada' ? 'perdida, llegó muy lenta'
+        : ctx.sourceLabel === 'no_encontrada' ? 'leída, pero no existe' : (ctx.sourceLabel ?? 'lectura');
+      const ritmo = ctx.pausaMaxMs != null ? ` (pausa máx. ${ctx.pausaMaxMs} ms)` : '';
+      return `Pistola: ${ctx.label ?? '?'} ${que}${ritmo}${en}`;
+    }
   }
 }
 
@@ -177,6 +192,7 @@ export function logActividad(input: LogActividadInput): void {
         slotId: ctx.slotId ?? null,
         tiendas: ctx.tiendas ?? null, pallets: ctx.pallets ?? null, bultos: ctx.bultos ?? null,
         pesoPrevio: ctx.pesoPrevio ?? null, altoPrevio: ctx.altoPrevio ?? null,
+        ...(ctx.pausaMaxMs != null ? { pausaMaxMs: ctx.pausaMaxMs, promedioMs: ctx.promedioMs ?? null } : {}),
       },
     };
     // Auth por cookie de sesión (verifyActor tiene fallback de cookie); keepalive para que

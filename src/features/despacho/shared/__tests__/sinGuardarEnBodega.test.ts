@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { unidadesSinGuardar, avisoSinGuardar } from '../sinGuardarEnBodega';
+import { unidadesSinGuardar, avisoSinGuardar, textoPendientesAlEscanear } from '../sinGuardarEnBodega';
 
 const slot = (id: number, tipo: string, contenido = 'hogar') => ({ id, tipo, contenido });
 
@@ -45,5 +45,21 @@ describe('avisoSinGuardar', () => {
 
   it('varios tipos se enumeran', () => {
     expect(avisoSinGuardar({ P: 2, B: 1, C: 0, CH: 1, total: 4 })).toContain('2 pallets, 1 bulto y 1 chocolate');
+  });
+});
+
+describe('textoPendientesAlEscanear', () => {
+  it('cuenta las otras, sin la escaneada', () => {
+    expect(textoPendientesAlEscanear(4, true)).toBe('faltan 3 más en esta tienda');
+    expect(textoPendientesAlEscanear(2, true)).toBe('falta 1 más en esta tienda');
+  });
+  it('la escaneada es la última', () => {
+    expect(textoPendientesAlEscanear(1, true)).toBe('es la última que falta en esta tienda');
+  });
+  it('la escaneada ya estaba guardada y no falta nada', () => {
+    expect(textoPendientesAlEscanear(0, false)).toBe('no le falta nada a esta tienda');
+  });
+  it('la escaneada ya estaba guardada pero faltan otras', () => {
+    expect(textoPendientesAlEscanear(3, false)).toBe('faltan 3 más en esta tienda');
   });
 });

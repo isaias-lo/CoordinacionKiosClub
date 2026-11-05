@@ -20,10 +20,12 @@ import { useAuth } from '@/components/AuthProvider';
 import { isPathAllowed } from '@/config/routes';
 import { supabase } from '@/lib/supabase';
 import { avisoFisico } from '@/lib/avisoFisico';
+import { logActividad } from '@/lib/actividad';
 import { buscarPallet, variantesDeCodigo, type PalletEncontrado, type SlotDePallet } from './buscarPallet';
 import type { AvisoUnidad } from './avisoUnidadEscaneada';
+import { textoPendientesAlEscanear } from './sinGuardarEnBodega';
 import { ConfirmacionDoble } from './lectorBodega';
-import { useLectorBodega, tarjetaAMedias } from './useLectorBodega';
+import { useLectorBodega, tarjetaAMedias, type DiagnosticoLectura } from './useLectorBodega';
 import { avisoSiEsDeOtraBodega } from './vetoEscaneo';
 import { NOMBRE_ESPEJO, type EspejoBodega } from './duenoDeTienda';
 import { RUTA_ESPEJO, anotarEscaneoPendiente, avisoDeSalto, otroEspejo, tomarEscaneoPendiente } from './saltoEntreBodegas';
@@ -66,6 +68,8 @@ export interface OpcionesEscaneo<Slot extends SlotDePallet> {
   slotsPorTienda: Record<string, readonly Slot[]>;
   /** Qué decir de la unidad (ya pesada, sin pesar). */
   avisoDe: (p: PalletEncontrado<Slot>) => AvisoUnidad;
+  /** Cuántas unidades de su tienda siguen sin guardar, y si la escaneada es una. Ver `unidadesSinGuardar`. */
+  pendientesDe?: (p: PalletEncontrado<Slot>) => { total: number; estaFalta: boolean };
   /** Abrir la tienda y saltar a la tarjeta. `false` si esta pantalla no tiene esa tienda. */
   irA: (p: PalletEncontrado<Slot>) => boolean;
   /** Abrir el diálogo de preexistente con el número puesto. `false` si la tienda no es de esta pantalla.
@@ -88,6 +92,13 @@ export interface OpcionesEscaneo<Slot extends SlotDePallet> {
 
 export function useEscaneoBodega<Slot extends SlotDePallet>(opts: OpcionesEscaneo<Slot>): void {
   const confirmacion = useRef(new ConfirmacionDoble());
+
+  // Diagnóstico de la pistola (ver `DiagnosticoLectura`). Sin `espejo` no se sabe de qué Bodega es.
+  function diagnosticar(d: Pick<DiagnosticoLectura, 'codigo'> & { resultado: DiagnosticoLectura['resultado'] | 'no_encontrada'; maxMs?: number; promedioMs?: number }) {
+    if (!opts.espejo) return;
+    logActividad({ accion: 'lectura_pistola', fuente: opts.espejo, label: d.codigo.slice(0, 40),
+      sourceLabel: d.resultado, pausaMaxMs: d.maxMs, promedioMs: d.promedioMs });
+  }
 
   const { profile } = useAuth();
 
@@ -148,13 +159,17 @@ export function useEscaneoBodega<Slot extends SlotDePallet>(opts: OpcionesEscane
       return;
     }
     avisoFisico(aviso.advertir ? 'aviso' : 'ok');
-    if (aviso.texto) opts.showToast(`#${p.slot.id} · ${aviso.texto}`, aviso.advertir ? AMBAR : VERDE);
+    // Cuánto le falta a la tienda, en el mismo aviso: con la pistola es lo único que se mira.
+    const pend = opts.pendientesDe?.(p);
+    const partes = [aviso.texto, pend ? textoPendientesAlEscanear(pend.total, pend.estaFalta) : null].filter(Boolean);
+    if (partes.length) opts.showToast(`#${p.slot.id} · ${partes.join(' · ')}`, aviso.advertir ? AMBAR : VERDE);
   }
 
   useLectorBodega({
     activo: opts.activo,
     reconoce: codigo => !!buscarPallet(opts.slotsPorTienda, codigo),
     alEscanear: codigo => procesar(codigo, false),
+    alDiagnosticar: diagnosticar,
   });
 
   // ── La lectura que llegó desde el otro espejo ──────────────────────────────────────────────────
@@ -221,6 +236,7 @@ export function useEscaneoBodega<Slot extends SlotDePallet>(opts: OpcionesEscane
       if (borrado) pallet = borrado;
     }
     avisoFisico('error');
+    if (!pallet) diagnosticar({ resultado: 'no_encontrada', codigo });
     opts.showToast(pallet
       ? `El pallet #${pallet.id} es de ${pallet.store_cod}, que no está en esta bodega.`
       : `Etiqueta ${codigo} no encontrada.`, ROJO);

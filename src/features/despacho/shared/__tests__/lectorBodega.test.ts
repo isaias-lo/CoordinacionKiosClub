@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { esLecturaDeLector, Rafaga, ConfirmacionDoble, siguienteCampo } from '../lectorBodega';
+import { esLecturaDeLector, Rafaga, ConfirmacionDoble, siguienteCampo, puedeSerLecturaLenta, pareceEtiqueta, pausasDe } from '../lectorBodega';
 
 // Caracteres de `texto` separados por `paso` ms, desde `t0`.
 function tecleo(texto: string, paso: number, t0 = 1000) {
@@ -112,5 +112,73 @@ describe('siguienteCampo · Enter con el peso vacío', () => {
   });
   it('una tarjeta sin campo de peso guarda igual', () => {
     expect(siguienteCampo(['alto'], 'alto', new Set(['alto']))).toBe('guardar');
+  });
+});
+
+describe('lectura lenta (equipo ocupado, 4/11/2026)', () => {
+  it('el lector con pausas de equipo ocupado: la rápida es la cola mocha, la lenta la etiqueta entera', () => {
+    const r = new Rafaga<string>();
+    let n = 0;
+    // 8 ms entre teclas, salvo dos frenadas de 150 y 300 ms en medio.
+    const t = [0, 8, 16, 166, 174, 182, 482, 490, 498, 506, 514, 522, 530, 538, 546, 554];
+    [...'P130PHU21102026P'].forEach((c, i) => r.agregar(c, t[i]!, () => `m${++n}`));
+    const { rapida, lenta } = r.cerrarConLenta();
+    expect(rapida?.codigo).toBe('U21102026P');
+    expect(lenta).toMatchObject({ codigo: 'P130PHU21102026P', marca: 'm1', maxMs: 300 });
+    expect(r.pendiente).toBe(false);
+  });
+
+  it('si fue rápida no hay lenta', () => {
+    const r = new Rafaga<string>();
+    for (const { texto, t } of tecleo('1B28TEM22092026B', 8)) r.agregar(texto, t, () => 'm');
+    const c = r.cerrarConLenta();
+    expect(c.rapida?.codigo).toBe('1B28TEM22092026B');
+    expect(c.lenta).toBeNull();
+  });
+
+  it('una pausa de casi un segundo corta también la lenta', () => {
+    const r = new Rafaga<number>();
+    let n = 0;
+    r.agregar('9', 0, () => ++n);
+    for (const { texto, t } of tecleo('P130PHU21102026P', 100, 1000)) r.agregar(texto, t, () => ++n);
+    expect(r.cerrarConLenta().lenta).toMatchObject({ codigo: 'P130PHU21102026P', marca: 2 });
+  });
+
+  it('mirar no vacía: la lectura puede seguir llegando', () => {
+    const r = new Rafaga<string>();
+    for (const { texto, t } of tecleo('P130', 100)) r.agregar(texto, t, () => 'm');
+    expect(r.mirar().lenta?.codigo).toBe('P130');
+    for (const { texto, t } of tecleo('PHU', 100, 1400)) r.agregar(texto, t, () => 'm');
+    expect(r.mirar().lenta?.codigo).toBe('P130PHU');
+  });
+});
+
+describe('puedeSerLecturaLenta', () => {
+  it('en Peso, una etiqueta con letras sí', () => {
+    expect(puedeSerLecturaLenta('P130PHU21102026P', true)).toBe(true);
+  });
+  it('en Peso, un número nunca: puede ser un peso tecleado', () => {
+    expect(puedeSerLecturaLenta('1050', true)).toBe(false);
+    expect(puedeSerLecturaLenta('12345678', true)).toBe(false);
+    expect(puedeSerLecturaLenta('1.050,5', true)).toBe(false);
+  });
+  it('en Peso, algo corto tampoco', () => {
+    expect(puedeSerLecturaLenta('P1PHU', true)).toBe(false);
+  });
+  it('fuera de la tarjeta, un número de pallet alcanza', () => {
+    expect(puedeSerLecturaLenta('4127', false)).toBe(true);
+    expect(puedeSerLecturaLenta('412', false)).toBe(false);
+  });
+});
+
+describe('pareceEtiqueta y pausasDe', () => {
+  it('una etiqueta de Picking tiene letras, dígitos y largo completo', () => {
+    expect(pareceEtiqueta('P130PHU21102026P')).toBe(true);
+    expect(pareceEtiqueta('4127')).toBe(false);
+    expect(pareceEtiqueta('Hogar-Aseo')).toBe(false);
+  });
+  it('mide la pausa más larga y el promedio', () => {
+    expect(pausasDe(tecleo('ABCD', 10))).toEqual({ maxMs: 10, promedioMs: 10 });
+    expect(pausasDe([{ texto: 'AB', t: 0 }, { texto: 'C', t: 300 }])).toEqual({ maxMs: 300, promedioMs: 150 });
   });
 });

@@ -40,7 +40,8 @@ import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
 import { avanceTienda, claseUnidad } from '@/features/despacho/shared/unidadVisual';
 import { useTarjetaActiva } from '@/features/despacho/shared/useTarjetaActiva';
 import { AhoraUnidad, ChipUnificado, ChipSumados, CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, TiendaSinUnidades } from '@/features/despacho/shared/TiendaAbierta';
-import { confirmarCambioGuardado, confirmarQuitarSinGuardar, PEDIDO_SIN_PESAR, PEDIDO_REABRIR_TIENDA, pedidoPesoRaro } from '@/features/despacho/shared/confirmarGuardado';
+import { indicesABorrar } from '@/features/despacho/shared/borrarVarios';
+import { confirmarCambioGuardado, confirmarEliminarVarios, confirmarQuitarSinGuardar, PEDIDO_SIN_PESAR, PEDIDO_REABRIR_TIENDA, pedidoPesoRaro } from '@/features/despacho/shared/confirmarGuardado';
 import { confirmar } from '@/features/despacho/shared/confirmar';
 import { FilaTienda, BarraDelDia, UnidadesDelDia, FechasBodega, RotuloLista, PieLista, BaldosaAgregar, GRILLA_MOSAICO } from '@/features/despacho/shared/ListaTiendasUI';
 import { usePlegarCabecera } from '@/features/despacho/shared/usePlegarCabecera';
@@ -1449,6 +1450,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       const aviso = avisoDeUnidad(itemDeLaUnidad(dispatchData[p.claveTienda] ?? [], p.slot.id));
       return tiendaTerminada(TIENDAS[p.claveTienda]?.cod) ? avisoEnTerminada(aviso) : aviso;
     },
+    pendientesDe: p => ({
+      total: unidadesSinGuardar(slotsUnicos(pickingSlotsFull[p.claveTienda] ?? []), dispatchData[p.claveTienda] || []).total,
+      estaFalta: !itemDeLaUnidad(dispatchData[p.claveTienda] ?? [], p.slot.id),
+    }),
     bloqueada: cod => tiendaTerminada(cod),
     // Acá los mapas se indexan por NOMBRE de tienda; la pertenencia se decide por código.
     codDeClave: c => TIENDAS[c]?.cod,
@@ -1708,6 +1713,33 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     if (borrado) armarUndo(`${ordenToLabel(borrado.orden)} eliminado`, () => reAgregarItem(borrado, tienda, slotAntes));
   };
 
+  // «Eliminar» de la barra de sumar: los bultos/CH marcados, de una vez. Ver `borrarVarios.ts`.
+  const eliminarMarcados = async (rowIds: string[]) => {
+    if (!selectedTienda) return;
+    const tienda = selectedTienda;
+    const { unicas: filas } = unidadesSinRepetir(formRows.filter(r => rowIds.includes(r.id) && r.saved && r.savedItem));
+    if (!(await confirmarEliminarVarios(filas.map(r => labelDeFila(r, formRows))))) return;
+    for (const idx of indicesABorrar(dispatchData[tienda] || [], filas, (i, r) => sameStableItem(i, r.savedItem))) {
+      dispatch({ type: 'DELETE_ITEM', tienda, idx });
+    }
+    const deshacer: { item: DispatchItem; slotAntes?: PickingSlot }[] = [];
+    for (const row of filas) {
+      // El número (seq) se lee ANTES de borrar el slot, como en `deleteSavedRow`.
+      const slotId = row.pickingSlotId ?? row.savedItem?.pickingSlotId;
+      const slotAntes = slotId != null ? (pickingSlotsFullRef.current[tienda] ?? []).find(s => s.id === slotId) : undefined;
+      deletePickingSlot(slotId, { label: row.savedItem?.orden ?? labelDeFila(row, formRows) });
+      if (row.savedItem) deshacer.push({ item: row.savedItem, slotAntes });
+    }
+    const ids = new Set(rowIds);
+    setFormRows(prev => prev.filter(r => !ids.has(r.id) && !filas.some(f => esMismaUnidad(r, f))));
+    setMergeSel(new Set());
+    if (deshacer.length > 0) {
+      armarUndo(`${deshacer.length} eliminado${deshacer.length > 1 ? 's' : ''}`, async () => {
+        for (const d of deshacer) await reAgregarItem(d.item, tienda, d.slotAntes);
+      });
+    }
+  };
+
   const removeUnsavedRow = async (rowId: string) => {
     const row = formRows.find(r => r.id === rowId);
     if (!(await confirmarQuitarSinGuardar(row ? labelDeFila(row, formRows) : 'esta unidad', row?.pickingSlotId != null))) return;
@@ -1727,7 +1759,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       seqOriginal: slotAntes?.seq, canonicalOriginal: slotAntes?.canonical_id ?? item.canonical_id,
       peso: item.peso, alto: item.alto, largo: item.largo, ancho: item.ancho,
     });
-    if (slot) setPickingSlotsFull(prev => ({ ...prev, [tienda]: [...(prev[tienda] ?? []), slot] }));
+    // Sin repetir: la recarga de Picking puede haberlo traído ya (60PBL). Ver `slotsUnicos.ts`.
+    if (slot) setPickingSlotsFull(prev => ({ ...prev, [tienda]: agregarSlots(prev[tienda], [slot]) }));
     // Un CH que no recuperó su número toma el nuevo también en el `orden`: si no, la card y el ID de
     // Sheets dirían CH3 mientras la caja y el slot dicen otra cosa.
     const orden = item.pkg === 'chocolate' && slot?.seq && !conservoNumero
@@ -2637,7 +2670,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                 // Mismo número que la tarjeta (su `seq`). Contar la posición hacía que, borrado P1,
                 // el botón «P2» sumara al pallet que la tarjeta llama P3.
                 pallets={palletRows.map(r => ({ id: r.id, etiqueta: labelDeFila(r, formRows), agregado: !!r.savedItem }))}
-                onSumar={id => sumarVariosAPallet([...mergeSel], id)} />
+                onSumar={id => sumarVariosAPallet([...mergeSel], id)}
+                onEliminar={() => { void eliminarMarcados(sumableRows.filter(r => mergeSel.has(r.id)).map(r => r.id)); }} />
             );
           })()}
           </fieldset>
