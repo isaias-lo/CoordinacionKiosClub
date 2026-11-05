@@ -19,7 +19,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Printer, Download, Loader2, RotateCcw } from 'lucide-react';
+import { Printer, Download, Loader2, RotateCcw, Search, X } from 'lucide-react';
 import { AUTO_REFRESH_MS } from '../picking-types';
 import { fechaISOLocal } from '@/features/despacho/shared/fechaLocal';
 import { agruparConsultasPorDia } from '@/features/despacho/shared/consultasPorDia';
@@ -28,6 +28,8 @@ import { conCorrecciones, type FilaGuardada } from '../planilla/conCorrecciones'
 import { validarCorreccion, textoConfirmacion, type PedidoCorreccion } from '../planilla/correccionPicker';
 import { movimientosDesdeOdoo, type MovimientoOdoo } from '../planilla/desdeOdoo';
 import { COLOR_ZONA, ZONAS, zonaPlanilla, type ZonaPlanilla } from '../planilla/zonaPlanilla';
+import { contarPorZona, describirFiltro, filtrarMovimientos, filtrarPlanilla, sinFiltro,
+         type FiltroPlanilla } from '../planilla/filtrarPlanilla';
 import { horaChile, duracionMinutos, formatearDuracion } from '../planilla/horasPlanilla';
 import { csvVistaPlanilla, csvVistaDetalle } from '../planilla/csvPlanilla';
 
@@ -39,7 +41,11 @@ export interface PlanillaTabProps {
 }
 
 type Vista = 'planilla' | 'detalle';
-interface FichaTienda { codigo: string; sector_comuna?: string | null; tipo?: string | null; lat?: number | null }
+interface FichaTienda {
+  codigo: string; sector_comuna?: string | null; tipo?: string | null; lat?: number | null;
+  /** Para el buscador: escribir «peñalolen» encuentra 23PEÑ sin saberse el código. */
+  nombre?: string | null;
+}
 
 export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
   const fecha = fechaISOLocal();
@@ -54,6 +60,9 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
   // La celda que se está corrigiendo. `null` = no hay cuadro abierto.
   const [corrigiendo, setCorrigiendo] = useState<PedidoCorreccion | null>(null);
   const [guardandoCorr, setGuardandoCorr] = useState(false);
+  // El buscador y las zonas elegidas. `zonas` vacío = todas (ver `filtrarPlanilla`).
+  const [texto, setTexto] = useState('');
+  const [zonas, setZonas] = useState<ReadonlySet<ZonaPlanilla>>(() => new Set());
   // El cuadro va por PORTAL a document.body. Sin eso queda DENTRO de la pestaña, y el AppShell
   // tiene `overflow: hidden` y un `transform`: un transform en un ancestro rompe el
   // `position: fixed` —el elemento se posiciona contra ese ancestro, no contra la ventana— así
@@ -166,6 +175,18 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
     }),
     [cods, fichas]);
 
+  const zonaPorCod = useMemo(
+    () => new Map(tiendas.map(t => [t.cod, t.zona])),
+    [tiendas]);
+
+  const nombrePorCod = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const [cod, ficha] of Object.entries(fichas)) {
+      if (ficha.nombre) m.set(cod, String(ficha.nombre));
+    }
+    return m;
+  }, [fichas]);
+
   const movimientos: MovimientoPlanilla[] = useMemo(() => {
     if (!crudos) return [];
     const vivos = movimientosDesdeOdoo(crudos, nombres, diaPorTienda);
@@ -176,17 +197,42 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
     return [...conCorrecciones(conRef, guardados), ...sinRef];
   }, [crudos, nombres, diaPorTienda, guardados]);
 
-  const planilla = useMemo(() => armarPlanilla(movimientos, tiendas), [movimientos, tiendas]);
+  const planillaCompleta = useMemo(() => armarPlanilla(movimientos, tiendas), [movimientos, tiendas]);
+
+  const filtro: FiltroPlanilla = useMemo(() => ({ texto, zonas }), [texto, zonas]);
+  const filtrando = !sinFiltro(filtro);
+
+  const planilla = useMemo(
+    () => filtrarPlanilla(planillaCompleta, filtro, nombrePorCod),
+    [planillaCompleta, filtro, nombrePorCod]);
+
+  // Las pastillas cuentan sobre la hoja COMPLETA. Si contaran sobre la filtrada, al elegir Ruta
+  // Norte las otras cuatro dirían 0 y no habría forma de volver a ellas.
+  const porZona = useMemo(() => contarPorZona(planillaCompleta), [planillaCompleta]);
+  const limpiar = useCallback(() => { setTexto(''); setZonas(new Set()); }, []);
+
+  // Tocar una zona la suma o la saca. Varias a la vez son la unión: así se puede mirar Norte y
+  // Costa juntas, que es como salen los camiones.
+  const alternarZona = useCallback((z: ZonaPlanilla) => {
+    setZonas(prev => {
+      const n = new Set(prev);
+      if (n.has(z)) n.delete(z); else n.add(z);
+      return n;
+    });
+  }, []);
 
   // Cuántos nombres se cambiaron a mano hoy. Va al pie: si no, habría que buscarlos a ojo.
   const corregidos = useMemo(
     () => movimientos.filter(m => m.origen === 'corregido').length,
     [movimientos]);
 
-  // Solo lo que está en la hoja: los descartados no van al detalle.
+  // Solo lo que está en la hoja: los descartados no van al detalle. Y el mismo filtro que la
+  // matriz: las dos vistas tienen que mostrar el mismo recorte del día.
   const delDia = useMemo(
-    () => movimientos.filter(m => m.estado === 'done' || m.estado === 'assigned'),
-    [movimientos]);
+    () => filtrarMovimientos(
+      movimientos.filter(m => m.estado === 'done' || m.estado === 'assigned'),
+      filtro, zonaPorCod, nombrePorCod),
+    [movimientos, filtro, zonaPorCod, nombrePorCod]);
 
   // La lista de personas para elegir sale de Config · Pickers: escribir libre dejaría entrar dos
   // grafías del mismo nombre, y después esos dos no se pueden sumar en ninguna métrica.
@@ -234,20 +280,26 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
     const blob = new Blob(['﻿' + texto], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `planilla-${vista}-${fecha}.csv`;
+    // «parcial» en el nombre: un archivo al que le faltan tiendas y no lo dice se abre en una
+    // semana como si fuera el día completo. El texto buscado no va en el nombre —puede traer
+    // cualquier caracter—, pero el aviso sí.
+    a.download = `planilla-${vista}-${fecha}${filtrando ? '-parcial' : ''}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
-  }, [vista, planilla, delDia, fecha]);
+  }, [vista, planilla, delDia, fecha, filtrando]);
 
   const imprimir = useCallback(() => {
-    const html = vista === 'planilla' ? htmlPlanilla(planilla, fecha) : htmlDetalle(delDia, fecha);
+    const recorte = describirFiltro(filtro);
+    const html = vista === 'planilla'
+      ? htmlPlanilla(planilla, fecha, recorte)
+      : htmlDetalle(delDia, fecha, recorte);
     const w = window.open('', '_blank');
     if (!w) return;
     w.document.write(html);
     w.document.close();
     w.focus();
     w.print();
-  }, [vista, planilla, delDia, fecha]);
+  }, [vista, planilla, delDia, fecha, filtro]);
 
   // Un refresco fallido NO borra la hoja. Antes cualquier error reemplazaba todo por un mensaje
   // rojo: una sesión que caducó un momento, y el coordinador perdía la planilla que estaba
@@ -288,6 +340,26 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
             }}>{v === 'planilla' ? 'Planilla' : 'Detalle'}</button>
           ))}
         </div>
+        {/* El buscador calza contra el código y el nombre, y sin acentos: escribir «pen»
+            encuentra 23PEÑ. Escape lo limpia sin tener que ir al botón. */}
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <Search size={14} style={{ position: 'absolute', left: 9, color: '#94A3B8', pointerEvents: 'none' }} />
+          <input
+            type="text" value={texto} onChange={e => setTexto(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Escape') setTexto(''); }}
+            placeholder="Buscar tienda…" aria-label="Buscar tienda por código o nombre"
+            style={{ minHeight: 36, width: 168, padding: texto ? '0 28px 0 28px' : '0 10px 0 28px',
+                     fontSize: 13, fontFamily: 'inherit', borderRadius: 9,
+                     border: `1.5px solid ${texto ? '#1E40AF' : '#CBD5E1'}` }} />
+          {texto && (
+            <button type="button" onClick={() => setTexto('')} aria-label="Limpiar la búsqueda"
+                    style={{ position: 'absolute', right: 5, display: 'flex', padding: 3,
+                             border: 'none', background: 'transparent', cursor: 'pointer',
+                             color: '#64748B', borderRadius: 5 }}>
+              <X size={13} />
+            </button>
+          )}
+        </div>
         <button type="button" onClick={() => void cargar()} disabled={cargando}
                 style={{ ...BTN_SEC, opacity: cargando ? 0.6 : 1 }}
                 title="Volver a pedirle el día a Odoo">
@@ -308,20 +380,67 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
 
         <span style={{ width: 1, alignSelf: 'stretch', background: '#E2E8F0', margin: '0 3px' }} />
 
-        {/* Las cinco zonas siempre: una que no aparece se leería como un dato que falta. */}
+        {/* Las cinco zonas son la leyenda Y el filtro: el color ya enseña qué es cada una, así
+            que agregarles el clic no cuesta ninguna fila más de pantalla. Se pueden tocar
+            varias —Norte y Costa juntas, como salen los camiones— y «Todas» las suelta.
+
+            Las cinco están siempre, incluso en cero: una zona que desaparece se leería como un
+            dato que falta. En cero va apagada y sin clic, porque filtrar por ella dejaría la
+            hoja vacía sin que se entienda por qué. */}
+        <button type="button" onClick={() => setZonas(new Set())}
+                aria-pressed={zonas.size === 0}
+                title="Ver las cinco zonas del día"
+                style={{
+                  ...PASTILLA, cursor: 'pointer',
+                  background: zonas.size === 0 ? '#0F172A' : '#fff',
+                  color: zonas.size === 0 ? '#fff' : '#475569',
+                  border: `1px solid ${zonas.size === 0 ? '#0F172A' : '#CBD5E1'}`,
+                }}>
+          Todas <span style={{ fontSize: 9.5, fontWeight: 800, opacity: 0.6 }}>{planillaCompleta.filas.length}</span>
+        </button>
         {ZONAS.map(z => {
-          const n = planilla.filas.filter(f => f.zona === z).length;
+          const n = porZona[z];
           const c = COLOR_ZONA[z];
+          const on = zonas.has(z);
           return (
-            <span key={z} style={{
-              display: 'inline-flex', gap: 5, alignItems: 'center', padding: '2px 8px',
-              borderRadius: 6, fontSize: 11, fontWeight: 700,
-              background: c.bg, color: c.text, border: `1px solid ${c.border}`,
-              opacity: n === 0 ? 0.4 : 1,
-            }}>{c.label} <span style={{ fontSize: 9.5, fontWeight: 800, opacity: 0.6 }}>{n}</span></span>
+            <button key={z} type="button" onClick={() => alternarZona(z)}
+                    disabled={n === 0} aria-pressed={on}
+                    title={n === 0 ? `Hoy no hay tiendas de ${c.label}`
+                                   : on ? `Dejar de filtrar por ${c.label}`
+                                        : `Ver solo ${c.label}`}
+                    style={{
+                      ...PASTILLA, background: c.bg, color: c.text,
+                      cursor: n === 0 ? 'default' : 'pointer',
+                      border: `1px solid ${on ? c.text : c.border}`,
+                      boxShadow: on ? `inset 0 0 0 1px ${c.text}` : undefined,
+                      opacity: n === 0 ? 0.4 : 1,
+                    }}>
+              {c.label} <span style={{ fontSize: 9.5, fontWeight: 800, opacity: 0.6 }}>{n}</span>
+            </button>
           );
         })}
       </div>
+
+      {/* Mientras hay filtro, lo que se ve NO es el día: eso tiene que estar dicho en pantalla
+          y no deducirse de que faltan filas. Dice cuántas de cuántas, y suelta el filtro de un
+          clic. */}
+      {filtrando && (
+        <div role="status" style={{ flexShrink: 0, margin: '9px 16px 0', padding: '7px 12px',
+                                    display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
+                                    background: '#EFF6FF', border: '1px solid #BFDBFE',
+                                    borderRadius: 9, fontSize: 12.5, color: '#1E3A8A' }}>
+          <span>
+            Filtrado por <strong>{describirFiltro(filtro)}</strong>:{' '}
+            <strong>{planilla.filas.length}</strong> de {planillaCompleta.filas.length} tiendas
+            {vista === 'detalle' && <> · <strong>{delDia.length}</strong> movimientos</>}
+          </span>
+          <button type="button" onClick={limpiar}
+                  style={{ ...PASTILLA, marginLeft: 'auto', cursor: 'pointer', background: '#fff',
+                           color: '#1E40AF', border: '1px solid #93C5FD' }}>
+            Ver el día completo
+          </button>
+        </div>
+      )}
 
       {error && crudos && (
         <div role="status" style={{ flexShrink: 0, margin: '11px 16px 0', padding: '9px 13px',
@@ -337,9 +456,28 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
       {/* La tabla scrollea adentro para que su cabecera pueda quedar fija. `minHeight` es el piso
           que impide que se comprima a cero cuando la ventana es corta: ese fue el bug del 04/11. */}
       <div style={{ flex: 1, minHeight: 220, display: 'flex', padding: '9px 16px 0' }}>
-        {vista === 'planilla'
-          ? <TablaPlanilla planilla={planilla} onCorregir={abrirCorreccion} />
-          : <TablaDetalle movimientos={delDia} onCorregir={abrirCorreccion} />}
+        {filtrando && (vista === 'planilla' ? planilla.filas.length : delDia.length) === 0
+          ? (
+            // Una tabla con la cabecera y ninguna fila no dice por qué está vacía, y con un
+            // filtro puesto la explicación es justamente el filtro.
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10,
+                          alignItems: 'center', justifyContent: 'center', textAlign: 'center',
+                          background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11,
+                          padding: 24, color: '#475569' }}>
+              <div style={{ fontSize: 14.5, fontWeight: 700, color: '#0F172A' }}>
+                Ninguna tienda del día calza con {describirFiltro(filtro)}
+              </div>
+              <div style={{ fontSize: 12.5, maxWidth: 420, lineHeight: 1.55 }}>
+                El día tiene {planillaCompleta.filas.length}{' '}
+                {planillaCompleta.filas.length === 1 ? 'tienda' : 'tiendas'}. El buscador mira el
+                código y el nombre, sin importar acentos ni mayúsculas.
+              </div>
+              <button type="button" onClick={limpiar} style={BTN_PRI}>Ver el día completo</button>
+            </div>
+          )
+          : vista === 'planilla'
+            ? <TablaPlanilla planilla={planilla} onCorregir={abrirCorreccion} />
+            : <TablaDetalle movimientos={delDia} onCorregir={abrirCorreccion} />}
       </div>
 
       <div style={{ flexShrink: 0, margin: '9px 16px 12px',
@@ -374,6 +512,12 @@ const BTN_BASE = {
   fontFamily: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
 } as const;
 const BTN_SEC = { ...BTN_BASE, background: '#fff', color: '#334155', border: '1.5px solid #CBD5E1' };
+// Las pastillas de zona. Son botones, así que les toca el reset que los `<span>` no necesitaban:
+// sin `font` heredado un botón sale con la tipografía del sistema y la fila de zonas se desalinea.
+const PASTILLA = {
+  display: 'inline-flex', gap: 5, alignItems: 'center', padding: '2px 8px', borderRadius: 6,
+  fontSize: 11, fontWeight: 700, fontFamily: 'inherit', lineHeight: 1.6,
+} as const;
 const BTN_PRI = { ...BTN_BASE, background: '#0F172A', color: '#fff', border: 'none' };
 
 /** La matriz: una fila por tienda; una celda con varios movimientos los apila. */
@@ -382,7 +526,10 @@ function TablaPlanilla({ planilla, onCorregir }: {
   onCorregir: (celda: CeldaPlanilla, cod: string, seccion: SeccionPlanilla) => void;
 }) {
   return (
-    <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11,
+    // `pk-hoja` trae el resalte de la fila al pasar el mouse (marco.css). Los fondos de celda van
+    // por clase y no en línea: un estilo en línea le gana a cualquier selector, así que en línea
+    // tapaban el resalte justo en las celdas grises.
+    <div className="pk-hoja" style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11,
                   flex: 1, minHeight: 0, overflow: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1020 }}>
         <thead>
@@ -401,9 +548,9 @@ function TablaPlanilla({ planilla, onCorregir }: {
           {planilla.filas.map((f, i) => {
             const c = COLOR_ZONA[f.zona];
             return (
-              <tr key={f.cod} style={{ borderBottom: '1px solid #F1F5F9' }}>
+              <tr key={f.cod} className="fila" style={{ borderBottom: '1px solid #F1F5F9' }}>
                 <td style={TD_NUM}>{i + 1}</td>
-                <td style={{ padding: '6px 10px', verticalAlign: 'top' }}>
+                <td style={{ padding: '4px 10px', verticalAlign: 'top' }}>
                   <span style={{
                     display: 'inline-block', padding: '2px 8px', borderRadius: 5,
                     background: c.bg, color: c.text, border: `1px solid ${c.border}`,
@@ -413,13 +560,13 @@ function TablaPlanilla({ planilla, onCorregir }: {
                 </td>
                 {SECCIONES.map(s => {
                   const celda = f.celdas[s];
-                  const fondo = celda.length === 0 ? '#F8FAFC' : celda.length > 1 ? '#EFF6FF' : undefined;
+                  const clase = celda.length === 0 ? 'vacia' : celda.length > 1 ? 'doble' : undefined;
                   return (
                     <Fragment key={s}>
-                      <td style={{ ...TD_DER, background: fondo }}>
+                      <td className={clase} style={TD_DER}>
                         {celda.map((x, k) => <div key={k}>{x.registros}</div>)}
                       </td>
-                      <td style={{ ...TD, background: fondo }}>
+                      <td className={clase} style={TD}>
                         {celda.map((x, k) => (
                           <CeldaPicker key={k} celda={x} cod={f.cod} seccion={s}
                                        onCorregir={onCorregir} />
@@ -454,7 +601,7 @@ function TablaDetalle({ movimientos, onCorregir }: {
 }) {
   const filas = [...movimientos].sort(porAsignacion);
   return (
-    <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11,
+    <div className="pk-hoja" style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11,
                   flex: 1, minHeight: 0, overflow: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
@@ -470,7 +617,8 @@ function TablaDetalle({ movimientos, onCorregir }: {
             const dur = duracionMinutos(m.asignadoEn, m.validadoEn);
             const largo = dur !== null && dur >= 180;
             return (
-              <tr key={`${m.cod}-${m.seccion}-${i}`} style={{ borderBottom: '1px solid #F1F5F9' }}>
+              <tr key={`${m.cod}-${m.seccion}-${i}`} className="fila"
+                  style={{ borderBottom: '1px solid #F1F5F9' }}>
                 <td style={{ ...TD, fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: '#1E40AF' }}>{m.cod}</td>
                 <td style={TD}>{m.seccion}</td>
                 <td style={TD}>
@@ -483,8 +631,8 @@ function TablaDetalle({ movimientos, onCorregir }: {
                 <td style={{ ...TD_DER, fontWeight: 700 }}>{m.registros}</td>
                 <td style={{ ...TD, fontFamily: 'ui-monospace, monospace' }}>{horaChile(m.asignadoEn) || '—'}</td>
                 <td style={{ ...TD, fontFamily: 'ui-monospace, monospace' }}>{horaChile(m.validadoEn) || '—'}</td>
-                <td style={{ ...TD_DER, color: largo ? '#92400E' : '#475569',
-                             background: largo ? '#FFFBEB' : undefined }}>
+                <td className={largo ? 'largo' : undefined}
+                    style={{ ...TD_DER, color: largo ? '#92400E' : '#475569' }}>
                   {formatearDuracion(dur)}
                 </td>
               </tr>
@@ -657,11 +805,15 @@ const CSS_IMPRESION = `
   .firma .linea { height: 22px; border-bottom: 1px solid #111827; }
   .firma .rot { font-size: 8px; font-weight: 700; text-transform: uppercase;
                 letter-spacing: .06em; margin-top: 2px; }
+  /* Una hoja filtrada se firma igual que una completa: si no dice que le faltan tiendas, el
+     que la recibe no tiene cómo saberlo. Por eso el aviso es una banda y no una nota al pie. */
+  .recorte { background: #FEF3C7; border: 1.5px solid #D97706; border-radius: 3px;
+             padding: 3px 7px; margin-bottom: 7px; font-size: 9.5px; letter-spacing: .02em; }
 `;
 
 const DIAS = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO'];
 
-function cabecera(fecha: string, titulo: string, resumen: string): string {
+function cabecera(fecha: string, titulo: string, resumen: string, recorte = ''): string {
   // Mediodía para que el día no se corra por zona horaria, igual que `bandaApertura.ts`.
   const d = new Date(fecha + 'T12:00:00');
   const dia = DIAS[d.getDay()] ?? '';
@@ -672,7 +824,9 @@ function cabecera(fecha: string, titulo: string, resumen: string): string {
     <div style="text-align:right;font-size:9.5px">
       <div style="font-weight:700;text-transform:uppercase;letter-spacing:.07em">Kios Club · CD Recoleta</div>
       <div>${esc(resumen)}</div></div>
-  </div>`;
+  </div>
+  ${recorte ? `<div class="recorte"><strong>HOJA PARCIAL</strong> · solo ${esc(recorte)} ·
+    no es el día completo</div>` : ''}`;
 }
 
 const FIRMAS = `<div class="firmas">
@@ -684,7 +838,7 @@ const FIRMAS = `<div class="firmas">
 </div>`;
 
 /** La hoja horizontal de la vista PLANILLA. */
-function htmlPlanilla(p: Planilla, fecha: string): string {
+function htmlPlanilla(p: Planilla, fecha: string, recorte = ''): string {
   const th = ['<th style="width:18px">#</th>', '<th style="width:52px">Tienda</th>'];
   for (const s of SECCIONES) {
     th.push(`<th class="der" style="width:32px">${esc(s === 'Chocolates' ? 'Choc.' : s)}</th>`);
@@ -713,14 +867,14 @@ function htmlPlanilla(p: Planilla, fecha: string): string {
   const conCarga = p.filas.filter(f => !f.sinCarga).length;
   return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
     <title>Planilla ${esc(fecha)}</title><style>${CSS_IMPRESION}</style></head><body>
-    ${cabecera(fecha, 'Abastecimiento Seco', `${p.filas.length} tiendas · ${conCarga} con carga`)}
+    ${cabecera(fecha, 'Abastecimiento Seco', `${p.filas.length} tiendas · ${conCarga} con carga`, recorte)}
     <table><thead><tr>${th.join('')}</tr></thead><tbody>${trs.join('')}
       <tr style="background:#E8EDF3">${tot.join('')}</tr></tbody></table>
     ${FIRMAS}</body></html>`;
 }
 
 /** La lista con horas de la vista DETALLE. */
-function htmlDetalle(movs: MovimientoPlanilla[], fecha: string): string {
+function htmlDetalle(movs: MovimientoPlanilla[], fecha: string, recorte = ''): string {
   const trs = [...movs].sort(porAsignacion).map(m => `<tr>
       <td class="cod">${esc(m.cod)}</td>
       <td>${esc(m.seccion)}</td>
@@ -732,7 +886,7 @@ function htmlDetalle(movs: MovimientoPlanilla[], fecha: string): string {
     </tr>`);
   return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
     <title>Detalle ${esc(fecha)}</title><style>${CSS_IMPRESION}</style></head><body>
-    ${cabecera(fecha, 'Abastecimiento Seco · detalle', `${movs.length} movimientos`)}
+    ${cabecera(fecha, 'Abastecimiento Seco · detalle', `${movs.length} movimientos`, recorte)}
     <table><thead><tr><th>Tienda</th><th>Sección</th><th>Usuario</th><th class="der">Registros</th>
       <th>Inicio</th><th>Validado</th><th class="der">Duración</th></tr></thead>
       <tbody>${trs.join('')}</tbody></table>
