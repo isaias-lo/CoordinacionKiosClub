@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   juntadoTrasUnir, juntadoTrasSumar, juntadoMasCompleto, cuantoJuntado, textoSumados, textoPartes, lineaJuntado,
   juntadoDeTienda, textoJuntadoTienda,
+  textoPieza, firmaPieza, verboPieza, horaCorta, pesoDePiezas,
 } from '../juntados';
 import { tipoQueManda } from '../contenidoCarga';
 import type { Juntado } from '../juntados';
@@ -118,5 +119,67 @@ describe('fusionarConPrevio conserva lo juntado', () => {
   it('si lo nuevo trae más, queda lo nuevo', () => {
     const out = fusionarConPrevio({ ...base, juntado: { CH: 1 } }, { ...base, juntado: { CH: 2 } });
     expect(out.juntado).toEqual({ CH: 2 });
+  });
+});
+
+describe('desglose de lo juntado (5/11/2026)', () => {
+  const P1 = { etiqueta: 'P1', clase: 'P' as const, tipo: 'Comida', peso: 210.44 };
+  const P2 = { etiqueta: 'P2', clase: 'P' as const, tipo: 'Aseo', peso: 120 };
+  const CH3 = { etiqueta: 'CH3', clase: 'CH' as const, peso: 8.2 };
+  const quien = { por: 'Steven', en: '2026-11-05T17:07:00Z' };
+
+  it('al unir deja la base sin firma y el unido firmado', () => {
+    const j = juntadoTrasUnir({ tipo: 'Comida', datos: P1 }, { tipo: 'Aseo', datos: P2 }, quien);
+    expect(j.piezas).toEqual([
+      { etiqueta: 'P1', clase: 'P', tipo: 'comida', peso: 210.4 },
+      { etiqueta: 'P2', clase: 'P', tipo: 'aseo', peso: 120, por: 'Steven', en: '2026-11-05T17:07:00Z' },
+    ]);
+    expect(j.partes).toEqual(['comida', 'aseo']);
+  });
+
+  it('sin los datos de las dos no inventa un desglose', () => {
+    const j = juntadoTrasUnir({ tipo: 'Comida', datos: P1 }, { tipo: 'Aseo' }, quien);
+    expect(j.piezas).toBeUndefined();
+  });
+
+  it('al sumar agrega cada CH con su peso, y el CH no lleva tipo', () => {
+    const j = juntadoTrasSumar(null, ['CH'], { destino: P1, sumadas: [CH3], ...quien });
+    expect(j.CH).toBe(1);
+    expect(j.piezas?.map(p => p.etiqueta)).toEqual(['P1', 'CH3']);
+    expect(j.piezas?.[1].tipo).toBeUndefined();
+    expect(j.piezas?.[1].por).toBe('Steven');
+  });
+
+  it('unir dos que ya traían cosas arrastra todo, con su firma original', () => {
+    const p2ConCh = juntadoTrasSumar(null, ['CH'], { destino: P2, sumadas: [CH3], por: 'Ana', en: '2026-11-05T16:00:00Z' });
+    const j = juntadoTrasUnir({ tipo: 'Comida', datos: P1 }, { juntado: p2ConCh, tipo: 'Aseo', datos: { ...P2, peso: 128.2 } }, quien);
+    expect(j.piezas?.map(p => [p.etiqueta, p.peso, p.por])).toEqual([
+      ['P1', 210.4, undefined], ['P2', 120, 'Steven'], ['CH3', 8.2, 'Ana'],
+    ]);
+    expect(pesoDePiezas(j.piezas!)).toBe(338.6);
+  });
+
+  it('una base con uniones de antes del desglose queda marcada', () => {
+    const viejo = { partes: ['comida', 'hogar'] as const, CH: 1 };
+    const j = juntadoTrasSumar({ ...viejo, partes: [...viejo.partes] }, ['B'],
+      { destino: { ...P1, peso: 300 }, sumadas: [{ etiqueta: 'B2', clase: 'B', peso: 12 }], ...quien });
+    expect(j.piezas?.[0].conAnterior).toBe(true);
+    expect(j.partes).toEqual(['comida', 'hogar']);
+  });
+
+  it('sumar sin datos conserva el desglose que ya había', () => {
+    const antes = juntadoTrasSumar(null, ['CH'], { destino: P1, sumadas: [CH3], ...quien });
+    expect(juntadoTrasSumar(antes, ['B']).piezas).toEqual(antes.piezas);
+  });
+
+  it('textos de la pieza', () => {
+    const j = juntadoTrasUnir({ tipo: 'Comida', datos: P1 }, { tipo: 'Aseo', datos: P2 }, quien);
+    const [base, unido] = j.piezas!;
+    expect(textoPieza(unido)).toBe('P2 · Aseo · 120 kg');
+    expect(textoPieza(base)).toBe('P1 · Comida · 210,4 kg');
+    expect(firmaPieza(base, 'unió')).toBeNull();
+    expect(firmaPieza(unido, verboPieza(unido))).toBe('unió Steven, 14:07');
+    expect(verboPieza({ etiqueta: 'CH1', clase: 'CH', peso: 1 })).toBe('sumó');
+    expect(horaCorta('no es fecha')).toBe('');
   });
 });

@@ -30,7 +30,7 @@ import { CombineItemsModal } from '@/components/CombineItemsModal';
 import { sumPeso } from '../../shared/combineUtils';
 import { sumarPesoMultiple } from '../../shared/sumarMultiple';
 import { unionRefs, unidosTrasUnir } from '../../shared/unifyPallets';
-import { juntadoTrasSumar, juntadoTrasUnir, juntadoDeTienda, type Juntado, type JuntadoTienda } from '../../shared/juntados';
+import { juntadoTrasSumar, juntadoTrasUnir, juntadoDeTienda, letraPieza, horaCorta, type Autoria, type DatosPieza, type Juntado, type JuntadoTienda } from '../../shared/juntados';
 import { finalizarSlotUnion } from '../../shared/finalizarSlotUnion';
 import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { useUndoDelete } from '../../shared/useUndoDelete';
@@ -39,7 +39,7 @@ import { pkgCodeNacional } from '../../shared/tipoCode';
 import { CruceDePesosCard } from '@/features/despacho/shared/CruceDePesosCard';
 import { avanceTienda, claseUnidad } from '@/features/despacho/shared/unidadVisual';
 import { useTarjetaActiva } from '@/features/despacho/shared/useTarjetaActiva';
-import { AhoraUnidad, ChipUnificado, ChipSumados, CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, TiendaSinUnidades } from '@/features/despacho/shared/TiendaAbierta';
+import { AhoraUnidad, ChipUnificado, ChipSumados, CabeceraTienda, ColaPendientes, FilaPesada, RotuloSeccion, BotonAccion, EtiquetaUnidad, AvisoTiendaTerminada, AvisoCamionCargado, TiendaSinUnidades } from '@/features/despacho/shared/TiendaAbierta';
 import { indicesABorrar } from '@/features/despacho/shared/borrarVarios';
 import { confirmarCambioGuardado, confirmarEliminarVarios, confirmarQuitarSinGuardar, PEDIDO_SIN_PESAR, PEDIDO_REABRIR_TIENDA, pedidoPesoRaro } from '@/features/despacho/shared/confirmarGuardado';
 import { confirmar } from '@/features/despacho/shared/confirmar';
@@ -55,6 +55,8 @@ import { sheetsRegionesWrite } from '../utils/sheetsRegiones';
 import { useCruceDelDia } from '@/features/despacho/shared/useCruceDelDia';
 import { veElCruce } from '@/features/despacho/shared/cruceTienda';
 import { useAuth } from '@/components/AuthProvider';
+import { useCargaEnCamion } from '@/features/despacho/shared/useCargaEnCamion';
+import { claveTienda, type CargaCamion } from '@/features/despacho/shared/cargaEnCamion';
 import { remapPickingSlot } from '../../shared/remapPickingSlot';
 import { crearSlotBodega } from '../../shared/crearSlotBodega';
 import { useTiendaTerminada } from '../../shared/useTiendaTerminada';
@@ -252,8 +254,10 @@ interface GridCardProps {
   forma?: 'fila' | 'baldosa';
   /** Unificados y B/CH dentro de un pallet. Ver `juntadoDeTienda`. */
   juntado?: JuntadoTienda;
+  /** Ya va en un camión cerrado. Ver `cargaEnCamion.ts`. */
+  camion?: CargaCamion;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, bultoCount, adquisicionCount = 0, webRetiroCount = 0, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, sinPesarCount, nuevas = 0, onSelect, onDragStart, onAddToday, onRemoveFromToday, forma, juntado }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, bultoCount, adquisicionCount = 0, webRetiroCount = 0, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, sinPesarCount, nuevas = 0, onSelect, onDragStart, onAddToday, onRemoveFromToday, forma, juntado, camion }: GridCardProps) {
   const t = TIENDAS[name];
   // El bulto ya NO sale por resta: así caían adentro las adquisiciones y los web/retiro. Ver
   // `contarPorClase`. Lo que falta es lo que Picking imprimió y Bodega todavía no cargó; sin
@@ -275,7 +279,7 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
       agregados={{ adquisicion: adquisicionCount, webRetiro: webRetiroCount }}
       sinPesar={sinPesarCount ?? 0}
       odoo={isToday ? { done: storeDoneOps, total: storeTotalOps } : undefined}
-      viendo={viendo} onSelect={onSelect} onDragStart={onDragStart} accion={accion} forma={forma} juntado={juntado} />
+      viendo={viendo} onSelect={onSelect} onDragStart={onDragStart} accion={accion} forma={forma} juntado={juntado} camion={camion} />
   );
 }
 
@@ -323,6 +327,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
   // El cruce contra Odoo, solo para administración. `veElCruce` decide quién lo ve, y ese mismo
   // booleano apaga la consulta: quien no ve el bloque no paga el pedido. Ver `cruceTienda.ts`.
   const { profile } = useAuth();
+  // Las tiendas que ya van en un camión cerrado: se pintan moradas con la patente. Ver `cargaEnCamion.ts`.
+  const cargaCamion = useCargaEnCamion(_localDate);
   const verCruce = veElCruce(profile?.role);
   const cruceDelDia = useCruceDelDia(fechaChile(), verCruce);
   const registroTiendas = useRegistroDeTiendas(fechaChile());
@@ -739,6 +745,12 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       mia?.numero ?? 1,
     );
   };
+
+  // El desglose de lo juntado: qué unidad, de qué tipo, cuánto pesaba, quién y cuándo. Ver `juntados.ts`.
+  const autoria = (): Autoria => ({ por: profile?.full_name ?? undefined, en: new Date().toISOString() });
+  const datosDeFila = (r: FormRow, lista: FormRow[], etiqueta?: string): DatosPieza => ({
+    etiqueta: etiqueta || labelDeFila(r, lista), clase: letraPieza(r.pkg),
+    tipo: r.savedItem?.tipo ?? r.tipo, peso: pesoNetoDeTarjeta(r) });
 
   const baseRaw       = mounted ? (sheetsTodayCods.length > 0 ? sheetsTodayCods : getTodayCods()) : [];
   const baseTodayCods = mounted ? [...baseRaw, ...adelantoCods.filter(c => !baseRaw.includes(c))] : [];
@@ -1940,7 +1952,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     // no le llegaba al ítem: el bulto se borraba, el slot quedaba con el peso nuevo y Bodega con el
     // de antes. Si nadie apretaba Agregar, esos kilos no se contaban (LAS BRUJAS, pruebas 22/10; espejo de RM).
     const palletItem = palletRow.savedItem ?? itemDeLaUnidad(dispatchData[selectedTienda] || [], palletRow.pickingSlotId);
-    const juntado = juntadoTrasSumar(palletItem?.juntado ?? palletRow.juntado, [bultoRow.pkg === 'chocolate' ? 'CH' : 'B']);
+    const juntado = juntadoTrasSumar(palletItem?.juntado ?? palletRow.juntado, [bultoRow.pkg === 'chocolate' ? 'CH' : 'B'],
+      { destino: datosDeFila(palletRow, formRows, palletLabel), sumadas: [datosDeFila(bultoRow, formRows)], ...autoria() });
 
     deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId, { yaRegistrado: true });
 
@@ -2012,7 +2025,8 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const snap = snapshotSuma(selectedTienda, bultoRows, palletRow, palletLabel, pesoActual);
     // Reabierto sin guardar: el ítem se busca por su unidad. Ver `sumarBultoAPallet`.
     const palletItem = palletRow.savedItem ?? itemDeLaUnidad(dispatchData[selectedTienda] || [], palletRow.pickingSlotId);
-    const juntado = juntadoTrasSumar(palletItem?.juntado ?? palletRow.juntado, bultoRows.map(r => r.pkg === 'chocolate' ? 'CH' : 'B'));
+    const juntado = juntadoTrasSumar(palletItem?.juntado ?? palletRow.juntado, bultoRows.map(r => r.pkg === 'chocolate' ? 'CH' : 'B'),
+      { destino: datosDeFila(palletRow, formRows, palletLabel), sumadas: bultoRows.map(r => datosDeFila(r, formRows)), ...autoria() });
 
     for (const bultoRow of bultoRows) {
       deletePickingSlot(bultoRow.pickingSlotId ?? bultoRow.savedItem?.pickingSlotId, { yaRegistrado: true });
@@ -2083,8 +2097,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     const unidos = unidosTrasUnir(targetRow.savedItem ?? targetRow, sourceRow.savedItem ?? sourceRow);
     // De qué tipo era cada uno, y lo que ya traían sumado. Ver `juntadoTrasUnir`.
     const juntado = juntadoTrasUnir(
-      { juntado: targetRow.savedItem?.juntado ?? targetRow.juntado, tipo: targetRow.savedItem?.tipo ?? targetRow.tipo },
-      { juntado: sourceRow.savedItem?.juntado ?? sourceRow.juntado, tipo: sourceRow.savedItem?.tipo ?? sourceRow.tipo });
+      { juntado: targetRow.savedItem?.juntado ?? targetRow.juntado, tipo: targetRow.savedItem?.tipo ?? targetRow.tipo,
+        datos: datosDeFila(targetRow, formRows, tgtLabel) },
+      { juntado: sourceRow.savedItem?.juntado ?? sourceRow.juntado, tipo: sourceRow.savedItem?.tipo ?? sourceRow.tipo,
+        datos: datosDeFila(sourceRow, formRows, srcLabel) }, autoria());
     // ── LA BASE PRIMERO (15/10/2026) ─────────────────────────────────────────────────────────
     // Antes la pantalla quitaba el ítem del origen y DESPUÉS mandaba la unión a la base, sin
     // esperarla. Si la base la rechazaba (el destino ya lo había borrado otro equipo), el peso del
@@ -2560,6 +2576,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         {header}
         <fieldset disabled={bloqueada} className="contents">{pdfStrip}</fieldset>
         <div ref={isMobile ? formScrollRef : formScrollDesktopRef} className="flex-1 overflow-y-auto px-2 py-2">
+          {(() => {
+            const c = tienda?.cod ? cargaCamion.get(claveTienda(tienda.cod)) : undefined;
+            return c ? <AvisoCamionCargado patente={c.patente} hora={horaCorta(c.en)} /> : null;
+          })()}
           {bloqueada && tienda?.cod && (
             <AvisoTiendaTerminada nuevas={nuevasDe({ name: selectedTienda ?? '', cod: tienda.cod })}
               onReabrir={async () => { if (await confirmar(PEDIDO_REABRIR_TIENDA)) marcarTerminada(tienda.cod, false); }} />
@@ -2828,7 +2848,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   const storeTotalOpsSeco = Math.max(0, (prog?.total ?? 0) - (prog?.congTotal ?? 0));
                   const storeDoneOpsSeco  = Math.max(0, (prog?.done ?? 0) - (prog?.congDone ?? 0));
                   return (
-                    <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]}
+                    <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]} camion={cargaCamion.get(claveTienda(t.cod))}
                       isActive={selectedTienda === t.name} isToday
                       itemCount={cardItems.length} sinPesarCount={cardItems.filter(esSinPesar).length}
                       palletCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).pallet}
@@ -2883,7 +2903,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     const pkSlots   = pickingSlotsFull[t.name] ?? [];
                     const consumed  = consumedPickingSlots[t.name] || { p: 0, b: 0, c: 0, ch: 0 };
                     return (
-                      <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]}
+                      <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]} camion={cargaCamion.get(claveTienda(t.cod))}
                         isActive={selectedTienda === t.name} isToday={false}
                         itemCount={cardItems.length} sinPesarCount={cardItems.filter(esSinPesar).length}
                         palletCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).pallet}

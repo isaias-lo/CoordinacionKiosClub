@@ -22,7 +22,7 @@
 // La lógica (estado, avance, filtros) vive en `listaTiendas.ts`, sin React.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { MoreHorizontal, Plus, X } from 'lucide-react';
+import { MoreHorizontal, Plus, Truck, X } from 'lucide-react';
 import { ESTILO_UNIDAD, type AvanceTienda } from './unidadVisual';
 import { BarraAvance, ConteoPorTipo } from './TiendaAbierta';
 import { PresenciaBadge } from './PresenciaBadge';
@@ -31,6 +31,7 @@ import type { ViendoInfo } from './usePresenciaTienda';
 import { chipFila, textoUnidadesDelDia, type EstadoLista, type FiltroLista, type ResumenDia, type TonoChip } from './listaTiendas';
 import { agregadosBaldosa, ariaBaldosa, detalleBaldosa, pctAnillo, pctOdoo } from './baldosaTienda';
 import { textoJuntadoTienda, type JuntadoTienda } from './juntados';
+import { textoCamion, type CargaCamion } from './cargaEnCamion';
 
 const TONO_CHIP: Record<TonoChip, string> = {
   ok:      'text-est-ok bg-est-ok-suave',
@@ -63,14 +64,28 @@ export interface FilaTiendaProps {
   forma?: 'fila' | 'baldosa';
   /** Unificados y B/CH dentro de un pallet: se ve sin entrar a la tienda. Ver `juntadoDeTienda`. */
   juntado?: JuntadoTienda;
+  /** Ya va en un camión cerrado: la tienda se pinta morada con la patente. Ver `cargaEnCamion.ts`. */
+  camion?: CargaCamion | null;
+}
+
+/** «🚚 TDCV15», morado. La tienda ya se cargó en ese camión. */
+function PatenteCamion({ camion, chico = false }: { camion: CargaCamion; chico?: boolean }) {
+  return (
+    <span title={textoCamion(camion)}
+      className={`inline-flex items-center gap-1 rounded-full bg-est-cargado text-est-cargado-letra font-bold whitespace-nowrap tabular-nums ${chico ? 'text-rotulo px-1.5 py-0.5' : 'text-rotulo uppercase px-2 py-0.5'}`}>
+      <Truck size={chico ? 12 : 13} aria-hidden="true" />{camion.patente}
+    </span>
+  );
 }
 
 /**
  * Fondo y franja izquierda de la fila: se reconoce de lejos qué tiendas están listas (verde) y
  * cuáles ya tienen guía (celeste). La abierta manda sobre las dos.
  */
-function claseFila(activa: boolean, estado: EstadoLista, conGuia: boolean): string {
+function claseFila(activa: boolean, estado: EstadoLista, conGuia: boolean, cargada = false): string {
   if (activa) return 'bg-navy/[0.07] shadow-[inset_4px_0_0_theme(colors.navy.DEFAULT)]';
+  // Cargada en un camión gana sobre lista y guía: es lo último que le pasa a una tienda en el día.
+  if (cargada) return 'bg-est-cargado-suave shadow-[inset_4px_0_0_var(--est-cargado)] active:bg-bg-2';
   if (estado === 'lista') return 'bg-est-ok-suave shadow-[inset_4px_0_0_var(--est-ok)] active:bg-bg-2';
   if (conGuia) return 'bg-sky-500/10 shadow-[inset_4px_0_0_theme(colors.sky.500)] active:bg-bg-2';
   return 'bg-card active:bg-bg-2';
@@ -82,7 +97,7 @@ const CLASE_LETRA: Record<string, 'pallet' | 'bulto' | 'contenedor' | 'chocolate
 
 export function FilaTienda(props: FilaTiendaProps) {
   if (props.forma === 'baldosa') return <BaldosaTienda {...props} />;
-  const { cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, nuevas, odoo, viendo, onSelect, onDragStart, accion, juntado } = props;
+  const { cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, nuevas, odoo, viendo, onSelect, onDragStart, accion, juntado, camion } = props;
   const textoJuntado = textoJuntadoTienda(juntado);
   const chip = chipFila({ estado, sinPesar, conGuia, nuevas });
   const otros = agregados ? [
@@ -93,7 +108,7 @@ export function FilaTienda(props: FilaTiendaProps) {
     <div
       draggable={!!onDragStart}
       onDragStart={onDragStart}
-      className={`relative flex items-stretch border-b border-border transition-colors ${claseFila(activa, estado, conGuia)}`}>
+      className={`relative flex items-stretch border-b border-border transition-colors ${claseFila(activa, estado, conGuia, !!camion)}`}>
       <button type="button" onClick={onSelect} aria-current={activa ? 'true' : undefined} data-tienda-lista=""
         className="flex-1 min-w-0 grid grid-cols-[52px_1fr_auto] gap-x-2.5 gap-y-1 items-center px-3.5 py-2.5 text-left cursor-pointer select-none">
         <span className="row-span-2 relative font-barlow-condensed text-titulo font-extrabold text-navy text-center tabular-nums">
@@ -108,9 +123,15 @@ export function FilaTienda(props: FilaTiendaProps) {
             </span>
           )}
         </span>
-        <span className={`text-rotulo font-bold uppercase px-2 py-0.5 rounded-full whitespace-nowrap ${TONO_CHIP[chip.tono]}`}>
-          {chip.texto}
-        </span>
+        {/* Un aviso (nuevas de Picking, sin pesar) sigue mandando aunque el camión ya esté cerrado:
+            es justo lo que se quedaría abajo. Si no hay aviso, la patente toma el lugar del estado. */}
+        {camion && chip.tono !== 'aviso'
+          ? <PatenteCamion camion={camion} />
+          : (
+            <span className={`text-rotulo font-bold uppercase px-2 py-0.5 rounded-full whitespace-nowrap ${TONO_CHIP[chip.tono]}`}>
+              {chip.texto}
+            </span>
+          )}
         <span className="col-span-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 min-w-0 text-apoyo text-text-sub">
           {avance.total > 0
             ? <><BarraAvance pesadas={avance.pesadas} total={avance.total} /><ConteoPorTipo avance={avance} /></>
@@ -124,6 +145,8 @@ export function FilaTienda(props: FilaTiendaProps) {
             <span className="text-rotulo font-bold uppercase px-1.5 rounded-full bg-sky-600 text-white whitespace-nowrap" title="Ya tiene su guía">Guía</span>
           )}
           {textoJuntado && <span className="font-semibold text-text-2 whitespace-nowrap">{textoJuntado}</span>}
+          {camion && chip.tono === 'aviso' && <PatenteCamion camion={camion} chico />}
+          {camion && <span className="sr-only">{textoCamion(camion)}</span>}
         </span>
         {odoo && odoo.total > 0 && (
           <span className="col-start-2 col-span-2 flex items-center gap-2 text-rotulo text-text-sub" title="Movimientos de Odoo realizados">
@@ -163,6 +186,10 @@ const ANILLO: Record<EstadoLista, string> = {
   pendiente: 'bg-bg-3',
 };
 
+/** Ya va en un camión cerrado: morado, por encima del estado del día. Ver `cargaEnCamion.ts`. */
+const CAJA_CARGADA = 'border-2 border-est-cargado bg-est-cargado-suave';
+const ANILLO_CARGADA = '[--anillo:var(--est-cargado)]';
+
 const DETALLE_BALDOSA: Record<EstadoLista, string> = {
   lista:     'text-est-ok',
   curso:     'text-navy',
@@ -182,7 +209,7 @@ function Centro({ sigla, numero, chico = false }: { sigla: string; numero: strin
   );
 }
 
-export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, nuevas, odoo, viendo, onSelect, onDragStart, accion, juntado }: FilaTiendaProps) {
+export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, nuevas, odoo, viendo, onSelect, onDragStart, accion, juntado, camion }: FilaTiendaProps) {
   const textoJuntado = textoJuntadoTienda(juntado);
   const chip = chipFila({ estado, sinPesar, conGuia, nuevas });
   const pct = pctAnillo(estado, avance);
@@ -198,13 +225,13 @@ export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avan
   return (
     <div draggable={!!onDragStart} onDragStart={onDragStart} className="relative min-w-0">
       <button type="button" onClick={onSelect} aria-current={activa ? 'true' : undefined} data-tienda-lista=""
-        aria-label={[ariaBaldosa({ nombre, cod, estado, avance, chip: chip.texto, conGuia, agregados, odoo }), textoJuntado].filter(Boolean).join(', ')}
+        aria-label={[ariaBaldosa({ nombre, cod, estado, avance, chip: chip.texto, conGuia, agregados, odoo }), textoJuntado, camion ? textoCamion(camion) : null].filter(Boolean).join(', ')}
         title={tipo ? `${nombre} · ${tipo.label}` : nombre}
-        className={`w-full h-full min-h-[116px] rounded-card px-1.5 pt-2 pb-1.5 flex flex-col items-center gap-0.5 text-center cursor-pointer select-none transition-colors active:opacity-80 ${CAJA_BALDOSA[estado]} ${activa ? 'ring-2 ring-navy ring-offset-2 ring-offset-bg' : ''}`}>
+        className={`w-full h-full min-h-[116px] rounded-card px-1.5 pt-2 pb-1.5 flex flex-col items-center gap-0.5 text-center cursor-pointer select-none transition-colors active:opacity-80 ${camion ? CAJA_CARGADA : CAJA_BALDOSA[estado]} ${activa ? 'ring-2 ring-navy ring-offset-2 ring-offset-bg' : ''}`}>
         {/* Dos anillos: afuera lo pesado, adentro los movimientos de Odoo (ámbar mientras
             faltan, verde al terminar). Sin movimientos de Odoo, solo el de afuera. */}
         <span aria-hidden="true"
-          className={`relative w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 ${ANILLO[estado]}`}
+          className={`relative w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 ${camion && estado !== 'pendiente' ? ANILLO_CARGADA : ANILLO[estado]}`}
           style={estado === 'pendiente' ? undefined : { background: `conic-gradient(var(--anillo) 0 ${pct}%, var(--color-bg-3) ${pct}% 100%)` }}>
           <PresenciaBadge viendo={viendo} />
           <span className="w-[52px] h-[52px] rounded-full bg-card flex items-center justify-center">
@@ -223,6 +250,7 @@ export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avan
             <span key={i} className="whitespace-nowrap">{i > 0 ? '· ' : ''}{parte}</span>
           ))}
         </span>
+        {camion && <PatenteCamion camion={camion} chico />}
         {textoJuntado && (
           <span aria-hidden="true" className="flex flex-wrap justify-center gap-x-1.5 text-rotulo tracking-normal font-bold leading-tight text-text-2">
             {/* Sin «·»: en la baldosa angosta cada parte cae en su línea y el punto quedaba colgando. */}

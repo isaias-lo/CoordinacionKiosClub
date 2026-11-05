@@ -106,6 +106,9 @@ export default {
           'aviso-suave': 'var(--est-aviso-suave)',
           error:         'var(--est-error)',
           'error-suave': 'var(--est-error-suave)',
+          cargado:         'var(--est-cargado)',
+          'cargado-suave': 'var(--est-cargado-suave)',
+          'cargado-letra': 'var(--est-cargado-letra)',
         },
         uni: {
           pallet:             'var(--uni-pallet)',

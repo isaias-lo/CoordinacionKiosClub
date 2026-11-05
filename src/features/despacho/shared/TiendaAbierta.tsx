@@ -21,9 +21,9 @@
 // Nacional y RM/Costa usan estas mismas piezas: si cambian, cambian juntas.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { MoreHorizontal, Pencil, ChevronLeft, Lock, Plus, Layers, PackagePlus } from 'lucide-react';
+import { MoreHorizontal, Pencil, ChevronLeft, ChevronDown, Lock, Plus, Layers, PackagePlus, Truck } from 'lucide-react';
 import { textoUnificado } from './unifyPallets';
-import { lineaJuntado, textoSumados, type Juntado } from './juntados';
+import { firmaPieza, lineaJuntado, pesoDePiezas, textoPieza, textoSumados, verboPieza, type Juntado } from './juntados';
 import { ESTILO_UNIDAD, LETRA_UNIDAD, esCambioDeUnidad, type AvanceTienda, type ClaseUnidad } from './unidadVisual';
 
 /** «P1», «B3»: la etiqueta de la unidad, en el color de su tipo. */
@@ -222,6 +222,24 @@ export function CabeceraTienda({ nombre, subtitulo, avance, indicador, estado, a
 }
 
 /**
+ * Encima de una tienda que ya va en un camión cerrado: lo que se pese ahora no sube a ese camión
+ * solo. Isaias, 05/11/2026. Ver `cargaEnCamion.ts`.
+ */
+export function AvisoCamionCargado({ patente, hora }: { patente: string; hora?: string }) {
+  return (
+    <div role="status" className="mx-1 mt-1 mb-2 rounded-card border-2 border-est-cargado bg-est-cargado-suave px-3 py-2.5 flex items-center gap-3">
+      <Truck size={22} aria-hidden="true" className="flex-shrink-0 text-est-cargado" />
+      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+        <span className="font-barlow-condensed text-cuerpo font-extrabold uppercase text-est-cargado">
+          Cargada en {patente}{hora ? ` · ${hora}` : ''}
+        </span>
+        <span className="text-apoyo text-text">El camión ya se cerró. Si pesas algo más, avisa a quien despacha.</span>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Encima de una tienda terminada, que no se puede editar. Si Picking imprimió algo DESPUÉS de
  * terminarla, el aviso pasa a ámbar y ofrece reabrirla ahí mismo: la unidad nueva está adentro,
  * bloqueada, y sin reabrir no hay cómo pesarla.
@@ -377,11 +395,49 @@ export function ChipSumados({ juntado, grande }: { juntado?: Juntado | null; gra
   );
 }
 
-/** «Se unió Comida + Aseo · se le sumaron 2 CH», en una línea propia. Nada si no hay qué contar. */
+/**
+ * «Se unió Comida + Aseo · se le sumaron 2 CH», en una línea propia. Nada si no hay qué contar.
+ *
+ * Con desglose (lo juntado desde el 05/11/2026), la línea se toca y despliega cada unidad que
+ * quedó adentro: etiqueta, tipo, peso al juntarse, quién y a qué hora. Isaias pidió «saber la
+ * información» de lo que se unió o se sumó a un pallet, no solo cuántos.
+ */
 export function DetalleJuntado({ juntado, className = '' }: { juntado?: Juntado | null; className?: string }) {
+  const [abierto, setAbierto] = useState(false);
   const linea = lineaJuntado(juntado);
   if (!linea) return null;
-  return <div className={`text-apoyo font-semibold text-text-2 ${className}`}>{linea}</div>;
+  const piezas = juntado?.piezas ?? [];
+  if (piezas.length < 2) return <div className={`text-apoyo font-semibold text-text-2 ${className}`}>{linea}</div>;
+  return (
+    <div className={className}>
+      <button type="button" onClick={() => setAbierto(a => !a)} aria-expanded={abierto}
+        className="min-h-[44px] -my-2 flex items-center gap-1 text-left text-apoyo font-semibold text-text-2 cursor-pointer">
+        <span>{linea}</span>
+        <span className="inline-flex items-center gap-0.5 whitespace-nowrap text-text font-bold underline underline-offset-2">
+          · Desglose <ChevronDown size={14} aria-hidden="true" className={abierto ? 'rotate-180' : ''} />
+        </span>
+      </button>
+      {abierto && (
+        <ol className="mt-1 mb-1 rounded-btn border border-border bg-bg-2/60 divide-y divide-border">
+          {piezas.map((p, i) => {
+            const firma = firmaPieza(p, verboPieza(p));
+            return (
+              <li key={`${p.etiqueta}-${i}`} className="px-2.5 py-1.5 text-apoyo">
+                <span className="font-semibold text-text tabular-nums">{textoPieza(p)}</span>
+                <span className="text-text-sub">
+                  {i === 0 ? ' · base' : firma ? ` · ${firma}` : ''}
+                  {p.conAnterior ? ' · ya traía cosas unidas antes' : ''}
+                </span>
+              </li>
+            );
+          })}
+          <li className="px-2.5 py-1.5 text-apoyo text-text-sub tabular-nums">
+            Suma de las partes: <span className="font-semibold text-text">{pesoDePiezas(piezas).toLocaleString('es-CL', { maximumFractionDigits: 1 })} kg</span>
+          </li>
+        </ol>
+      )}
+    </div>
+  );
 }
 
 export interface FichaPendiente {
