@@ -377,58 +377,76 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
           Actualizar
         </button>
         {actualizado && (
-          <span style={{ fontSize: 11.5, color: error ? '#B91C1C' : '#64748B', whiteSpace: 'nowrap' }}
+          // `nowrap` sin `flexShrink` hacía que este texto —lo más largo de la barra— empujara a
+          // los filtros a la línea de abajo antes de tiempo. Ahora cede el ancho él primero.
+          <span style={{ fontSize: 11.5, color: error ? '#B91C1C' : '#64748B',
+                         minWidth: 0, flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis',
+                         whiteSpace: 'nowrap' }}
                 title="Se actualiza sola cada 3 minutos con la pestaña a la vista. Odoo cachea 30 segundos, así que un cambio puede tardar hasta unos 3 minutos y medio en verse.">
-            Datos de las {horaChile(actualizado.toISOString())}
+            {/* Sin «Datos de las»: son 60 px al lado de un botón «Actualizar», que ya dice qué
+                es esta hora. El `title` de arriba lo explica entero. */}
+            {horaChile(actualizado.toISOString())}
             {error ? ' · sin actualizar' : ' · cada 3 min'}
           </span>
         )}
         <button type="button" onClick={bajar} style={BTN_SEC}><Download size={15} /> Bajar archivo</button>
-        <button type="button" onClick={imprimir} style={BTN_PRI}>
-          <Printer size={15} /> {vista === 'planilla' ? 'Imprimir planilla' : 'Imprimir detalle'}
+        {/* «Imprimir» a secas y la vista en el `title`: el par Planilla/Detalle está tres
+            botones más a la izquierda y ya dice cuál se va a imprimir. Son 45 px que necesitan
+            los filtros para entrar en la misma línea. */}
+        <button type="button" onClick={imprimir} style={BTN_PRI}
+                title={vista === 'planilla' ? 'Imprimir la planilla del día' : 'Imprimir el detalle del día'}>
+          <Printer size={15} /> Imprimir
         </button>
 
-        <span style={{ width: 1, alignSelf: 'stretch', background: '#E2E8F0', margin: '0 3px' }} />
+        {/* ── LOS FILTROS SON UN SOLO BLOQUE ────────────────────────────────────────────────
+            Estaban sueltos en la misma fila flex que los botones, así que al angostarse la
+            ventana envolvían DE A UNA: en un MacBook quedaban «Todas» y «Ruta Norte» arriba con
+            los botones y las otras cuatro abajo, separadas de su grupo y leyéndose como una fila
+            cortada. Metidas en su propio contenedor son un único item del flex de afuera: o
+            entran todas en la primera línea, o bajan todas juntas a la segunda. */}
+        <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ width: 1, alignSelf: 'stretch', background: '#E2E8F0', margin: '0 3px' }} />
 
-        {/* Las cinco zonas son la leyenda Y el filtro: el color ya enseña qué es cada una, así
-            que agregarles el clic no cuesta ninguna fila más de pantalla. Se pueden tocar
-            varias —Norte y Costa juntas, como salen los camiones— y «Todas» las suelta.
+          {/* Las cinco zonas son la leyenda Y el filtro: el color ya enseña qué es cada una, así
+              que agregarles el clic no cuesta ninguna fila más de pantalla. Se pueden tocar
+              varias —Norte y Costa juntas, como salen los camiones— y «Todas» las suelta.
 
-            Las cinco están siempre, incluso en cero: una zona que desaparece se leería como un
-            dato que falta. En cero va apagada y sin clic, porque filtrar por ella dejaría la
-            hoja vacía sin que se entienda por qué. */}
-        <button type="button" onClick={() => setZonas(new Set())}
-                aria-pressed={zonas.size === 0}
-                title="Ver las cinco zonas del día"
-                style={{
-                  ...PASTILLA, cursor: 'pointer',
-                  background: zonas.size === 0 ? '#0F172A' : '#fff',
-                  color: zonas.size === 0 ? '#fff' : '#475569',
-                  border: `1px solid ${zonas.size === 0 ? '#0F172A' : '#CBD5E1'}`,
-                }}>
-          Todas <span style={{ fontSize: 9.5, fontWeight: 800, opacity: 0.6 }}>{planillaCompleta.filas.length}</span>
-        </button>
-        {ZONAS.map(z => {
-          const n = porZona[z];
-          const c = COLOR_ZONA[z];
-          const on = zonas.has(z);
-          return (
-            <button key={z} type="button" onClick={() => alternarZona(z)}
-                    disabled={n === 0} aria-pressed={on}
-                    title={n === 0 ? `Hoy no hay tiendas de ${c.label}`
-                                   : on ? `Dejar de filtrar por ${c.label}`
-                                        : `Ver solo ${c.label}`}
-                    style={{
-                      ...PASTILLA, background: c.bg, color: c.text,
-                      cursor: n === 0 ? 'default' : 'pointer',
-                      border: `1px solid ${on ? c.text : c.border}`,
-                      boxShadow: on ? `inset 0 0 0 1px ${c.text}` : undefined,
-                      opacity: n === 0 ? 0.4 : 1,
-                    }}>
-              {c.label} <span style={{ fontSize: 9.5, fontWeight: 800, opacity: 0.6 }}>{n}</span>
-            </button>
-          );
-        })}
+              Las cinco están siempre, incluso en cero: una zona que desaparece se leería como un
+              dato que falta. En cero va apagada y sin clic, porque filtrar por ella dejaría la
+              hoja vacía sin que se entienda por qué. */}
+          <button type="button" onClick={() => setZonas(new Set())}
+                  aria-pressed={zonas.size === 0}
+                  title="Ver las cinco zonas del día"
+                  style={{
+                    ...PASTILLA, cursor: 'pointer',
+                    background: zonas.size === 0 ? '#0F172A' : '#fff',
+                    color: zonas.size === 0 ? '#fff' : '#475569',
+                    border: `1px solid ${zonas.size === 0 ? '#0F172A' : '#CBD5E1'}`,
+                  }}>
+            Todas <span style={{ fontSize: 9.5, fontWeight: 800, opacity: 0.6 }}>{planillaCompleta.filas.length}</span>
+          </button>
+          {ZONAS.map(z => {
+            const n = porZona[z];
+            const c = COLOR_ZONA[z];
+            const on = zonas.has(z);
+            return (
+              <button key={z} type="button" onClick={() => alternarZona(z)}
+                      disabled={n === 0} aria-pressed={on}
+                      title={n === 0 ? `Hoy no hay tiendas de ${c.label}`
+                                     : on ? `Dejar de filtrar por ${c.label}`
+                                          : `Ver solo ${c.label}`}
+                      style={{
+                        ...PASTILLA, background: c.bg, color: c.text,
+                        cursor: n === 0 ? 'default' : 'pointer',
+                        border: `1px solid ${on ? c.text : c.border}`,
+                        boxShadow: on ? `inset 0 0 0 1px ${c.text}` : undefined,
+                        opacity: n === 0 ? 0.4 : 1,
+                      }}>
+                {c.label} <span style={{ fontSize: 9.5, fontWeight: 800, opacity: 0.6 }}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Mientras hay filtro, lo que se ve NO es el día: eso tiene que estar dicho en pantalla
