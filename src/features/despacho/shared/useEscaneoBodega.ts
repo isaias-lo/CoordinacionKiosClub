@@ -24,6 +24,7 @@ import { logActividad } from '@/lib/actividad';
 import { buscarPallet, variantesDeCodigo, type PalletEncontrado, type SlotDePallet } from './buscarPallet';
 import type { AvisoUnidad } from './avisoUnidadEscaneada';
 import { textoPendientesAlEscanear } from './sinGuardarEnBodega';
+import { avisoEscaneoCargada } from './cargaEnCamion';
 import { ConfirmacionDoble } from './lectorBodega';
 import { useLectorBodega, tarjetaAMedias, type DiagnosticoLectura } from './useLectorBodega';
 import { avisoSiEsDeOtraBodega } from './vetoEscaneo';
@@ -70,6 +71,8 @@ export interface OpcionesEscaneo<Slot extends SlotDePallet> {
   avisoDe: (p: PalletEncontrado<Slot>) => AvisoUnidad;
   /** Cuántas unidades de su tienda siguen sin guardar, y si la escaneada es una. Ver `unidadesSinGuardar`. */
   pendientesDe?: (p: PalletEncontrado<Slot>) => { total: number; estaFalta: boolean };
+  /** La patente del camión cerrado que ya lleva esta tienda, o `null`. Ver `cargaEnCamion.ts`. */
+  camionDe?: (storeCod: string) => string | null;
   /** Abrir la tienda y saltar a la tarjeta. `false` si esta pantalla no tiene esa tienda. */
   irA: (p: PalletEncontrado<Slot>) => boolean;
   /** Abrir el diálogo de preexistente con el número puesto. `false` si la tienda no es de esta pantalla.
@@ -158,11 +161,17 @@ export function useEscaneoBodega<Slot extends SlotDePallet>(opts: OpcionesEscane
       opts.showToast(`El pallet #${p.slot.id} es de una tienda que no está en esta bodega.`, ROJO);
       return;
     }
-    avisoFisico(aviso.advertir ? 'aviso' : 'ok');
     // Cuánto le falta a la tienda, en el mismo aviso: con la pistola es lo único que se mira.
     const pend = opts.pendientesDe?.(p);
-    const partes = [aviso.texto, pend ? textoPendientesAlEscanear(pend.total, pend.estaFalta) : null].filter(Boolean);
-    if (partes.length) opts.showToast(`#${p.slot.id} · ${partes.join(' · ')}`, aviso.advertir ? AMBAR : VERDE);
+    // Si su camión ya se cerró, eso va primero: una unidad sin guardar de una tienda que ya salió
+    // es la que se queda abajo (Isaias, 05/11/2026).
+    const cod = opts.codDeClave(p.claveTienda);
+    const patente = cod ? opts.camionDe?.(cod) : null;
+    const cargada = patente ? avisoEscaneoCargada(patente, !!pend?.estaFalta) : null;
+    const advertir = aviso.advertir || !!cargada?.advertir;
+    avisoFisico(advertir ? 'aviso' : 'ok');
+    const partes = [cargada?.texto, aviso.texto, pend ? textoPendientesAlEscanear(pend.total, pend.estaFalta) : null].filter(Boolean);
+    if (partes.length) opts.showToast(`#${p.slot.id} · ${partes.join(' · ')}`, advertir ? AMBAR : VERDE);
   }
 
   useLectorBodega({

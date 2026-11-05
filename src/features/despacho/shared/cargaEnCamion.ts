@@ -66,6 +66,17 @@ export function textoCamion(c: CargaCamion): string {
   return `Cargada en ${c.patente}`;
 }
 
+/**
+ * Lo que dice la pistola al leer una unidad de una tienda que ya va en un camión cerrado. Si la
+ * unidad todavía no está guardada en Bodega es justo la que se quedaría abajo: se avisa fuerte.
+ * Si ya estaba guardada, solo se informa.
+ */
+export function avisoEscaneoCargada(patente: string, sinGuardar: boolean): { texto: string; advertir: boolean } {
+  return sinGuardar
+    ? { texto: `la tienda ya salió en ${patente}: avisa a despacho`, advertir: true }
+    : { texto: `ya cargada en ${patente}`, advertir: false };
+}
+
 /** Cuántas de las tiendas dadas ya van en un camión. */
 export function cuantasCargadas(cods: readonly string[], carga: ReadonlyMap<string, CargaCamion>): number {
   return cods.filter(c => carga.has(claveTienda(c))).length;

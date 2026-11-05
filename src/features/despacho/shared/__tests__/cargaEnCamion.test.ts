@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cargaPorTienda, claveTienda, cuantasCargadas, textoCamion, type RutaCargada } from '../cargaEnCamion';
+import { avisoEscaneoCargada, cargaPorTienda, claveTienda, cuantasCargadas, textoCamion, type RutaCargada } from '../cargaEnCamion';
 
 const ruta = (patente: string, created_at: string, cods: string[], extra: Partial<RutaCargada> = {}): RutaCargada => ({
   patente, created_at, codigo_ruta: `R-${created_at}`, tipo: 'seco', ruta_tiendas: cods.map(store_cod => ({ store_cod })), ...extra,
@@ -43,6 +43,11 @@ describe('claveTienda y textos', () => {
     expect(claveTienda('14 pf')).toBe('14PF');
     const m = cargaPorTienda([ruta('TDCV15', 'a', ['14PF'])]);
     expect(cuantasCargadas(['14 PF', '02 SCL'], m)).toBe(1);
+  });
+
+  it('al escanear: fuerte si la unidad no está guardada, informativo si ya lo está', () => {
+    expect(avisoEscaneoCargada('TDCV15', true)).toEqual({ texto: 'la tienda ya salió en TDCV15: avisa a despacho', advertir: true });
+    expect(avisoEscaneoCargada('TDCV15', false)).toEqual({ texto: 'ya cargada en TDCV15', advertir: false });
   });
 
   it('dice la patente', () => {

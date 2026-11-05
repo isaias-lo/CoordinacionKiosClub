@@ -2422,6 +2422,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
       estaFalta: !itemDeLaUnidad(items[p.claveTienda] ?? [], p.slot.id),
     }),
     bloqueada: cod => tiendaTerminada(cod),
+    camionDe: cod => cargaCamion.get(claveTienda(cod))?.patente ?? null,
     // Acá los mapas se indexan por código, así que la clave ya ES el código.
     codDeClave: c => c,
     // `tiendaByCod` trae TODO el catálogo de /api/tiendas, Nacional incluido, así que sin esto la

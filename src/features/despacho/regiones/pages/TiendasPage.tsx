@@ -1467,6 +1467,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       estaFalta: !itemDeLaUnidad(dispatchData[p.claveTienda] ?? [], p.slot.id),
     }),
     bloqueada: cod => tiendaTerminada(cod),
+    camionDe: cod => cargaCamion.get(claveTienda(cod))?.patente ?? null,
     // Acá los mapas se indexan por NOMBRE de tienda; la pertenencia se decide por código.
     codDeClave: c => TIENDAS[c]?.cod,
     // Hoy `TIENDAS` solo tiene tiendas de Regiones, así que esto no bloquea nada que antes
