@@ -272,13 +272,16 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
     // Ahora scrollea la hoja entera y nada puede colapsar. La barra de botones va `sticky` para
     // seguir a mano con la tabla corrida, y cada bloque lleva `flexShrink: 0`.
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'auto' }}>
+      {/* La leyenda va en ESTA fila y no en una propia: una fila sola para cinco pastillas chicas
+          costaba unos 30 px de alto que las tiendas necesitan. Con `flexWrap` baja sola si la
+          ventana es angosta. */}
       <div style={{ position: 'sticky', top: 0, zIndex: 2, flexShrink: 0, background: '#fff',
-                    borderBottom: '1px solid #E2E8F0', padding: '14px 16px 11px',
+                    borderBottom: '1px solid #E2E8F0', padding: '9px 16px 8px',
                     display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', border: '1.5px solid #CBD5E1', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', border: '1.5px solid #CBD5E1', borderRadius: 9, overflow: 'hidden' }}>
           {(['planilla', 'detalle'] as Vista[]).map(v => (
             <button key={v} type="button" onClick={() => setVista(v)} style={{
-              minHeight: 44, padding: '0 16px', fontSize: 13.5, fontWeight: 700, border: 'none',
+              minHeight: 36, padding: '0 14px', fontSize: 13, fontWeight: 700, border: 'none',
               cursor: 'pointer', fontFamily: 'inherit',
               background: vista === v ? '#1E40AF' : '#fff',
               color: vista === v ? '#fff' : '#475569',
@@ -302,6 +305,22 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
         <button type="button" onClick={imprimir} style={BTN_PRI}>
           <Printer size={15} /> {vista === 'planilla' ? 'Imprimir planilla' : 'Imprimir detalle'}
         </button>
+
+        <span style={{ width: 1, alignSelf: 'stretch', background: '#E2E8F0', margin: '0 3px' }} />
+
+        {/* Las cinco zonas siempre: una que no aparece se leería como un dato que falta. */}
+        {ZONAS.map(z => {
+          const n = planilla.filas.filter(f => f.zona === z).length;
+          const c = COLOR_ZONA[z];
+          return (
+            <span key={z} style={{
+              display: 'inline-flex', gap: 5, alignItems: 'center', padding: '2px 8px',
+              borderRadius: 6, fontSize: 11, fontWeight: 700,
+              background: c.bg, color: c.text, border: `1px solid ${c.border}`,
+              opacity: n === 0 ? 0.4 : 1,
+            }}>{c.label} <span style={{ fontSize: 9.5, fontWeight: 800, opacity: 0.6 }}>{n}</span></span>
+          );
+        })}
       </div>
 
       {error && crudos && (
@@ -315,32 +334,15 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
         </div>
       )}
 
-      {/* Las cinco zonas siempre: una que no aparece se leería como un dato que falta. */}
-      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center',
-                    flexShrink: 0, padding: '11px 16px 0' }}>
-        {ZONAS.map(z => {
-          const n = planilla.filas.filter(f => f.zona === z).length;
-          const c = COLOR_ZONA[z];
-          return (
-            <span key={z} style={{
-              display: 'inline-flex', gap: 5, alignItems: 'center', padding: '3px 9px',
-              borderRadius: 6, fontSize: 11.5, fontWeight: 700,
-              background: c.bg, color: c.text, border: `1px solid ${c.border}`,
-              opacity: n === 0 ? 0.4 : 1,
-            }}>{c.label} <span style={{ fontSize: 10, fontWeight: 800, opacity: 0.6 }}>{n}</span></span>
-          );
-        })}
-      </div>
-
       {/* La tabla scrollea adentro para que su cabecera pueda quedar fija. `minHeight` es el piso
           que impide que se comprima a cero cuando la ventana es corta: ese fue el bug del 04/11. */}
-      <div style={{ flex: 1, minHeight: 220, display: 'flex', padding: '11px 16px 0' }}>
+      <div style={{ flex: 1, minHeight: 220, display: 'flex', padding: '9px 16px 0' }}>
         {vista === 'planilla'
           ? <TablaPlanilla planilla={planilla} onCorregir={abrirCorreccion} />
           : <TablaDetalle movimientos={delDia} onCorregir={abrirCorreccion} />}
       </div>
 
-      <div style={{ flexShrink: 0, margin: '11px 16px 16px',
+      <div style={{ flexShrink: 0, margin: '9px 16px 12px',
                     fontSize: 12.5, color: '#78350F', background: '#FFFBEB',
                     border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 14px' }}>
         Fuera de la hoja: <strong>{planilla.descartados.anulados}</strong> anulados y{' '}
@@ -365,9 +367,11 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
   );
 }
 
+// 36 px y no 44: los 44 son la guía para dedos, y esta pantalla se opera con mouse. Debajo de 32
+// ya cuesta apuntar. Los 8 px que se ahorran por botón son alto para las tiendas.
 const BTN_BASE = {
-  minHeight: 44, padding: '0 15px', borderRadius: 10, fontSize: 13.5, fontWeight: 700,
-  fontFamily: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7,
+  minHeight: 36, padding: '0 13px', borderRadius: 9, fontSize: 13, fontWeight: 700,
+  fontFamily: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
 } as const;
 const BTN_SEC = { ...BTN_BASE, background: '#fff', color: '#334155', border: '1.5px solid #CBD5E1' };
 const BTN_PRI = { ...BTN_BASE, background: '#0F172A', color: '#fff', border: 'none' };
@@ -614,10 +618,12 @@ const TH       = { position: 'sticky', top: 0, zIndex: 1, background: '#F8FAFC',
 const TH_TENUE = { ...TH, color: '#94A3B8' } as const;
 const TH_DER   = { ...TH, textAlign: 'right', padding: '7px 6px' } as const;
 const TH_NUM   = { ...TH, textAlign: 'center', padding: '7px 4px', color: '#64748B' } as const;
-const TD       = { padding: '6px 10px', color: '#334155', verticalAlign: 'top' } as const;
-const TD_DER   = { padding: '6px', textAlign: 'right', color: '#0F172A', verticalAlign: 'top',
+// 4 px de relleno y no 6: son 4 px menos por tienda y con 29 filas se nota al scrollear. El alto
+// de la celda lo sigue fijando el botón del picker, que tiene su propio borde.
+const TD       = { padding: '4px 10px', color: '#334155', verticalAlign: 'top' } as const;
+const TD_DER   = { padding: '4px 6px', textAlign: 'right', color: '#0F172A', verticalAlign: 'top',
                    fontWeight: 700, fontVariantNumeric: 'tabular-nums' } as const;
-const TD_NUM   = { padding: '6px 4px', textAlign: 'center', color: '#94A3B8', fontSize: 10.5,
+const TD_NUM   = { padding: '4px 4px', textAlign: 'center', color: '#94A3B8', fontSize: 10.5,
                    verticalAlign: 'top' } as const;
 const ESTILO_SIN_ASIGNAR = { color: '#B45309', fontStyle: 'italic', fontWeight: 600 } as const;
 
