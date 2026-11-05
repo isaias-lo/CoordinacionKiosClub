@@ -64,6 +64,20 @@ export async function GET(request: NextRequest) {
   const fecha   = request.nextUrl.searchParams.get('fecha') ?? fechaChile();
   const patente = request.nextUrl.searchParams.get('patente');
 
+  // [Bodega · 05/11/2026] Qué tiendas ya van en un camión cerrado, y en cuál. Bodega pinta esas
+  // tiendas de morado con la patente. Solo lo justo (sin guías ni direcciones): se pide cada minuto
+  // desde las handheld. `fecha` es el día de ARMADO, el mismo que trabaja Bodega.
+  if (request.nextUrl.searchParams.get('carga') === '1') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return NextResponse.json({ error: 'fecha inválida' }, { status: 400 });
+    const { data, error } = await supabaseServer()
+      .from('rutas_despacho')
+      .select('patente, codigo_ruta, tipo, created_at, ruta_tiendas(store_cod)')
+      .eq('fecha', fecha)
+      .order('created_at', { ascending: true });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ data: data ?? [] });
+  }
+
   let query = supabaseServer()
     .from('rutas_despacho')
     .select('*, ruta_tiendas(*), ruta_guias(*)')

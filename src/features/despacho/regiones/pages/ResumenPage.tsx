@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, type ReactNode } from 'react';
-import { claseNacional } from '../../shared/numeroCard';
+import { claseNacional, rotuloDeUnidad } from '../../shared/numeroCard';
 import { finalizarSlotUnion } from '@/features/despacho/shared/finalizarSlotUnion';
 import { logActividad, ordenToLabel } from '@/lib/actividad';
 import { useAuth } from '@/components/AuthProvider';
@@ -34,7 +34,7 @@ import { AvisoResumenTerminada, BotonHerramienta, CabeceraResumen, FilaResumenTi
 import { AVISO_ERROR } from '../../shared/colorAviso';
 import { nombreContenido, unirTipos } from '../../shared/contenidoCarga';
 import { unidosTrasUnir } from '../../shared/unifyPallets';
-import { juntadoTrasUnir, juntadoDeTienda } from '../../shared/juntados';
+import { juntadoTrasUnir, juntadoDeTienda, letraPieza, type DatosPieza } from '../../shared/juntados';
 import { SelectorTipoCarga } from '../../shared/SelectorTipoCarga';
 import { tipoBloqueadoDeSlot } from '../../shared/tipoDeSlot';
 
@@ -76,6 +76,12 @@ interface ResumenPageProps {
   extra?: ReactNode;
   /** Lo que falta cerrar del día (tiendas sin terminar, sin pesar). Se avisa antes de registrar. */
   avisoRegistrar?: string | null;
+}
+
+
+/** Lo que se sabe de una unidad al combinarla, para el desglose. Ver `juntados.ts`. */
+function datosDeItem(i: DispatchItem): DatosPieza {
+  return { etiqueta: rotuloDeUnidad(claseNacional(i.pkg), i.orden), clase: letraPieza(i.pkg), tipo: i.tipo, peso: i.peso };
 }
 
 export function ResumenPage({ panel = false, onRegistrar, terminada = () => false, avance, volver, extra, avisoRegistrar }: ResumenPageProps) {
@@ -195,7 +201,9 @@ export function ResumenPage({ panel = false, onRegistrar, terminada = () => fals
     const merged: DispatchItem = { ...src, peso, alto, tipo: tipoMerge, guia, valor, taraPallet: undefined, palletWeb: peso > 0 ? undefined : src.palletWeb,
       // Combinar también es unificar: queda marcada en Bodega. Ver `unidosTrasUnir`.
       unidos: unidosTrasUnir(src, tgt),
-      juntado: juntadoTrasUnir({ juntado: src.juntado, tipo: src.tipo }, { juntado: tgt.juntado, tipo: tgt.tipo }) };
+      juntado: juntadoTrasUnir({ juntado: src.juntado, tipo: src.tipo, datos: datosDeItem(src) },
+        { juntado: tgt.juntado, tipo: tgt.tipo, datos: datosDeItem(tgt) },
+        { por: profile?.full_name ?? undefined, en: new Date().toISOString() }) };
     dispatch({ type: 'UPDATE_ITEMS', tienda, items: renumber(combinarEnLista(list, srcIdx, tgtIdx, merged)) });
     // El slot que sobrevive se queda con el peso combinado: el cruce con Odoo lee el slot.
     void actualizarSlotPicking(merged.pickingSlotId, camposDePeso(merged, esSinPesar(merged))).then(r => {
