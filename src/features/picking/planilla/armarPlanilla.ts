@@ -38,7 +38,13 @@ export interface MovimientoPlanilla {
    */
   cod: string;
   seccion: SeccionPlanilla;
-  /** `move_ids.length`: el número que muestra Odoo. NO el `lineCount` filtrado por estado. */
+  /**
+   * El número que muestra Odoo en su columna «registros»: `move_line_ids.length`.
+   *
+   * NO `move_ids` —esa es la demanda— ni el `lineCount` filtrado por estado. Este comentario
+   * decía `move_ids` y estaba mal: se corrigió en el #779 después de que la hoja dijera 33 en un
+   * movimiento que Odoo mostraba con 16.
+   */
   registros: number;
   /** El nombre ya traducido por `picker_canonical_names`; `''` si todavía no se asignó. */
   picker: string;
