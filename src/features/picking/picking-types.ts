@@ -104,12 +104,20 @@ export interface SupervisorPresence {
 export interface PickerStatRow {
   name: string; ops: number; totalMinutes: number; avgMinutesPerOp: number;
   units: number; lineCount: number; avgSecondsPerLine: number; cph: number;
+  /** Operaciones con las dos horas: es el divisor de los promedios y el mínimo para comparar. */
+  opsMedidas?: number;
+  /** Las cuentas de Odoo que aportaron a esta fila. Más de una = la persona usó dos pistolas. */
+  cuentas?: string[];
 }
 
 // `desde`/`hasta`: el período de esas filas. Sin él, al volver a la pestaña se mostraban los números
 // de «Hoy» bajo el título del mes (el período se reiniciaba y las filas no).
 export interface StatsCache {
   cachedAt: string; rows: PickerStatRow[]; desde?: string; hasta?: string;
+  /** Las filas del período INMEDIATAMENTE ANTERIOR, del mismo largo. Son con las que se dice si
+   *  cada persona subió o bajó. Van en el cache para que la tendencia sobreviva al recargar,
+   *  igual que las filas del período que se está mirando. */
+  rowsPrevio?: PickerStatRow[];
   /** Operaciones con responsable que no tienen hora de asignación: no entran en los promedios.
    *  Se guarda para poder DECIRLO en pantalla; antes se descartaban sin que nadie se enterara. */
   sinMedir?: number;

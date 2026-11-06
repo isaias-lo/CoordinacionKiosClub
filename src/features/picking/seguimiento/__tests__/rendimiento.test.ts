@@ -99,3 +99,68 @@ describe('rendimientoPorPicker: agrupación', () => {
     expect(sinResponsable).toBe(1);
   });
 });
+
+describe('rendimientoPorPicker: una persona, una fila', () => {
+  // En Odoo el responsable es la CUENTA de la pistola. Una persona que usó dos pistolas en el
+  // período salía en dos filas con el mismo nombre en pantalla, porque la traducción pasaba
+  // recién al dibujar. Dos filas de la misma persona no se comparan con nada.
+  const CANON = { 'Pickers 15': 'Cristobal Labra', 'Inventario': 'Cristobal Labra',
+                  'Pickers 7': 'Marcelo Vergara' };
+
+  it('junta las dos cuentas de la misma persona en una sola fila', () => {
+    const { filas } = rendimientoPorPicker([
+      op({ userId: 1, userName: 'Pickers 15', units: 100, lines: 10 }),
+      op({ userId: 2, userName: 'Inventario', units: 300, lines: 30 }),
+    ], CANON);
+    expect(filas).toHaveLength(1);
+    expect(filas[0].name).toBe('Cristobal Labra');
+    expect(filas[0].ops).toBe(2);
+    expect(filas[0].units).toBe(400);
+    expect(filas[0].lineCount).toBe(40);
+  });
+
+  it('la fila dice de qué cuentas salió', () => {
+    const { filas } = rendimientoPorPicker([
+      op({ userId: 2, userName: 'Inventario' }),
+      op({ userId: 1, userName: 'Pickers 15' }),
+    ], CANON);
+    expect(filas[0].cuentas).toEqual(['Inventario', 'Pickers 15']);
+  });
+
+  it('el ritmo se calcula sobre la suma, no promediando dos promedios', () => {
+    // 100 unidades en 60 min y 300 en 60 min. Lo correcto es 400/120 = 200/h.
+    // Promediar los dos CPH (100 y 300) daría 200 por casualidad; con tiempos distintos no.
+    const { filas } = rendimientoPorPicker([
+      op({ userId: 1, userName: 'Pickers 15', units: 100,
+           asignadoEn: '2026-11-03 10:00:00', validadoEn: '2026-11-03 11:00:00' }),
+      op({ userId: 2, userName: 'Inventario', units: 300,
+           asignadoEn: '2026-11-03 11:00:00', validadoEn: '2026-11-03 14:00:00' }),
+    ], CANON);
+    // 400 unidades en 240 minutos = 100 por hora. El promedio de 100 y 100 sería 100 también,
+    // así que se afina: 100 en 1 h y 300 en 3 h → 400/4 h = 100/h.
+    expect(filas[0].cph).toBe(100);
+    expect(filas[0].totalMinutes).toBe(240);
+  });
+
+  it('sin tabla de nombres agrupa por cuenta, como antes', () => {
+    const { filas } = rendimientoPorPicker([
+      op({ userId: 1, userName: 'Pickers 15' }),
+      op({ userId: 2, userName: 'Inventario' }),
+    ]);
+    expect(filas.map(f => f.name).sort()).toEqual(['Inventario', 'Pickers 15']);
+  });
+
+  it('una cuenta que no está en la tabla conserva su nombre crudo', () => {
+    // Así se ve cuál falta configurar, en vez de que desaparezca.
+    const { filas } = rendimientoPorPicker([op({ userName: 'Pickers 99' })], CANON);
+    expect(filas[0].name).toBe('Pickers 99');
+  });
+
+  it('dos personas distintas siguen siendo dos filas', () => {
+    const { filas } = rendimientoPorPicker([
+      op({ userId: 1, userName: 'Pickers 15' }),
+      op({ userId: 3, userName: 'Pickers 7' }),
+    ], CANON);
+    expect(filas.map(f => f.name)).toEqual(['Cristobal Labra', 'Marcelo Vergara']);
+  });
+});

@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { RotateCcw, Printer, BarChart3 } from 'lucide-react';
 import type { PickerStatRow, StatsCache } from '../picking-types';
+import { periodoAnterior } from '../seguimiento/tendencia';
 import { STATS_CACHE_KEY, STATS_DATE_FROM, STATS_DATE_TO } from '../picking-types';
 import { fmtDuration, fmtSecs, isAllowedPicker, buildPickerKeyList } from '../picking-utils';
 import { escapeHtml } from '@/lib/escapeHtml';
@@ -93,15 +94,29 @@ export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames, esc
     const from = fromOverride ?? dateFrom;
     const to   = toOverride   ?? dateTo;
     try {
-      const res  = await fetch('/api/odoo', {
+      // Los DOS períodos a la vez: el que se mira y el inmediatamente anterior del mismo largo,
+      // que es con el que se dice si cada persona subió o bajó. En paralelo y no uno después del
+      // otro: son dos consultas pesadas y en serie la pantalla tardaría el doble.
+      const previo = periodoAnterior(from, to);
+      const pedir = (d: string, h: string) => fetch('/api/odoo', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ action: 'picking_stats_range', dateFrom: from, dateTo: to }),
+        body:    JSON.stringify({ action: 'picking_stats_range', dateFrom: d, dateTo: h }),
         signal:  AbortSignal.timeout(90_000),
       });
+      const [res, resPrevio] = await Promise.all([
+        pedir(from, to),
+        pedir(previo.desde, previo.hasta).catch(() => null),
+      ]);
       const data = (await res.json()) as { stats?: PickerStatRow[]; error?: string; sinMedir?: number };
       if (!res.ok || data.error) throw new Error(data.error ?? 'Error Odoo');
+      // Si el período anterior falla, la pantalla sigue andando SIN tendencia. Es un dato de
+      // contexto: que falte no puede dejar sin ver los números del período que se pidió.
+      const dPrevio = resPrevio?.ok
+        ? await resPrevio.json().catch(() => null) as { stats?: PickerStatRow[] } | null
+        : null;
       const newCache: StatsCache = { cachedAt: new Date().toISOString(), rows: data.stats ?? [], desde: from, hasta: to,
+        rowsPrevio: dPrevio?.stats ?? undefined,
         sinMedir: data.sinMedir };
       setCache(newCache);
       localStorage.setItem(STATS_CACHE_KEY, JSON.stringify(newCache));
@@ -214,7 +229,8 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
 
   if (escritorio) {
     return (
-      <VistaEstadisticas rows={sorted} canonicalNames={canonicalNames} desde={dateFrom} hasta={dateTo}
+      <VistaEstadisticas rows={sorted} rowsPrevio={cache?.rowsPrevio ?? null}
+        canonicalNames={canonicalNames} desde={dateFrom} hasta={dateTo}
         onPeriodo={(desde, hasta) => {
           // Lo mismo que «Aplicar» con fechas a mano: el período nuevo reemplaza al guardado.
           setPendingFrom(desde); setPendingTo(hasta); setDateFrom(desde); setDateTo(hasta);
