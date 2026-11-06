@@ -381,14 +381,17 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
             }}>{v === 'planilla' ? 'Planilla' : 'Detalle'}</button>
           ))}
         </div>
-        {/* El buscador calza contra el código y el nombre, y sin acentos: escribir «pen»
-            encuentra 23PEÑ. Escape lo limpia sin tener que ir al botón. */}
+        {/* Busca en tres campos: código de tienda, nombre de tienda y picker. Son las tres
+            preguntas que se hacen mirando la hoja —«dónde está la 38SP2», «cuál es Peñalolén»,
+            «qué hizo hoy Marcelo»— y un solo campo las responde. Sin acentos: «pen» encuentra
+            23PEÑ y «simon» a «Simón Sabathier». Escape lo limpia sin ir al botón. */}
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
           <Search size={14} style={{ position: 'absolute', left: 9, color: '#94A3B8', pointerEvents: 'none' }} />
           <input
             type="text" value={texto} onChange={e => setTexto(e.target.value)}
             onKeyDown={e => { if (e.key === 'Escape') setTexto(''); }}
-            placeholder="Buscar tienda…" aria-label="Buscar tienda por código o nombre"
+            placeholder="Buscar tienda o picker…"
+            aria-label="Buscar por código de tienda, nombre de tienda o nombre del picker"
             style={{ minHeight: 36, width: 168, padding: texto ? '0 28px 0 28px' : '0 10px 0 28px',
                      fontSize: 13, fontFamily: 'inherit', borderRadius: 9,
                      border: `1.5px solid ${texto ? '#1E40AF' : '#CBD5E1'}` }} />
@@ -538,7 +541,7 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
               <div style={{ fontSize: 12.5, maxWidth: 420, lineHeight: 1.55 }}>
                 El día tiene {planillaCompleta.filas.length}{' '}
                 {planillaCompleta.filas.length === 1 ? 'tienda' : 'tiendas'}. El buscador mira el
-                código y el nombre, sin importar acentos ni mayúsculas.
+                código de la tienda, su nombre y el picker, sin importar acentos ni mayúsculas.
               </div>
               <button type="button" onClick={limpiar} style={BTN_PRI}>Ver el día completo</button>
             </div>

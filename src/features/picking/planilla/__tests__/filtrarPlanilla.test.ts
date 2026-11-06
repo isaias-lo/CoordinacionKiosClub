@@ -67,76 +67,76 @@ describe('sinFiltro', () => {
 
 describe('calza: el texto', () => {
   it('encuentra por código completo', () => {
-    expect(calza(f({ texto: '38SP2' }), '38SP2', 'rm')).toBe(true);
+    expect(calza(f({ texto: '38SP2' }), { cod: '38SP2', zona: 'rm' })).toBe(true);
   });
 
   it('encuentra por un trozo del código', () => {
-    expect(calza(f({ texto: 'sp2' }), '38SP2', 'rm')).toBe(true);
-    expect(calza(f({ texto: '38' }), '38SP2', 'rm')).toBe(true);
+    expect(calza(f({ texto: 'sp2' }), { cod: '38SP2', zona: 'rm' })).toBe(true);
+    expect(calza(f({ texto: '38' }), { cod: '38SP2', zona: 'rm' })).toBe(true);
   });
 
   it('no encuentra lo que no está', () => {
-    expect(calza(f({ texto: 'ZZZ' }), '38SP2', 'rm')).toBe(false);
+    expect(calza(f({ texto: 'ZZZ' }), { cod: '38SP2', zona: 'rm' })).toBe(false);
   });
 
   it('da igual mayúsculas y espacios al borde', () => {
-    expect(calza(f({ texto: '  sP2  ' }), '38SP2', 'rm')).toBe(true);
+    expect(calza(f({ texto: '  sP2  ' }), { cod: '38SP2', zona: 'rm' })).toBe(true);
   });
 
   it('escribir «pen» encuentra 23PEÑ', () => {
     // Es el punto del buscador: nadie va a ir a buscar la Ñ al teclado para filtrar una fila.
-    expect(calza(f({ texto: 'pen' }), '23PEÑ', 'mall')).toBe(true);
+    expect(calza(f({ texto: 'pen' }), { cod: '23PEÑ', zona: 'mall' })).toBe(true);
   });
 
   it('escribir «PEÑ» también encuentra 23PEÑ', () => {
-    expect(calza(f({ texto: 'PEÑ' }), '23PEÑ', 'mall')).toBe(true);
+    expect(calza(f({ texto: 'PEÑ' }), { cod: '23PEÑ', zona: 'mall' })).toBe(true);
   });
 
   it('encuentra por el nombre de la tienda, con y sin tilde', () => {
-    expect(calza(f({ texto: 'peñalolen' }), '23PEÑ', 'mall', 'Mall Peñalolén')).toBe(true);
-    expect(calza(f({ texto: 'penalolen' }), '23PEÑ', 'mall', 'Mall Peñalolén')).toBe(true);
-    expect(calza(f({ texto: 'san pablo' }), '38SP2', 'rm', 'San Pablo 2')).toBe(true);
+    expect(calza(f({ texto: 'peñalolen' }), { cod: '23PEÑ', zona: 'mall', nombre: 'Mall Peñalolén' })).toBe(true);
+    expect(calza(f({ texto: 'penalolen' }), { cod: '23PEÑ', zona: 'mall', nombre: 'Mall Peñalolén' })).toBe(true);
+    expect(calza(f({ texto: 'san pablo' }), { cod: '38SP2', zona: 'rm', nombre: 'San Pablo 2' })).toBe(true);
   });
 
   it('sin nombre, busca solo por código y no se cae', () => {
-    expect(calza(f({ texto: 'pablo' }), '38SP2', 'rm')).toBe(false);
-    expect(calza(f({ texto: 'pablo' }), '38SP2', 'rm', null)).toBe(false);
+    expect(calza(f({ texto: 'pablo' }), { cod: '38SP2', zona: 'rm' })).toBe(false);
+    expect(calza(f({ texto: 'pablo' }), { cod: '38SP2', zona: 'rm', nombre: null })).toBe(false);
   });
 });
 
 describe('calza: las zonas', () => {
   it('vacío es TODAS, no ninguna', () => {
     for (const z of ['norte', 'sur', 'costa', 'mall', 'rm'] as ZonaPlanilla[]) {
-      expect(calza(f(), 'X', z)).toBe(true);
+      expect(calza(f(), { cod: 'X', zona: z })).toBe(true);
     }
   });
 
   it('una zona deja pasar solo esa', () => {
     const solo = f({ zonas: new Set<ZonaPlanilla>(['norte']) });
-    expect(calza(solo, 'X', 'norte')).toBe(true);
-    expect(calza(solo, 'X', 'sur')).toBe(false);
+    expect(calza(solo, { cod: 'X', zona: 'norte' })).toBe(true);
+    expect(calza(solo, { cod: 'X', zona: 'sur' })).toBe(false);
   });
 
   it('dos zonas son la unión de las dos', () => {
     const dos = f({ zonas: new Set<ZonaPlanilla>(['norte', 'costa']) });
-    expect(calza(dos, 'X', 'norte')).toBe(true);
-    expect(calza(dos, 'X', 'costa')).toBe(true);
-    expect(calza(dos, 'X', 'rm')).toBe(false);
+    expect(calza(dos, { cod: 'X', zona: 'norte' })).toBe(true);
+    expect(calza(dos, { cod: 'X', zona: 'costa' })).toBe(true);
+    expect(calza(dos, { cod: 'X', zona: 'rm' })).toBe(false);
   });
 
   it('una tienda sin zona queda fuera si hay filtro de zona', () => {
-    expect(calza(f({ zonas: new Set<ZonaPlanilla>(['norte']) }), '99XXX', undefined)).toBe(false);
+    expect(calza(f({ zonas: new Set<ZonaPlanilla>(['norte']) }), { cod: '99XXX' })).toBe(false);
   });
 
   it('una tienda sin zona entra si solo hay texto', () => {
-    expect(calza(f({ texto: '99' }), '99XXX', undefined)).toBe(true);
+    expect(calza(f({ texto: '99' }), { cod: '99XXX' })).toBe(true);
   });
 
   it('texto y zona se exigen LOS DOS', () => {
     const ambos = f({ texto: 'sp2', zonas: new Set<ZonaPlanilla>(['norte']) });
-    expect(calza(ambos, '38SP2', 'rm')).toBe(false);    // el texto calza, la zona no
-    expect(calza(ambos, '24SPP', 'norte')).toBe(false); // la zona calza, el texto no
-    expect(calza(ambos, '38SP2', 'norte')).toBe(true);  // los dos
+    expect(calza(ambos, { cod: '38SP2', zona: 'rm' })).toBe(false);    // el texto calza, la zona no
+    expect(calza(ambos, { cod: '24SPP', zona: 'norte' })).toBe(false); // la zona calza, el texto no
+    expect(calza(ambos, { cod: '38SP2', zona: 'norte' })).toBe(true);  // los dos
   });
 });
 
@@ -258,5 +258,81 @@ describe('contarPorZona', () => {
 describe('sumaRegistros', () => {
   it('suma las cuatro secciones', () => {
     expect(sumaRegistros(dia())).toBe(111 + 100 + 134 + 24 + 63 + 7);
+  });
+});
+
+describe('calza: por nombre del picker', () => {
+  it('encuentra por el nombre de quien pickeó', () => {
+    expect(calza(f({ texto: 'marcelo' }),
+      { cod: '50PTM', zona: 'rm', pickers: ['Marcelo Vergara'] })).toBe(true);
+  });
+
+  it('también por el apellido, y sin tilde', () => {
+    // «simon» tiene que encontrar a «Simón Sabathier»: nadie va a buscar la tilde en el teclado.
+    expect(calza(f({ texto: 'sabathier' }), { cod: '43CUR', pickers: ['Simón Sabathier'] })).toBe(true);
+    expect(calza(f({ texto: 'simon' }),     { cod: '43CUR', pickers: ['Simón Sabathier'] })).toBe(true);
+  });
+
+  it('una fila con varios pickers calza con cualquiera de ellos', () => {
+    const c = { cod: '50PTM', zona: 'rm' as const, pickers: ['Zervens Louissant', 'Marcelo Vergara'] };
+    expect(calza(f({ texto: 'zervens' }), c)).toBe(true);
+    expect(calza(f({ texto: 'vergara' }), c)).toBe(true);
+    expect(calza(f({ texto: 'juliette' }), c)).toBe(false);
+  });
+
+  it('sin pickers no se cae', () => {
+    expect(calza(f({ texto: 'marcelo' }), { cod: '75PUC' })).toBe(false);
+    expect(calza(f({ texto: 'marcelo' }), { cod: '75PUC', pickers: [] })).toBe(false);
+  });
+
+  it('el filtro de zona se sigue exigiendo igual', () => {
+    const solo = f({ texto: 'marcelo', zonas: new Set<ZonaPlanilla>(['norte']) });
+    expect(calza(solo, { cod: '50PTM', zona: 'rm',    pickers: ['Marcelo Vergara'] })).toBe(false);
+    expect(calza(solo, { cod: '24SPP', zona: 'norte', pickers: ['Marcelo Vergara'] })).toBe(true);
+  });
+});
+
+describe('filtrarPlanilla: buscar un picker trae la fila entera', () => {
+  // La pregunta real es «qué tiendas tocó Marcelo», así que la fila va completa: recortada a su
+  // celda no se podría comparar con el resto del día.
+  const dia = () => armarPlanilla([
+    mov({ cod: '24SPP', seccion: 'Comida', picker: 'Marcelo Vergara', registros: 111 }),
+    mov({ cod: '24SPP', seccion: 'Hogar',  picker: 'Juliette Mendoza', registros: 40 }),
+    mov({ cod: '31TLC', seccion: 'Hogar',  picker: 'Marcelo Vergara', registros: 100 }),
+    mov({ cod: '27MCH', seccion: 'Comida', picker: 'Simón Sabathier', registros: 134 }),
+  ], TIENDAS);
+
+  it('deja las tiendas donde trabajó, y solo esas', () => {
+    const out = filtrarPlanilla(dia(), f({ texto: 'marcelo' }));
+    expect(out.filas.map(x => x.cod)).toEqual(['24SPP', '31TLC']);
+  });
+
+  it('la fila trae TODAS sus secciones, no solo la del picker buscado', () => {
+    const out = filtrarPlanilla(dia(), f({ texto: 'marcelo' }));
+    const spp = out.filas.find(x => x.cod === '24SPP')!;
+    expect(spp.celdas.Comida[0].picker).toBe('Marcelo Vergara');
+    expect(spp.celdas.Hogar[0].picker).toBe('Juliette Mendoza');
+  });
+
+  it('los totales se recalculan con las filas que quedan, enteras', () => {
+    const out = filtrarPlanilla(dia(), f({ texto: 'marcelo' }));
+    expect(out.totales.Comida).toBe(111);
+    expect(out.totales.Hogar).toBe(40 + 100);   // incluye la celda de Juliette: la fila va entera
+  });
+
+  it('buscar por picker sin acento encuentra igual', () => {
+    expect(filtrarPlanilla(dia(), f({ texto: 'simon' })).filas.map(x => x.cod)).toEqual(['27MCH']);
+  });
+});
+
+describe('filtrarMovimientos: por picker', () => {
+  it('deja solo los movimientos de esa persona', () => {
+    const movs = [
+      mov({ cod: '24SPP', picker: 'Marcelo Vergara' }),
+      mov({ cod: '31TLC', picker: 'Juliette Mendoza' }),
+      mov({ cod: '27MCH', picker: 'Marcelo Vergara' }),
+    ];
+    const out = filtrarMovimientos(movs, f({ texto: 'vergara' }), ZONA_POR_COD);
+    expect(out.map(m => m.cod)).toEqual(['24SPP', '27MCH']);
   });
 });
