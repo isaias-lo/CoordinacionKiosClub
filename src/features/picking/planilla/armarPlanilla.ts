@@ -49,6 +49,15 @@ export interface MovimientoPlanilla {
   registros: number;
   /** El nombre ya traducido por `picker_canonical_names`; `''` si todavía no se asignó. */
   picker: string;
+  /**
+   * La CUENTA de Odoo sin traducir («Pickers 18», «Adquisiciones»).
+   *
+   * Se conserva además del nombre porque la hoja de olas la escribe en su columna S, y esa
+   * columna es la LLAVE con que el bono cruza: `PICKING!T = CONCATENATE(fecha; S)`. El nombre
+   * se puede corregir a mano; la cuenta no, porque es el dato que va a traer Odoo del otro lado
+   * del cruce. Ver `registroOlas.ts`.
+   */
+  cuenta?: string;
   asignadoEn: string | null;
   /**
    * La hora de validación. Este módulo no la usa —la matriz no muestra horas—, pero es parte de la

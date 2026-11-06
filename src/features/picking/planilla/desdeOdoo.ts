@@ -85,6 +85,10 @@ export function movimientosDesdeOdoo(
       seccion: cat as SeccionPlanilla,
       registros: m.registros,
       picker: m.responsable ? (nombres[m.responsable] ?? m.responsable) : '',
+      // La cuenta cruda, además del nombre: la hoja de olas la necesita como llave del cruce
+      // del bono, y una vez traducida no se puede volver atrás (dos cuentas pueden compartir
+      // persona, así que el nombre no identifica la cuenta).
+      cuenta: m.responsable || undefined,
       asignadoEn: m.asignadoEn,
       validadoEn: m.validadoEn,
       estado: m.estado,

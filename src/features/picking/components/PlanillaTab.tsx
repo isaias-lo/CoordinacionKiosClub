@@ -19,7 +19,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Printer, Download, Loader2, RotateCcw, Search, X } from 'lucide-react';
+import { Printer, Download, Loader2, RotateCcw, Search, X, ClipboardCheck } from 'lucide-react';
 import { AUTO_REFRESH_MS } from '../picking-types';
 import { fechaISOLocal } from '@/features/despacho/shared/fechaLocal';
 import { agruparConsultasPorDia } from '@/features/despacho/shared/consultasPorDia';
@@ -33,6 +33,7 @@ import { contarPorZona, describirFiltro, filtrarMovimientos, filtrarPlanilla, si
 import { marcaBackorder, textoBackorder, tituloBackorder } from '../planilla/backorders';
 import { horaChile, duracionMinutos, formatearDuracion } from '../planilla/horasPlanilla';
 import { csvVistaPlanilla, csvVistaDetalle } from '../planilla/csvPlanilla';
+import type { Aviso, Escritura } from '../planilla/registroOlas';
 
 export interface PlanillaTabProps {
   /** Los códigos de las tiendas del día, en el orden del calendario. */
@@ -61,6 +62,9 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
   // La celda que se está corrigiendo. `null` = no hay cuadro abierto.
   const [corrigiendo, setCorrigiendo] = useState<PedidoCorreccion | null>(null);
   const [guardandoCorr, setGuardandoCorr] = useState(false);
+  // El registro en «Abastecimiento por Olas». `null` = el cuadro está cerrado.
+  const [registro, setRegistro] = useState<RespuestaOlas | null>(null);
+  const [consultandoOlas, setConsultandoOlas] = useState(false);
   // El buscador y las zonas elegidas. `zonas` vacío = todas (ver `filtrarPlanilla`).
   const [texto, setTexto] = useState('');
   const [zonas, setZonas] = useState<ReadonlySet<ZonaPlanilla>>(() => new Set());
@@ -282,6 +286,33 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
     }
   }, [corrigiendo, cargar]);
 
+  // La vista previa y la escritura son la misma llamada con `confirmar` distinto, para que lo
+  // que se muestra sea literalmente lo que se va a escribir.
+  const llamarOlas = useCallback(async (confirmar: boolean) => {
+    setConsultandoOlas(true);
+    try {
+      const r = await fetch('/api/planilla-olas', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fecha, confirmar,
+          // Se mandan los movimientos que la PANTALLA muestra, con sus correcciones a mano
+          // aplicadas: registrar algo distinto de lo que el coordinador está mirando sería el
+          // peor resultado posible. El nombre con que se escribe lo resuelve el servidor.
+          movimientos: movimientos
+            .filter(m => m.estado === 'done' || m.estado === 'assigned')
+            .map(m => ({ cod: m.cod, seccion: m.seccion, picker: m.picker,
+                         cuenta: m.cuenta, registros: m.registros, estado: m.estado })),
+        }),
+      });
+      const j = await r.json().catch(() => null);
+      setRegistro(j ?? { ok: false, error: 'No se pudo hablar con el servidor' });
+    } catch {
+      setRegistro({ ok: false, error: 'No se pudo hablar con el servidor' });
+    } finally {
+      setConsultandoOlas(false);
+    }
+  }, [fecha, movimientos]);
+
   const bajar = useCallback(() => {
     const texto = vista === 'planilla'
       ? csvVistaPlanilla(planilla, fecha)
@@ -390,6 +421,15 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
           </span>
         )}
         <button type="button" onClick={bajar} style={BTN_SEC}><Download size={15} /> Bajar archivo</button>
+        {/* Registrar es la acción que CAMBIA algo afuera, así que va separada de las que solo
+            miran o imprimen, y nunca escribe de una: abre el cuadro con lo que haría. */}
+        <button type="button" onClick={() => void llamarOlas(false)} disabled={consultandoOlas}
+                title="Dejar el día escrito en la hoja PICKING de «Abastecimiento por Olas»"
+                style={{ ...BTN_SEC, borderColor: '#A7F3D0', background: '#ECFDF5',
+                         color: '#065F46', opacity: consultandoOlas ? 0.6 : 1 }}>
+          <ClipboardCheck size={15} /> {consultandoOlas ? 'Revisando…' : 'Registrar en olas'}
+        </button>
+
         {/* «Imprimir» a secas y la vista en el `title`: el par Planilla/Detalle está tres
             botones más a la izquierda y ya dice cuál se va a imprimir. Son 45 px que necesitan
             los filtros para entrar en la misma línea. */}
@@ -522,6 +562,15 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
           movimiento ya validado (↳), no trabajo sin empezar.</>
         )}
       </div>
+
+      {montado && registro && createPortal(
+        <CuadroOlas
+          r={registro} fecha={fecha} trabajando={consultandoOlas}
+          onCerrar={() => setRegistro(null)}
+          onConfirmar={() => void llamarOlas(true)}
+        />,
+        document.body,
+      )}
 
       {montado && corrigiendo && createPortal(
         <CuadroCorreccion
@@ -949,4 +998,136 @@ function htmlDetalle(movs: MovimientoPlanilla[], fecha: string, recorte = ''): s
       <th>Inicio</th><th>Validado</th><th class="der">Duración</th></tr></thead>
       <tbody>${trs.join('')}</tbody></table>
     ${FIRMAS}</body></html>`;
+}
+
+/** Lo que devuelve `/api/planilla-olas`, en sus dos modos y en sus fallas. */
+interface RespuestaOlas {
+  ok: boolean;
+  modo?: 'previo' | 'escrito';
+  motivo?: 'sin-bloque' | 'sin-permiso';
+  error?: string;
+  fecha?: string;
+  celdas?: number;
+  bloque?: { desde: number; hasta: number; filas: number };
+  escrituras?: Escritura[];
+  avisos?: Aviso[];
+  filasAEscribir?: number;
+}
+
+/**
+ * El cuadro del registro en «Abastecimiento por Olas».
+ *
+ * Muestra PRIMERO lo que no se va a poder hacer y después lo que sí. Al revés, un «87 celdas
+ * listas» en grande haría que nadie leyera los tres avisos de abajo, que son justamente las
+ * filas que van a quedar sin registrar y que alguien tiene que escribir a mano.
+ */
+function CuadroOlas({ r, fecha, trabajando, onCerrar, onConfirmar }: {
+  r: RespuestaOlas;
+  fecha: string;
+  trabajando: boolean;
+  onCerrar: () => void;
+  onConfirmar: () => void;
+}) {
+  useEffect(() => {
+    const alTecla = (e: KeyboardEvent) => { if (e.key === 'Escape') onCerrar(); };
+    document.addEventListener('keydown', alTecla);
+    return () => document.removeEventListener('keydown', alTecla);
+  }, [onCerrar]);
+
+  const escrito = r.modo === 'escrito';
+  const n = r.filasAEscribir ?? 0;
+  const celdas = r.escrituras?.length ?? 0;
+  const avisos = r.avisos ?? [];
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Registrar en Abastecimiento por Olas"
+         style={{ position: 'fixed', inset: 0, zIndex: 50,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <button type="button" onClick={onCerrar} aria-label="Cerrar sin registrar"
+              style={{ position: 'absolute', inset: 0, border: 'none', cursor: 'default',
+                       background: 'rgba(15,23,42,0.45)' }} />
+      <div style={{ position: 'relative', background: '#fff', borderRadius: 14, padding: '20px 22px',
+                    width: 560, maxWidth: '100%', maxHeight: '86vh', overflow: 'auto',
+                    boxShadow: '0 20px 50px rgba(15,23,42,0.3)' }}>
+        <div style={{ fontSize: 16.5, fontWeight: 800, color: '#0F172A', lineHeight: 1.25 }}>
+          {escrito ? 'Registrado en «Abastecimiento por Olas»' : 'Registrar el día en «Abastecimiento por Olas»'}
+        </div>
+        <div style={{ fontSize: 12.5, color: '#64748B', marginTop: 3 }}>
+          Hoja PICKING · {fecha}
+          {r.bloque && <> · filas {r.bloque.desde} a {r.bloque.hasta}</>}
+        </div>
+
+        {/* Las fallas duras: no hay nada que confirmar. */}
+        {!r.ok && (
+          <div style={{ margin: '14px 0', padding: '12px 14px', background: '#FEF2F2',
+                        border: '1px solid #FECACA', borderRadius: 10, fontSize: 13,
+                        color: '#991B1B', lineHeight: 1.6 }}>
+            {r.error}
+          </div>
+        )}
+
+        {r.ok && (
+          <>
+            {/* Lo que NO se va a hacer, primero y sin esconder. */}
+            {avisos.length > 0 && (
+              <div style={{ margin: '14px 0', padding: '11px 13px', background: '#FFFBEB',
+                            border: '1px solid #FDE68A', borderRadius: 10, fontSize: 12.5,
+                            color: '#78350F', lineHeight: 1.6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 5 }}>
+                  {avisos.length} {avisos.length === 1 ? 'fila queda' : 'filas quedan'} sin registrar
+                  {escrito ? '' : ' — hay que escribirlas a mano'}
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 17, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {avisos.map((a, i) => <li key={i}>{a.detalle}</li>)}
+                </ul>
+              </div>
+            )}
+
+            <div style={{ margin: '14px 0', padding: '12px 14px', background: '#F0FDF4',
+                          border: '1px solid #BBF7D0', borderRadius: 10, fontSize: 13,
+                          color: '#14532D', lineHeight: 1.6 }}>
+              {escrito
+                ? <><strong>{r.celdas}</strong> celdas escritas en <strong>{n}</strong>{' '}
+                    {n === 1 ? 'fila' : 'filas'}.</>
+                : n === 0
+                  ? 'No hay nada nuevo que escribir: las filas del día ya están completas o vacías por buena razón.'
+                  : <><strong>{n}</strong> {n === 1 ? 'fila' : 'filas'} a completar
+                      ({celdas} celdas: el nombre en <strong>F</strong> y la cuenta de Odoo en{' '}
+                      <strong>S</strong>). No se toca ninguna otra columna.</>}
+            </div>
+
+            {/* Las primeras filas, con nombre y todo: confirmar a ciegas no es confirmar. */}
+            {!escrito && celdas > 0 && (
+              <details style={{ marginBottom: 14, fontSize: 12.5, color: '#334155' }}>
+                <summary style={{ cursor: 'pointer', fontWeight: 700, color: '#1E40AF' }}>
+                  Ver las {celdas} celdas, una por una
+                </summary>
+                <div style={{ marginTop: 8, maxHeight: 220, overflow: 'auto', fontFamily:
+                              'ui-monospace, monospace', fontSize: 11.5, lineHeight: 1.7 }}>
+                  {(r.escrituras ?? []).map((e, i) => (
+                    <div key={i}>
+                      {e.columna}{e.fila} <span style={{ color: '#94A3B8' }}>←</span>{' '}
+                      <span style={{ color: '#0F172A' }}>{JSON.stringify(e.valor)}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onCerrar} style={BTN_SEC}>
+            {escrito ? 'Cerrar' : 'Cancelar'}
+          </button>
+          {r.ok && !escrito && n > 0 && (
+            <button type="button" onClick={onConfirmar} disabled={trabajando}
+                    style={{ ...BTN_PRI, opacity: trabajando ? 0.5 : 1 }}>
+              {trabajando ? 'Escribiendo…' : `Sí, escribir ${celdas} celdas`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
