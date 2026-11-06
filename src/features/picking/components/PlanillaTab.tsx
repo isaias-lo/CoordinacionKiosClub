@@ -306,13 +306,17 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
 
   // La vista previa y la escritura son la misma llamada con `confirmar` distinto, para que lo
   // que se muestra sea literalmente lo que se va a escribir.
-  const llamarOlas = useCallback(async (confirmar: boolean) => {
+  const llamarOlas = useCallback(async (confirmar: boolean, crear = false) => {
     setConsultandoOlas(true);
     try {
       const r = await fetch('/api/planilla-olas', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fecha, confirmar,
+          fecha, confirmar, crear,
+          // Las tiendas del día EN EL ORDEN DEL CALENDARIO: si el día todavía no está en la
+          // hoja, es con esto que se arma el bloque, y el orden de la hoja tiene que ser el
+          // mismo que el de la planilla para que se puedan comparar a ojo.
+          cods,
           // Se mandan los movimientos que la PANTALLA muestra, con sus correcciones a mano
           // aplicadas: registrar algo distinto de lo que el coordinador está mirando sería el
           // peor resultado posible. El nombre con que se escribe lo resuelve el servidor.
@@ -329,7 +333,7 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
     } finally {
       setConsultandoOlas(false);
     }
-  }, [fecha, movimientos]);
+  }, [fecha, movimientos, cods]);
 
   const bajar = useCallback(() => {
     const texto = vista === 'planilla'
@@ -589,6 +593,7 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
           r={registro} fecha={fecha} trabajando={consultandoOlas}
           onCerrar={() => setRegistro(null)}
           onConfirmar={() => void llamarOlas(true)}
+          onCrear={() => void llamarOlas(true, true)}
         />,
         document.body,
       )}
@@ -1096,6 +1101,10 @@ interface RespuestaOlas {
   escrituras?: Escritura[];
   avisos?: Aviso[];
   filasAEscribir?: number;
+  /** El día no está en la hoja pero se puede armar con las tiendas del calendario. */
+  puedeCrear?: boolean;
+  /** En palabras, qué se crearía: «91 filas: 29 tiendas × 3 secciones…». */
+  aCrear?: string | null;
 }
 
 /**
@@ -1105,12 +1114,14 @@ interface RespuestaOlas {
  * listas» en grande haría que nadie leyera los tres avisos de abajo, que son justamente las
  * filas que van a quedar sin registrar y que alguien tiene que escribir a mano.
  */
-function CuadroOlas({ r, fecha, trabajando, onCerrar, onConfirmar }: {
+function CuadroOlas({ r, fecha, trabajando, onCerrar, onConfirmar, onCrear }: {
   r: RespuestaOlas;
   fecha: string;
   trabajando: boolean;
   onCerrar: () => void;
   onConfirmar: () => void;
+  /** Armar el bloque del día y registrarlo en la misma pasada. */
+  onCrear: () => void;
 }) {
   useEffect(() => {
     const alTecla = (e: KeyboardEvent) => { if (e.key === 'Escape') onCerrar(); };
@@ -1147,6 +1158,24 @@ function CuadroOlas({ r, fecha, trabajando, onCerrar, onConfirmar }: {
                         border: '1px solid #FECACA', borderRadius: 10, fontSize: 13,
                         color: '#991B1B', lineHeight: 1.6 }}>
             {r.error}
+          </div>
+        )}
+
+        {/* El día no está en la hoja y se puede armar. Es un paso aparte y explícito: crear
+            filas en una planilla de otro equipo no puede pasar de callado dentro de «registrar». */}
+        {!r.ok && r.motivo === 'sin-bloque' && r.puedeCrear && (
+          <div style={{ margin: '14px 0', padding: '12px 14px', background: '#EFF6FF',
+                        border: '1px solid #BFDBFE', borderRadius: 10, fontSize: 13,
+                        color: '#1E3A8A', lineHeight: 1.6 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Puedo armar el día</div>
+            Al final de la hoja, con <strong>{r.aCrear}</strong>. Lleva el color que le toca
+            —alterna con el día de arriba— y copia el formato y las listas desplegables de la
+            última fila, así queda igual que los días que se arman a mano.
+            <div style={{ marginTop: 10 }}>
+              <button type="button" onClick={onCrear} disabled={trabajando} style={BTN_PRI}>
+                {trabajando ? 'Armando…' : 'Armar el día y registrar'}
+              </button>
+            </div>
           </div>
         )}
 

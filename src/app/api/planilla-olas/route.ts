@@ -26,13 +26,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyActor } from '@/lib/apiAuth';
 import {
-  BloqueNoEncontrado, SinPermisoDeEscritura, correoDeServicio, escribirCeldas, leerBloqueDia,
+  BloqueNoEncontrado, SinPermisoDeEscritura, correoDeServicio, crearBloqueDia, escribirCeldas,
+  leerBloqueDia, leerColaHoja,
 } from '@/lib/olasSheet';
 import { planRegistro } from '@/features/picking/planilla/registroOlas';
+import { colorAlternado, describirEsqueleto, filasEsqueleto }
+  from '@/features/picking/planilla/esqueletoOlas';
 import { SECCIONES, type MovimientoPlanilla, type SeccionPlanilla }
   from '@/features/picking/planilla/armarPlanilla';
 
 const ES_SECCION = new Set<string>(SECCIONES);
+
+/** El mismo texto para los dos caminos que pueden chocar con la falta de permiso. */
+const sinPermiso = (e: SinPermisoDeEscritura) =>
+  `La planilla de olas está compartida solo para lectura. Hay que darle permiso de Editor a ` +
+  `${e.correo} desde el botón «Compartir» del documento.`;
 
 interface MovimientoEntrante {
   cod?: unknown; seccion?: unknown; picker?: unknown; cuenta?: unknown;
@@ -65,7 +73,8 @@ export async function POST(request: NextRequest) {
   const actor = await verifyActor(request);
   if (!actor) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
-  let body: { fecha?: unknown; movimientos?: unknown; confirmar?: unknown };
+  let body: { fecha?: unknown; movimientos?: unknown; confirmar?: unknown;
+              crear?: unknown; cods?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -96,22 +105,55 @@ export async function POST(request: NextRequest) {
     if (r.display_name && r.nombre_olas) porPersona.set(String(r.display_name), String(r.nombre_olas));
   }
 
+  // Las tiendas del día, en el orden del calendario: es lo que haría falta para armar el bloque
+  // si todavía no existe.
+  const cods = Array.isArray(body.cods)
+    ? (body.cods as unknown[]).filter((c): c is string => typeof c === 'string' && !!c.trim())
+    : [];
+
   let bloque;
   try {
     bloque = await leerBloqueDia(fecha);
   } catch (e) {
-    if (e instanceof BloqueNoEncontrado) {
+    if (!(e instanceof BloqueNoEncontrado)) {
+      console.error('[planilla-olas] leer', e);
+      return NextResponse.json({ error: 'No se pudo leer la planilla de olas' }, { status: 502 });
+    }
+
+    // ── El día no está en la hoja ──
+    //
+    // Hasta el 06/11/2026 una persona precargaba el esqueleto y acá solo se avisaba. Desde que
+    // eso dejó de hacerse, el sistema lo arma. Se crea SOLO si el día no existe: buscarlo
+    // primero es lo que impide duplicarlo, y un día duplicado no daría error —el XLOOKUP del
+    // bono se queda con la primera coincidencia— daría un número mal.
+    const esqueleto = cods.length ? filasEsqueleto(cods, movimientos) : [];
+    if (body.crear !== true || esqueleto.length === 0) {
       return NextResponse.json({
         ok: false, motivo: 'sin-bloque',
+        puedeCrear: esqueleto.length > 0,
+        aCrear: esqueleto.length ? describirEsqueleto(esqueleto) : null,
         error: `No encontré filas con fecha ${fecha} en la hoja PICKING de «Abastecimiento por Olas». ` +
                (e.cercanas.length
                  ? `Las últimas fechas que sí tiene son: ${e.cercanas.join(', ')}. `
-                 : '') +
-               'Puede que el esqueleto del día todavía no esté armado, o que su fecha esté mal escrita.',
+                 : ''),
       }, { status: 409 });
     }
-    console.error('[planilla-olas] leer', e);
-    return NextResponse.json({ error: 'No se pudo leer la planilla de olas' }, { status: 502 });
+
+    try {
+      const cola = await leerColaHoja();
+      const color = colorAlternado(cola.colorAnterior);
+      const creado = await crearBloqueDia(fecha, esqueleto, color, cola);
+      console.log(`[planilla-olas] ${actor.name} creó ${fecha}: filas ${creado.desde}-${creado.hasta}`);
+      // Se vuelve a LEER lo recién creado en vez de darlo por hecho: lo que se rellena después
+      // tiene que salir de la hoja, no de lo que creímos escribir.
+      bloque = await leerBloqueDia(fecha);
+    } catch (e2) {
+      if (e2 instanceof SinPermisoDeEscritura) {
+        return NextResponse.json({ ok: false, motivo: 'sin-permiso', error: sinPermiso(e2) }, { status: 403 });
+      }
+      console.error('[planilla-olas] crear', e2);
+      return NextResponse.json({ error: 'No se pudo crear el día en la planilla de olas' }, { status: 502 });
+    }
   }
 
   const plan = planRegistro(movimientos, bloque.filas, porPersona);
@@ -135,11 +177,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (e) {
     if (e instanceof SinPermisoDeEscritura) {
-      return NextResponse.json({
-        ok: false, motivo: 'sin-permiso',
-        error: `La planilla de olas está compartida solo para lectura. Hay que darle permiso de ` +
-               `Editor a ${e.correo} desde el botón «Compartir» del documento.`,
-      }, { status: 403 });
+      return NextResponse.json({ ok: false, motivo: 'sin-permiso', error: sinPermiso(e) }, { status: 403 });
     }
     console.error('[planilla-olas] escribir', e);
     return NextResponse.json({ error: 'No se pudo escribir en la planilla de olas' }, { status: 502 });
