@@ -19,6 +19,7 @@
 // media hoja. Ver `registroOlas.ts` para el porqué de cada columna.
 
 import { google } from 'googleapis';
+import { formulasDe } from '@/features/picking/planilla/esqueletoOlas';
 import { fechaDeSerial, serialDeFecha, type Escritura, type FilaHoja }
   from '@/features/picking/planilla/registroOlas';
 
@@ -167,4 +168,150 @@ export async function escribirCeldas(escrituras: Escritura[]): Promise<number> {
     if (codigo === 403) throw new SinPermisoDeEscritura(correoDeServicio());
     throw e;
   }
+}
+
+/** Lo que hace falta saber del final de la hoja para poder agregar un día. */
+export interface ColaHoja {
+  /** La última fila con datos. El bloque nuevo arranca en la siguiente. */
+  ultimaFila: number;
+  /** La primera fila del último bloque: se usa como molde de formato y de validación. */
+  moldeFila: number;
+  /** El color de fondo de ese último bloque, para alternar. `null` si no se pudo leer. */
+  colorAnterior: string | null;
+}
+
+const aHex = (c?: { red?: number | null; green?: number | null; blue?: number | null } | null): string | null =>
+  c ? '#' + [c.red, c.green, c.blue]
+        .map(v => Math.round((v ?? 0) * 255).toString(16).padStart(2, '0')).join('').toUpperCase()
+    : null;
+
+/**
+ * Dónde termina la hoja y de qué color es el último día.
+ *
+ * El molde es la PRIMERA fila del último bloque y no una cualquiera: de ahí se copian el formato
+ * de fecha, los bordes y las listas desplegables de las columnas B, C, F, G y H. Una fila creada
+ * sin eso se vería distinta y perdería los desplegables, que es con lo que se llena a mano.
+ */
+export async function leerColaHoja(): Promise<ColaHoja> {
+  const gs = cliente(true);
+  const colA = await gs.spreadsheets.values.get({
+    spreadsheetId: OLAS_ID, range: `${HOJA}!A:A`, valueRenderOption: 'UNFORMATTED_VALUE',
+  });
+  const seriales = (colA.data.values ?? []).map(f => Number(f?.[0]));
+  let ultimaFila = 0;
+  for (let i = 0; i < seriales.length; i++) if (seriales[i]) ultimaFila = i + 1;
+  if (!ultimaFila) throw new Error('La hoja PICKING no tiene ninguna fila con fecha');
+
+  // Hacia atrás hasta que cambie el serial: ahí empieza el último bloque.
+  const ultimo = seriales[ultimaFila - 1];
+  let moldeFila = ultimaFila;
+  while (moldeFila > 2 && seriales[moldeFila - 2] === ultimo) moldeFila--;
+
+  const g = await gs.spreadsheets.get({
+    spreadsheetId: OLAS_ID, ranges: [`${HOJA}!A${moldeFila}:A${moldeFila}`], includeGridData: true,
+    fields: 'sheets.data.rowData.values.effectiveFormat.backgroundColor',
+  });
+  const color = aHex(g.data.sheets?.[0]?.data?.[0]?.rowData?.[0]?.values?.[0]
+    ?.effectiveFormat?.backgroundColor);
+
+  return { ultimaFila, moldeFila, colorAnterior: color };
+}
+
+/** Una fila del bloque a crear, ya con su contenido de A, B y C. */
+export interface FilaACrear { tienda: string; seccion: string }
+
+/**
+ * Crea el bloque de un día al final de la hoja y devuelve en qué filas quedó.
+ *
+ * El orden importa y es este:
+ *
+ * 1. **Copiar formato y validación** de la fila molde sobre el rango nuevo. Son dos pegados
+ *    distintos: `PASTE_FORMAT` no trae las listas desplegables, para eso está
+ *    `PASTE_DATA_VALIDATION`. Sin esto las filas nuevas pierden los desplegables de B, C, F, G
+ *    y H, que es con lo que se completa a mano.
+ * 2. **Pintar el fondo** del color que toca, encima del que vino en el formato copiado.
+ * 3. **Escribir A, B y C** en RAW. La fecha va como NÚMERO DE SERIE y no como texto: la columna
+ *    es numérica con formato de fecha, y un texto «11/11/2026» ahí se leería distinto según la
+ *    configuración regional de la planilla — en una local en inglés, el 06/11 sería el 11 de
+ *    junio.
+ * 4. **Escribir las fórmulas** de T, U y X en USER_ENTERED, que es lo único que las interpreta
+ *    como fórmula y no como texto.
+ *
+ * No se escribe nada entre D y S: esas quedan vacías, igual que en los días que arma una persona.
+ */
+export async function crearBloqueDia(
+  fecha: string, filas: FilaACrear[], color: string, cola: ColaHoja,
+): Promise<{ desde: number; hasta: number }> {
+  if (filas.length === 0) throw new Error('No hay filas que crear');
+
+  const gs = cliente(false);
+  const desde = cola.ultimaFila + 1;
+  const hasta = cola.ultimaFila + filas.length;
+  const serial = serialDeFecha(fecha);
+
+  const meta = await gs.spreadsheets.get({
+    spreadsheetId: OLAS_ID, fields: 'sheets.properties(sheetId,title)' });
+  const hoja = meta.data.sheets?.find(s => s.properties?.title === HOJA);
+  const sheetId = hoja?.properties?.sheetId;
+  if (sheetId == null) throw new Error(`No encontré la hoja ${HOJA}`);
+
+  const rango = (r0: number, r1: number, c0: number, c1: number) =>
+    ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 });
+  const molde = rango(cola.moldeFila - 1, cola.moldeFila, 0, 25);   // A..Y
+  const destino = rango(desde - 1, hasta, 0, 25);
+
+  const rgb = (hex: string) => ({
+    red: parseInt(hex.slice(1, 3), 16) / 255,
+    green: parseInt(hex.slice(3, 5), 16) / 255,
+    blue: parseInt(hex.slice(5, 7), 16) / 255,
+  });
+
+  try {
+    await gs.spreadsheets.batchUpdate({
+      spreadsheetId: OLAS_ID,
+      requestBody: { requests: [
+        { copyPaste: { source: molde, destination: destino, pasteType: 'PASTE_FORMAT' } },
+        { copyPaste: { source: molde, destination: destino, pasteType: 'PASTE_DATA_VALIDATION' } },
+        { repeatCell: {
+            range: destino,
+            cell: { userEnteredFormat: { backgroundColor: rgb(color) } },
+            fields: 'userEnteredFormat.backgroundColor',
+        } },
+      ] },
+    });
+
+    await gs.spreadsheets.values.batchUpdate({
+      spreadsheetId: OLAS_ID,
+      requestBody: {
+        valueInputOption: 'RAW',
+        data: [{
+          range: `${HOJA}!A${desde}:C${hasta}`,
+          values: filas.map(f => [serial, f.tienda, f.seccion]),
+        }],
+      },
+    });
+
+    await gs.spreadsheets.values.batchUpdate({
+      spreadsheetId: OLAS_ID,
+      requestBody: {
+        valueInputOption: 'USER_ENTERED',
+        data: [
+          { range: `${HOJA}!T${desde}:U${hasta}`,
+            values: filas.map((_, i) => {
+              const f = formulasDe(desde + i);
+              return [f.T, f.U];
+            }) },
+          { range: `${HOJA}!X${desde}:X${hasta}`,
+            values: filas.map((_, i) => [formulasDe(desde + i).X]) },
+        ],
+      },
+    });
+  } catch (e) {
+    const codigo = (e as { code?: number; status?: number })?.code
+      ?? (e as { status?: number })?.status;
+    if (codigo === 403) throw new SinPermisoDeEscritura(correoDeServicio());
+    throw e;
+  }
+
+  return { desde, hasta };
 }
