@@ -11,12 +11,21 @@
 // lo que se está mirando. Los totales sí, porque están al pie de las columnas que se ven y un
 // total que no suma lo que está arriba es un número que nadie puede verificar.
 //
-// ── EL TEXTO SE COMPARA SIN ACENTOS ───────────────────────────────────────────────────────────
+// ── EL TEXTO BUSCA EN TRES CAMPOS ─────────────────────────────────────────────────────────────
+//
+// Código de tienda, nombre de tienda y **pickers de la fila**. Son las tres preguntas que se
+// hacen mirando la hoja —«dónde está la 38SP2», «cuál es Peñalolén», «qué hizo hoy Marcelo»— y un
+// solo campo las responde todas, en vez de tres campos que hay que elegir antes de escribir.
+//
+// Buscar por picker da la fila ENTERA de la tienda, no solo su celda: la pregunta real es «qué
+// tiendas tocó Marcelo», y una fila recortada a una columna no se podría comparar con el resto.
+//
+// ── Y SE COMPARA SIN ACENTOS ──────────────────────────────────────────────────────────────────
 //
 // Con `flatCode`, la misma regla que ya usa el catálogo para colapsar 23PEN y 23PEÑ. Escribir
-// «pen» tiene que encontrar 23PEÑ: nadie va a buscar la Ñ en el teclado para filtrar una fila.
-// La lista de tiendas de Picking (`StoreListPanel`) compara en mayúsculas pero CON acentos, así
-// que ahí «pen» no encuentra 23PEÑ; acá sí.
+// «pen» tiene que encontrar 23PEÑ y «simon» a «Simón Sabathier»: nadie va a buscar la tilde en el
+// teclado para filtrar una fila. La lista de tiendas de Picking (`StoreListPanel`) compara en
+// mayúsculas pero CON acentos, así que ahí «pen» no encuentra 23PEÑ; acá sí.
 //
 // ── VACÍO = TODAS ─────────────────────────────────────────────────────────────────────────────
 //
@@ -24,7 +33,8 @@
 // alternativa —arrancar con las cinco dentro— obliga a mantener sincronizado «están las cinco»
 // con «no hay filtro», y son dos verdades que se desfasan.
 
-import { SECCIONES, totalesDeFilas, type MovimientoPlanilla, type Planilla } from './armarPlanilla';
+import { SECCIONES, totalesDeFilas, type FilaPlanilla, type MovimientoPlanilla, type Planilla }
+  from './armarPlanilla';
 import { COLOR_ZONA, ZONAS, type ZonaPlanilla } from './zonaPlanilla';
 import { flatCode } from '../picking-utils';
 
@@ -43,23 +53,43 @@ export function sinFiltro(f: FiltroPlanilla): boolean {
   return f.texto.trim() === '' && f.zonas.size === 0;
 }
 
+/** Contra qué se compara el texto buscado, para una fila o un movimiento. */
+export interface Candidato {
+  cod: string;
+  /** Falta cuando la tienda no está en el calendario del día. */
+  zona?: ZonaPlanilla;
+  /** El nombre de la tienda, del catálogo. */
+  nombre?: string | null;
+  /** Los pickers de esa fila o movimiento: buscar «marcelo» tiene que encontrarlos. */
+  pickers?: readonly string[];
+}
+
 /**
- * Si una tienda pasa el filtro.
+ * Si un candidato pasa el filtro.
+ *
+ * El texto se compara contra TRES cosas: el código de la tienda, su nombre y los pickers de la
+ * fila. Un solo campo de búsqueda para las tres preguntas que se hacen mirando la hoja —«dónde
+ * está tal tienda», «cómo se llama la 23PEÑ», «qué hizo hoy Marcelo»— en vez de tres campos que
+ * hay que elegir antes de escribir.
  *
  * `zona` puede faltar: un movimiento de una tienda que no está en el calendario del día no tiene
  * zona resuelta. Con un filtro de zona activo queda fuera —no se puede afirmar que sea de las
- * zonas pedidas—, y con solo texto se juzga por su código, que es el dato que sí tiene.
+ * zonas pedidas—, y con solo texto se juzga por lo que sí tiene.
  */
-export function calza(
-  f: FiltroPlanilla,
-  cod: string,
-  zona: ZonaPlanilla | undefined,
-  nombre?: string | null,
-): boolean {
-  if (f.zonas.size > 0 && (!zona || !f.zonas.has(zona))) return false;
+export function calza(f: FiltroPlanilla, c: Candidato): boolean {
+  if (f.zonas.size > 0 && (!c.zona || !f.zonas.has(c.zona))) return false;
   const q = flatCode(f.texto).trim();
   if (!q) return true;
-  return flatCode(cod).includes(q) || flatCode(nombre ?? '').includes(q);
+  if (flatCode(c.cod).includes(q)) return true;
+  if (flatCode(c.nombre ?? '').includes(q)) return true;
+  return (c.pickers ?? []).some(p => flatCode(p).includes(q));
+}
+
+/** Los pickers de una fila de la matriz, sin repetir: una persona puede tener varias secciones. */
+function pickersDeFila(fila: FilaPlanilla): string[] {
+  const out = new Set<string>();
+  for (const s of SECCIONES) for (const c of fila.celdas[s]) if (c.picker) out.add(c.picker);
+  return [...out];
 }
 
 /**
@@ -77,7 +107,10 @@ export function filtrarPlanilla(
   nombrePorCod?: ReadonlyMap<string, string>,
 ): Planilla {
   if (sinFiltro(f)) return p;
-  const filas = p.filas.filter(fila => calza(f, fila.cod, fila.zona, nombrePorCod?.get(fila.cod)));
+  const filas = p.filas.filter(fila => calza(f, {
+    cod: fila.cod, zona: fila.zona, nombre: nombrePorCod?.get(fila.cod),
+    pickers: pickersDeFila(fila),
+  }));
   return { ...p, filas, totales: totalesDeFilas(filas) };
 }
 
@@ -89,7 +122,10 @@ export function filtrarMovimientos(
   nombrePorCod?: ReadonlyMap<string, string>,
 ): MovimientoPlanilla[] {
   if (sinFiltro(f)) return movimientos;
-  return movimientos.filter(m => calza(f, m.cod, zonaPorCod.get(m.cod), nombrePorCod?.get(m.cod)));
+  return movimientos.filter(m => calza(f, {
+    cod: m.cod, zona: zonaPorCod.get(m.cod), nombre: nombrePorCod?.get(m.cod),
+    pickers: m.picker ? [m.picker] : [],
+  }));
 }
 
 /**
