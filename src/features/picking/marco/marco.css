@@ -154,3 +154,17 @@ button.pk-sg:hover .acc{color:#2B4BC8}
 .pk-hoja td.doble{background:#EFF6FF}
 .pk-hoja td.largo{background:#FFFBEB}
 .pk-hoja tbody tr.fila:hover>td,.pk-hoja tbody tr.fila:focus-within>td{background:#E7EDF5}
+
+/* El contador de la planilla y la banda por sección (PlanillaTab.tsx).
+   El punto late para decir «esto sigue en curso» sin tener que leer el número; con
+   `prefers-reduced-motion` se queda quieto y el color y el símbolo siguen diciendo lo mismo.
+   `.banda` alterna las columnas de sección: va por clase y no en línea porque un estilo en
+   línea le gana al resalte del mouse, que es el mismo motivo por el que .vacia y .doble
+   bajaron a CSS. */
+.pk-latido{animation:pk-latir 2s ease-in-out infinite}
+@keyframes pk-latir{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.pk-latido{animation:none}}
+.pk-hoja td.banda{background:#FAFBFD}
+.pk-hoja .mov + .mov{margin-top:4px;padding-top:4px;border-top:1px dashed #E8EDF3}
+.pk-pick:hover{border-color:#94A3B8 !important;background:#F1F5F9}
+.pk-pick:focus-visible{outline:2px solid #2B4BC8;outline-offset:1px}

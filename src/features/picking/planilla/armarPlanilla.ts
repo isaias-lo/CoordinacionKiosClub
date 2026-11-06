@@ -92,6 +92,11 @@ export interface CeldaPlanilla {
   pickerOdoo?: string;
   /** De qué movimiento quedó. Una celda con esto NO es trabajo sin empezar. */
   backorderDe?: OrigenBackorder;
+  /** Cuándo se asignó y cuándo se validó: es de donde sale el contador de la celda.
+   *  Ver `relojDe` en `horasPlanilla.ts` — el contador es una resta contra el reloj, no un
+   *  cronómetro que haya que arrancar y guardar. */
+  asignadoEn?: string | null;
+  validadoEn?: string | null;
 }
 
 export interface FilaPlanilla {
@@ -190,7 +195,8 @@ export function armarPlanilla(
         .filter(m => m.seccion === s)
         .sort(porAsignacion)
         .map(m => ({ registros: m.registros, picker: m.picker, ref: m.ref, id: m.id,
-                     origen: m.origen, pickerOdoo: m.pickerOdoo, backorderDe: m.backorderDe }));
+                     origen: m.origen, pickerOdoo: m.pickerOdoo, backorderDe: m.backorderDe,
+                     asignadoEn: m.asignadoEn, validadoEn: m.validadoEn }));
     }
     return { cod: t.cod, zona: t.zona, celdas, sinCarga: suyos.length === 0 };
   });

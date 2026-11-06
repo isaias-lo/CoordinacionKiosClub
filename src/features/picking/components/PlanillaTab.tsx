@@ -17,7 +17,7 @@
 // Imprimir usa el mismo patrón que `CalendarioColumnas.handlePrint`: se arma el HTML y se abre una
 // ventana. Cada vista imprime en SU formato, porque el botón imprime la vista en la que estás.
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Printer, Download, Loader2, RotateCcw, Search, X, ClipboardCheck } from 'lucide-react';
 import { AUTO_REFRESH_MS } from '../picking-types';
@@ -31,7 +31,7 @@ import { COLOR_ZONA, ZONAS, zonaPlanilla, type ZonaPlanilla } from '../planilla/
 import { contarPorZona, describirFiltro, filtrarMovimientos, filtrarPlanilla, sinFiltro,
          type FiltroPlanilla } from '../planilla/filtrarPlanilla';
 import { marcaBackorder, textoBackorder, tituloBackorder } from '../planilla/backorders';
-import { horaChile, duracionMinutos, formatearDuracion } from '../planilla/horasPlanilla';
+import { horaChile, duracionMinutos, formatearDuracion, relojDe } from '../planilla/horasPlanilla';
 import { csvVistaPlanilla, csvVistaDetalle } from '../planilla/csvPlanilla';
 import type { Aviso, Escritura } from '../planilla/registroOlas';
 
@@ -75,6 +75,24 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
   // portea sus etiquetas de impresión; su comentario lo dice.
   const [montado, setMontado] = useState(false);
   useEffect(() => { setMontado(true); }, []);
+
+  // ── EL RELOJ DEL CONTADOR ──────────────────────────────────────────────────────────────────
+  //
+  // Uno solo para toda la hoja, no uno por celda: con 29 tiendas × 4 secciones serían más de cien
+  // intervalos corriendo a la vez y cada uno redibujando su rama.
+  //
+  // Arranca en `null` y se llena en el primer efecto, igual que `montado`: `new Date()` en el
+  // render inicial daría un valor distinto en el servidor y en el navegador, que es exactamente
+  // el aviso de hidratación que ya arrastra esta pantalla por otro lado.
+  //
+  // Cada 30 s y no cada segundo: el contador se muestra en minutos, así que un tick por segundo
+  // redibujaría 59 veces de más para mostrar lo mismo.
+  const [ahora, setAhora] = useState<Date | null>(null);
+  useEffect(() => {
+    setAhora(new Date());
+    const id = setInterval(() => setAhora(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Qué día pide cada tienda: hoy, salvo las aperturas.
   const consultas = useMemo(
@@ -547,7 +565,7 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
             </div>
           )
           : vista === 'planilla'
-            ? <TablaPlanilla planilla={planilla} onCorregir={abrirCorreccion} />
+            ? <TablaPlanilla planilla={planilla} onCorregir={abrirCorreccion} ahora={ahora} />
             : <TablaDetalle movimientos={delDia} onCorregir={abrirCorreccion} />}
       </div>
 
@@ -606,9 +624,11 @@ const PASTILLA = {
 const BTN_PRI = { ...BTN_BASE, background: '#0F172A', color: '#fff', border: 'none' };
 
 /** La matriz: una fila por tienda; una celda con varios movimientos los apila. */
-function TablaPlanilla({ planilla, onCorregir }: {
+function TablaPlanilla({ planilla, onCorregir, ahora }: {
   planilla: Planilla;
   onCorregir: (celda: CeldaPlanilla, cod: string, seccion: SeccionPlanilla) => void;
+  /** El reloj compartido. `null` hasta el primer efecto: ver el comentario en `PlanillaTab`. */
+  ahora: Date | null;
 }) {
   return (
     // `pk-hoja` trae el resalte de la fila al pasar el mouse (marco.css). Los fondos de celda van
@@ -616,16 +636,19 @@ function TablaPlanilla({ planilla, onCorregir }: {
     // tapaban el resalte justo en las celdas grises.
     <div className="pk-hoja" style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 11,
                   flex: 1, minHeight: 0, overflow: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1020 }}>
+      {/* ── UNA COLUMNA POR SECCIÓN, NO DOS ───────────────────────────────────────────────
+          Antes había «Comida» y «Usuario Comida» como columnas separadas, y el número quedaba
+          lejos del nombre: para saber quién hizo los 136 había que cruzar la vista. Ahora el
+          par va junto en una celda, con el número en tipografía tabular para que las unidades
+          se comparen entre filas aunque el nombre de al lado sea más largo o más corto.
+          Son cuatro columnas menos, que es el ancho que necesitaba el contador. */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 900 }}>
         <thead>
           <tr style={{ background: '#F8FAFC' }}>
             <th style={TH_NUM}>#</th>
             <th style={TH}>Tienda</th>
             {SECCIONES.map(s => (
-              <Fragment key={s}>
-                <th style={TH_DER}>{s === 'Chocolates' ? 'Choc.' : s}</th>
-                <th style={TH_TENUE}>Usuario</th>
-              </Fragment>
+              <th key={s} style={TH}>{s === 'Chocolates' ? 'Choc.' : s}</th>
             ))}
           </tr>
         </thead>
@@ -643,21 +666,20 @@ function TablaPlanilla({ planilla, onCorregir }: {
                     opacity: f.sinCarga ? 0.45 : 1,
                   }}>{f.cod}</span>
                 </td>
-                {SECCIONES.map(s => {
+                {SECCIONES.map((s, j) => {
                   const celda = f.celdas[s];
-                  const clase = celda.length === 0 ? 'vacia' : celda.length > 1 ? 'doble' : undefined;
+                  // La banda alterna por SECCIÓN y no por fila: separa las cuatro columnas sin
+                  // pelearse con el rayado por tienda ni con el resalte del mouse.
+                  const clase = celda.length === 0 ? 'vacia' : j % 2 ? 'banda' : undefined;
                   return (
-                    <Fragment key={s}>
-                      <td className={clase} style={TD_DER}>
-                        {celda.map((x, k) => <div key={k}>{x.registros}</div>)}
-                      </td>
-                      <td className={clase} style={TD}>
-                        {celda.map((x, k) => (
-                          <CeldaPicker key={k} celda={x} cod={f.cod} seccion={s}
-                                       onCorregir={onCorregir} />
-                        ))}
-                      </td>
-                    </Fragment>
+                    <td key={s} className={clase} style={TD_SEC}>
+                      {celda.length === 0
+                        ? <span style={{ color: '#CBD5E1' }}>·</span>
+                        : celda.map((x, k) => (
+                            <CeldaPicker key={k} celda={x} cod={f.cod} seccion={s}
+                                         onCorregir={onCorregir} ahora={ahora} />
+                          ))}
+                    </td>
                   );
                 })}
               </tr>
@@ -667,10 +689,10 @@ function TablaPlanilla({ planilla, onCorregir }: {
             <td />
             <td style={{ ...TH, padding: '7px 10px' }}>Total</td>
             {SECCIONES.map(s => (
-              <Fragment key={s}>
-                <td style={{ ...TD_DER, fontWeight: 800 }}>{planilla.totales[s]}</td>
-                <td />
-              </Fragment>
+              <td key={s} style={{ ...TD_SEC, fontWeight: 800, fontFamily: 'ui-monospace, monospace',
+                                   fontVariantNumeric: 'tabular-nums', paddingTop: 7, paddingBottom: 7 }}>
+                {planilla.totales[s]}
+              </td>
             ))}
           </tr>
         </tbody>
@@ -739,11 +761,13 @@ function TablaDetalle({ movimientos, onCorregir }: {
  * dicen que se puede activar. Una celda sin referencia de Odoo —una línea agregada a mano— no se
  * puede corregir por acá y se muestra como texto.
  */
-function CeldaPicker({ celda, cod, seccion, onCorregir }: {
+function CeldaPicker({ celda, cod, seccion, onCorregir, ahora }: {
   celda: CeldaPlanilla;
   cod: string;
   seccion: SeccionPlanilla;
   onCorregir: (celda: CeldaPlanilla, cod: string, seccion: SeccionPlanilla) => void;
+  /** El reloj compartido. `null` = todavía no montó, y entonces no se dibuja contador. */
+  ahora?: Date | null;
 }) {
   const corregido = celda.origen === 'corregido';
   const bo = celda.backorderDe;
@@ -751,12 +775,34 @@ function CeldaPicker({ celda, cod, seccion, onCorregir }: {
   // validó, y Odoo lo creó solo. Mostrarlo como «— sin asignar» en naranja era leerlo al revés.
   const texto = celda.picker || (bo ? `↳ ${textoBackorder(bo)}` : '— sin asignar');
   const estiloTexto = celda.picker ? undefined : bo ? ESTILO_RESTO : ESTILO_SIN_ASIGNAR;
-  if (!celda.ref) return <div style={estiloTexto}>{texto}</div>;
+  const r = ahora ? relojDe(celda.asignadoEn, celda.validadoEn, ahora) : null;
+
+  // El número y el nombre en la MISMA línea, alineados por su base. El número va en tipografía
+  // tabular y con ancho mínimo para que las unidades de todas las filas queden en columna
+  // aunque el nombre de al lado sea más largo.
+  const numero = (
+    <span style={{ fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums',
+                   fontWeight: 700, color: '#0F172A', minWidth: 30, textAlign: 'right',
+                   flex: 'none' }}>{celda.registros}</span>
+  );
+
+  if (!celda.ref) return (
+    <div className="mov">
+      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+        {numero}<span style={estiloTexto}>{texto}</span>
+      </div>
+      <Contador r={r} />
+    </div>
+  );
   return (
-    <div>
-      {/* Se ve que se puede tocar: borde punteado y fondo al pasar por encima. Antes era un
-          subrayado fino que se leía como texto común y nadie adivinaba que era un botón. */}
-      <button type="button" onClick={() => onCorregir(celda, cod, seccion)}
+    <div className="mov" style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+      {numero}
+      <div style={{ minWidth: 0 }}>
+      {/* El borde aparece al pasar el mouse, no antes. Con 29 tiendas × 4 secciones, cien
+          recuadros punteados fijos eran más tinta que datos — por eso el estilo B los saca.
+          La afordancia no se pierde: `pk-pick:hover` pone el borde y el fondo, y
+          `:focus-visible` hace lo mismo para quien llega con el teclado. */}
+      <button type="button" className="pk-pick" onClick={() => onCorregir(celda, cod, seccion)}
               title={bo
                 // Las dos cosas: qué es esta línea Y que se puede tocar. Dejando solo la
                 // explicación del resto, la celda perdía la única señal de que es un botón.
@@ -765,7 +811,9 @@ function CeldaPicker({ celda, cod, seccion, onCorregir }: {
               style={{
                 font: 'inherit', cursor: 'pointer', textAlign: 'left',
                 padding: '1px 5px', marginLeft: -5, borderRadius: 5,
-                border: `1px dashed ${corregido ? '#FCD34D' : '#CBD5E1'}`,
+                // Corregido SÍ lleva borde siempre: es una marca de que ese nombre no es el que
+                // dijo Odoo, y eso tiene que verse sin pasar el mouse por encima.
+                border: corregido ? '1px dashed #FCD34D' : '1px dashed transparent',
                 background: corregido ? '#FFFBEB' : 'transparent',
                 ...(celda.picker ? { color: corregido ? '#92400E' : '#334155' } : estiloTexto),
                 ...(corregido ? { fontWeight: 700 } : null),
@@ -783,6 +831,36 @@ function CeldaPicker({ celda, cod, seccion, onCorregir }: {
         // El nombre original queda A LA VISTA: la hoja no reemplaza en silencio lo que dijo Odoo.
         <div style={{ fontSize: 10.5, color: '#B45309' }}>Odoo decía: {celda.pickerOdoo}</div>
       )}
+      <Contador r={r} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * El contador de la celda: corre desde que se asignó y se detiene al validar.
+ *
+ * El punto que late dice «esto sigue en curso» sin leer el número, y la tilde dice «terminó».
+ * Son dos símbolos distintos además de dos colores: el naranja y el verde no se distinguen para
+ * una de cada doce personas, y en la hoja impresa no hay color en absoluto.
+ *
+ * No se dibuja nada cuando no hay hora de asignación. Un «0 min» ahí sería mentira: el
+ * movimiento no tardó nada, todavía no se le dio a nadie.
+ */
+function Contador({ r }: { r: ReturnType<typeof relojDe> | null }) {
+  if (!r || r.estado === 'sin-datos') return null;
+  const corre = r.estado === 'corre';
+  return (
+    <div style={{ fontSize: 10.5, fontFamily: 'ui-monospace, monospace', fontWeight: 600,
+                  display: 'flex', gap: 4, alignItems: 'center',
+                  color: corre ? '#B45309' : '#15803D' }}
+         title={corre ? `En curso desde hace ${r.texto}`
+                      : `Validado — tardó ${r.texto}`}>
+      {corre
+        ? <span className="pk-latido" style={{ width: 6, height: 6, borderRadius: '50%',
+                                               background: 'currentColor', flex: 'none' }} />
+        : <span aria-hidden="true">✓</span>}
+      {r.texto}
     </div>
   );
 }
@@ -863,7 +941,6 @@ const TH       = { position: 'sticky', top: 0, zIndex: 1, background: '#F8FAFC',
                    padding: '7px 10px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
                    letterSpacing: '.06em', color: '#475569', textAlign: 'left',
                    boxShadow: 'inset 0 -2px 0 #E2E8F0' } as const;
-const TH_TENUE = { ...TH, color: '#94A3B8' } as const;
 const TH_DER   = { ...TH, textAlign: 'right', padding: '7px 6px' } as const;
 const TH_NUM   = { ...TH, textAlign: 'center', padding: '7px 4px', color: '#64748B' } as const;
 // 4 px de relleno y no 6: son 4 px menos por tienda y con 29 filas se nota al scrollear. El alto
@@ -873,6 +950,10 @@ const TD_DER   = { padding: '4px 6px', textAlign: 'right', color: '#0F172A', ver
                    fontWeight: 700, fontVariantNumeric: 'tabular-nums' } as const;
 const TD_NUM   = { padding: '4px 4px', textAlign: 'center', color: '#94A3B8', fontSize: 10.5,
                    verticalAlign: 'top' } as const;
+// La celda de una sección: lleva el número Y el nombre. La línea fina a la izquierda es lo que
+// separa las cuatro secciones ahora que cada una es una sola columna.
+const TD_SEC   = { padding: '4px 10px', color: '#334155', verticalAlign: 'top',
+                   borderLeft: '1px solid #F1F5F9' } as const;
 const ESTILO_SIN_ASIGNAR = { color: '#B45309', fontStyle: 'italic', fontWeight: 600 } as const;
 // Azul y no el naranja de «sin asignar»: el naranja es la alarma de trabajo que nadie tomó, y un
 // resto de un movimiento ya validado no es eso.

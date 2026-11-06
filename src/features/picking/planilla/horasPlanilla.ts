@@ -76,3 +76,44 @@ export function formatearDuracion(min: number | null): string {
   if (min < 60) return `${min} min`;
   return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`;
 }
+
+/** El estado del contador de una celda. */
+export interface Reloj {
+  /** `corre` = asignado y sin validar · `listo` = validado · `sin-datos` = sin hora de asignación. */
+  estado: 'corre' | 'listo' | 'sin-datos';
+  /** Minutos transcurridos, o `null` si no se pueden saber. */
+  minutos: number | null;
+  /** Ya formateado: `'2 h 26'`, `'20 min'` o `'—'`. */
+  texto: string;
+}
+
+/**
+ * Cuánto lleva un movimiento, corriendo o ya detenido.
+ *
+ * Es el contador que el coordinador pidió: arranca cuando se asigna y se detiene al validar. No
+ * hace falta guardar nada nuevo — Odoo ya trae las dos horas, así que esto es una resta contra el
+ * reloj y no un cronómetro que haya que arrancar, parar y persistir. Un cronómetro de verdad se
+ * desincronizaría al recargar la página o al abrirla en otro equipo; esta resta siempre da lo
+ * mismo en todos lados.
+ *
+ * `ahora` entra por parámetro en vez de leer el reloj adentro: así la función es pura y los tests
+ * pueden fijar un instante. La pantalla le pasa un `Date` que refresca cada medio minuto.
+ *
+ * Un movimiento validado que todavía no tiene hora de asignación da `sin-datos`, no cero: no se
+ * puede afirmar que tardó nada.
+ */
+export function relojDe(asignadoEn: FechaOdoo, validadoEn: FechaOdoo, ahora: Date): Reloj {
+  const fin = duracionMinutos(asignadoEn, validadoEn);
+  if (fin !== null) return { estado: 'listo', minutos: fin, texto: formatearDuracion(fin) };
+
+  // Sin validar: cuenta contra el reloj. No se delega en `duracionMinutos` porque esa recibe el
+  // TEXTO de Odoo y acá el segundo extremo es un `Date`; la resta se hace acá con el mismo
+  // truncado a minutos, para que un movimiento no cambie de duración al validarse.
+  const a = aFecha(asignadoEn);
+  if (!a) return { estado: 'sin-datos', minutos: null, texto: '—' };
+  const corriendo = Math.floor(ahora.getTime() / 60000) - Math.floor(a.getTime() / 60000);
+  // Negativo = el reloj del navegador atrasa respecto de Odoo. Un «−3 min» en pantalla se lee
+  // como que la planilla está rota, así que se informa como sin datos.
+  if (corriendo < 0) return { estado: 'sin-datos', minutos: null, texto: '—' };
+  return { estado: 'corre', minutos: corriendo, texto: formatearDuracion(corriendo) };
+}

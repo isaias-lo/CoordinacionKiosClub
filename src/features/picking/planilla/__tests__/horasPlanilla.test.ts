@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { horaChile, duracionMinutos, formatearDuracion } from '../horasPlanilla';
+import { horaChile, duracionMinutos, formatearDuracion, relojDe } from '../horasPlanilla';
 
 describe('horaChile: Odoo guarda UTC', () => {
   it('corre las tres horas en horario de verano', () => {
@@ -87,5 +87,59 @@ describe('duracionMinutos: lo que un firmante puede verificar a mano', () => {
     expect(horaChile('2026-04-05 02:30:00')).toBe('23:30');
     expect(horaChile('2026-04-05 03:30:00')).toBe('23:30');
     expect(duracionMinutos('2026-04-05 02:30:00', '2026-04-05 03:30:00')).toBe(60);
+  });
+});
+
+describe('relojDe: el contador de la celda', () => {
+  const AHORA = new Date('2026-11-06T15:30:00Z');
+
+  it('validado: se detiene y muestra lo que tardó', () => {
+    const r = relojDe('2026-11-06 11:00:00', '2026-11-06 13:26:00', AHORA);
+    expect(r.estado).toBe('listo');
+    expect(r.minutos).toBe(146);
+    expect(r.texto).toBe('2 h 26');
+  });
+
+  it('asignado y sin validar: corre contra el reloj', () => {
+    const r = relojDe('2026-11-06 14:48:00', null, AHORA);
+    expect(r.estado).toBe('corre');
+    expect(r.minutos).toBe(42);
+    expect(r.texto).toBe('42 min');
+  });
+
+  it('el que corre avanza con el reloj; el detenido no', () => {
+    // Es la diferencia que se tiene que ver en pantalla: uno late, el otro quedó fijo.
+    const masTarde = new Date('2026-11-06T16:30:00Z');
+    expect(relojDe('2026-11-06 14:48:00', null, masTarde).minutos).toBe(102);
+    expect(relojDe('2026-11-06 11:00:00', '2026-11-06 13:26:00', masTarde).minutos).toBe(146);
+  });
+
+  it('sin hora de asignación no inventa un cero', () => {
+    // Un movimiento que todavía no se le dio a nadie no lleva cero minutos: no lleva nada.
+    const r = relojDe(null, null, AHORA);
+    expect(r.estado).toBe('sin-datos');
+    expect(r.minutos).toBeNull();
+    expect(r.texto).toBe('—');
+  });
+
+  it('validado pero sin hora de asignación tampoco se puede medir', () => {
+    expect(relojDe(null, '2026-11-06 13:26:00', AHORA).estado).toBe('sin-datos');
+  });
+
+  it('entiende el `false` que manda Odoo', () => {
+    expect(relojDe('2026-11-06 14:48:00', false, AHORA).estado).toBe('corre');
+    expect(relojDe(false, false, AHORA).estado).toBe('sin-datos');
+  });
+
+  it('una asignación en el futuro no da minutos negativos', () => {
+    // Pasa con un desfase de reloj entre Odoo y el navegador. Un «−3 min» en pantalla se lee
+    // como que la planilla está rota.
+    const r = relojDe('2026-11-06 18:00:00', null, AHORA);
+    expect(r.estado).toBe('sin-datos');
+    expect(r.minutos).toBeNull();
+  });
+
+  it('recién asignado muestra cero, que sí es un dato', () => {
+    expect(relojDe('2026-11-06 15:30:00', null, AHORA).texto).toBe('0 min');
   });
 });
