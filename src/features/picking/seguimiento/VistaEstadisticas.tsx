@@ -9,6 +9,8 @@ import type { PickerStatRow } from '../picking-types';
 import {
   rangoDe, periodoDe, totales, unidadesPorOp, miles, textoMinutos, textoSegundos, textoRango, type Periodo,
 } from './estadisticas';
+import { compararPeriodos, resumen, type Direccion, type Tendencia } from './tendencia';
+import type { RendimientoPicker } from './rendimiento';
 
 type Orden = 'name' | 'ops' | 'lineCount' | 'units' | 'porOp' | 'avgMinutesPerOp' | 'avgSecondsPerLine';
 
@@ -26,6 +28,8 @@ const COLUMNAS: { key: Orden; label: string; hint: string; celda: (r: PickerStat
 
 interface Props {
   rows: PickerStatRow[];
+  /** El período inmediatamente anterior, del mismo largo. `null` = sin tendencia que mostrar. */
+  rowsPrevio: PickerStatRow[] | null;
   canonicalNames: Record<string, string>;
   desde: string;
   hasta: string;
@@ -45,7 +49,7 @@ interface Props {
 }
 
 export function VistaEstadisticas({
-  rows, canonicalNames, desde, hasta, onPeriodo, onActualizar, onImprimir, cargando, hayDatos, actualizado, error, sinOdoo,
+  rows, rowsPrevio, canonicalNames, desde, hasta, onPeriodo, onActualizar, onImprimir, cargando, hayDatos, actualizado, error, sinOdoo,
   sinMedir,
 }: Props) {
   const ahora = useMemo(() => new Date(), []);
@@ -65,6 +69,17 @@ export function VistaEstadisticas({
   const t = useMemo(() => totales(rows), [rows]);
   const max = porUnidades[0]?.units || 1;
   const nombre = (r: PickerStatRow) => canonicalNames[r.name] || r.name;
+
+  // La tendencia se indexa por el nombre QUE SE MUESTRA, que es el mismo con el que el servidor
+  // agrupó las filas. Indexar por `r.name` crudo fallaría justo en quien usó dos pistolas.
+  const porNombre = useMemo(() => {
+    if (!rowsPrevio) return null;
+    const comparadas = compararPeriodos(
+      rows as RendimientoPicker[], rowsPrevio as RendimientoPicker[]);
+    return new Map(comparadas.map(t => [t.nombre, t]));
+  }, [rows, rowsPrevio]);
+  const conteo = useMemo(
+    () => (porNombre ? resumen([...porNombre.values()]) : null), [porNombre]);
 
   const ordenar = (o: Orden) => {
     if (o === orden) setAsc(v => !v);
@@ -167,6 +182,11 @@ export function VistaEstadisticas({
                   <tr>
                     {encabezado('name', 'PICKER', 'Responsable en Odoo y nombre configurado', false)}
                     {COLUMNAS.map(c => <Fragment key={c.key}>{encabezado(c.key, c.label, c.hint)}</Fragment>)}
+                    {porNombre && (
+                      <th className="r" title="Unidades por hora comparadas con el período anterior, del mismo largo. Menos de 5% de diferencia se considera igual.">
+                        VS. PERÍODO ANTERIOR
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -177,6 +197,9 @@ export function VistaEstadisticas({
                         {canonicalNames[r.name] && <div className="pk-sub">{r.name}</div>}
                       </td>
                       {COLUMNAS.map(c => <td key={c.key} className="pk-n">{c.celda(r)}</td>)}
+                      {porNombre && (
+                        <td className="pk-n"><Flecha t={porNombre.get(nombre(r))} /></td>
+                      )}
                     </tr>
                   ))}
                   <tr className="tot">
@@ -187,6 +210,13 @@ export function VistaEstadisticas({
                     <td className="pk-n">{miles(t.unidadesPorOp)}</td>
                     <td className="pk-n">{textoMinutos(t.minPorPedido)}</td>
                     <td className="pk-n">{textoSegundos(t.segPorSku)}</td>
+                    {porNombre && conteo && (
+                      <td className="pk-n" style={{ fontWeight: 600 }}>
+                        {conteo.sube > 0 && <span style={{ color: '#15803D' }}>▲{conteo.sube} </span>}
+                        {conteo.baja > 0 && <span style={{ color: '#B91C1C' }}>▼{conteo.baja} </span>}
+                        {conteo.igual > 0 && <span style={{ color: '#64748B' }}>={conteo.igual}</span>}
+                      </td>
+                    )}
                   </tr>
                 </tbody>
               </table>
@@ -195,5 +225,43 @@ export function VistaEstadisticas({
         )}
       </div>
     </main>
+  );
+}
+
+/**
+ * La variación de una persona contra el período anterior.
+ *
+ * Lleva flecha Y número Y palabra, no solo color: una de cada doce personas no distingue el rojo
+ * del verde, y esta columna decide conversaciones sobre el desempeño de alguien. Con el texto
+ * también funciona impresa en blanco y negro, que es como se mira en el CD.
+ *
+ * Cuando no se puede comparar, el `title` dice por qué. Un guion sin explicación hace pensar que
+ * la pantalla está rota.
+ */
+function Flecha({ t }: { t: Tendencia | undefined }) {
+  if (!t) return <span style={{ color: '#CBD5E1' }}>—</span>;
+
+  const estilo: Record<Direccion, { signo: string; texto: string; color: string }> = {
+    sube:         { signo: '▲', texto: 'sube',  color: '#15803D' },
+    baja:         { signo: '▼', texto: 'baja',  color: '#B91C1C' },
+    igual:        { signo: '=', texto: 'igual', color: '#64748B' },
+    nuevo:        { signo: '·', texto: 'nuevo', color: '#1E40AF' },
+    'sin-datos':  { signo: '—', texto: '',      color: '#94A3B8' },
+  };
+  const e = estilo[t.direccion];
+
+  if (t.deltaCph === null) {
+    return (
+      <span style={{ color: e.color }} title={t.motivo ?? 'sin datos para comparar'}>
+        {e.signo} {e.texto}
+      </span>
+    );
+  }
+  const antes = t.previo?.cph ?? 0, ahora = t.actual?.cph ?? 0;
+  return (
+    <span style={{ color: e.color, fontWeight: 600, whiteSpace: 'nowrap' }}
+          title={`${antes} unidades por hora antes, ${ahora} ahora`}>
+      {e.signo} {t.deltaCph > 0 ? '+' : ''}{t.deltaCph}%
+    </span>
   );
 }

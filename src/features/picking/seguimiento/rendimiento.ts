@@ -45,6 +45,13 @@ export interface OperacionCruda {
 export interface RendimientoPicker extends PickerStatRow {
   /** Las que tenían hora de asignación y de validación. Es el divisor de los promedios. */
   opsMedidas: number;
+  /**
+   * Las cuentas de Odoo que aportaron a esta fila, ordenadas.
+   *
+   * Casi siempre es una. Cuando son dos, la fila es la suma de las dos pistolas que usó la
+   * persona, y conviene que eso se vea: si no, el total sorprende al compararlo con Odoo.
+   */
+  cuentas: string[];
 }
 
 export interface Rendimiento {
@@ -57,25 +64,46 @@ export interface Rendimiento {
 
 interface Acum {
   name: string;
+  /** Las cuentas de Odoo que aportaron a esta persona. Van a la fila para poder mostrarlas. */
+  cuentas: Set<string>;
   ops: number; units: number; lines: number;
   opsMedidas: number; minutosMedidos: number; unitsMedidas: number; lineasMedidas: number;
 }
 
-/** Las filas por persona, con los totales sobre todo y los ritmos sobre lo medido. */
-export function rendimientoPorPicker(operaciones: OperacionCruda[]): Rendimiento {
-  const porUsuario = new Map<number, Acum>();
+/**
+ * Las filas por PERSONA, con los totales sobre todo y los ritmos sobre lo medido.
+ *
+ * `canonicos` traduce la cuenta de Odoo a la persona («Pickers 15» → «Cristobal Labra»). Sin
+ * él se agrupa por cuenta, que es lo que había: una persona que usó dos pistolas en el período
+ * salía en DOS filas con el mismo nombre en pantalla, porque el nombre se traducía recién al
+ * dibujar. Dos filas de la misma persona no se pueden comparar con nada, y su ritmo real no
+ * está en ninguna de las dos.
+ *
+ * La fusión tiene que pasar ACÁ y no después: `avgSecondsPerLine` y `cph` se calculan sobre las
+ * líneas y unidades de lo MEDIDO, que no se publican en la fila. Juntando dos filas ya hechas
+ * habría que promediar dos promedios, que da un número que no es el de nadie.
+ */
+export function rendimientoPorPicker(
+  operaciones: OperacionCruda[],
+  canonicos?: Readonly<Record<string, string>>,
+): Rendimiento {
+  // La clave es la persona cuando se la conoce, y la cuenta cuando no. Es texto y no el id de
+  // Odoo justamente para que dos ids que son la misma persona caigan en la misma fila.
+  const porUsuario = new Map<string, Acum>();
   let sinMedir = 0;
   let sinResponsable = 0;
 
   for (const o of operaciones) {
     if (!o.userId || !o.userName) { sinResponsable++; continue; }
 
-    let u = porUsuario.get(o.userId);
+    const persona = canonicos?.[o.userName] || o.userName;
+    let u = porUsuario.get(persona);
     if (!u) {
-      u = { name: o.userName, ops: 0, units: 0, lines: 0,
+      u = { name: persona, cuentas: new Set(), ops: 0, units: 0, lines: 0,
             opsMedidas: 0, minutosMedidos: 0, unitsMedidas: 0, lineasMedidas: 0 };
-      porUsuario.set(o.userId, u);
+      porUsuario.set(persona, u);
     }
+    u.cuentas.add(o.userName);
 
     // Totales: cuentan SIEMPRE, se haya podido medir el tiempo o no.
     u.ops++;
@@ -95,6 +123,7 @@ export function rendimientoPorPicker(operaciones: OperacionCruda[]): Rendimiento
   const filas = [...porUsuario.values()]
     .map((u): RendimientoPicker => ({
       name: u.name,
+      cuentas: [...u.cuentas].sort(),
       ops: u.ops,
       opsMedidas: u.opsMedidas,
       units: Math.round(u.units),

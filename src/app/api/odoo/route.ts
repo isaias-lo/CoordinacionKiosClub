@@ -837,7 +837,25 @@ export async function POST(req: NextRequest) {
         mlByPicking[g.picking_id[0]] = { units: g.qty_done ?? 0, lines: g.picking_id_count ?? 0 };
       }
 
-      // 3. La cuenta vive en `seguimiento/rendimiento.ts`, que es puro y está testeado. Acá solo
+      // 3. Los nombres canónicos van A LA CUENTA, no al dibujo. En Odoo el responsable es la
+      //    CUENTA de la pistola, y una persona que usó dos en el período salía en DOS filas con
+      //    el mismo nombre en pantalla —la traducción pasaba recién al dibujar—, así que su
+      //    ritmo real no estaba en ninguna de las dos. Fusionar acá también arregla los ritmos:
+      //    se recalculan sobre la suma y no promediando dos promedios.
+      const canonicos: Record<string, string> = {};
+      try {
+        const { data } = await supabaseServer()
+          .from('picker_canonical_names').select('key, display_name');
+        for (const r of data ?? []) {
+          if (r.key && r.display_name) canonicos[String(r.key)] = String(r.display_name);
+        }
+      } catch (e) {
+        // Sin la tabla las filas salen por cuenta, que es como estaban antes: peor, pero no
+        // vacío. Un fallo de Supabase no puede dejar la pantalla de Estadísticas en blanco.
+        console.error('[picking_stats_range] nombres canónicos', e);
+      }
+
+      // 4. La cuenta vive en `seguimiento/rendimiento.ts`, que es puro y está testeado. Acá solo
       //    se traduce la forma de Odoo a la suya. Ver el comentario de ese archivo: la versión que
       //    estaba acá medía desde `scheduled_date`, descartaba el 14% en silencio y dividía la
       //    suma de las que contó por el total de todas.
@@ -853,6 +871,7 @@ export async function POST(req: NextRequest) {
             lines: ml?.lines ?? 0,
           };
         }),
+        canonicos,
       );
 
       return NextResponse.json({
