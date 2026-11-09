@@ -10,6 +10,7 @@ import {
   rangoDe, periodoDe, totales, unidadesPorOp, miles, textoMinutos, textoSegundos, textoRango, type Periodo,
 } from './estadisticas';
 import { compararPeriodos, resumen, type Direccion, type Tendencia } from './tendencia';
+import { textoCuentasFuera } from './filtroPickers';
 import type { RendimientoPicker } from './rendimiento';
 
 type Orden = 'name' | 'ops' | 'lineCount' | 'units' | 'porOp' | 'avgMinutesPerOp' | 'avgSecondsPerLine';
@@ -50,11 +51,14 @@ interface Props {
   truncado?: boolean;
   /** Odoo no devolvió la cantidad en ningún grupo: las unidades que se ven son ceros falsos. */
   unidadesDudosas?: boolean;
+  /** Lo que el filtro de pickers dejó afuera. Se MUESTRA: un filtro silencioso es lo que hizo
+   *  que la pantalla dijera 72 operaciones teniendo Odoo 868 y nadie pudiera notarlo. */
+  fueraDeLista?: { opsFuera: number; cuentasFuera: string[] };
 }
 
 export function VistaEstadisticas({
   rows, rowsPrevio, canonicalNames, desde, hasta, onPeriodo, onActualizar, onImprimir, cargando, hayDatos, actualizado, error, sinOdoo,
-  sinMedir, truncado, unidadesDudosas,
+  sinMedir, truncado, unidadesDudosas, fueraDeLista,
 }: Props) {
   const ahora = useMemo(() => new Date(), []);
   const periodo = periodoDe(desde, hasta, ahora);
@@ -162,6 +166,17 @@ export function VistaEstadisticas({
             <b>Odoo no está devolviendo las unidades.</b>{' '}
             Los ceros de «Unidades» y «Prom./op.» no son el dato: es que el campo no llegó.
             Las operaciones, los SKU y los tiempos sí son correctos.
+          </span></div>
+        )}
+        {fueraDeLista && fueraDeLista.opsFuera > 0 && (
+          // No es un error: son cuentas de Odoo que no están en la lista de pickers de Config,
+          // y la pantalla no las muestra a propósito. Lo que no puede pasar es que se vayan sin
+          // decirlo, porque entonces el total de la pantalla no calza con Odoo y no se sabe por qué.
+          <div className="pk-alert" role="status"><span>
+            <b>{miles(fueraDeLista.opsFuera)} {fueraDeLista.opsFuera === 1 ? 'operación' : 'operaciones'} fuera de la tabla.</b>{' '}
+            Son de {fueraDeLista.cuentasFuera.length === 1 ? 'una cuenta de Odoo que no está' : 'cuentas de Odoo que no están'}{' '}
+            en la lista de pickers: {textoCuentasFuera(fueraDeLista.cuentasFuera)}.
+            {' '}Se agregan en Ajustes → Configuración.
           </span></div>
         )}
         {sinMedir > 0 && (
