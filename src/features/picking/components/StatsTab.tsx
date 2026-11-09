@@ -109,7 +109,8 @@ export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames, esc
         pedir(previo.desde, previo.hasta).catch(() => null),
       ]);
       const data = (await res.json()) as {
-        stats?: PickerStatRow[]; error?: string; sinMedir?: number; truncado?: boolean };
+        stats?: PickerStatRow[]; error?: string; sinMedir?: number; truncado?: boolean;
+        unidadesDudosas?: boolean };
       if (!res.ok || data.error) throw new Error(data.error ?? 'Error Odoo');
       // Si el período anterior falla, la pantalla sigue andando SIN tendencia. Es un dato de
       // contexto: que falte no puede dejar sin ver los números del período que se pidió.
@@ -118,7 +119,7 @@ export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames, esc
         : null;
       const newCache: StatsCache = { cachedAt: new Date().toISOString(), rows: data.stats ?? [], desde: from, hasta: to,
         rowsPrevio: dPrevio?.stats ?? undefined,
-        sinMedir: data.sinMedir, truncado: data.truncado };
+        sinMedir: data.sinMedir, truncado: data.truncado, unidadesDudosas: data.unidadesDudosas };
       setCache(newCache);
       localStorage.setItem(STATS_CACHE_KEY, JSON.stringify(newCache));
     } catch (e) {
@@ -240,7 +241,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
         }}
         onActualizar={() => void loadStats()} onImprimir={exportStats}
         cargando={loading} hayDatos={!!cache} actualizado={cachedAt} error={error} sinMedir={cache?.sinMedir ?? 0}
-        truncado={cache?.truncado}
+        truncado={cache?.truncado} unidadesDudosas={cache?.unidadesDudosas}
         sinOdoo={hasOdoo ? null : avisoOdoo(motivoOdoo(odooDesactivado), 'no se pueden cargar las estadísticas')} />
     );
   }

@@ -6,6 +6,7 @@ import { fechaChileDe, limitesDiaChile, odooDateToISO } from '@/lib/fechaChile';
 import { verifyAuth } from '@/lib/apiAuth';
 import { diaParaConsultarOdoo } from '@/features/despacho/shared/diaDeOdoo';
 import { rendimientoPorPicker } from '@/features/picking/seguimiento/rendimiento';
+import { unidadesPorMovimiento, unidadesSonDudosas, type GrupoMoveLine } from '@/features/picking/seguimiento/unidadesDeOdoo';
 import { agruparAperturas, esApertura, type MovimientoApertura } from '@/features/despacho/shared/aperturaOdoo';
 import { camposAPedir, camposMedidaDe, camposNumericosConValor, esTextoDeMedida, normalizarCodigo, productoDesdeOdoo, type DefinicionCampos } from '@/features/despacho/shared/productosBodega';
 
@@ -839,15 +840,30 @@ export async function POST(req: NextRequest) {
       // Esto era lo que hacía fallar «Este mes» con «Tiempo de espera agotado»: 58 segundos
       // contra un timeout de 90 ya estaba al límite, y desde que la pantalla pide también el
       // período anterior para la tendencia, los dos juntos lo pasaban.
+      //
+      // ── Y SE SUMA `quantity`, NO `qty_done` ───────────────────────────────────────────────
+      //
+      // `qty_done` existe y una línea leída de a una lo trae con su valor — pero es un campo
+      // CALCULADO y NO ALMACENADO, y `read_group` solo sabe agregar columnas de la base.
+      // Comprobado contra Odoo el 09/11/2026:
+      //
+      //     fields_get → qty_done  store: false   ·  quantity  store: true
+      //
+      // Odoo no da error: devuelve el grupo SIN la clave, así que `g.qty_done ?? 0` daba 0 en
+      // todas. Por eso la columna «Unidades» mostraba 0 para todo el mundo, y con ella el
+      // «Prom./op.», la barra de «Unidades por picker» y —lo más caro— el CPH con el que
+      // `tendencia.ts` dice si alguien sube o baja, que es la misma métrica del bono.
+      //
+      // Sobre los mismos 20 movimientos del 09/11: `qty_done` sumó 0 y `quantity` sumó 12.145.
       const LOTE_IDS = 500;
-      const mlGroups: Array<{ picking_id: [number, string] | false; qty_done: number; picking_id_count: number }> = [];
+      const mlGroups: GrupoMoveLine[] = [];
       for (let i = 0; i < pickingIds.length; i += LOTE_IDS) {
         const parte = (await odooRpc(url, {
           service: 'object', method: 'execute_kw',
           args: [db, uid, apiKey, 'stock.move.line', 'read_group',
             [
               [['picking_id', 'in', pickingIds.slice(i, i + LOTE_IDS)], ['state', '=', 'done']],
-              ['qty_done'],
+              ['quantity'],
               ['picking_id'],
             ],
             {},
@@ -856,10 +872,14 @@ export async function POST(req: NextRequest) {
         mlGroups.push(...parte);
       }
 
-      const mlByPicking: Record<number, { units: number; lines: number }> = {};
-      for (const g of mlGroups) {
-        if (!Array.isArray(g.picking_id)) continue;
-        mlByPicking[g.picking_id[0]] = { units: g.qty_done ?? 0, lines: g.picking_id_count ?? 0 };
+      // La traducción vive en `seguimiento/unidadesDeOdoo.ts`, que es puro y está testeado:
+      // distingue «este movimiento no movió nada» de «Odoo no mandó el campo», que es la
+      // diferencia que un `?? 0` borra y la que dejó esta pantalla en ceros.
+      const ml = unidadesPorMovimiento(mlGroups);
+      const mlByPicking = ml.porId;
+      if (unidadesSonDudosas(ml)) {
+        console.error('[picking_stats_range] Odoo no agregó `quantity` en NINGÚN grupo: ' +
+          'el campo cambió y las unidades que siguen son ceros falsos.');
       }
 
       // 3. Los nombres canónicos van A LA CUENTA, no al dibujo. En Odoo el responsable es la
@@ -907,6 +927,9 @@ export async function POST(req: NextRequest) {
         // ningún error, que es peor que no devolver nada. Octubre entero son 3.343, así que el
         // tope solo se alcanza con varios meses — pero cuando pase, hay que decirlo.
         truncado: rawPickings.length >= TOPE_PICKINGS,
+        // Odoo no mandó la cantidad en ningún grupo: las unidades son ceros falsos y la pantalla
+        // tiene que decirlo en vez de dibujarlos. Ver `unidadesDeOdoo.ts`.
+        unidadesDudosas: unidadesSonDudosas(ml),
       });
     }
 
