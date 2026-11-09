@@ -230,8 +230,12 @@ function FilaNombre({ pickerKey, guardado, onGuardar, onQuitar }: {
           {cambiado
             ? <button type="button" className="pk-btn pri" style={{ padding: '4px 10px' }} onClick={() => setPendiente('guardar')}>Guardar</button>
             : listo ? <span className="pk-pill ok" aria-live="polite">Guardado</span>
-            : onQuitar ? <button type="button" className="pk-x" aria-label={`Eliminar ${pickerKey}`} onClick={() => setPendiente('quitar')}>✕</button>
-            : null}
+            : <>
+                {/* Una pistola sin nombre es un estado normal —existe y no la usa nadie—, no un
+                    campo a medio llenar. Sin esta marca se lee como un olvido. */}
+                {!guardado.trim() && <span className="pk-sub" style={{ marginRight: 8 }}>Sin asignar</span>}
+                {onQuitar && <button type="button" className="pk-x" aria-label={`Eliminar ${pickerKey}`} onClick={() => setPendiente('quitar')}>✕</button>}
+              </>}
         </td>
       </tr>
       {pendiente && (

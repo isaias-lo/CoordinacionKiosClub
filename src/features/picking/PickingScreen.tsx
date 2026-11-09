@@ -1045,7 +1045,10 @@ export function PickingScreen() {
         .order('key');
       if (!data?.length) return;
       const next: Record<string, string> = {};
-      for (const r of data) if (r.display_name) next[r.key] = r.display_name;
+      // Una fila con el nombre VACÍO es una pistola que existe y no usa nadie. Descartarla acá
+      // la hacía desaparecer de Configuración y de Estadísticas al recargar, aunque la fila
+      // estuviera en la base. Ver `ajustes/nombresDePicker.ts`.
+      for (const r of data) next[r.key] = r.display_name ?? '';
       setCanonicalNames(next);
     } catch { /* silent */ }
   }, []);
@@ -1077,12 +1080,14 @@ export function PickingScreen() {
   // (los nombres con override y la fusión con adelantos se resuelven en el memo
   //  `todayStores` más abajo)
 
-  const handleCanonicalNamesChange = useCallback((names: Record<string, string>, changedKey?: string, changedVal?: string, byName?: string) => {
+  // `accion` dice si se guardó un nombre o se quitó la pistola. El servidor ya no lo deduce de
+  // un nombre vacío: así era como borrarle el nombre a una cuenta la eliminaba entera.
+  const handleCanonicalNamesChange = useCallback((names: Record<string, string>, changedKey?: string, changedVal?: string, byName?: string, accion: 'nombre' | 'quitar' = 'nombre') => {
     setCanonicalNames(names); // persisted automatically by useLocalStorage
     if (changedKey !== undefined) {
       void pickingFetch('/api/picker-canonical-names', {
         method: 'POST',
-        body: JSON.stringify({ key: changedKey, display_name: changedVal ?? '', updated_by_name: byName ?? '' }),
+        body: JSON.stringify({ key: changedKey, display_name: changedVal ?? '', updated_by_name: byName ?? '', accion }),
       });
     }
   }, []);
