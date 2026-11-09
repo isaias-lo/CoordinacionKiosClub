@@ -3,6 +3,7 @@ import { verifyAdmin } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { esMall } from '@/features/despacho/rutas/utils/tipoTienda';
 import { esRegionNorte } from '@/lib/sectores';
+import { COLOR_ZONA, aColorSheets } from '@/lib/coloresZona';
 import { google } from 'googleapis';
 import type { sheets_v4 } from 'googleapis';
 
@@ -90,13 +91,25 @@ const WHITE         = hex('#FFFFFF');
 const WHT_TXT       = hex('#FFFFFF');
 const DRK_TXT       = hex('#1C1C1E');
 
-// Calendar section cell colors per store type
+// ── LOS CINCO COLORES SALEN DE LA TABLA ÚNICA ────────────────────────────────────────────────
+//
+// Antes estaban escritos acá, y tenían DOS divergencias con la planilla de Picking y el
+// calendario impreso, comprobadas el 06/11/2026:
+//
+//   · `norte` era celeste y `sur` amarillo — **al revés** que en los otros dos. La misma tienda
+//     salía de un color en el papel y de otro en esta planilla de cálculo.
+//   · `rm` era verde y se llamaba «Flota Luis regular RM», contra el gris «Stripcenter» de los
+//     otros dos. Comprobado contra las reglas de clasificación, es el MISMO conjunto: la RM que
+//     no es mall. Mismo conjunto, dos nombres y dos colores.
+//
+// Se usa el relleno `sheet` y no el de pantalla: acá no hay borde ni tarjeta que recorte la
+// celda, y un relleno casi blanco sobre el fondo blanco de la planilla no se vería.
 const BG: Record<StoreType, sheets_v4.Schema$Color> = {
-  rm:    hex('#D1FAE5'), // light green  — Flota Luis regular RM
-  mall:  hex('#FECDD3'), // light rose   — Malls RM
-  costa: hex('#99F6E4'), // teal         — Costa Valparaíso
-  norte: hex('#BAE6FD'), // light blue   — Zona Norte (FAL)
-  sur:   hex('#FEF08A'), // light yellow — Zona Sur (FAL)
+  rm:    aColorSheets(COLOR_ZONA.rm.sheet),
+  mall:  aColorSheets(COLOR_ZONA.mall.sheet),
+  costa: aColorSheets(COLOR_ZONA.costa.sheet),
+  norte: aColorSheets(COLOR_ZONA.norte.sheet),
+  sur:   aColorSheets(COLOR_ZONA.sur.sheet),
 };
 
 // ARMADO SECO cell colors (simplified: Flota Luis = green, Falabella = pink)

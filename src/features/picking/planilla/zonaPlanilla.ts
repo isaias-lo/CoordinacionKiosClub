@@ -30,21 +30,14 @@
 import { grupoDeSector, esRegionNorte } from '@/lib/sectores';
 import { esMall } from '@/features/despacho/rutas/utils/tipoTienda';
 
-export type ZonaPlanilla = 'norte' | 'sur' | 'costa' | 'mall' | 'rm';
+// Los colores y el orden de la leyenda viven en `@/lib/coloresZona`, que es la ÚNICA tabla: la
+// comparten esta planilla, el calendario impreso y lo que se escribe al Google Sheet. Estaban
+// escritos tres veces y dos de las copias tenían el norte y el sur al revés. Se re-exportan desde
+// acá para no tocar a los quince consumidores que ya importan de este archivo.
+export { COLOR_ZONA, ZONAS } from '@/lib/coloresZona';
+export type { ColorZona, ZonaPlanilla } from '@/lib/coloresZona';
 
-export interface ColorZona { bg: string; text: string; border: string; label: string }
-
-/** Los cinco colores, tal cual `CalendarioColumnas.handlePrint`. */
-export const COLOR_ZONA: Record<ZonaPlanilla, ColorZona> = {
-  norte: { bg: '#FEF08A', text: '#713F12', border: '#FDE047', label: 'Ruta Norte'  },
-  sur:   { bg: '#BAE6FD', text: '#0C4A6E', border: '#7DD3FC', label: 'Ruta Sur'    },
-  costa: { bg: '#99F6E4', text: '#134E4A', border: '#5EEAD4', label: 'Costa'       },
-  mall:  { bg: '#FECDD3', text: '#881337', border: '#FDA4AF', label: 'Mall RM'     },
-  rm:    { bg: '#F1F5F9', text: '#334155', border: '#CBD5E1', label: 'Stripcenter' },
-};
-
-/** El orden en que se muestra la leyenda. */
-export const ZONAS: ZonaPlanilla[] = ['norte', 'sur', 'costa', 'mall', 'rm'];
+import type { ZonaPlanilla } from '@/lib/coloresZona';
 
 /** Lo mínimo de la ficha de `tiendas` que hace falta para decidir. */
 export interface FichaZona {
