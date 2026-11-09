@@ -10,6 +10,7 @@ import { escapeHtml } from '@/lib/escapeHtml';
 import { InlineConfirm } from './InlineConfirm';
 import { avisoOdoo, motivoOdoo } from '../avisoOdoo';
 import { VistaEstadisticas } from '../seguimiento/VistaEstadisticas';
+import { repartirPorListaDePickers } from '../seguimiento/filtroPickers';
 
 type SortKey = keyof PickerStatRow;
 
@@ -145,14 +146,34 @@ export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames, esc
     [canonicalNames],
   );
 
+  // La pregunta se le hace a la CUENTA de Odoo, no al nombre de la fila. Desde el #788 la fila
+  // se llama como la PERSONA, y ninguna persona está en una lista de cuentas: preguntando por el
+  // nombre se caían todas menos «control interno» —la única entrada cuyo `key` es igual a su
+  // `display_name`—, y eso era lo único que quedaba en pantalla. Ver `filtroPickers.ts`.
+  const esDePickers = useCallback(
+    (cuenta: string) => isAllowedPicker(cuenta) || knownPickers.has(cuenta.toLowerCase().trim()),
+    [knownPickers],
+  );
+
+  const reparto = useMemo(
+    () => repartirPorListaDePickers(cache?.rows ?? [], esDePickers),
+    [cache, esDePickers],
+  );
+
+  // El período anterior se filtra IGUAL. Comparar filas filtradas contra filas sin filtrar
+  // metía en el resumen «▲ subieron / ▼ bajaron» a gente que la tabla no muestra.
+  const previoFiltrado = useMemo(
+    () => (cache?.rowsPrevio ? repartirPorListaDePickers(cache.rowsPrevio, esDePickers).dentro : null),
+    [cache, esDePickers],
+  );
+
   const sorted = useMemo(() => {
-    if (!cache) return [];
-    return [...cache.rows.filter(r => isAllowedPicker(r.name) || knownPickers.has(r.name.toLowerCase().trim()))].sort((a, b) => {
+    return [...reparto.dentro].sort((a, b) => {
       const av = a[sortKey], bv = b[sortKey];
       const cmp = typeof av === 'string' ? (av as string).localeCompare(bv as string) : (av as number) - (bv as number);
       return sortAsc ? cmp : -cmp;
     });
-  }, [cache, sortKey, sortAsc, knownPickers]);
+  }, [reparto, sortKey, sortAsc]);
 
   const handleSort = (key: SortKey, colId: string = key) => {
     if (sortKey === key) setSortAsc(v => !v);
@@ -231,7 +252,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
 
   if (escritorio) {
     return (
-      <VistaEstadisticas rows={sorted} rowsPrevio={cache?.rowsPrevio ?? null}
+      <VistaEstadisticas rows={sorted} rowsPrevio={previoFiltrado}
         canonicalNames={canonicalNames} desde={dateFrom} hasta={dateTo}
         onPeriodo={(desde, hasta) => {
           // Lo mismo que «Aplicar» con fechas a mano: el período nuevo reemplaza al guardado.
@@ -242,6 +263,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
         onActualizar={() => void loadStats()} onImprimir={exportStats}
         cargando={loading} hayDatos={!!cache} actualizado={cachedAt} error={error} sinMedir={cache?.sinMedir ?? 0}
         truncado={cache?.truncado} unidadesDudosas={cache?.unidadesDudosas}
+        fueraDeLista={reparto}
         sinOdoo={hasOdoo ? null : avisoOdoo(motivoOdoo(odooDesactivado), 'no se pueden cargar las estadísticas')} />
     );
   }
