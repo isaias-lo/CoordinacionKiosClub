@@ -787,6 +787,8 @@ export async function POST(req: NextRequest) {
 
     /* ── picking_stats_range ── */
     if (action === 'picking_stats_range') {
+      /** Cuántos pickings se traen como máximo. Ver `truncado` en la respuesta. */
+      const TOPE_PICKINGS = 8000;
       const domainPick: unknown[] = [
         ['state', '=', 'done'],
         ['date_done', '>=', dateFrom + ' 00:00:00'],
@@ -803,7 +805,7 @@ export async function POST(req: NextRequest) {
           // `scheduled_date` ya no se pide: era el día PLANIFICADO del movimiento y medir desde
           // ahí daba una duración que no es la de nadie.
           fields: ['id', 'user_id', 'date_done', 'user_assigned_date'],
-          limit: 8000, order: 'id asc',
+          limit: TOPE_PICKINGS, order: 'id asc',
         }],
       })) as Array<{
         id: number;
@@ -818,18 +820,41 @@ export async function POST(req: NextRequest) {
 
       const pickingIds = rawPickings.map(p => p.id);
 
-      // 2. Get qty_done sum + line count per picking from stock.move.line
-      const mlGroups = (await odooRpc(url, {
-        service: 'object', method: 'execute_kw',
-        args: [db, uid, apiKey, 'stock.move.line', 'read_group',
-          [
-            [['picking_id', 'in', pickingIds], ['state', '=', 'done']],
-            ['qty_done'],
-            ['picking_id'],
+      // 2. Unidades y líneas por picking, desde stock.move.line.
+      //
+      // ── POR LOTES, Y NO DE UNA ────────────────────────────────────────────────────────────
+      //
+      // Un `read_group` con los 3.343 ids de un mes en un solo `in` tardaba **56,6 segundos**;
+      // en lotes de 500 tarda **6,3**, y devuelve exactamente los mismos grupos. Medido el
+      // 09/11/2026 contra Odoo:
+      //
+      //     de una      1 llamada  · 3.343 grupos · 56.575 ms
+      //     lotes 250  14 llamadas · 3.343 grupos ·  6.847 ms
+      //     lotes 500   7 llamadas · 3.343 grupos ·  6.317 ms
+      //     lotes 1000  4 llamadas · 3.343 grupos ·  7.821 ms
+      //
+      // Más llamadas y nueve veces menos tiempo: con una lista larga el planificador de Odoo
+      // elige un plan malo, y partirla lo evita. El mínimo está cerca de 500.
+      //
+      // Esto era lo que hacía fallar «Este mes» con «Tiempo de espera agotado»: 58 segundos
+      // contra un timeout de 90 ya estaba al límite, y desde que la pantalla pide también el
+      // período anterior para la tendencia, los dos juntos lo pasaban.
+      const LOTE_IDS = 500;
+      const mlGroups: Array<{ picking_id: [number, string] | false; qty_done: number; picking_id_count: number }> = [];
+      for (let i = 0; i < pickingIds.length; i += LOTE_IDS) {
+        const parte = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'stock.move.line', 'read_group',
+            [
+              [['picking_id', 'in', pickingIds.slice(i, i + LOTE_IDS)], ['state', '=', 'done']],
+              ['qty_done'],
+              ['picking_id'],
+            ],
+            {},
           ],
-          {},
-        ],
-      })) as Array<{ picking_id: [number, string] | false; qty_done: number; picking_id_count: number }>;
+        })) as typeof mlGroups;
+        mlGroups.push(...parte);
+      }
 
       const mlByPicking: Record<number, { units: number; lines: number }> = {};
       for (const g of mlGroups) {
@@ -878,6 +903,10 @@ export async function POST(req: NextRequest) {
         stats: filas, dateFrom, dateTo, total: rawPickings.length,
         // Lo que no se pudo medir se informa; la pantalla lo muestra en vez de esconderlo.
         sinMedir, sinResponsable,
+        // El tope de 8.000 corta en silencio: un período más largo devolvería números BAJOS sin
+        // ningún error, que es peor que no devolver nada. Octubre entero son 3.343, así que el
+        // tope solo se alcanza con varios meses — pero cuando pase, hay que decirlo.
+        truncado: rawPickings.length >= TOPE_PICKINGS,
       });
     }
 
