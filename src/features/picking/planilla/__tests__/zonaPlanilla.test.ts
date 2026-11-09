@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { zonaPlanilla, COLOR_ZONA } from '../zonaPlanilla';
+import { COLOR_ZONA as COMPARTIDA, ZONAS, aColorSheets } from '@/lib/coloresZona';
+
+/** Suma de los tres canales: alcanza para comparar cuál es más oscuro. */
+const luz = (hex: string) => [1, 3, 5].reduce((a, i) => a + parseInt(hex.slice(i, i + 2), 16), 0);
 
 describe('zonaPlanilla: la zona con la que se pinta una tienda', () => {
   it('una tienda de Regiones que además es MALL va por su RUTA, no de rosa', () => {
@@ -35,12 +39,46 @@ describe('zonaPlanilla: la zona con la que se pinta una tienda', () => {
     expect(zonaPlanilla(null)).toBe('rm');
   });
 
-  it('la paleta tiene las cinco zonas con los colores del calendario impreso', () => {
-    expect(COLOR_ZONA.norte.bg).toBe('#FEF08A');
-    expect(COLOR_ZONA.sur.bg).toBe('#BAE6FD');
-    expect(COLOR_ZONA.costa.bg).toBe('#99F6E4');
-    expect(COLOR_ZONA.mall.bg).toBe('#FECDD3');
+  it('la paleta que usa la planilla ES la tabla compartida, no una copia', () => {
+    // Fijar los hex acá no servía de nada: lo que falló de verdad fue que hubiera TRES copias
+    // y dos tuvieran el norte y el sur al revés. Lo que hay que fijar es la identidad.
+    expect(COLOR_ZONA).toBe(COMPARTIDA);
     expect(Object.keys(COLOR_ZONA)).toHaveLength(5);
+  });
+
+  it('cada zona trae sus cuatro valores y el del Sheet', () => {
+    for (const z of ZONAS) {
+      const c = COLOR_ZONA[z];
+      for (const k of ['bg', 'text', 'border', 'sheet'] as const) {
+        expect(c[k], z + '.' + k).toMatch(/^#[0-9A-F]{6}$/);
+      }
+      expect(c.label.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('el relleno del Sheet es MÁS oscuro que el de pantalla', () => {
+    // En la planilla de cálculo no hay borde ni tarjeta que recorte la celda: el relleno de
+    // pantalla, casi blanco, no se vería sobre el fondo blanco.
+    for (const z of ZONAS) {
+      expect(luz(COLOR_ZONA[z].sheet), z).toBeLessThan(luz(COLOR_ZONA[z].bg));
+    }
+  });
+
+  it('el borde es más OSCURO que el relleno: define en vez de brillar', () => {
+    // Era al revés en la paleta vieja, y por eso el bloque flotaba y competía con los números.
+    for (const z of ZONAS) {
+      expect(luz(COLOR_ZONA[z].border), z).toBeLessThan(luz(COLOR_ZONA[z].bg));
+      expect(luz(COLOR_ZONA[z].text), z).toBeLessThan(luz(COLOR_ZONA[z].border));
+    }
+  });
+
+  it('aColorSheets convierte a lo que pide la API de Google', () => {
+    expect(aColorSheets('#FFFFFF')).toEqual({ red: 1, green: 1, blue: 1 });
+    expect(aColorSheets('#000000')).toEqual({ red: 0, green: 0, blue: 0 });
+    for (const v of Object.values(aColorSheets(COLOR_ZONA.norte.sheet))) {
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
   });
 });
 

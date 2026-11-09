@@ -48,6 +48,25 @@ const GRP_ICON: Record<string, LucideIcon> = {
 
 
 /** Ficha mínima que el calendario necesita de cada tienda. `lat` es para separar norte de sur. */
+import { COLOR_ZONA, type ZonaPlanilla } from '@/lib/coloresZona';
+
+/** Los nombres largos de la leyenda impresa: ahí «Ruta Norte» se dice «Zona Norte (Regiones)». */
+const NOMBRE_IMPRESO: Record<ZonaPlanilla, string> = {
+  rm: 'RM', mall: 'Malls RM', costa: 'Costa Valparaíso',
+  norte: 'Zona Norte (Regiones)', sur: 'Zona Sur (Regiones)',
+};
+
+/**
+ * La leyenda se arma DESDE la tabla de colores, no a mano.
+ *
+ * Estaba escrita con los hex pegados en el HTML, así que al cambiar la paleta los puntitos de la
+ * leyenda habrían seguido mostrando los colores viejos mientras las celdas mostraban los nuevos.
+ * Es exactamente la clase de divergencia que la tabla única vino a terminar.
+ */
+const LEYENDA_ZONAS = (['rm', 'mall', 'costa', 'norte', 'sur'] as const).map(z =>
+  `<div class="leg-item"><div class="leg-dot" style="background:${COLOR_ZONA[z].bg};` +
+  `border-color:${COLOR_ZONA[z].border}"></div>${NOMBRE_IMPRESO[z]}</div>`).join('\n    ');
+
 type TiendaCal = { n: string; z: string; d: string; tipo: string; lat: number | null };
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
@@ -432,14 +451,11 @@ export default function CalendarioColumnas({
   function handlePrint() {
     if (!local) return;
 
-    type Zone = 'norte' | 'sur' | 'costa' | 'rm' | 'mall';
-    const ZONE_COLOR: Record<Zone, { bg: string; text: string; border: string }> = {
-      norte: { bg: '#FEF08A', text: '#713F12', border: '#FDE047' },
-      sur:   { bg: '#BAE6FD', text: '#0C4A6E', border: '#7DD3FC' },
-      costa: { bg: '#99F6E4', text: '#134E4A', border: '#5EEAD4' },
-      rm:    { bg: '#F1F5F9', text: '#334155', border: '#CBD5E1' },
-      mall:  { bg: '#FECDD3', text: '#881337', border: '#FDA4AF' },
-    };
+    // Los cinco colores salen de `@/lib/coloresZona`, la tabla única que comparten esta
+    // impresión, la planilla de Picking y lo que se escribe al Google Sheet. Antes estaban
+    // copiados acá, y la copia del Sheet tenía el norte y el sur al revés que esta.
+    type Zone = ZonaPlanilla;
+    const ZONE_COLOR = COLOR_ZONA;
 
     // Regiones → Costa → RM (igual que la vista General)
     const dayOrdered: Array<Array<{ cod: string; zone: Zone }>> = visibleDias.map(dia => {
@@ -499,11 +515,7 @@ export default function CalendarioColumnas({
   <h1>Calendario de Despacho — KiosClub</h1>
   <p class="subtitle">Impreso el ${today} &nbsp;·&nbsp; Orden por columna: Regiones → Costa → RM</p>
   <div class="legend">
-    <div class="leg-item"><div class="leg-dot" style="background:#F1F5F9;border-color:#CBD5E1"></div>RM</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#FECDD3;border-color:#FDA4AF"></div>Malls RM</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#99F6E4;border-color:#5EEAD4"></div>Costa Valparaíso</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#FEF08A;border-color:#FDE047"></div>Zona Norte (Regiones)</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#BAE6FD;border-color:#7DD3FC"></div>Zona Sur (Regiones)</div>
+    ${LEYENDA_ZONAS}
   </div>
   <table>
     <thead>
