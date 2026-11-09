@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { RotateCcw, Plus, X, Check, AlertTriangle } from 'lucide-react';
 import { LabelConfig, DEFAULT_LABEL_CONFIG, CFG_SLIDER_CSS, BarcodeCard, PropRow } from '@/features/despacho/shared/BarcodeCard';
 import { buildPickerKeyList, isCustomPickerKey } from '../picking-utils';
+import { guardarNombre, quitarPicker } from '../ajustes/nombresDePicker';
 import { InlineConfirm } from './InlineConfirm';
 import { VistaConfiguracion } from '../ajustes/VistaConfiguracion';
 
@@ -88,7 +89,9 @@ interface Props {
   labelConfig:           LabelConfig;
   onLabelConfigChange:   (cfg: LabelConfig) => void;
   canonicalNames:        Record<string, string>;
-  onCanonicalNamesChange:(names: Record<string, string>, changedKey?: string, changedVal?: string, byName?: string) => void;
+  /** `accion` distingue guardar un nombre de QUITAR la pistola. Sin ella se asume `'nombre'`,
+   *  que es el lado que no borra nada. */
+  onCanonicalNamesChange:(names: Record<string, string>, changedKey?: string, changedVal?: string, byName?: string, accion?: 'nombre' | 'quitar') => void;
   colsPerRow:            number;
   onColsPerRowChange:    (n: number) => void;
   currentUserName:       string;
@@ -139,10 +142,11 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
   const [addPickerError, setAddPickerError] = useState<string | null>(null);
   const pickerKeys = buildPickerKeyList(canonicalNames);
 
+  // Borrar el nombre deja la pistola SIN NOMBRE; no la borra. Eran la misma línea y por eso el
+  // cuadro que decía «→ (sin nombre)» eliminaba la cuenta entera. Ver `ajustes/nombresDePicker.ts`.
   const handleNameSave = (key: string, val: string) => {
-    const next = { ...canonicalNames };
-    if (val.trim()) next[key] = val.trim(); else delete next[key];
-    onCanonicalNamesChange(next, key, val.trim(), currentUserName);
+    const c = guardarNombre(canonicalNames, key, val);
+    onCanonicalNamesChange(c.names, key, c.envio.display_name, currentUserName, c.envio.accion);
   };
 
   const handleAddPicker = () => {
@@ -160,10 +164,11 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
   };
 
   // La confirmación ya ocurrió dentro de PickerNameRow (InlineConfirm) antes de llamar esto.
+  // Esta es la ÚNICA vía que borra la fila, y lo dice con `accion: 'quitar'` en vez de dejar que
+  // el servidor lo deduzca de un nombre vacío.
   const handleRemovePicker = (key: string) => {
-    const next = { ...canonicalNames };
-    delete next[key];
-    onCanonicalNamesChange(next, key, '', currentUserName); // display_name '' → borra la fila en Supabase
+    const c = quitarPicker(canonicalNames, key);
+    onCanonicalNamesChange(c.names, key, '', currentUserName, c.envio.accion);
   };
 
   if (escritorio) {
