@@ -124,6 +124,9 @@ export interface StatsCache {
   /** El período trajo el máximo de operaciones que Odoo devuelve y puede estar cortado: los
    *  números serían BAJOS sin ningún error. Se muestra para que nadie los lea como completos. */
   truncado?: boolean;
+  /** Odoo no devolvió la cantidad agregada en ningún grupo: las unidades son ceros falsos.
+   *  Ver `seguimiento/unidadesDeOdoo.ts` — un campo no almacenado no da error, da un cero. */
+  unidadesDudosas?: boolean;
 }
 
 export type PickerType = 'P' | 'C' | 'B' | 'CH' | 'CC' | 'CN';

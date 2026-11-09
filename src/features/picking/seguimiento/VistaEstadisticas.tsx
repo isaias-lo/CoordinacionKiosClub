@@ -48,11 +48,13 @@ interface Props {
   sinMedir: number;
   /** El período alcanzó el tope de Odoo y los números están cortados. */
   truncado?: boolean;
+  /** Odoo no devolvió la cantidad en ningún grupo: las unidades que se ven son ceros falsos. */
+  unidadesDudosas?: boolean;
 }
 
 export function VistaEstadisticas({
   rows, rowsPrevio, canonicalNames, desde, hasta, onPeriodo, onActualizar, onImprimir, cargando, hayDatos, actualizado, error, sinOdoo,
-  sinMedir, truncado,
+  sinMedir, truncado, unidadesDudosas,
 }: Props) {
   const ahora = useMemo(() => new Date(), []);
   const periodo = periodoDe(desde, hasta, ahora);
@@ -150,6 +152,16 @@ export function VistaEstadisticas({
             <b>El período es demasiado largo y los números están cortados.</b>{' '}
             Odoo devuelve como máximo 8.000 operaciones por consulta y este período las alcanzó.
             Mirá un rango más corto —un mes entero son unas 3.300— para ver los totales completos.
+          </span></div>
+        )}
+        {unidadesDudosas && (
+          // Odoo dejó de devolver la cantidad agregada. Los ceros de «Unidades», «Prom./op.» y
+          // la barra NO significan que no se movió nada: significan que el dato no llegó. Sin
+          // este aviso son ceros perfectamente creíbles, que es como pasaron inadvertidos.
+          <div className="pk-alert warn" role="status"><span>
+            <b>Odoo no está devolviendo las unidades.</b>{' '}
+            Los ceros de «Unidades» y «Prom./op.» no son el dato: es que el campo no llegó.
+            Las operaciones, los SKU y los tiempos sí son correctos.
           </span></div>
         )}
         {sinMedir > 0 && (

@@ -36,7 +36,10 @@ export interface OperacionCruda {
   asignadoEn: string | false | null;
   /** `date_done`: cuándo lo validó. */
   validadoEn: string | false | null;
-  /** Unidades movidas (`qty_done` sumado) y líneas escaneadas (`stock.move.line`). */
+  /** Unidades movidas y líneas escaneadas, de `stock.move.line`.
+   *
+   *  Las unidades salen de sumar `quantity`, NO `qty_done`: ese es calculado y no almacenado, y
+   *  `read_group` lo devuelve ausente en vez de dar error. Ver `unidadesDeOdoo.ts`. */
   units: number;
   lines: number;
 }
