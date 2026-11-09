@@ -121,6 +121,9 @@ export interface StatsCache {
   /** Operaciones con responsable que no tienen hora de asignación: no entran en los promedios.
    *  Se guarda para poder DECIRLO en pantalla; antes se descartaban sin que nadie se enterara. */
   sinMedir?: number;
+  /** El período trajo el máximo de operaciones que Odoo devuelve y puede estar cortado: los
+   *  números serían BAJOS sin ningún error. Se muestra para que nadie los lea como completos. */
+  truncado?: boolean;
 }
 
 export type PickerType = 'P' | 'C' | 'B' | 'CH' | 'CC' | 'CN';

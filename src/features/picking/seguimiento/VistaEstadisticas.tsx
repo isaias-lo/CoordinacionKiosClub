@@ -46,11 +46,13 @@ interface Props {
   /** Operaciones sin hora de asignación en Odoo: se cuentan en «Ops» pero no en los promedios.
    *  Se muestra para que el promedio se lea sabiendo sobre cuántas está hecho. */
   sinMedir: number;
+  /** El período alcanzó el tope de Odoo y los números están cortados. */
+  truncado?: boolean;
 }
 
 export function VistaEstadisticas({
   rows, rowsPrevio, canonicalNames, desde, hasta, onPeriodo, onActualizar, onImprimir, cargando, hayDatos, actualizado, error, sinOdoo,
-  sinMedir,
+  sinMedir, truncado,
 }: Props) {
   const ahora = useMemo(() => new Date(), []);
   const periodo = periodoDe(desde, hasta, ahora);
@@ -141,6 +143,15 @@ export function VistaEstadisticas({
       </div>
 
       <div className="pk-content">
+        {truncado && (
+          // El período alcanzó el tope de operaciones que Odoo devuelve, así que los números
+          // están CORTADOS. Sin este aviso se leerían como completos y serían bajos.
+          <div className="pk-alert warn" role="status"><span>
+            <b>El período es demasiado largo y los números están cortados.</b>{' '}
+            Odoo devuelve como máximo 8.000 operaciones por consulta y este período las alcanzó.
+            Mirá un rango más corto —un mes entero son unas 3.300— para ver los totales completos.
+          </span></div>
+        )}
         {sinMedir > 0 && (
           <div className="pk-alert warn" role="status"><span>
             <b>{sinMedir} {sinMedir === 1 ? 'operación' : 'operaciones'} sin hora de asignación en Odoo.</b>{' '}
