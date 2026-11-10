@@ -19,6 +19,7 @@ import { fetchCalendarioCongelados, subscribeToCalendarioCongelados, type CalRec
 import { LabelConfig, DEFAULT_LABEL_CONFIG, BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import { zonaDeTienda, etiquetaTipoTienda } from '@/features/despacho/shared/zonaTienda';
 import { subtipoDeCaja, claveUnidad, partirClave, medidasDeCaja } from '@/features/despacho/shared/subtipoCaja';
+import { cajaDeLaEtiqueta, type CajaEtiqueta } from '@/features/despacho/shared/cajaEnLaEtiqueta';
 import type { ClaveUnidad } from './tiposUnidad';
 
 /** Cómo se llama cada unidad en pantalla, por CLAVE. El chocolate va abierto en sus dos cajas. */
@@ -1731,6 +1732,7 @@ export function PickingScreen() {
       batch?: string; finishedAt?: string | null;
       secSlot: Seccion | null; // sección del pallet (para imprimir SOLO una sección de una card)
       tipoTienda: string | null; zonaTienda: string | null;
+      caja: CajaEtiqueta | null; // negra / cartón, para que la etiqueta diga cuál es
     };
     const labels: LabelData[] = [];
     for (const cod of selectedCods) {
@@ -1819,6 +1821,7 @@ export function PickingScreen() {
             secSlot: seccionDeSlot(slot),
             tipoTienda: etiquetaTipoTienda(catalogoTiendas[group.storeCod]?.tipo),
             zonaTienda: zonaDeTienda(catalogoTiendas[group.storeCod]),
+            caja: cajaDeLaEtiqueta(tipo, slot.subtipo),
           });
         }
       }

@@ -5,6 +5,7 @@ import { TIENDAS_INICIAL } from '@/features/despacho/rutas/data/tiendas';
 import { fmtHoraChile, odooDateToISO } from '@/lib/fechaChile';
 import { textoParaCodigoDeBarras } from './buscarPallet';
 import { bandaDeApertura } from './bandaApertura';
+import type { CajaEtiqueta } from './cajaEnLaEtiqueta';
 
 // ─── LabelConfig ─────────────────────────────────────────────────────────────
 
@@ -200,7 +201,7 @@ export function BarcodeCard({
   totalPickers, tipo = 'P', compact = false, labelConfig, slotId, canonicalId,
   audited, subLabel, footerExtra, storeName: storeNameProp,
   adelanto, adelantoFecha, batch, finishedAt, copia,
-  tipoTienda, zonaTienda, aperturaDia,
+  tipoTienda, zonaTienda, aperturaDia, caja,
 }: {
   value: string; palletNum: number; total: number;
   storeCod: string; pickerLabel: string; responsibleKey: string; allCategories: string[];
@@ -224,6 +225,8 @@ export function BarcodeCard({
   tipoTienda?: string | null;
   /** RM / COSTA / REGIÓN NORTE / REGIÓN SUR. `null` = sin dato: no se dibuja. Ver `zonaTienda`. */
   zonaTienda?: string | null;
+  /** Qué caja es (chocolate o congelados). `null` = no es caja: no se dibuja. Ver `cajaEnLaEtiqueta.ts`. */
+  caja?: CajaEtiqueta | null;
 }) {
   const storeName = storeNameProp ?? getStoreName(storeCod);
   const cfg = { ...DEFAULT_LABEL_CONFIG, ...labelConfig };
@@ -397,6 +400,21 @@ export function BarcodeCard({
               {tipo}-{palletNum}
             </div>
             <div style={{ fontSize: s.deSize, color: '#aaa', textAlign: 'right', fontWeight: 600 }}>de {total}</div>
+            {caja && (
+              // Al lado del número, que es lo primero que se busca. Tiene que distinguirse en una
+              // impresora blanco y negro: la NEGRA va rellena y la de CARTÓN solo con borde.
+              <div style={{ marginTop: compact ? 3 : 6, textAlign: 'right' }}><span style={{
+                display: 'inline-block',
+                fontSize: compact ? 10 : Math.max(18, Math.round(cfg.slotIdFontSize * 1.1)), fontWeight: 900,
+                lineHeight: 1.2, whiteSpace: 'nowrap', letterSpacing: '1px',
+                border: `${compact ? 1.5 : 3}px solid #000`, borderRadius: compact ? 4 : 6,
+                padding: compact ? '0 5px' : '2px 10px',
+                background: caja.caja === 'negra' ? '#000' : '#fff',
+                color: caja.caja === 'negra' ? '#fff' : '#000',
+              }}>
+                {caja.texto}
+              </span></div>
+            )}
             {slotId != null && (
               <div style={{ fontSize: compact ? 10 : cfg.slotIdFontSize, fontWeight: 900, color: '#1A2550', textAlign: 'right', marginTop: compact ? 1 : 4, fontFamily: 'monospace', letterSpacing: '0.5px' }}>
                 #{slotId}
@@ -405,7 +423,7 @@ export function BarcodeCard({
             {copia && (
               // Negro y con borde: tiene que leerse en una impresora blanco y negro.
               <div style={{
-                marginTop: compact ? 2 : 6, display: 'inline-block', float: 'right',
+                clear: 'both', marginTop: compact ? 2 : 6, display: 'inline-block', float: 'right',
                 fontSize: compact ? 9 : Math.max(14, Math.round(cfg.slotIdFontSize * 0.9)), fontWeight: 900,
                 color: '#000', border: `${compact ? 1 : 2}px solid #000`, borderRadius: 4,
                 padding: compact ? '0 4px' : '1px 8px', letterSpacing: '1px',
