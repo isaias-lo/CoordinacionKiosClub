@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Printer, RotateCcw, AlertTriangle, Package } from 'lucide-react';
 import { pesoTotalValido, avisoCantidad, cajasDelTipo, type TipoCaja, type PesoTotalGuardado } from '../pesoTotal';
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
+import { cajaDeLaEtiqueta } from '@/features/despacho/shared/cajaEnLaEtiqueta';
 import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord, SectionFilter } from '../picking-types';
 import { tiposDeUnidad, type ClaveUnidad } from '../tiposUnidad';
 import { mensajeReimpresion } from '../reimpresion';
@@ -577,6 +578,7 @@ export const PickerGroupCard = React.memo(function PickerGroupCard({
                           canonicalId={buildCanonicalId(slotTipo, pNum, group.storeCod, todayISO())}
                           adelanto={!!adelanto} adelantoFecha={adelanto?.fecha_despacho ?? null}
                           aperturaDia={adelanto?.dia_movimientos ?? null}
+                          caja={cajaDeLaEtiqueta(slotTipo, slot?.subtipo)}
                           compact
                         />
                         {isSelected && (
