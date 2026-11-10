@@ -266,3 +266,34 @@ describe('el serial de la fecha', () => {
     }
   });
 });
+
+describe('planRegistro: la fila de Falabella Full', () => {
+  // La hoja la tiene vacía desde el 23/07/2026 y esta planilla no la llena: el trabajo de
+  // Falabella Full no se paga por acá. No es una sección DESCONOCIDA —es una que se deja a mano,
+  // como congelados—, y tratarla de desconocida sacaba un aviso falso en cada registro de lunes
+  // y miércoles.
+  const conCola = (seccion: string): FilaHoja[] => [
+    ...grupo(10, '57CAS'),
+    { fila: 13, tienda: '', seccion: 'CONGELADOS', pistolero: '', usuario: '' },
+    { fila: 14, tienda: '', seccion, pistolero: '', usuario: '' },
+  ];
+
+  it('no se le escribe nada', () => {
+    const plan = planRegistro([mov()], conCola('Fala full'), NOMBRES);
+    expect(plan.escrituras.some(e => e.fila === 14)).toBe(false);
+  });
+
+  it('no saca un aviso de «sección desconocida», en ninguna de sus grafías', () => {
+    // Las dos que la hoja tiene, medidas el 10/11/2026, más una mayúscula por si alguien la
+    // reescribe: el calce es normalizado.
+    for (const grafia of ['Fala full', 'falabella full', 'FALABELLA FULL', 'Falabella Full']) {
+      const plan = planRegistro([mov()], conCola(grafia), NOMBRES);
+      expect(plan.avisos.map(a => a.detalle).join(' | ')).not.toContain('desconocida');
+    }
+  });
+
+  it('una sección que de verdad no se conoce sigue avisando', () => {
+    const plan = planRegistro([mov()], conCola('PANADERÍA'), NOMBRES);
+    expect(plan.avisos.some(a => a.detalle.includes('desconocida'))).toBe(true);
+  });
+});

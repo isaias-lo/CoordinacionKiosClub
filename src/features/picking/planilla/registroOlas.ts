@@ -47,6 +47,7 @@
 //   planilla; sus filas se dejan como están.
 
 import type { MovimientoPlanilla, SeccionPlanilla } from './armarPlanilla';
+import { SECCIONES_A_MANO } from './esqueletoOlas';
 
 /** Una fila del bloque del día en la hoja, tal como se leyó. */
 export interface FilaHoja {
@@ -99,6 +100,16 @@ export function normalizar(s: string): string {
 }
 
 /**
+ * Las secciones que la hoja tiene y este registro NO llena, normalizadas.
+ *
+ * Sale de `esqueletoOlas` a propósito: ahí se decide qué filas se CREAN y con qué grafía, y acá
+ * qué filas se SALTEAN. Si fueran dos listas, agregar una fila al esqueleto sin acordarse de esta
+ * la volvería una «sección desconocida» con aviso falso en cada registro — que es exactamente lo
+ * que venía pasando con «Fala full» todos los lunes.
+ */
+const A_MANO = new Set(SECCIONES_A_MANO.map(normalizar));
+
+/**
  * Qué tienda le corresponde a cada fila del bloque.
  *
  * La hoja pone el código SOLO en la primera fila de cada grupo y deja las siguientes en blanco;
@@ -107,7 +118,8 @@ export function normalizar(s: string): string {
  *
  * Las filas de CHOCOLATES y CONGELADOS no llevan tienda y tampoco heredan: son del día entero.
  * Si heredaran la última tienda vista, el chocolate del día se escribiría como si fuera de esa
- * tienda.
+ * tienda. La de Falabella Full entra en la misma regla por la misma razón, y por eso el salteo
+ * sale de `A_MANO` y no de dos nombres escritos a mano.
  */
 export function tiendaDeCadaFila(filas: FilaHoja[]): Map<number, string> {
   const m = new Map<number, string>();
@@ -115,7 +127,7 @@ export function tiendaDeCadaFila(filas: FilaHoja[]): Map<number, string> {
   for (const f of filas) {
     if (f.tienda.trim()) actual = f.tienda.trim();
     const sec = normalizar(f.seccion);
-    if (sec === 'CHOCOLATES' || sec === 'CONGELADOS') continue;
+    if (sec === 'CHOCOLATES' || A_MANO.has(sec)) continue;
     m.set(f.fila, actual);
   }
   return m;
@@ -161,7 +173,7 @@ export function planRegistro(
   // ── Las filas por tienda: COMIDA, ASEO, HOGAR ──
   for (const f of filas) {
     const sec = normalizar(f.seccion);
-    if (sec === 'CHOCOLATES' || sec === 'CONGELADOS') continue;
+    if (sec === 'CHOCOLATES' || A_MANO.has(sec)) continue;
     const seccion = POR_TIENDA.find(s => normalizar(s) === sec);
     if (!seccion) {
       if (sec) avisos.push({ tipo: 'fila-sin-dato', detalle: `Fila ${f.fila}: sección «${f.seccion}» desconocida` });

@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
     // eso dejó de hacerse, el sistema lo arma. Se crea SOLO si el día no existe: buscarlo
     // primero es lo que impide duplicarlo, y un día duplicado no daría error —el XLOOKUP del
     // bono se queda con la primera coincidencia— daría un número mal.
-    const esqueleto = cods.length ? filasEsqueleto(cods, movimientos) : [];
+    const esqueleto = cods.length ? filasEsqueleto(cods, movimientos, fecha) : [];
     if (body.crear !== true || esqueleto.length === 0) {
       return NextResponse.json({
         ok: false, motivo: 'sin-bloque',
