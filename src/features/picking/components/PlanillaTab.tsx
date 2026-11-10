@@ -24,6 +24,7 @@ import { AUTO_REFRESH_MS } from '../picking-types';
 import { fechaISOLocal } from '@/features/despacho/shared/fechaLocal';
 import { agruparConsultasPorDia } from '@/features/despacho/shared/consultasPorDia';
 import { armarPlanilla, SECCIONES, porAsignacion, type CeldaPlanilla, type MovimientoPlanilla, type Planilla, type SeccionPlanilla } from '../planilla/armarPlanilla';
+import { avanceAsignacion, type AvanceAsignacion } from '../planilla/avanceAsignacion';
 import { conCorrecciones, type FilaGuardada } from '../planilla/conCorrecciones';
 import { validarCorreccion, textoConfirmacion, type PedidoCorreccion } from '../planilla/correccionPicker';
 import { movimientosDesdeOdoo, type MovimientoOdoo } from '../planilla/desdeOdoo';
@@ -265,6 +266,15 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
       movimientos.filter(m => m.estado === 'done' || m.estado === 'assigned'),
       filtro, zonaPorCod, nombrePorCod),
     [movimientos, filtro, zonaPorCod, nombrePorCod]);
+
+  // Cuánto del día ya tiene dueño.
+  //
+  // Cuenta el DÍA COMPLETO aunque haya un filtro puesto, y es la MISMA razón que las pastillas
+  // de zona: con «Ruta Norte» elegido, un «3 por asignar» se leería como que falta poco cuando
+  // puede faltar mucho fuera de la vista. Lo que hay que repartir es el día, no la pantalla.
+  const avance = useMemo(
+    () => avanceAsignacion(movimientos.filter(m => m.estado === 'done' || m.estado === 'assigned')),
+    [movimientos]);
 
   // La lista de personas para elegir sale de Config · Pickers: escribir libre dejaría entrar dos
   // grafías del mismo nombre, y después esos dos no se pueden sumar en ninguna métrica.
@@ -514,6 +524,8 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
         </div>
       </div>
 
+      <BarraAvance a={avance} />
+
       {/* Mientras hay filtro, lo que se ve NO es el día: eso tiene que estar dicho en pantalla
           y no deducirse de que faltan filas. Dice cuántas de cuántas, y suelta el filtro de un
           clic. */}
@@ -627,6 +639,80 @@ const PASTILLA = {
   fontSize: 11, fontWeight: 700, fontFamily: 'inherit', lineHeight: 1.6,
 } as const;
 const BTN_PRI = { ...BTN_BASE, background: '#0F172A', color: '#fff', border: 'none' };
+
+/**
+ * Cuánto del día ya tiene dueño, y qué falta repartir.
+ *
+ * Es lo primero que se mira al abrir la planilla. Antes esa pregunta —«¿me queda algo por
+ * asignar?»— se contestaba recorriendo la matriz a ojo, celda por celda, buscando las que no
+ * tienen nombre. En un día de 30 tiendas son 90 celdas.
+ *
+ * La barra no es decoración: en un vistazo distingue «falta un movimiento» de «falta medio
+ * día», que es la diferencia entre seguir y parar a repartir. Y el desglose por sección dice
+ * DÓNDE falta, que es lo único accionable del contador.
+ */
+function BarraAvance({ a }: { a: AvanceAsignacion }) {
+  // Sin movimientos no hay nada que contar, y la tabla ya explica por qué está vacía.
+  if (a.total === 0) return null;
+
+  const listo = a.sinAsignar === 0;
+  const tono = listo
+    ? { fg: '#065F46', borde: '#A7F3D0', fondo: '#ECFDF5', barra: '#10B981' }
+    : { fg: '#92400E', borde: '#FDE68A', fondo: '#FFFBEB', barra: '#F59E0B' };
+
+  return (
+    <div role="status" aria-live="polite"
+         style={{ flexShrink: 0, margin: '9px 16px 0', padding: '8px 12px',
+                  display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
+                  background: tono.fondo, border: `1px solid ${tono.borde}`,
+                  borderRadius: 9, fontSize: 12.5, color: tono.fg }}>
+
+      {/* El número grande es lo que FALTA, no lo que se hizo: es la pregunta que trae a
+          alguien a mirar esta barra. Cuando no falta nada, el grande pasa a ser el total. */}
+      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, flexShrink: 0 }}>
+        <strong style={{ fontSize: 21, fontWeight: 800, lineHeight: 1,
+                         fontVariantNumeric: 'tabular-nums' }}>
+          {listo ? a.total : a.sinAsignar}
+        </strong>
+        <span style={{ fontWeight: 700 }}>
+          {listo
+            ? `movimiento${a.total === 1 ? '' : 's'}, todo asignado`
+            : `por asignar${a.tiendas ? ` en ${a.tiendas} ${a.tiendas === 1 ? 'tienda' : 'tiendas'}` : ''}`}
+        </span>
+      </span>
+
+      {/* La barra y el «X de Y» dicen lo mismo de dos formas: una se lee de un vistazo y la
+          otra se puede repetir en voz alta. */}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8,
+                     minWidth: 150, flex: 1 }}>
+        <span aria-hidden="true"
+              style={{ flex: 1, minWidth: 70, height: 7, borderRadius: 4,
+                       background: 'rgba(15,23,42,0.10)', overflow: 'hidden' }}>
+          <span style={{ display: 'block', width: `${a.pct}%`, height: '100%',
+                         background: tono.barra, borderRadius: 4 }} />
+        </span>
+        <span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', opacity: 0.9 }}>
+          {a.asignados} de {a.total} · {a.pct}%
+        </span>
+      </span>
+
+      {/* Dónde falta. Sin esto el contador dice que hay trabajo pero no por dónde empezar. */}
+      {!listo && a.porSeccion.length > 0 && (
+        <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          {a.porSeccion.map(({ seccion, faltan }) => (
+            <span key={seccion}
+                  title={`${faltan} de ${seccion} sin asignar`}
+                  style={{ ...PASTILLA, background: '#fff', color: tono.fg,
+                           border: `1px solid ${tono.borde}` }}>
+              {seccion}
+              <span style={{ fontSize: 9.5, fontWeight: 800, opacity: 0.65 }}>{faltan}</span>
+            </span>
+          ))}
+        </span>
+      )}
+    </div>
+  );
+}
 
 /** La matriz: una fila por tienda; una celda con varios movimientos los apila. */
 function TablaPlanilla({ planilla, onCorregir, ahora }: {
