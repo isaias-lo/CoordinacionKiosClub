@@ -4,6 +4,7 @@ import React from 'react';
 import { fechaCorta, pestana, textoConexion, textoConexionCorto, type PestanaPicking } from './pestanas';
 import { Ayudita } from './Ayudita';
 import { MenuArriba } from './MenuArriba';
+import { CampanaAvisos } from '@/components/campana/CampanaAvisos';
 
 interface Props {
   tab: PestanaPicking;
@@ -41,6 +42,8 @@ export function BarraSuperior({ tab, online, pendientes, onVolverATiendas, menu 
         <span className="lg:hidden">{textoConexionCorto(online, pendientes)}</span>
       </span>
       <Ayudita tema="conexion" />
+      {/* Los avisos de la pantalla. Ver `avisosCampana.ts`. */}
+      <CampanaAvisos />
       <span className="pk-fecha max-lg:hidden">{fechaCorta(new Date())}</span>
     </header>
   );

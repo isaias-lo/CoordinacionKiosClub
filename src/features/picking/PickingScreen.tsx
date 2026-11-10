@@ -13,6 +13,8 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { useApp } from '@/context/AppContext';
 import { Bell, AlertTriangle } from 'lucide-react';
+import { EnCampana } from '@/components/campana/EnCampana';
+import { cerrarCampana } from '@/components/campana/avisosCampana';
 
 import { refreshCalendario, subscribeToCalendarChanges } from '@/features/despacho/utils/useCalendario';
 import { fetchCalendarioCongelados, subscribeToCalendarioCongelados, type CalRecord } from '@/lib/calendarioCongeladosSync';
@@ -2237,8 +2239,10 @@ export function PickingScreen() {
           ? { onTab: setRightTab, tiendasElegidas: selectedCods.length, onAyuda: () => setAyudaAbierta(true) }
           : undefined} />
 
-      {/* ── Alerta cambios calendario ── */}
+      {/* ── Alerta cambios calendario ── vive en la campana de la barra desde el 10/11/2026. */}
       {notifCount > 0 && (
+        <EnCampana id="picking-calendario" nivel="info"
+          titulo={`Control Interno realizó ${notifCount} cambio${notifCount !== 1 ? 's' : ''} al calendario`}>
         <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2.5 print:hidden"
           style={{ background: 'rgba(255,149,0,0.10)', borderBottom: '1px solid rgba(255,149,0,0.25)' }}>
           <Bell size={14} className="text-amber-600 shrink-0" />
@@ -2246,12 +2250,13 @@ export function PickingScreen() {
             Control Interno realizó {notifCount} cambio{notifCount !== 1 ? 's' : ''} al calendario
           </div>
           <button
-            onClick={() => router.push('/despacho/config-tiendas')}
+            onClick={() => { cerrarCampana(); router.push('/despacho/config-tiendas'); }}
             className="text-[12px] font-semibold px-3 py-1 rounded shrink-0 cursor-pointer border"
             style={{ borderColor: 'rgba(217,119,6,0.35)', color: '#92400E', background: 'transparent' }}>
             Revisar
           </button>
         </div>
+        </EnCampana>
       )}
 
       {/* ── Split body ── */}

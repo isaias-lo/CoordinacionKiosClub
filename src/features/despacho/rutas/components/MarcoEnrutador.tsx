@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowRight, MoreHorizontal, X } from 'lucide-react';
 import { PASOS_DIA, type Banda, type SeccionEnrutador } from '../utils/bandaEnrutador';
+import { CampanaAvisos } from '@/components/campana/CampanaAvisos';
 
 /** Pestañas y su color, como en el diseño. */
 export const PESTANAS: { id: SeccionEnrutador; texto: string; color: string }[] = [
@@ -99,6 +100,8 @@ export default function MarcoEnrutador({
         </div>
         )}
         <div className="flex-1" />
+        {/* Los avisos del Enrutador (días sin registrar, camión sin manifiesto…). Ver `avisosCampana.ts`. */}
+        <CampanaAvisos />
         <button type="button" onClick={() => setMenuAbierto(v => !v)}
           aria-label="Menú del despacho" aria-expanded={menuAbierto}
           className={`w-[44px] h-[44px] flex-shrink-0 rounded-[10px] border flex items-center justify-center transition-colors ${
