@@ -14,6 +14,7 @@ import MapSection     from './components/MapSection';
 import ResultsSection from './components/ResultsSection';
 import ManualDispatch from './components/ManualDispatch';
 import ManifiestoPanel from './components/ManifiestoPanel';
+import ReimprimirManifiestos, { type PedidoReimpresion } from './components/ReimprimirManifiestos';
 import CierreJornadaPanel from './components/CierreJornadaPanel';
 import PreflightCierrePanel from './components/PreflightCierrePanel';
 import TableroVivo from './components/TableroVivo';
@@ -387,6 +388,12 @@ export default function RutasScreen() {
   // para un banner "ya hay manifiestos guardados" y para reconstruir el tablero si hiciera falta
   // (p. ej. al abrir desde otro dispositivo y ver el lienzo vacío). No pisa el flujo de armado.
   const [manifiestosGuardados, setManifiestosGuardados] = useState<ManifiestoGuardado[]>([]);
+  // Se sube al cerrar un panel de manifiestos: lo recién cerrado tiene que aparecer en
+  // «Ver manifiestos» sin recargar la página.
+  const [recargaGuardados, setRecargaGuardados] = useState(0);
+  // [Reimprimir manifiestos] Lista de manifiestos ya guardados de un día, para volver a verlos e
+  // imprimirlos después de cerrar el camión. Ver components/ReimprimirManifiestos.
+  const [reimpresion, setReimpresion] = useState<PedidoReimpresion | null>(null);
   // Fase B: patentes CERRADAS individualmente en 1ª vuelta (cierre por vehículo), keyed por fecha.
   // Cross-device vía shared_session_state fuente 'rutas_cerradas'. El registro global SALTA estas
   // rutas (HISTORIAL append-only) y el día se marca 'rutas_reg' solo cuando TODAS están cerradas.
@@ -1134,7 +1141,7 @@ export default function RutasScreen() {
       .then((j: { data?: ManifiestoGuardado[] }) => { if (!cancel) setManifiestosGuardados(Array.isArray(j.data) ? j.data : []); })
       .catch(() => { if (!cancel) setManifiestosGuardados([]); });
     return () => { cancel = true; };
-  }, [fecha]);
+  }, [fecha, recargaGuardados]);
 
   // Reconstruir el tablero desde los manifiestos guardados (opt-in, no pisa trabajo en curso):
   // activa esas patentes y coloca sus tiendas. Fuente de verdad = rutas_despacho (igual en todo
@@ -1152,6 +1159,12 @@ export default function RutasScreen() {
   // haber cerrado el panel: `manifiestoV1` es estado de la pantalla y se limpia al cerrarlo, así
   // que sin esto no había forma de volver a ver/imprimir un manifiesto ya registrado.
   // No re-guarda nada: el panel recibe los códigos y tokens QR REALES vía `guardados`.
+  // «✓ Cerrado · ver manifiesto» en la tarjeta del camión: abre su manifiesto guardado (todas sus
+  // vueltas del día de armado abierto), con su código y su QR reales.
+  function abrirManifiestoCamion(patente: string) {
+    setReimpresion({ por: 'armado', dia: fecha, patente });
+  }
+
   function handleVerManifiestosDia() {
     const asig = reconstruirAsignaciones(manifiestosGuardados);
     if (!Object.keys(asig).length) return;
@@ -3085,7 +3098,7 @@ export default function RutasScreen() {
     // Los dos pools, como la asignación automática: la banda cuenta las tiendas de los dos.
     else if (id === 'asignar') completarAsignacion(['rm-costa', 'regiones']);
     else if (id === 'terminar-dia') setCierreOpen(true);
-    else if (id === 'ver-manifiestos') handleVerManifiestosDia();
+    else if (id === 'ver-manifiestos') setReimpresion({ por: 'armado', dia: fecha });
     else if (id === 'cerrar-camiones') {
       // No cierra: marca los furgones abiertos en la barra «Cerrar seleccionados», que es la que
       // avisa uno por uno los que van pasados y pide confirmar. Cerrar sigue siendo un toque más.
@@ -3219,7 +3232,7 @@ export default function RutasScreen() {
             </span>
             <span className="text-[10px] text-emerald-600/70 font-semibold">despacho registrado</span>
             <button
-              onClick={handleVerManifiestosDia}
+              onClick={() => setReimpresion({ por: 'armado', dia: fecha })}
               className="text-[10px] font-bold px-2.5 py-1 rounded-[8px] border border-emerald-500 text-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors active:scale-95 ml-auto"
             >
               Ver manifiestos
@@ -3444,6 +3457,9 @@ export default function RutasScreen() {
                 <AccionMenu onClick={() => { cerrar(); handleOpenParadas(); }}>
                   + Parada{paradasAdicionales.length > 0 ? ` · ${paradasAdicionales.length}` : ''}
                 </AccionMenu>
+                <AccionMenu onClick={() => { cerrar(); setReimpresion({ por: 'salida', dia: todayStr() }); }}>
+                  Manifiestos guardados
+                </AccionMenu>
                 {modo === 'drag' && !hayPanelDerecho && (
                   <AccionMenu onClick={() => { cerrar(); setTableroOpen(true); }}>Tablero vivo</AccionMenu>
                 )}
@@ -3479,6 +3495,7 @@ export default function RutasScreen() {
         fechaSalidaOverride={salidaManual}
         onFechaSalida={setSalidaManual}
         onVistaNueva={() => setVista('nueva')}
+        onManifiestos={() => setReimpresion({ por: 'salida', dia: todayStr() })}
       />
       )}
 
@@ -3519,6 +3536,7 @@ export default function RutasScreen() {
             onReasignarTodo={reasignarTodo}
             iaLoading={iaLoading}
             onCerrarCamion={cerrarCamionV1Board}
+            onVerManifiesto={abrirManifiestoCamion}
             cerrarSel={cerrarSel}
             onToggleCerrarSel={toggleCerrarSel}
             onCerrarVarios={cerrarVariosCamiones}
@@ -3695,7 +3713,7 @@ export default function RutasScreen() {
           supervisor={supervisor}
           tiendas={tiendas as Record<string, TiendaInfo & { _parada?: boolean }>}
           isOpen={true}
-          onClose={() => setManifiestoV2(null)}
+          onClose={() => { setManifiestoV2(null); setRecargaGuardados(n => n + 1); }}
           offsetSeq={manifiestosGuardados.length}
         />
       )}
@@ -3710,8 +3728,19 @@ export default function RutasScreen() {
           supervisor={supervisor}
           tiendas={tiendas as Record<string, TiendaInfo & { _parada?: boolean }>}
           isOpen={true}
-          onClose={() => setManifiestoCong(null)}
+          onClose={() => { setManifiestoCong(null); setRecargaGuardados(n => n + 1); }}
           offsetSeq={Math.max(0, cerradasCong.size - manifiestoCong.length)}
+        />
+      )}
+
+      {reimpresion && (
+        <ReimprimirManifiestos
+          pedido={reimpresion}
+          hoy={todayStr()}
+          supervisor={supervisor}
+          tiendas={tiendas as Record<string, TiendaInfo & { _parada?: boolean }>}
+          flota={flota}
+          onClose={() => setReimpresion(null)}
         />
       )}
 
@@ -3726,7 +3755,7 @@ export default function RutasScreen() {
           // El de 2ª vuelta (arriba) no lo recibe: esos camiones no salen a las 08:00.
           salida={salidaManifiesto}
           isOpen={true}
-          onClose={() => setManifiestoV1(null)}
+          onClose={() => { setManifiestoV1(null); setRecargaGuardados(n => n + 1); }}
           // Consecutivo global: cada camión cerrado uno a uno toma el siguiente número
           // (antes todos salían -01 porque cada cierre era un lote nuevo con índice 0).
           offsetSeq={Math.max(0, cerradasV1.size - manifiestoV1.length)}

@@ -10,38 +10,16 @@ import { norm } from '@/features/despacho/rutas/utils/helpers';
 import { codigoRuta } from '../utils/codigoRuta';
 import { salidaSugerida, aMinutos, OPCIONES_DEFAULT } from '../utils/enrutadorV2';
 import { minutosAHHMM } from '../utils/parametrosMotor';
+import type { ManifiestoData } from '../utils/manifiestoReimpresion';
 import {
   buildManifiestoTiendaHTML,
   guiasDeItems,
   type ItemDetalle,
-  type TiendaManifiesto,
 } from '../utils/manifiestoTienda';
 
 /* ── Types ─────────────────────────────────────────────── */
-interface ManifiestoData {
-  idx: number;
-  id?: number;
-  codigo_ruta: string;
-  fecha: string;
-  chofer: string;
-  patente: string;
-  transporte: string;
-  bodega_origen: string;
-  estado: string;
-  token_qr?: string;
-  tiendas: TiendaManifiesto[];
-  total_pallets: number;
-  total_bultos: number;
-  total_chocolates: number;
-  /** 'HH:MM' — solo si su primera tienda abre después de que el camión llegaría. Se muestra; no se guarda. */
-  salida_sugerida?: string;
-  /** Día en que la carga llega a la tienda. Distinto del de armado; ver utils/fechaSalida. */
-  fecha_salida?: string | null;
-  /** [Panel Conductor] 'seco' | 'congelado' — decide qué fotos pide el chofer por parada. Se
-   *  toma del vehículo al cerrar, se graba en la ruta (no se re-deriva cada vez: un camión
-   *  refrigerado puede llevar carga seca ese día). */
-  tipo: 'seco' | 'congelado';
-}
+// `ManifiestoData` vive en utils/manifiestoReimpresion: la reimpresión arma el mismo documento
+// desde lo guardado, sin pasar por `fromRuta`.
 
 interface Props {
   rutas: Ruta[];
@@ -64,6 +42,12 @@ interface Props {
   salida?: { gps: Record<string, number[]>; cd: number[] };
   /** Día de despacho (llegada a tienda). Se imprime y se guarda junto al manifiesto. */
   fechaSalida?: string | null;
+  /**
+   * [Reimprimir] Manifiestos YA guardados, armados tal cual quedaron (ver
+   * utils/manifiestoReimpresion). Con esto el panel solo muestra e imprime: no arma nada desde
+   * `rutas` y no auto-guarda — ya están en la base, con su código y su QR.
+   */
+  reimpresion?: ManifiestoData[];
 }
 
 /* ── Helpers ────────────────────────────────────────────── */
@@ -356,7 +340,7 @@ ${body}
 }
 
 /* ── Component ──────────────────────────────────────────── */
-export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor, tiendas, isOpen, onClose, offsetSeq = 0, guardados, salida }: Props) {
+export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor, tiendas, isOpen, onClose, offsetSeq = 0, guardados, salida, reimpresion }: Props) {
   const [manifiestos, setManifiestos] = useState<ManifiestoData[]>([]);
   const [itemsByStore, setItemsByStore] = useState<Record<string, ItemDetalle[]>>({}); // detalle por tienda
   const [driveByStore, setDriveByStore] = useState<Record<string, string>>({}); // drive_url (Guías PDF) por tienda
@@ -386,6 +370,11 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
   // cerrar un camión nuevo se borraba el QR de los manifiestos ya guardados. La patente es la
   // identidad estable del camión (el `codigo_ruta` puede correrse si cambia `offsetSeq`).
   useEffect(() => {
+    if (reimpresion) {
+      setManifiestos(reimpresion.map((m, i) => ({ ...m, idx: i })));
+      setSelected(new Set(reimpresion.map((_, i) => i)));
+      return;
+    }
     setManifiestos(prev => {
       const yaGuardado = new Map(
         prev.filter(m => m.id != null).map(m => [String(m.patente ?? '').trim().toUpperCase(), m]),
@@ -420,22 +409,29 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
     // Por defecto TODAS las patentes seleccionadas → "global" es la acción directa
     // (imprimir/guardar todo). Elegir un subconjunto = destildar las que no quieras.
     setSelected(new Set(rutas.map((_, i) => i)));
-  }, [rutas, fecha, fechaSalida, tiendas, offsetSeq, guardados, salida]);
+  }, [rutas, fecha, fechaSalida, tiendas, offsetSeq, guardados, salida, reimpresion]);
 
   // Detalle ítem-a-ítem por tienda (para el manifiesto por tienda). Toma, por tienda, los ítems
   // de su fecha MÁS RECIENTE en picking_pallets → sirve para 1ª vuelta (hoy) y 2ª vuelta (fecha origen).
   useEffect(() => {
     if (!isOpen) return;
-    const cods = [...new Set(rutas.flatMap(r => r.ts.map(t => t.c)))];
+    const cods = reimpresion
+      ? [...new Set(reimpresion.flatMap(m => m.tiendas.map(t => t.store_cod)))]
+      : [...new Set(rutas.flatMap(r => r.ts.map(t => t.c)))];
     if (!cods.length) { setItemsByStore({}); return; }
+    // Al reimprimir un día pasado, «lo más reciente» por tienda sería la carga de un día POSTERIOR
+    // al manifiesto. Se topa en el día de armado más reciente de lo que se reimprime.
+    const tope = reimpresion?.length ? reimpresion.map(m => m.fecha).sort().at(-1) : undefined;
     let cancelled = false;
     void (async () => {
-      const { data } = await supabase
+      let q = supabase
         .from('picking_pallets')
         .select('id, store_cod, date, tipo, seq, canonical_id, contenido, peso_kg, alto, largo, ancho, refs')
         .in('store_cod', cods)
         .eq('is_active', true)
-        .not('canonical_id', 'is', null)
+        .not('canonical_id', 'is', null);
+      if (tope) q = q.lte('date', tope);
+      const { data } = await q
         .order('date', { ascending: false })
         .order('tipo', { ascending: true })
         .order('seq', { ascending: true });
@@ -456,12 +452,18 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
       // Guías DTE (PDF en Drive) por tienda → botón "Descargar Guías" del QR de recepción.
       // guias_subidas guarda el código normalizado; nos quedamos con la subida más reciente.
       const codsNorm = [...new Set(cods.map(norm))];
-      const { data: gs } = await supabase
+      let qg = supabase
         .from('guias_subidas')
         .select('store_cod, drive_url, fecha')
         .in('store_cod', codsNorm)
-        .not('drive_url', 'is', null)
-        .order('fecha', { ascending: false });
+        .not('drive_url', 'is', null);
+      // Misma ventana que usa el POST de /api/rutas-despacho para jalar guías: hasta el día
+      // siguiente al de armado. Sin tope, la reimpresión mostraría la guía de un despacho posterior.
+      if (tope) {
+        const d = new Date(`${tope}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + 1);
+        qg = qg.lte('fecha', d.toISOString().slice(0, 10));
+      }
+      const { data: gs } = await qg.order('fecha', { ascending: false });
       if (cancelled) return;
       const dmap: Record<string, string> = {};
       for (const r of (gs ?? []) as { store_cod: string; drive_url: string }[]) {
@@ -470,7 +472,7 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
       setDriveByStore(dmap);
     })();
     return () => { cancelled = true; };
-  }, [isOpen, rutas]);
+  }, [isOpen, rutas, reimpresion]);
 
   // Lock body scroll while panel is open
   useEffect(() => {
@@ -550,13 +552,15 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
   // (que sigue ahí) es el reintento.
   const autoGuardadoIntentado = useRef<Set<number>>(new Set());
   useEffect(() => {
+    // Reimprimir no guarda: lo que se muestra YA está en la base.
+    if (reimpresion) return;
     manifiestos.forEach((m, idx) => {
       if (m.id == null && !autoGuardadoIntentado.current.has(idx)) {
         autoGuardadoIntentado.current.add(idx);
         void guardar(idx, true);
       }
     });
-  }, [manifiestos, guardar]);
+  }, [manifiestos, guardar, reimpresion]);
 
   const actualizarEstado = useCallback(async (idx: number, estado: string) => {
     const m = manifiestos[idx];
@@ -662,10 +666,10 @@ ${bodies}
       <div className="flex items-center justify-between px-5 py-4 bg-knavy text-white flex-shrink-0">
         <div>
           <div className="font-barlow-condensed text-[20px] font-bold tracking-widest uppercase">
-            Manifiestos de Ruta
+            {reimpresion ? 'Reimprimir manifiestos' : 'Manifiestos de Ruta'}
           </div>
           <div className="text-white/50 text-[11px] mt-0.5">
-            {rutas.length} ruta{rutas.length !== 1 ? 's' : ''} · {fecha}
+            {manifiestos.length} ruta{manifiestos.length !== 1 ? 's' : ''} · {reimpresion ? 'ya guardadas, con su código y QR' : fecha}
           </div>
         </div>
         <button onClick={() => {

@@ -43,6 +43,8 @@ interface Props {
   onFechaSalida?: (f: string | null) => void;
   /** Pasa a la vista nueva («Un paso a la vez»). Sin esto no se muestra el botón. */
   onVistaNueva?: () => void;
+  /** Abre los manifiestos ya guardados para volver a verlos o imprimirlos. */
+  onManifiestos?: () => void;
 }
 
 /** Botón "Actualizar datos" — antes vivía en la barra azul de app/despacho/page.tsx.
@@ -238,7 +240,7 @@ export default function DespachoHeader({
   supervisor, onSupervisor, fecha, onFecha, onOpenParadas, paradasCount,
   dnom, calT, mapContent, terminadas,
   asignacionAutomatica, onToggleAsignacionAutomatica, puedeCambiarAuto = true, motivoBloqueoAuto,
-  tipoCarga = 'seco', fechaSalidaOverride = null, onFechaSalida, onVistaNueva,
+  tipoCarga = 'seco', fechaSalidaOverride = null, onFechaSalida, onVistaNueva, onManifiestos,
 }: Props) {
   const dia         = getDia(fecha);
   const hoy         = todayStr();
@@ -305,6 +307,12 @@ export default function DespachoHeader({
                     </span>
                   )}
                 </button>
+                {onManifiestos && (
+                  <button onClick={() => { setDrawerOpen(false); onManifiestos(); }}
+                    className="w-full h-[42px] rounded-[10px] bg-white border border-black/[0.10] text-knavy text-[13px] font-bold">
+                    Manifiestos guardados
+                  </button>
+                )}
                 {onVistaNueva && (
                   <button onClick={() => { setDrawerOpen(false); onVistaNueva(); }}
                     className="w-full h-[42px] rounded-[10px] bg-white border border-black/[0.10] text-knavy text-[13px] font-bold">
@@ -348,6 +356,13 @@ export default function DespachoHeader({
             title="La vista «Un paso a la vez». Puedes volver a esta cuando quieras desde su menú ···"
             className="h-[38px] px-3 rounded-[10px] border border-black/[0.10] bg-white text-knavy text-[11px] font-bold hover:border-knavy/40 transition-colors">
             Vista nueva
+          </button>
+        )}
+        {onManifiestos && (
+          <button onClick={onManifiestos}
+            title="Volver a ver o imprimir los manifiestos de camiones ya cerrados"
+            className="h-[38px] px-3 rounded-[10px] border border-black/[0.10] bg-white text-knavy text-[11px] font-bold hover:border-knavy/40 transition-colors">
+            Manifiestos
           </button>
         )}
         <AutoAsignarToggle on={asignacionAutomatica} onToggle={onToggleAsignacionAutomatica} puedeCambiar={puedeCambiarAuto} motivoBloqueo={motivoBloqueoAuto} />
