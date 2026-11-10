@@ -7,6 +7,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { tabsPermitidos } from './tabsPermitidos';
 import { badgeZona, CONTEO_VACIO, type ConteoCongelados } from '../congelados/utils/conteoPorZona';
 import type { ZonaCongelados } from '../congelados/utils/congeladosGrid';
+import { CampanaAvisos } from '@/components/campana/CampanaAvisos';
 
 /**
  * Barra de tabs del módulo BODEGA (barra blanca bajo el banner). Navega entre las rutas
@@ -104,6 +105,10 @@ export function BodegaTabs() {
           </Link>
         );
       })}
+      {/* Los avisos de la pantalla (sin registrar, faltan datos de envío…). Ver `avisosCampana.ts`. */}
+      <div className="flex-shrink-0 flex items-center px-1 border-l border-bg-2">
+        <CampanaAvisos />
+      </div>
     </div>
   );
 }

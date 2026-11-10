@@ -77,6 +77,8 @@ import { aplicarCargaDelDia } from './utils/cargaFechaPasada';
 import { unirBacklog } from './utils/backlogSegundaVuelta';
 import { fetchBacklogCalculado } from '@/lib/backlogV2';
 import { toast } from 'sonner';
+import { EnCampana } from '@/components/campana/EnCampana';
+import { cerrarCampana } from '@/components/campana/avisosCampana';
 
 type CalRecord = Record<string, { rm: string[]; costa: string[]; fal: string[] }>;
 // [Enrutador V2] Interruptor del motor geográfico nuevo. En true usa enrutarV2 (medido: 14% menos
@@ -3146,15 +3148,19 @@ export default function RutasScreen() {
   return (
     <div className="despacho-inner h-full flex flex-col overflow-hidden bg-kbg font-sans text-ktext">
       {/* Pill de pendientes del día anterior */}
+      {/* Este y los dos avisos de días/camiones pendientes viven en la campana de la cabecera desde el
+          10/11/2026 (en la vista clásica, sin campana, se ven aquí). Ver `avisosCampana.ts`. */}
       {pendientes && pendientes.stores.length > 0 && (
+        <EnCampana id="enrutador-pendientes-ayer" nivel="info" titulo={`Tiendas pendientes de ayer (${pendientes.stores.length})`}>
         <div className="flex-shrink-0 px-4 py-1.5 bg-amber-500/10 border-b border-amber-500/20 flex">
           <button
-            onClick={() => setShowPendientesModal(true)}
+            onClick={() => { cerrarCampana(); setShowPendientesModal(true); }}
             className="flex items-center gap-2 px-3 py-1 rounded text-xs font-bold bg-amber-500/20 text-amber-700 border border-amber-500/40 hover:bg-amber-500/30 transition-all active:scale-95"
           >
             📦 Tiendas pendientes de ayer ({pendientes.stores.length})
           </button>
         </div>
+        </EnCampana>
       )}
 
       {/* [Fase 1] Qué quedó cerrado. Cerrar el día es lo más irreversible del Enrutador y no
@@ -3192,6 +3198,8 @@ export default function RutasScreen() {
         const sinManif = patentesSinManifiesto(cerradasV1, manifiestosGuardados);
         if (!sinManif.length) return null;
         return (
+          <EnCampana id="enrutador-sin-manifiesto" nivel="error"
+            titulo={sinManif.length === 1 ? 'Un camión cerrado no dejó manifiesto' : `${sinManif.length} camiones cerrados no dejaron manifiesto`}>
           <div className="flex-shrink-0 px-4 py-1.5 bg-kred/10 border-b border-kred/30 flex items-center gap-2 flex-wrap">
             <span className="text-[11px] font-bold text-kred">
               ⚠ {sinManif.length === 1
@@ -3202,12 +3210,13 @@ export default function RutasScreen() {
               salieron sin papeles y sin QR — abre su manifiesto y guárdalo
             </span>
             <button
-              onClick={handleVerManifiestosDia}
+              onClick={() => { cerrarCampana(); handleVerManifiestosDia(); }}
               className="text-[10px] font-bold px-2.5 py-1 rounded-[8px] border border-kred text-kred bg-kred/10 hover:bg-kred/20 transition-colors active:scale-95 ml-auto"
             >
               Ver manifiestos
             </button>
           </div>
+          </EnCampana>
         );
       })()}
 
@@ -3327,6 +3336,8 @@ export default function RutasScreen() {
 
       {/* Aviso: días pasados con asignaciones que quedaron SIN registrar (recuperación) */}
       {unregisteredDays.length > 0 && (
+        <EnCampana id="enrutador-dias-sin-registrar" nivel="aviso"
+          titulo={unregisteredDays.length === 1 ? 'Un día quedó con asignaciones sin registrar' : `${unregisteredDays.length} días quedaron con asignaciones sin registrar`}>
         <div className="mx-3 mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
           <div className="flex items-start gap-2.5">
             <span className="text-[18px] leading-none mt-0.5">⚠️</span>
@@ -3343,7 +3354,7 @@ export default function RutasScreen() {
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {unregisteredDays.map(d => (
                   <div key={d} className="flex items-stretch rounded-lg overflow-hidden bg-amber-500 text-white">
-                    <button onClick={() => setFecha(d)}
+                    <button onClick={() => { cerrarCampana(); setFecha(d); }}
                       className="px-2.5 py-1 text-[12px] font-bold hover:bg-amber-400 active:scale-95 transition-all">
                       📅 {d.split('-').reverse().join('/')} — abrir
                     </button>
@@ -3360,6 +3371,7 @@ export default function RutasScreen() {
               className="text-amber-500 hover:text-amber-700 text-[16px] leading-none flex-shrink-0">✕</button>
           </div>
         </div>
+        </EnCampana>
       )}
 
       {/* La corrección manual vale para el día de armado que está abierto en la cabecera. Si un

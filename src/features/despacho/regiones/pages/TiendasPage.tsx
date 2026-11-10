@@ -14,6 +14,7 @@ import { IndicadorCanalSano } from '../../shared/IndicadorCanalSano';
 import { processPdf } from '../utils/pdfUtils';
 import { TIENDAS, getTodayCods, validarDimensiones, registrarTiendasBD, isRegionesCod, type TiendaBDRow, type TiendaIncompleta } from '../data/tiendas';
 import { avisoSendu } from '../data/senduCompletitud';
+import { EnCampana } from '@/components/campana/EnCampana';
 import { ZONAS_DEFAULT, type ConfigZonas } from '../../rutas/utils/zonasTransporte';
 import { formatCod, matchCodArchivo } from '../../rutas/utils/helpers';
 import { getTiendasDelDia, subscribeToCalendarChanges } from '../../utils/useCalendario';
@@ -2793,10 +2794,13 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
             completarlas antes de exportar a Sendu.
             [Fase 4] Ahora dice QUÉ falta en cada una. Antes marcaba a toda tienda venida de la BD
             sin mirar un solo campo, así que no se apagaba nunca por más que se completaran. */}
+        {/* Desde el 10/11/2026 vive en la campana de la cabecera. Ver `avisosCampana.ts`. */}
         {avisoSendu(sinDatosSendu) && (
-          <div className="px-2 py-1.5 bg-amber-50 border-b border-amber-200 flex-shrink-0 text-[11.5px] text-amber-800 leading-snug">
-            ⚠ {avisoSendu(sinDatosSendu)}
-          </div>
+          <EnCampana id="sendu-faltan-datos" nivel="info" titulo={`${sinDatosSendu.length === 1 ? 'Una tienda' : `${sinDatosSendu.length} tiendas`} sin datos de envío`}>
+            <div className="px-3 py-2 bg-amber-50 border-b border-amber-200 flex-shrink-0 text-apoyo text-amber-800 leading-snug">
+              ⚠ {avisoSendu(sinDatosSendu)}
+            </div>
+          </EnCampana>
         )}
 
         {/* Toolbar: Multi-PDF — desktop only */}

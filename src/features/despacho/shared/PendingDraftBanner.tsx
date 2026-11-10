@@ -15,6 +15,7 @@ import { tituloPendientes } from './tituloPendientes';
 import { aFechaPlanilla } from '../rutas/utils/backlogSegundaVuelta';
 import { contarPesadoSinRegistrar, pedidoDescartarBorrador, type LoPesado } from './descartarBorrador';
 import { confirmar } from './confirmar';
+import { EnCampana, useHayCampana } from '@/components/campana/EnCampana';
 
 type Fuente = 'santiago' | 'regiones';
 
@@ -89,6 +90,9 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
   useEffect(() => {
     if (typeof window !== 'undefined' && window.matchMedia?.('(min-width: 768px)').matches) setAbierto(true);
   }, []);
+  // Dentro de la campana (10/11/2026) ya no tapa nada: los días se muestran enteros, sin plegar.
+  const enCampana = useHayCampana();
+  const verDias = abierto || enCampana;
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
@@ -264,18 +268,22 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
         // Plegable (análisis del 22/10/2026): en el teléfono, dos días pendientes ocupaban cerca del
         // 60 % de la primera pantalla y «Descartar» quedaba cortado por el borde. Plegado queda una
         // sola línea que igual dice qué días faltan; en el escritorio arranca abierto.
+        // Desde el 10/11/2026 vive en la campana de la cabecera. Ver `avisosCampana.ts`.
+        <EnCampana id={`sin-registrar-${fuente}`} nivel="aviso" titulo={tituloPendientes(drafts.map(d => fechaBonita(d.fecha)))}>
         <section aria-label="Despachos sin registrar" className="flex-shrink-0 bg-amber-50 border-b border-amber-200">
-          <button type="button" onClick={() => setAbierto(a => !a)} aria-expanded={abierto}
-            className="w-full min-h-[44px] px-4 py-2 flex items-center gap-2 text-left cursor-pointer">
+          <button type="button" onClick={() => setAbierto(a => !a)} aria-expanded={verDias} disabled={enCampana}
+            className="w-full min-h-[44px] px-4 py-2 flex items-center gap-2 text-left cursor-pointer disabled:cursor-default">
             <span aria-hidden="true">⚠️</span>
             <span className="flex-1 min-w-0 text-apoyo font-extrabold text-amber-900">
               {tituloPendientes(drafts.map(d => fechaBonita(d.fecha)))}
             </span>
-            <span className="flex-shrink-0 text-apoyo font-bold text-amber-900 underline underline-offset-2">
-              {abierto ? 'Ocultar' : 'Ver'}
-            </span>
+            {!enCampana && (
+              <span className="flex-shrink-0 text-apoyo font-bold text-amber-900 underline underline-offset-2">
+                {abierto ? 'Ocultar' : 'Ver'}
+              </span>
+            )}
           </button>
-          {abierto && drafts.map(d => (
+          {verDias && drafts.map(d => (
             <div key={d.fecha} className="px-4 pb-3 pt-1 border-t border-amber-200/70">
               <div className="flex items-start gap-3 flex-wrap">
                 <div className="flex-1 min-w-[12rem]">
@@ -326,6 +334,7 @@ export function PendingDraftBanner({ fuente }: { fuente: Fuente }) {
             </div>
           ))}
         </section>
+        </EnCampana>
       )}
 
       {/* Modal Revisar */}
