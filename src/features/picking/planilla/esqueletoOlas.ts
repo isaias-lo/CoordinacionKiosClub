@@ -100,18 +100,37 @@ const POR_TIENDA = ['Comida', 'Aseo', 'Hogar'] as const;
  *      17 de 17 días → 2 filas de CONGELADOS
  *      26/10 y 05/11 → 2 filas, UN solo nombre (faltó uno de los dos)
  *
- *  Cuando falta uno se dejan igual los dos recuadros y se completa un nombre. El recuadro vacío
- *  es el registro de que ese día fue uno solo; quitarlo perdería ese dato.
+ *  Cuando falta uno se dejan igual los dos recuadros. Quitar el segundo perdería el lugar donde
+ *  va quien cubre — ver abajo.
  *
  *  Van en blanco porque esta planilla no registra congelados —viven en otra pestaña de Picking,
  *  y `desdeOdoo.ts` los excluye a propósito—, así que las completa una persona. No crearlas
  *  obligaría a insertar filas al medio después, que es peor.
  *
- *  **Qué se completa a mano, medido en la hoja esos mismos 17 días:** la columna F lleva el
- *  nombre de la persona y la S siempre «Mario Patiño», que es la cuenta de Odoo con la que se
- *  hace TODO el congelado. Cuando falta uno, su fila queda entera en blanco: ni nombre ni
- *  cuenta. Así que la S vacía que deja este esqueleto no es un olvido — es lo que una persona
- *  llena, igual que el nombre. */
+ *  **Qué se completa a mano:** la columna F lleva el nombre de la persona y la S siempre
+ *  «Mario Patiño». Eso NO es el nombre de un turno: es la **cuenta de Odoo** del congelado,
+ *  igual que «Pickers 2» es una cuenta. La usan Joe Idrovo y Haisemberg Garmendia, y en toda la
+ *  historia de la hoja esos son los dos únicos nombres que aparecieron en esa F — 39 y 35 veces,
+ *  contados el 10/11/2026. Así que la S vacía que deja este esqueleto no es un olvido: es lo que
+ *  una persona llena, igual que el nombre.
+ *
+ *  ── EL RECUADRO VACÍO ES DE QUIEN CUBRE, NO UN HUECO ─────────────────────────────────────────
+ *
+ *  Hasta el 10/11/2026 acá decía que la fila del que falta «queda entera en blanco», y que ese
+ *  blanco era el registro de que ese día fue uno solo. **Era una lectura equivocada del dato.**
+ *  Cruzando la hoja contra Odoo ese día:
+ *
+ *      26/10  hoja: solo Joe   ← en blanco    Odoo: Mario Patiño 16 · Pickers 16: **12**
+ *      05/11  hoja: solo Joe   ← en blanco    Odoo: Mario Patiño 25 · Pickers 16: **14**
+ *
+ *  Los dos únicos días con un recuadro vacío son exactamente los dos días que Christian Flores
+ *  (Pickers 16) hizo MÁS congelados. No fue «trabajó uno solo»: faltó uno de los dos y Flores
+ *  cubrió. Sus 26 operaciones de esos dos días no quedaron escritas en ningún lado — ni ahí, ni
+ *  en sus filas de seco, porque esta planilla descarta los movimientos de congelados.
+ *
+ *  **Desde el 10/11/2026, por decisión del coordinador: el que cubre va en el recuadro vacío**,
+ *  con su nombre en F y «Mario Patiño» en S, que es la cuenta con la que pickea. No hace falta
+ *  nada de código: la estructura ya era esa, solo que nunca se había puesto un tercer nombre. */
 const FILAS_CONGELADOS = 2;
 
 /** Una fila del bloque a crear. */
