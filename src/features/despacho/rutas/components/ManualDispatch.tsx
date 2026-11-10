@@ -47,6 +47,9 @@ interface Props {
    *  GLOBAL (`en servicio`) y pasan a mandar solo acá. */
   onToggleSeleccion?: (patente: string) => void;
   onCerrarCamion?: (patente: string) => void;
+  /** Con un camión ya cerrado, abre su manifiesto guardado para verlo o reimprimirlo. Antes el
+   *  botón decía «ver manifiesto» pero quedaba desactivado: no abría nada. */
+  onVerManifiesto?: (patente: string) => void;
   /** [P4] Asigna lo que falta SIN tocar lo ya armado. Es el botón primario del pool. */
   onAsignar?: () => void;
   /** [P4] Rehace el tablero desde cero (destructivo). Secundario, y solo si ya hay trabajo. */
@@ -177,6 +180,7 @@ export default function ManualDispatch({
   seleccion,
   onToggleSeleccion,
   onCerrarCamion,
+  onVerManifiesto,
   onAsignar,
   onReasignarTodo,
   iaLoading,
@@ -1404,20 +1408,20 @@ export default function ManualDispatch({
                   <button
                     onClick={e => {
                       e.stopPropagation();
-                      if (cerrado) return;
+                      if (cerrado) { onVerManifiesto?.(v.p); return; }
                       // Sobre capacidad se pregunta, con los números reales y aclarando que el
                       // conteo no se toca — que es justo la duda de quien cierra.
                       if (exceso && !confirm(confirmacionSobreCapacidad(v.p, exceso))) return;
                       onCerrarCamion(v.p);
                     }}
-                    disabled={cerrado}
-                    title={exceso ? `Lleva ${exceso.pallets} y caben ${exceso.capacidad}. Se registra tal cual.` : undefined}
+                    disabled={cerrado && !onVerManifiesto}
+                    title={cerrado ? (onVerManifiesto ? 'Abrir su manifiesto para verlo o imprimirlo' : undefined) : exceso ? `Lleva ${exceso.pallets} y caben ${exceso.capacidad}. Se registra tal cual.` : undefined}
                     className={`w-full ${A ? 'min-h-[44px] text-apoyo' : 'h-[38px] text-[12px]'} rounded-[10px] font-bold flex items-center justify-center gap-1.5 transition-all ${
-                      cerrado ? 'bg-green-50 text-green-700 border-[1.5px] border-green-500/40 cursor-default'
+                      cerrado ? `bg-green-50 text-green-700 border-[1.5px] border-green-500/40 ${onVerManifiesto ? 'hover:bg-green-100 active:scale-[0.98]' : 'cursor-default'}`
                       : exceso ? 'bg-amber-500 text-white active:scale-[0.98]'
                       : `${furgon ? 'bg-[#0E7490]' : deVuelta ? 'bg-[#5B21B6]' : 'bg-knavy'} text-white active:scale-[0.98]`}`}
                   >
-                    {cerrado ? '✓ Cerrado · ver manifiesto' : furgon && !exceso ? 'Cerrar furgón y manifiesto' : textoBotonCerrar(!!exceso)}
+                    {cerrado ? (onVerManifiesto ? '✓ Cerrado · ver manifiesto' : '✓ Cerrado') : furgon && !exceso ? 'Cerrar furgón y manifiesto' : textoBotonCerrar(!!exceso)}
                   </button>
                 </div>
               )}
