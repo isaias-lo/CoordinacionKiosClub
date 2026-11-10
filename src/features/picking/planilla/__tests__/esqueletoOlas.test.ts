@@ -116,6 +116,14 @@ describe('filasEsqueleto: chocolates y congelados', () => {
     expect(cong.every(x => x.tienda === '')).toBe(true);
   });
 
+  it('dos filas de congelados aunque el día sea chico: el número es la GENTE, no el tamaño', () => {
+    // Son dos personas que se reparten todo el calendario del día. Cuando falta una se dejan
+    // igual los dos recuadros y se completa un nombre — comprobado en la hoja, 17 días seguidos.
+    for (const cods of [['57CAS'], ['57CAS', '28TEM'], Array.from({ length: 29 }, (_, i) => `T${i}`)]) {
+      expect(filasEsqueleto(cods, []).filter(x => x.seccion === 'CONGELADOS')).toHaveLength(2);
+    }
+  });
+
   it('chocolates y congelados van al FINAL y sin tienda', () => {
     const f = filasEsqueleto(['57CAS', '28TEM'], [mov()]);
     const cola = f.slice(-3);

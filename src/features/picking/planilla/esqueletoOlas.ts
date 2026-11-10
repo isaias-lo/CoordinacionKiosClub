@@ -55,9 +55,30 @@ const POR_TIENDA = ['Comida', 'Aseo', 'Hogar'] as const;
 
 /** Cuántas filas de CONGELADOS se dejan en blanco al final de cada día.
  *
- *  Dos, que es lo que la hoja viene teniendo. Esta planilla no registra congelados —viven en otra
- *  pestaña de Picking—, así que se crean vacías para que alguien las complete a mano, igual que
- *  hoy. No crearlas obligaría a insertar filas al medio después, que es peor. */
+ *  **Dos, SIEMPRE — y el número no es del formato: es la gente.** Congelados lo hacen dos
+ *  personas, que se reparten TODAS las tiendas del calendario de ese día según quién vino. Por
+ *  eso van dos filas y no una por tienda: la unidad no es la tienda, es la persona.
+ *
+ *  Hasta el 09/11/2026 acá decía «dos, que es lo que la hoja viene teniendo». Eso describía la
+ *  hoja sin explicarla, y dejaba la puerta abierta a «mejorarlo» haciendo que el número siguiera
+ *  la asistencia. **No hay que hacerlo.** Confirmado por el coordinador y comprobado contra la
+ *  hoja el 09/11/2026, 17 días seguidos del 19/10 al 10/11:
+ *
+ *      17 de 17 días → 2 filas de CONGELADOS
+ *      26/10 y 05/11 → 2 filas, UN solo nombre (faltó uno de los dos)
+ *
+ *  Cuando falta uno se dejan igual los dos recuadros y se completa un nombre. El recuadro vacío
+ *  es el registro de que ese día fue uno solo; quitarlo perdería ese dato.
+ *
+ *  Van en blanco porque esta planilla no registra congelados —viven en otra pestaña de Picking,
+ *  y `desdeOdoo.ts` los excluye a propósito—, así que las completa una persona. No crearlas
+ *  obligaría a insertar filas al medio después, que es peor.
+ *
+ *  **Qué se completa a mano, medido en la hoja esos mismos 17 días:** la columna F lleva el
+ *  nombre de la persona y la S siempre «Mario Patiño», que es la cuenta de Odoo con la que se
+ *  hace TODO el congelado. Cuando falta uno, su fila queda entera en blanco: ni nombre ni
+ *  cuenta. Así que la S vacía que deja este esqueleto no es un olvido — es lo que una persona
+ *  llena, igual que el nombre. */
 const FILAS_CONGELADOS = 2;
 
 /** Una fila del bloque a crear. */
