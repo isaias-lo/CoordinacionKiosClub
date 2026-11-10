@@ -78,10 +78,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: data ?? [] });
   }
 
+  // [Reimprimir manifiestos · 10/11/2026] `salida` busca por el día en que el camión SALE, no por
+  // el de armado. Un camión cerrado hoy sale mañana: buscarlo por `fecha` mañana no lo encuentra
+  // (es el mismo error que dejó a /conductor-hub sin los camiones cerrados). Con `salida` se puede
+  // volver a imprimir lo que sale hoy aunque se haya cerrado ayer.
+  const salida = request.nextUrl.searchParams.get('salida');
+  if (salida != null && !/^\d{4}-\d{2}-\d{2}$/.test(salida))
+    return NextResponse.json({ error: 'salida inválida' }, { status: 400 });
+
   let query = supabaseServer()
     .from('rutas_despacho')
     .select('*, ruta_tiendas(*), ruta_guias(*)')
-    .eq('fecha', fecha)
+    .eq(salida ? 'fecha_salida' : 'fecha', salida ?? fecha)
     .order('created_at', { ascending: true });
 
   if (patente) query = query.ilike('patente', patente.trim());

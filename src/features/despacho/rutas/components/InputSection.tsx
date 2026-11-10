@@ -92,6 +92,8 @@ interface Props {
   onReasignarTodo?: () => void;
   iaLoading?: boolean;
   onCerrarCamion?: (patente: string) => void;
+  /** Abre el manifiesto guardado de un camión ya cerrado (seco o congelados). */
+  onVerManifiesto?: (patente: string) => void;
   // [Cerrar en masa] selección de patentes a cerrar de una en el tablero DESPACHO.
   cerrarSel?: Set<string>;
   onToggleCerrarSel?: (patente: string) => void;
@@ -175,7 +177,7 @@ export default function InputSection({
   onModo,
   onToggleFlota, ordenActivacion, onToggleTlbd, onAgregarVehiculo, onEliminarVehiculo, onActualizarVehiculo, onGuardarFlota,
   onManual, onAsignaciones,
-  onCalcular, onCalcularManual, onAsignar, onReasignarTodo, iaLoading, onCerrarCamion, onLimpiar, onEliminarParada,
+  onCalcular, onCalcularManual, onAsignar, onReasignarTodo, iaLoading, onCerrarCamion, onVerManifiesto, onLimpiar, onEliminarParada,
   cerrarSel, onToggleCerrarSel, onCerrarVarios, esCerrada, zonasCfg,
   onTerminarDia,
   onAbrirTablero,
@@ -497,7 +499,7 @@ export default function InputSection({
                 camionSeleccionado={camionSeleccionado} camionSeleccionadoKm={camionSeleccionadoKm} onSelectTruck={onSelectTruck}
                 scrollContainerRef={dragScrollRef}
                 onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion}
-                onCerrarCamion={onCerrarCamionCong}
+                onCerrarCamion={onCerrarCamionCong} onVerManifiesto={onVerManifiesto}
                 cerrarSel={cerrarSelCong}
                 onToggleCerrarSel={onToggleCerrarSelCong}
                 onCerrarVarios={onCerrarVariosCong}
@@ -520,7 +522,7 @@ export default function InputSection({
                   scrollContainerRef={dragScrollRef}
                   cerrarSel={cerrarSel} onToggleCerrarSel={onToggleCerrarSel} onCerrarVarios={onCerrarVarios} esCerrada={esCerrada}
                   zonasCfg={zonasCfg}
-                  onAsignar={onAsignar} onReasignarTodo={onReasignarTodo} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} hideCalcular
+                  onAsignar={onAsignar} onReasignarTodo={onReasignarTodo} iaLoading={iaLoading} onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion} onCerrarCamion={onCerrarCamion} onVerManifiesto={onVerManifiesto} hideCalcular
                   terminadas={terminadas} />
               </div>
             )}
@@ -638,7 +640,7 @@ export default function InputSection({
               onToggleFlota={onToggleFlota} ordenActivacion={ordenActivacion}
               // Cerrar camión: existía solo en DESPACHO. Sin esto, en CONGELADOS se podía armar
               // el camión pero no emitir su manifiesto — la carga quedaba asignada y nada más.
-              onCerrarCamion={onCerrarCamionCong}
+              onCerrarCamion={onCerrarCamionCong} onVerManifiesto={onVerManifiesto}
               cerrarSel={cerrarSelCong}
               onToggleCerrarSel={onToggleCerrarSelCong}
               onCerrarVarios={onCerrarVariosCong}
@@ -684,6 +686,7 @@ export default function InputSection({
                 onToggleFlota={onToggleFlota}
                 ordenActivacion={ordenActivacion}
                 onCerrarCamion={onCerrarCamion}
+                onVerManifiesto={onVerManifiesto}
                 cerrarSel={cerrarSel}
                 onToggleCerrarSel={onToggleCerrarSel}
                 onCerrarVarios={onCerrarVarios}
