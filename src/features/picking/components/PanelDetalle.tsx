@@ -7,6 +7,7 @@
 import React from 'react';
 import { Printer, RotateCcw, AlertTriangle } from 'lucide-react';
 import { BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
+import { cajaDeLaEtiqueta } from '@/features/despacho/shared/cajaEnLaEtiqueta';
 import type { PickerGroup, PickingOperation, PalletSlot, PickerType, PrintRecord } from '../picking-types';
 import type { ClaveUnidad } from '../tiposUnidad';
 import { pesoTotalValido, avisoCantidad, cajasDelTipo, type TipoCaja, type PesoTotalGuardado } from '../pesoTotal';
@@ -280,6 +281,7 @@ export function PanelDetalle(p: PanelDetalleProps) {
                         canonicalId={buildCanonicalId(slotTipo, pNum, group.storeCod, todayISO())}
                         adelanto={!!p.adelanto} adelantoFecha={p.adelanto?.fecha_despacho ?? null}
                         aperturaDia={p.adelanto?.dia_movimientos ?? null}
+                        caja={cajaDeLaEtiqueta(slotTipo, slot?.subtipo)}
                         compact
                       />
                     </div>
