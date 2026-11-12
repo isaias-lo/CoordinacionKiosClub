@@ -25,6 +25,7 @@ import { MoreHorizontal, Pencil, ChevronLeft, ChevronDown, Lock, Plus, Layers, P
 import { textoUnificado } from './unifyPallets';
 import { firmaPieza, lineaJuntado, pesoDePiezas, textoPieza, textoSumados, verboPieza, type Juntado } from './juntados';
 import { ESTILO_UNIDAD, LETRA_UNIDAD, esCambioDeUnidad, type AvanceTienda, type ClaseUnidad } from './unidadVisual';
+import { ChipTope } from './ChipTope';
 
 /** «P1», «B3»: la etiqueta de la unidad, en el color de su tipo. */
 export function EtiquetaUnidad({ clase, children, grande }: { clase: ClaseUnidad; children: ReactNode; grande?: boolean }) {
@@ -135,12 +136,16 @@ export function MenuAgregar({ opciones, bloqueado }: { opciones: OpcionAgregar[]
  * terminada viven en el menú ⋯ para que no compitan con el pesaje; "Marcar terminada" vuelve a
  * aparecer grande al pie cuando ya no falta nada (eso lo decide la pantalla).
  */
-export function CabeceraTienda({ nombre, subtitulo, avance, indicador, estado, acciones, agregar, onVolver, arrastre }: {
+export function CabeceraTienda({ nombre, subtitulo, avance, indicador, piso, tope, estado, acciones, agregar, onVolver, arrastre }: {
   nombre: string;
   subtitulo: string;
   avance: AvanceTienda;
   /** El indicador del canal en vivo, o lo que la pantalla quiera junto al nombre. */
   indicador?: ReactNode;
+  /** Piso ocupado (pallets + contenedores) y tope de la tienda. Acá es donde se está pesando:
+   *  el quinto pallet aparece en esta pantalla, no en la lista. Ver `ChipTope`. */
+  piso?: number;
+  tope?: number | null;
   /** Una ficha de estado visible sin abrir el menú (p. ej. «✓ Terminada»). */
   estado?: ReactNode;
   /** Lo que va dentro del menú ⋯. */
@@ -185,6 +190,7 @@ export function CabeceraTienda({ nombre, subtitulo, avance, indicador, estado, a
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 min-w-0">
             <h2 ref={titulo} tabIndex={-1} className="font-barlow-condensed text-titulo font-extrabold text-text truncate m-0 focus:outline-none">{nombre}</h2>
+            <ChipTope piso={piso ?? 0} tope={tope} grande />
             {indicador}
           </div>
           <div className="font-mono text-apoyo text-text-sub truncate">{subtitulo}</div>
