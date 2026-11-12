@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  AMARILLO, CIAN, FALABELLA_POR_DIA, SECCIONES_A_MANO, colorAlternado, describirEsqueleto,
+  AMARILLO, CIAN, FALABELLA_EN_HOJA, FALABELLA_GRAFIAS_VIEJAS, SECCION_EN_HOJA,
+  SECCIONES_A_MANO, colorAlternado, describirEsqueleto,
   diaDeSemana, filaFalabella, filasEsqueleto, formulasDe,
 } from '../esqueletoOlas';
 import type { MovimientoPlanilla } from '../armarPlanilla';
@@ -231,18 +232,29 @@ describe('diaDeSemana', () => {
 });
 
 describe('filaFalabella', () => {
-  it('el lunes lleva «Fala full» y el miércoles «falabella full»', () => {
-    expect(filaFalabella(LUNES)).toBe('Fala full');
-    expect(filaFalabella(MIERCOLES)).toBe('falabella full');
+  it('el lunes y el miércoles llevan LA MISMA grafía', () => {
+    // Unificadas el 12/11/2026. Antes eran «Fala full» el lunes y «falabella full» el miércoles.
+    expect(filaFalabella(LUNES)).toBe('FALABELLA FULL');
+    expect(filaFalabella(MIERCOLES)).toBe('FALABELLA FULL');
+    expect(filaFalabella(LUNES)).toBe(filaFalabella(MIERCOLES));
   });
 
-  it('las grafías son las de la hoja, en minúscula: no se «arreglan» a mayúsculas', () => {
-    // El resto de la columna C va en mayúsculas y estas dos no. Reproducirlas tal cual es el
-    // mismo criterio que «ASEO » con su espacio final.
-    expect(FALABELLA_POR_DIA[1]).toBe('Fala full');
-    expect(FALABELLA_POR_DIA[3]).toBe('falabella full');
-    expect(filaFalabella(LUNES)).not.toBe('FALA FULL');
-    expect(filaFalabella(MIERCOLES)).not.toBe('FALABELLA FULL');
+  it('va en MAYÚSCULA, que es la regla que la hoja ya tiene para la columna C', () => {
+    // COMIDA, ASEO , HOGAR, CHOCOLATES, CONGELADOS. Las dos de Falabella eran las únicas en
+    // minúscula; ahora no hay ninguna.
+    expect(FALABELLA_EN_HOJA).toBe(FALABELLA_EN_HOJA.toUpperCase());
+    for (const s of Object.values(SECCION_EN_HOJA)) expect(s).toBe(s.toUpperCase());
+  });
+
+  it('las dos grafías viejas siguen reconociéndose', () => {
+    // Quedaron escritas en 45 filas históricas. Si dejaran de reconocerse, el registro avisaría
+    // «sección desconocida» sobre cada lunes y cada miércoles anterior a la unificación.
+    expect(FALABELLA_GRAFIAS_VIEJAS).toEqual(['Fala full', 'falabella full']);
+    for (const vieja of FALABELLA_GRAFIAS_VIEJAS) expect(SECCIONES_A_MANO).toContain(vieja);
+  });
+
+  it('la grafía nueva también está entre las que no se llenan a mano', () => {
+    expect(SECCIONES_A_MANO).toContain(FALABELLA_EN_HOJA);
   });
 
   it('el jueves ya no lleva: se cortó el 08/10/2026', () => {
@@ -266,12 +278,18 @@ describe('filaFalabella', () => {
 describe('filasEsqueleto: la fila de Falabella Full', () => {
   it('el lunes se crea, al cierre y sin tienda', () => {
     const f = filasEsqueleto(['57CAS'], [], LUNES);
-    expect(f[f.length - 1]).toEqual({ tienda: '', seccion: 'Fala full' });
+    expect(f[f.length - 1]).toEqual({ tienda: '', seccion: 'FALABELLA FULL' });
   });
 
-  it('el miércoles también, con la otra grafía', () => {
+  it('el miércoles se crea igual: ya no hay «la otra grafía»', () => {
     const f = filasEsqueleto(['57CAS'], [], MIERCOLES);
-    expect(f[f.length - 1]).toEqual({ tienda: '', seccion: 'falabella full' });
+    expect(f[f.length - 1]).toEqual({ tienda: '', seccion: 'FALABELLA FULL' });
+  });
+
+  it('el lunes y el miércoles escriben exactamente el mismo texto', () => {
+    const lun = filasEsqueleto(['57CAS'], [], LUNES).at(-1)?.seccion;
+    const mie = filasEsqueleto(['57CAS'], [], MIERCOLES).at(-1)?.seccion;
+    expect(lun).toBe(mie);
   });
 
   it('es UNA sola, no una por tienda', () => {
