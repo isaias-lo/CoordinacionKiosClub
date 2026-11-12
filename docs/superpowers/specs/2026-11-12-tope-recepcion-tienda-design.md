@@ -37,9 +37,10 @@ Columna nueva en `tiendas`:
 alter table tiendas add column max_pallets smallint;
 ```
 
-**Anulable a propósito.** Nulo es «sin tope», que es un estado real: 25 tiendas de Región, cuatro de
-RM que la lista no trae (`35BN2`, `62PLD`, `63CAL`, `60PBL`) y los cinco puntos no tienen número.
-Si fuera `0 not null`, cada tienda de Región quedaría excedida desde el primer pallet.
+**Anulable a propósito.** Nulo es «sin tope», que es un estado real. Contado en la base el
+12/11/2026, de 66 tiendas activas **35 tienen tope y 31 no**: 23 de Región, los cinco puntos más la
+oficina, y tres sueltas que la lista no trae (`35BN2`, `62PLD`, `63CAL`). Si fuera `0 not null`,
+esas 31 quedarían excedidas desde el primer pallet.
 
 **No va a la hoja TIENDAS.** El precedente es `recepcion_pallet`: un campo por tienda que vive solo
 en la base y en Config. Así no se tocan las cuatro piezas posicionales que `CLAUDE.md` marca como el

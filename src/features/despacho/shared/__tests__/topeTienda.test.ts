@@ -27,7 +27,7 @@ describe('pisoOcupado', () => {
 
 describe('estadoTope', () => {
   it('sin tope cargado nunca da aviso, tenga lo que tenga', () => {
-    // Nulo es «sin tope», no cero: si fuera cero, las 25 tiendas de Región quedarían
+    // Nulo es «sin tope», no cero: si fuera cero, las 31 tiendas sin tope quedarían
     // excedidas desde el primer pallet.
     expect(estadoTope(0,  null)).toBe('sin-tope');
     expect(estadoTope(9,  null)).toBe('sin-tope');
