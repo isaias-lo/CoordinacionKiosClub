@@ -116,6 +116,20 @@ export const UpdateTiendaSchema = CreateTiendaSchema.partial().extend({
   codigo: StoreCodeSchema,
 });
 
+/**
+ * El tope de recepción, que se guarda SOLO. No se reusa `UpdateTiendaSchema` porque esa ruta es
+ * un upsert completo: reescribiría las 30 columnas y resincronizaría la hoja por un campo que la
+ * hoja ni tiene. Ver `api/tiendas/tope/route.ts`.
+ *
+ * `null` es «sin tope» y es un valor válido: así se BORRA un tope mal cargado. El mínimo es 1 —
+ * un tope de cero dejaría a la tienda excedida desde el primer pallet, que no es un estado que
+ * alguien quiera declarar; para eso está el nulo.
+ */
+export const TopeTiendaSchema = z.object({
+  codigo:      StoreCodeSchema,
+  max_pallets: z.number().int().min(1).max(20).nullable(),
+});
+
 // ── Recepción Conductor ────────────────────────────────────────────────────
 
 export const RecepcionSchema = z.object({

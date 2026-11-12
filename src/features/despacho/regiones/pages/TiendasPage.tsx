@@ -94,6 +94,7 @@ import { recrearSlotConNumero } from '@/features/despacho/shared/recrearSlot';
 import { CalManualSheet, type ManualLine } from '../../shared/CalManualSheet';
 import type { PickingSlot } from '@/features/despacho/santiago/components/PickingSlotCards';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
+import { pisoOcupado } from '../../shared/topeTienda';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { combinarEnLista } from '../../shared/combinarEnLista';
 import { esSinPesar, esPalletWeb, DIMS_SIN_PESAR } from '../../shared/sinPesar';
@@ -233,6 +234,8 @@ interface GridCardProps {
   storeDoneOps?: number;
   storeTotalOps?: number;
   tipoCat?: string;
+  /** Cuántos pallets aguanta recibir la tienda. El piso sale de los conteos que ya llegan acá. */
+  tope?: number | null;
   /** [Tienda Terminada] Marcador manual de Bodega — se ve por encima de "tiene guía"/"es hoy"
    *  para que quien mira la grilla nunca confunda una tienda cerrada con una que sigue abierta
    *  y todavía puede sumar más pallets. */
@@ -258,7 +261,7 @@ interface GridCardProps {
   /** Ya va en un camión cerrado. Ver `cargaEnCamion.ts`. */
   camion?: CargaCamion;
 }
-function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, bultoCount, adquisicionCount = 0, webRetiroCount = 0, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, terminada, viendo, sinPesarCount, nuevas = 0, onSelect, onDragStart, onAddToday, onRemoveFromToday, forma, juntado, camion }: GridCardProps) {
+function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount, bultoCount, adquisicionCount = 0, webRetiroCount = 0, pickingP = 0, pickingB = 0, pickingC = 0, pickingCH = 0, preset, hasPdf, storeDoneOps = 0, storeTotalOps = 0, tipoCat, tope, terminada, viendo, sinPesarCount, nuevas = 0, onSelect, onDragStart, onAddToday, onRemoveFromToday, forma, juntado, camion }: GridCardProps) {
   const t = TIENDAS[name];
   // El bulto ya NO sale por resta: así caían adentro las adquisiciones y los web/retiro. Ver
   // `contarPorClase`. Lo que falta es lo que Picking imprimió y Bodega todavía no cargó; sin
@@ -274,6 +277,7 @@ function TiendaGridCard({ name, isActive, isToday, itemCount, palletCount, conte
     : onAddToday ? { tipo: 'agregar' as const, onClick: onAddToday } : undefined;
   return (
     <FilaTienda cod={formatCod(t.cod)} nombre={t.name} tipo={tipoBadge(tipoCat)}
+      piso={pisoOcupado({ pallet: palletCount, contenedor: contenedorCount })} tope={tope}
       estado={estadoLista({ cargadas: itemCount, terminada: !!terminada, nuevas })}
       activa={isActive} conGuia={!!hasPdf} nuevas={nuevas}
       avance={avanceFila(cargadas, faltan)}
@@ -429,6 +433,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
     setFocoPallet(null);
   }, [focoPallet, formRows]);
   const [tipoCatByCod,          setTipoCatByCod]          = useState<Record<string, string>>({}); // tipo del catálogo para el badge
+  const [topeByCod,             setTopeByCod]             = useState<Record<string, number | null>>({}); // tope de recepción
   const [showMobileResumen, setShowMobileResumen]  = useState(false);
   const [showCalManual,     setShowCalManual]      = useState(false);
   const [showTodas,         setShowTodas]          = useState(false);
@@ -450,11 +455,17 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
       .then(({ tiendas: data }: { tiendas?: Array<Record<string, unknown>> }) => {
         if (!Array.isArray(data)) return;
         const tcat: Record<string, string> = {};
+        // El tope de recepción viaja en este mismo fetch, igual que en RM/Costa: el catálogo ya
+        // venía entero y una columna más no cuesta una consulta más. Ver `shared/topeTienda.ts`.
+        const topes: Record<string, number | null> = {};
         for (const t of data) {
           const cod = String(t.codigo ?? ''); const tipoVal = String(t.tipo ?? '');
-          if (cod && tipoVal) tcat[cod] = tipoVal;
+          if (!cod) continue;
+          if (tipoVal) tcat[cod] = tipoVal;
+          topes[cod] = t.max_pallets == null ? null : Number(t.max_pallets);
         }
         setTipoCatByCod(tcat);
+        setTopeByCod(topes);
       })
       .catch(() => {});
   }, []);
@@ -2499,6 +2510,10 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
         nombre={selectedTienda}
         subtitulo={`${tienda?.cod ? formatCod(tienda.cod) : ''}${tienda?.calle ? ` · ${tienda.calle} ${tienda.numero ?? ''}` : ''}`}
         avance={avance}
+        // `piso` cuenta lo GUARDADO, igual que la fila de la lista, para que el chip no diga una
+        // cosa afuera y otra adentro. Ver `topeTienda.ts`.
+        piso={pisoOcupado(contarPorClase(dispatchData[selectedTienda] ?? [], i => claseNacional(i.pkg)))}
+        tope={tienda?.cod ? topeByCod[tienda.cod] : null}
         indicador={<IndicadorCanalSano canalSano={canalSano} />}
         estado={tienda?.cod && terminadas.get(tienda.cod)?.terminada
           ? <span className="text-rotulo font-bold uppercase text-est-ok bg-est-ok-suave rounded-full px-2.5 py-1 flex-shrink-0">✓ Terminada</span>
@@ -2853,7 +2868,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                   const storeTotalOpsSeco = Math.max(0, (prog?.total ?? 0) - (prog?.congTotal ?? 0));
                   const storeDoneOpsSeco  = Math.max(0, (prog?.done ?? 0) - (prog?.congDone ?? 0));
                   return (
-                    <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]} camion={cargaCamion.get(claveTienda(t.cod))}
+                    <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]} tope={topeByCod[t.cod]} camion={cargaCamion.get(claveTienda(t.cod))}
                       isActive={selectedTienda === t.name} isToday
                       itemCount={cardItems.length} sinPesarCount={cardItems.filter(esSinPesar).length}
                       palletCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).pallet}
@@ -2908,7 +2923,7 @@ export function TiendasPage({ onRegistrar }: { onRegistrar?: () => void } = {}) 
                     const pkSlots   = pickingSlotsFull[t.name] ?? [];
                     const consumed  = consumedPickingSlots[t.name] || { p: 0, b: 0, c: 0, ch: 0 };
                     return (
-                      <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]} camion={cargaCamion.get(claveTienda(t.cod))}
+                      <TiendaGridCard key={t.name} name={t.name} tipoCat={tipoCatByCod[t.cod]} tope={topeByCod[t.cod]} camion={cargaCamion.get(claveTienda(t.cod))}
                         isActive={selectedTienda === t.name} isToday={false}
                         itemCount={cardItems.length} sinPesarCount={cardItems.filter(esSinPesar).length}
                         palletCount={contarPorClase(cardItems, i => claseNacional(i.pkg)).pallet}

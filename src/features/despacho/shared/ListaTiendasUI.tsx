@@ -25,6 +25,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { MoreHorizontal, Plus, Truck, X } from 'lucide-react';
 import { ESTILO_UNIDAD, type AvanceTienda } from './unidadVisual';
 import { BarraAvance, ConteoPorTipo } from './TiendaAbierta';
+import { ChipTope } from './ChipTope';
+import { estadoTope, textoTope } from './topeTienda';
 import { PresenciaBadge } from './PresenciaBadge';
 import { StoreProgressBar } from './StoreProgressBar';
 import type { ViendoInfo } from './usePresenciaTienda';
@@ -45,6 +47,9 @@ export interface FilaTiendaProps {
   nombre: string;
   /** Mall / Strip / Tienda, ya resuelto con `tipoBadge`. */
   tipo?: { label: string; bg: string; color: string } | null;
+  /** Posiciones de piso ocupadas (pallets + contenedores) y el tope de la tienda. Ver `ChipTope`. */
+  piso?: number;
+  tope?: number | null;
   estado: EstadoLista;
   activa: boolean;
   conGuia: boolean;
@@ -97,7 +102,7 @@ const CLASE_LETRA: Record<string, 'pallet' | 'bulto' | 'contenedor' | 'chocolate
 
 export function FilaTienda(props: FilaTiendaProps) {
   if (props.forma === 'baldosa') return <BaldosaTienda {...props} />;
-  const { cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, nuevas, odoo, viendo, onSelect, onDragStart, accion, juntado, camion } = props;
+  const { cod, nombre, tipo, piso, tope, estado, activa, conGuia, avance, agregados, sinPesar, nuevas, odoo, viendo, onSelect, onDragStart, accion, juntado, camion } = props;
   const textoJuntado = textoJuntadoTienda(juntado);
   const chip = chipFila({ estado, sinPesar, conGuia, nuevas });
   const otros = agregados ? [
@@ -122,6 +127,9 @@ export function FilaTienda(props: FilaTiendaProps) {
               {tipo.label}
             </span>
           )}
+          {/* Cuánto aguanta recibir la tienda. Es la fila donde se decide a cuál entrar, así que
+              el tope tiene que verse ANTES de abrirla. Ver `ChipTope`. */}
+          <ChipTope piso={piso ?? 0} tope={tope} />
         </span>
         {/* Un aviso (nuevas de Picking, sin pesar) sigue mandando aunque el camión ya esté cerrado:
             es justo lo que se quedaría abajo. Si no hay aviso, la patente toma el lugar del estado. */}
@@ -209,7 +217,7 @@ function Centro({ sigla, numero, chico = false }: { sigla: string; numero: strin
   );
 }
 
-export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avance, agregados, sinPesar, nuevas, odoo, viendo, onSelect, onDragStart, accion, juntado, camion }: FilaTiendaProps) {
+export function BaldosaTienda({ cod, nombre, tipo, piso, tope, estado, activa, conGuia, avance, agregados, sinPesar, nuevas, odoo, viendo, onSelect, onDragStart, accion, juntado, camion }: FilaTiendaProps) {
   const textoJuntado = textoJuntadoTienda(juntado);
   const chip = chipFila({ estado, sinPesar, conGuia, nuevas });
   const pct = pctAnillo(estado, avance);
@@ -219,13 +227,17 @@ export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avan
   const numero = resto.length ? primero : '';
   const otros = agregadosBaldosa(agregados);
   const aviso = chip.tono === 'aviso' ? chip.texto : null;
+  // En la baldosa el tope se muestra SOLO si se pasó. La fila tiene ancho para el «máx 4»
+  // callado; una baldosa de 116 px no, y un dato de referencia ahí le quita lugar al aviso que
+  // sí hay que ver. Se suma a la misma línea ámbar que «sin pesar».
+  const avisoTope = estadoTope(piso ?? 0, tope) === 'excedido' ? textoTope(piso ?? 0, tope) : null;
   const conOdoo = !!odoo && odoo.total > 0;
   const odooPct = pctOdoo(odoo);
   const odooListo = odooPct === 100;
   return (
     <div draggable={!!onDragStart} onDragStart={onDragStart} className="relative min-w-0">
       <button type="button" onClick={onSelect} aria-current={activa ? 'true' : undefined} data-tienda-lista=""
-        aria-label={[ariaBaldosa({ nombre, cod, estado, avance, chip: chip.texto, conGuia, agregados, odoo }), textoJuntado, camion ? textoCamion(camion) : null].filter(Boolean).join(', ')}
+        aria-label={[ariaBaldosa({ nombre, cod, estado, avance, chip: chip.texto, conGuia, agregados, odoo }), avisoTope, textoJuntado, camion ? textoCamion(camion) : null].filter(Boolean).join(', ')}
         title={tipo ? `${nombre} · ${tipo.label}` : nombre}
         className={`w-full h-full min-h-[116px] rounded-card px-1.5 pt-2 pb-1.5 flex flex-col items-center gap-0.5 text-center cursor-pointer select-none transition-colors active:opacity-80 ${camion ? CAJA_CARGADA : CAJA_BALDOSA[estado]} ${activa ? 'ring-2 ring-navy ring-offset-2 ring-offset-bg' : ''}`}>
         {/* Dos anillos: afuera lo pesado, adentro los movimientos de Odoo (ámbar mientras
@@ -257,9 +269,10 @@ export function BaldosaTienda({ cod, nombre, tipo, estado, activa, conGuia, avan
             {textoJuntado.split(' · ').map((parte, i) => <span key={i} className="whitespace-nowrap">{parte}</span>)}
           </span>
         )}
-        {(aviso || (conGuia && estado !== 'lista') || otros.length > 0 || conOdoo) && (
+        {(aviso || avisoTope || (conGuia && estado !== 'lista') || otros.length > 0 || conOdoo) && (
           <span aria-hidden="true" className="flex flex-wrap justify-center gap-x-1.5 gap-y-0.5 text-rotulo tracking-normal leading-tight">
             {aviso && <span className="font-bold text-est-aviso">{aviso}</span>}
+            {avisoTope && <span className="font-bold text-est-aviso tabular-nums">{avisoTope}</span>}
             {conGuia && estado !== 'lista' && <span className="font-bold uppercase text-sky-600">Guía</span>}
             {otros.map(o => <span key={o} className="text-text-sub">{o}</span>)}
             {conOdoo && <span className={`tabular-nums ${odooListo ? 'font-bold text-est-ok' : 'text-text-sub'}`}>{odooListo ? '✓ ' : ''}Odoo {odoo!.done}/{odoo!.total}</span>}

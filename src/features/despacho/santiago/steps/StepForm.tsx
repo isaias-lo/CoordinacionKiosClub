@@ -90,6 +90,7 @@ import { esDeOtroEspejo, espejoDeTienda, avisoDeOtroEspejo } from '../../shared/
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { MAX_ALTO_CM, excedeAltoMax } from '../../shared/palletLimits';
+import { pisoOcupado } from '../../shared/topeTienda';
 import { esCongeladoContenido } from '../../shared/congeladosBodega';
 import { combinarEnLista } from '../../shared/combinarEnLista';
 import { unidadesSinGuardar, avisoSinGuardar } from '../../shared/sinGuardarEnBodega';
@@ -241,11 +242,13 @@ function TiendaGridCard({
   t, isActive, isToday, itemCount, palletCount, contenedorCount, chocolateCount,
   bultoCount, adquisicionCount = 0, webRetiroCount = 0,
   despachoP, despachoB, despachoC, despachoCH, hasGuide, storeDoneOps = 0, storeTotalOps = 0,
-  tipoCat, terminada, viendo, sinPesarCount, nuevas = 0,
+  tipoCat, tope, terminada, viendo, sinPesarCount, nuevas = 0,
   onSelect, onAddToday, onRemoveFromToday, forma, juntado, camion,
 }: {
   t: TiendaSantiago; isActive: boolean; isToday: boolean;
   tipoCat?: string;
+  /** Cuántos pallets aguanta recibir la tienda. El piso sale de los conteos que ya llegan acá. */
+  tope?: number | null;
   itemCount: number; palletCount: number; contenedorCount: number; chocolateCount: number;
   despachoP?: number; despachoB?: number; despachoC?: number; despachoCH?: number;
   hasGuide?: boolean; storeStatus?: 'none' | 'partial' | 'complete'; storeDoneOps?: number; storeTotalOps?: number;
@@ -284,6 +287,7 @@ function TiendaGridCard({
     : onAddToday ? { tipo: 'agregar' as const, onClick: onAddToday } : undefined;
   return (
     <FilaTienda cod={formatCod(t.cod)} nombre={t.tienda} tipo={tipoBadge(tipoCat)}
+      piso={pisoOcupado({ pallet: palletCount, contenedor: contenedorCount })} tope={tope}
       estado={estadoLista({ cargadas: itemCount, terminada: !!terminada, nuevas })}
       activa={isActive} conGuia={!!hasGuide} nuevas={nuevas}
       avance={avanceFila(cargadas, faltan)}
@@ -346,8 +350,11 @@ function ConfirmCalendarModal({ name, mode, viendo, onConfirm, onCancel }: {
  * lo primero que se lee es cuánto falta, y Registrar / Marcar terminada viven en el menú ⋯ para
  * que no compitan con el pesaje. Los contadores por tipo ahora van en la barra de avance.
  */
-function TiendaFormHeader({ tienda, avance, onBack, swipe, terminadaInfo, onToggleTerminada, itemCount, sinPesarCount, sinGuardar, viendo, canalSano, botonRegistrar, agregar }: {
+function TiendaFormHeader({ tienda, avance, onBack, swipe, terminadaInfo, onToggleTerminada, itemCount, sinPesarCount, sinGuardar, viendo, canalSano, botonRegistrar, agregar, piso, tope }: {
   tienda: TiendaSantiago;
+  /** Piso ocupado y tope de recepción: acá es donde se pesa el pallet que la pasa. */
+  piso?: number;
+  tope?: number | null;
   /** El «+» junto al ⋯: pallet, bulto, contenedor, chocolate, adquisición y web/retiro. */
   agregar?: { opciones: OpcionAgregar[]; bloqueado?: boolean };
   avance: AvanceTienda;
@@ -366,6 +373,7 @@ function TiendaFormHeader({ tienda, avance, onBack, swipe, terminadaInfo, onTogg
       nombre={tienda.tienda}
       subtitulo={`${formatCod(tienda.cod)} · ${tienda.ventanaHoraria}`}
       avance={avance}
+      piso={piso} tope={tope}
       onVolver={onBack}
       agregar={agregar}
       arrastre={swipe ? { onTouchStart: swipe.start, onTouchMove: swipe.move, onTouchEnd: swipe.end } : undefined}
@@ -615,6 +623,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
   /* Dynamic tiendas from Supabase (merged with static at runtime) */
   const [supabaseTiendasMap, setSupabaseTiendasMap] = useState<Record<string, TiendaSantiago>>({});
   const [tipoCatByCod, setTipoCatByCod] = useState<Record<string, string>>({}); // tipo real del catálogo para el badge
+  const [topeByCod,    setTopeByCod]    = useState<Record<string, number | null>>({}); // tope de recepción
 
   /* ── Sincronización de guías PDF con Supabase ── */
   useEffect(() => {
@@ -766,9 +775,13 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         // Tipo REAL del catálogo (Mall/StripCenter/Tienda) para el badge de las cards. Se guarda
         // aparte porque `TiendaSantiago.tipo` colapsa todo a MALL/STRIPCENTER (pierde TIENDA).
         const tcat: Record<string, string> = {};
+        // Tope de recepción por tienda. Viaja en ESTE mismo fetch, que ya traía el catálogo
+        // entero: una columna más no cuesta una consulta más. Ver `shared/topeTienda.ts`.
+        const topes: Record<string, number | null> = {};
         for (const t of data) {
           const cod = String(t.codigo ?? '');
           if (!cod || t.activo === false) continue;
+          topes[cod] = t.max_pallets == null ? null : Number(t.max_pallets);
           const corredor = String(t.corredor ?? '').toLowerCase();
           const region   = String(t.region   ?? '').toLowerCase();
           const isVR     = corredor.includes('costa') || region.includes('valparaíso') || region === 'vr';
@@ -800,6 +813,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
         registrarCodsRegiones(codsRegionesDeBD(data));
         setSupabaseTiendasMap(map);
         setTipoCatByCod(tcat);
+        setTopeByCod(topes);
       })
       .catch(() => {});
   }, []);
@@ -2552,7 +2566,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               const storeTotalOpsSeco = Math.max(0, (prog?.total ?? 0) - (prog?.congTotal ?? 0));
               const storeDoneOpsSeco  = Math.max(0, (prog?.done ?? 0) - (prog?.congDone ?? 0));
               return (
-                <TiendaGridCard key={t.cod} t={t} tipoCat={tipoCatByCod[t.cod]} camion={cargaCamion.get(claveTienda(t.cod))}
+                <TiendaGridCard key={t.cod} t={t} tipoCat={tipoCatByCod[t.cod]} tope={topeByCod[t.cod]} camion={cargaCamion.get(claveTienda(t.cod))}
                   isActive={currentTienda?.cod === t.cod} isToday
                   itemCount={tI.length} palletCount={contarPorClase(tI, i => claseSantiago(i.tipo)).pallet}
                   sinPesarCount={tI.filter(esSinPesar).length}
@@ -2596,7 +2610,7 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
               const cnsS = consumedSlotsSant[t.cod] || { p: 0, b: 0, c: 0 };
               const pk = pkSlots.length > 0 ? { p: Math.max(0, pkSlots.filter(s => s.tipo === 'P').length - cnsS.p), c: Math.max(0, pkSlots.filter(s => s.tipo === 'C').length - cnsS.c), b: Math.max(0, pkSlots.filter(s => s.tipo === 'B').length - cnsS.b) } : undefined;
               return (
-                <TiendaGridCard key={t.cod} t={t} tipoCat={tipoCatByCod[t.cod]} camion={cargaCamion.get(claveTienda(t.cod))}
+                <TiendaGridCard key={t.cod} t={t} tipoCat={tipoCatByCod[t.cod]} tope={topeByCod[t.cod]} camion={cargaCamion.get(claveTienda(t.cod))}
                   isActive={currentTienda?.cod === t.cod} isToday={false}
                   itemCount={tI.length} palletCount={contarPorClase(tI, i => claseSantiago(i.tipo)).pallet}
                   sinPesarCount={tI.filter(esSinPesar).length}
@@ -3185,6 +3199,8 @@ export function StepForm({ onRegistrar, registered, onReopen, terminatedAt }: St
     return (
       <>
         <TiendaFormHeader tienda={currentTienda} avance={avance} itemCount={tiendaItems.length}
+          piso={pisoOcupado(contarPorClase(tiendaItems, i => claseSantiago(i.tipo)))}
+          tope={topeByCod[currentTienda.cod]}
           onBack={() => setView('list')} swipe={swipeHandlers}
           terminadaInfo={terminadas.get(currentTienda.cod)} onToggleTerminada={marcarTerminada}
           sinPesarCount={tiendaItems.filter(esSinPesar).length}
