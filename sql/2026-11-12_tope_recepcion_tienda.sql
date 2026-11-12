@@ -6,10 +6,11 @@
 --
 -- ── NULL ES «SIN TOPE», Y NO ES CERO ──────────────────────────────────────────────────────────
 --
--- 25 tiendas de Región, cuatro de RM que la lista no trae (35BN2, 62PLD, 63CAL, 60PBL) y los
--- cinco puntos (CAJAS, GD, GDHO, LUN, OFIKC) no tienen número. Si la columna fuera `0 not null`,
--- cada una de ellas quedaría excedida desde el primer pallet y el aviso sería ruido permanente.
--- Sin tope no se dibuja ningún chip.
+-- Contado en la base DESPUÉS de correr esta migración (12/11/2026): de 66 tiendas activas, 35
+-- quedaron con tope y 31 sin él — 23 de Región, los cinco puntos más la oficina (CAJAS, GD,
+-- GDHO, LUN, OFIKC), y tres sueltas que la lista no trae (35BN2, 62PLD, 63CAL). Si la columna
+-- fuera `0 not null`, esas 31 quedarían excedidas desde el primer pallet y el aviso sería ruido
+-- permanente. Sin tope no se dibuja ningún chip.
 --
 -- ── NO VA A LA HOJA TIENDAS ───────────────────────────────────────────────────────────────────
 --

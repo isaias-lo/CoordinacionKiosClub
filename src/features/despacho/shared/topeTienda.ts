@@ -56,9 +56,10 @@ export function pisoOcupado(u: Partial<UnidadesDeTienda> | null | undefined): nu
 }
 
 /**
- * `null`/`undefined` es «sin tope», que es un estado REAL y no un cero: 25 tiendas de Región,
- * cuatro de RM que la lista no trae y los cinco puntos no tienen número. Si se leyera como 0,
- * cada una de ellas quedaría excedida desde el primer pallet.
+ * `null`/`undefined` es «sin tope», que es un estado REAL y no un cero. Contado en la base el
+ * 12/11/2026, de 66 tiendas activas **35 tienen tope y 31 no**: 23 de Región, los cinco puntos
+ * más la oficina, y tres sueltas que la lista del coordinador no trae (`35BN2`, `62PLD`,
+ * `63CAL`). Si el nulo se leyera como 0, esas 31 quedarían excedidas desde el primer pallet.
  */
 export function estadoTope(piso: number, tope: number | null | undefined): EstadoTope {
   if (tope == null || !Number.isFinite(Number(tope))) return 'sin-tope';
