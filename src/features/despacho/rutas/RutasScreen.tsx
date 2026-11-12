@@ -466,7 +466,8 @@ export default function RutasScreen() {
   // de una; 2ª Vuelta no, y había que cerrarlos de a uno. `ManualDispatch` ya sabe hacerlo —solo
   // hay que darle `cerrarSel`/`onCerrarVarios`—, así que lo que faltaba era esto y el lote de abajo.
   const [cerrarSelV2, setCerrarSelV2] = useState<Set<string>>(new Set());
-  const [manifiestoV2, setManifiestoV2]             = useState<Ruta[] | null>(null);
+  // Con la fecha de ORIGEN: el camión se cierra hoy pero lleva la carga de ese día (ver cargaEnCamion).
+  const [manifiestoV2, setManifiestoV2]             = useState<{ rutas: Ruta[]; fechaOrigen: string } | null>(null);
   // Fase B: manifiesto de un solo camión cerrado en 1ª vuelta (cierre por vehículo).
   const [manifiestoV1, setManifiestoV1]             = useState<Ruta[] | null>(null);
   // Coordenadas para la "Salida sugerida" del manifiesto de 1ª vuelta. Memoizado: el panel lo tiene
@@ -1912,7 +1913,7 @@ export default function RutasScreen() {
     });
     setPendientesV2Origen(prev => prev.filter(p => !(p.fechaOrigen === fecha && codsFecha.has(p.c))));
     if (lote) lote.rutas.push(...manifiestoRutas);
-    else setManifiestoV2(manifiestoRutas);
+    else setManifiestoV2({ rutas: manifiestoRutas, fechaOrigen: fecha });
   }
 
   // [Cerrar en masa · 2ª vuelta] Cierra todos los seleccionados y abre UN manifiesto con todos.
@@ -1929,7 +1930,7 @@ export default function RutasScreen() {
     patentes.forEach(p => cerrarCamionV2(v2Fecha, p, lote));
     setCerrarSelV2(new Set());
     if (lote.cods.size) void savePendientesV2(v2Fecha, [], lote.cods);
-    if (lote.rutas.length) setManifiestoV2(lote.rutas);
+    if (lote.rutas.length) setManifiestoV2({ rutas: lote.rutas, fechaOrigen: v2Fecha });
   }
 
   // ── Fase B: postear el summary del día (INSERT en historial_despacho, primario) ──
@@ -3707,9 +3708,10 @@ export default function RutasScreen() {
 
       {manifiestoV2 && (
         <ManifiestoPanel
-          rutas={manifiestoV2}
+          rutas={manifiestoV2.rutas}
           fecha={todayStr()}
           fechaSalida={despachoDe(todayStr())}
+          fechaOrigen={manifiestoV2.fechaOrigen}
           supervisor={supervisor}
           tiendas={tiendas as Record<string, TiendaInfo & { _parada?: boolean }>}
           isOpen={true}

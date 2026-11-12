@@ -5,6 +5,7 @@ import { verifyAuth } from '@/lib/apiAuth';
 import { norm } from '@/features/despacho/rutas/utils/helpers';
 import { ESTADO_TO_SEGUIMIENTO, syncSeguimientoDespacho } from './seguimientoSync';
 import { fechaChile } from '@/lib/fechaChile';
+import { faltaFechaOrigen } from '@/features/despacho/shared/cargaEnCamion';
 import { verifyOtpToken, verifyReciboEntrega } from '@/lib/otpToken';
 import { alcanceEntrega } from '@/lib/alcances';
 import { sendComprobanteEntregaEmail } from '@/lib/gmail';
@@ -69,11 +70,24 @@ export async function GET(request: NextRequest) {
   // desde las handheld. `fecha` es el día de ARMADO, el mismo que trabaja Bodega.
   if (request.nextUrl.searchParams.get('carga') === '1') {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return NextResponse.json({ error: 'fecha inválida' }, { status: 400 });
+    // [2ª vuelta · 12/11/2026] Un camión de 2ª vuelta cerrado hoy lleva la carga de su día de
+    // ORIGEN (`fecha_origen`), no la de hoy. Se traen los dos lados —lo cerrado hoy y lo cerrado
+    // otro día con carga de hoy— y `cargaPorTienda` se queda con lo que lleva la carga de `fecha`.
     const { data, error } = await supabaseServer()
       .from('rutas_despacho')
-      .select('patente, codigo_ruta, tipo, created_at, ruta_tiendas(store_cod)')
-      .eq('fecha', fecha)
+      .select('fecha, fecha_origen, patente, codigo_ruta, tipo, created_at, ruta_tiendas(store_cod)')
+      .or(`fecha.eq.${fecha},fecha_origen.eq.${fecha}`)
       .order('created_at', { ascending: true });
+    if (error && faltaFechaOrigen(error.message)) {
+      // Sin la columna (la migración todavía no corre): como antes, solo por día de armado.
+      const viejo = await supabaseServer()
+        .from('rutas_despacho')
+        .select('fecha, patente, codigo_ruta, tipo, created_at, ruta_tiendas(store_cod)')
+        .eq('fecha', fecha)
+        .order('created_at', { ascending: true });
+      if (viejo.error) return NextResponse.json({ error: viejo.error.message }, { status: 500 });
+      return NextResponse.json({ data: viejo.data ?? [] });
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ data: data ?? [] });
   }
@@ -135,7 +149,10 @@ export async function POST(request: NextRequest) {
   if (!await verifyAuth(request))
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const body = await request.json() as {
-    fecha: string; fecha_salida?: string | null; codigo_ruta: string; chofer: string; patente: string;
+    fecha: string; fecha_salida?: string | null;
+    /** [2ª vuelta] Día cuya carga lleva el camión, si no es la de `fecha`. Ver cargaEnCamion.ts. */
+    fecha_origen?: string | null;
+    codigo_ruta: string; chofer: string; patente: string;
     bodega_origen?: string;
     pioneta_1?: string;
     pioneta_2?: string;
@@ -187,9 +204,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data: existente, idempotent: true });
   }
 
-  const { data: ruta, error: rutaErr } = await supabaseServer()
-    .from('rutas_despacho')
-    .insert({
+  const fechaOrigen = body.fecha_origen && /^\d{4}-\d{2}-\d{2}$/.test(body.fecha_origen) && body.fecha_origen !== body.fecha
+    ? body.fecha_origen : null;
+  const filaRuta = {
       fecha:          body.fecha,
       // Día de llegada a tienda. `fecha` sigue siendo el de ARMADO: de ahí cuelgan codigo_ruta,
       // la búsqueda por día y la ventana de guías. Ver la migración add_fecha_salida_a_rutas_despacho.
@@ -205,10 +222,23 @@ export async function POST(request: NextRequest) {
       token_exp:      tokenExp,
       pioneta_1:      body.pioneta_1 ?? null,
       pioneta_2:      body.pioneta_2 ?? null,
-    })
+  };
+  // Postgres rechaza el INSERT ENTERO si se nombra una columna que no existe (CLAUDE.md). Si la
+  // migración de `fecha_origen` todavía no corrió, se guarda el manifiesto sin ella antes que
+  // perderlo: lo único que se pierde es el aviso correcto en Bodega.
+  let { data: ruta, error: rutaErr } = await supabaseServer()
+    .from('rutas_despacho')
+    .insert({ ...filaRuta, ...(fechaOrigen ? { fecha_origen: fechaOrigen } : {}) } as typeof filaRuta & { fecha_origen?: string })
     .select()
     .single();
-  if (rutaErr) return NextResponse.json({ error: rutaErr.message }, { status: 500 });
+  if (rutaErr && fechaOrigen && faltaFechaOrigen(rutaErr.message)) {
+    ({ data: ruta, error: rutaErr } = await supabaseServer()
+      .from('rutas_despacho')
+      .insert(filaRuta)
+      .select()
+      .single());
+  }
+  if (rutaErr || !ruta) return NextResponse.json({ error: rutaErr?.message ?? 'Error guardando la ruta' }, { status: 500 });
 
   if (body.tiendas?.length) {
     const { error: tErr } = await supabaseServer()

@@ -26,7 +26,7 @@ export function useCargaEnCamion(fecha: string | null | undefined, tipo: 'seco' 
         const res = await fetch(`/api/rutas-despacho?carga=1&fecha=${encodeURIComponent(fecha)}`);
         if (!res.ok) return;  // Si falla, se queda lo último que se supo: no se despinta nada.
         const json = await res.json() as { data?: RutaCargada[] };
-        if (vivo) setCarga(cargaPorTienda(json.data ?? [], tipo));
+        if (vivo) setCarga(cargaPorTienda(json.data ?? [], tipo, fecha));
       } catch { /* sin red: se reintenta en el próximo minuto */ }
     };
     setCarga(VACIO);
