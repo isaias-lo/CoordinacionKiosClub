@@ -164,3 +164,64 @@ describe('rendimientoPorPicker: una persona, una fila', () => {
     expect(filas.map(f => f.name)).toEqual(['Cristobal Labra', 'Marcelo Vergara']);
   });
 });
+
+describe('rendimientoPorPicker: la tanda no se cuenta dos veces', () => {
+  it('tres pedidos de la misma tanda son UN lapso de trabajo', () => {
+    // El caso real de Odoo: BATCH/54939, tres pedidos asignados y validados juntos. Antes de
+    // mirar la tanda esto devolvía 180 minutos por una hora de trabajo.
+    const { filas } = rendimientoPorPicker([
+      op({ tanda: 'BATCH/54939' }), op({ tanda: 'BATCH/54939' }), op({ tanda: 'BATCH/54939' }),
+    ]);
+    expect(filas[0].totalMinutes).toBe(60);
+    expect(filas[0].tandas).toBe(1);
+    expect(filas[0].ops).toBe(3);           // los totales siguen contando los tres pedidos
+    expect(filas[0].opsMedidas).toBe(3);
+  });
+
+  it('el ritmo se calcula sobre el tiempo real, no sobre el inflado', () => {
+    // 3 pedidos × 100 unidades = 300 unidades en 1 hora → 300 u/h. Antes salía 100.
+    const { filas } = rendimientoPorPicker([
+      op({ tanda: 'BATCH/1' }), op({ tanda: 'BATCH/1' }), op({ tanda: 'BATCH/1' }),
+    ]);
+    expect(filas[0].cph).toBe(300);
+    expect(filas[0].avgMinutesPerOp).toBe(20);        // 60 min / 3 pedidos
+    expect(filas[0].avgSecondsPerLine).toBe(120);     // 3600 s / 30 líneas
+  });
+
+  it('tandas distintas sí suman', () => {
+    const { filas } = rendimientoPorPicker([
+      op({ tanda: 'BATCH/1' }),
+      op({ tanda: 'BATCH/2', asignadoEn: '2026-11-03 14:00:00', validadoEn: '2026-11-03 15:30:00' }),
+    ]);
+    expect(filas[0].totalMinutes).toBe(150);
+    expect(filas[0].tandas).toBe(2);
+  });
+
+  it('sin tanda se comporta como antes: cada pedido con su duración', () => {
+    // Importa que no cambie: los pedidos sueltos no tienen nada que des-duplicar, y así el
+    // número de quien trabaja suelto sigue siendo el mismo de siempre.
+    const { filas } = rendimientoPorPicker([op(), op(), op()]);
+    expect(filas[0].totalMinutes).toBe(180);
+    expect(filas[0].tandas).toBe(0);
+  });
+
+  it('la cuenta compartida es el caso extremo y queda acotado', () => {
+    // «Mario Patiño»: dos personas en un usuario. Diez pedidos de la misma tanda daban 10 veces
+    // el tiempo; ahora dan el lapso de la tanda y nada más.
+    const diez = Array.from({ length: 10 }, () => op({ userName: 'Mario Patiño', tanda: 'BATCH/C' }));
+    const { filas } = rendimientoPorPicker(diez);
+    expect(filas[0].totalMinutes).toBe(60);
+    expect(filas[0].ops).toBe(10);
+  });
+
+  it('dos pickers con la misma tanda no se mezclan', () => {
+    // La tanda es de Odoo y en teoría es de una sola persona, pero si dos cuentas comparten una
+    // el tiempo tiene que medirse por persona y no una sola vez para las dos.
+    const { filas } = rendimientoPorPicker([
+      op({ userId: 1, userName: 'Pickers 15', tanda: 'BATCH/X' }),
+      op({ userId: 2, userName: 'Pickers 7',  tanda: 'BATCH/X' }),
+    ]);
+    expect(filas).toHaveLength(2);
+    for (const f of filas) expect(f.totalMinutes).toBe(60);
+  });
+});

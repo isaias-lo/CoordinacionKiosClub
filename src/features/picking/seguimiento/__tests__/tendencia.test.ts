@@ -5,7 +5,7 @@ import type { RendimientoPicker } from '../rendimiento';
 function fila(p: Partial<RendimientoPicker> = {}): RendimientoPicker {
   return {
     name: 'Cristobal Labra', cuentas: ['Pickers 15'],
-    ops: 20, opsMedidas: 20, units: 2000, lineCount: 200,
+    ops: 20, opsMedidas: 20, tandas: 8, units: 2000, lineCount: 200,
     totalMinutes: 600, avgMinutesPerOp: 30, avgSecondsPerLine: 180, cph: 200, ...p,
   };
 }

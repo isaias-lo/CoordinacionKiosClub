@@ -805,7 +805,12 @@ export async function POST(req: NextRequest) {
           // [RENDIMIENTO] `user_assigned_date` es desde cuándo cuenta el tiempo de la persona.
           // `scheduled_date` ya no se pide: era el día PLANIFICADO del movimiento y medir desde
           // ahí daba una duración que no es la de nadie.
-          fields: ['id', 'user_id', 'date_done', 'user_assigned_date'],
+          // `batch_id` decide el TIEMPO: a un picker se le asigna una tanda entera y sus
+          // pedidos comparten el mismo lapso. Sin esto, cada pedido de la tanda contaba su
+          // duración completa y las horas salían hasta 10 veces infladas. Ver
+          // `seguimiento/tandasDeTrabajo.ts`, donde está medido contra Odoo y contra la
+          // planilla con la que la jefatura paga el bono.
+          fields: ['id', 'user_id', 'date_done', 'user_assigned_date', 'batch_id'],
           limit: TOPE_PICKINGS, order: 'id asc',
         }],
       })) as Array<{
@@ -813,6 +818,7 @@ export async function POST(req: NextRequest) {
         user_id: [number, string] | false;
         date_done: string | false;
         user_assigned_date: string | false;
+        batch_id: [number, string] | false;
       }>;
 
       if (!rawPickings.length) {
@@ -912,6 +918,7 @@ export async function POST(req: NextRequest) {
             userName: Array.isArray(p.user_id) ? p.user_id[1] : '',
             asignadoEn: p.user_assigned_date,
             validadoEn: p.date_done,
+            tanda: Array.isArray(p.batch_id) ? p.batch_id[1] : null,
             units: ml?.units ?? 0,
             lines: ml?.lines ?? 0,
           };
