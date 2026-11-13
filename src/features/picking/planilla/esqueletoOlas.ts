@@ -26,12 +26,14 @@
 //
 // Los lunes y los miércoles cierra una fila más, la de Falabella Full, que nadie llena. No es un
 // resto: la hoja la tiene desde el 23/07/2026 y el coordinador pidió que siga. Ver
-// `FALABELLA_POR_DIA`, que es donde está medido cuál día lleva cuál grafía.
+// `FALABELLA_EN_HOJA` y `FALABELLA_DIAS`, que es donde está medido qué días la llevan.
 //
 // Las secciones se escriben con la grafía que la hoja ya usa, **espacio final de «ASEO »
-// incluido**. El calce es por texto normalizado, así que limpiarlo no rompería nada acá; pero no
-// se sabe qué tablas dinámicas o filtros de esa planilla comparan la columna C en crudo, y es el
-// mismo criterio que con `nombre_olas`: reproducir lo que hay, no mejorarlo de prepo.
+// incluido**. Ese espacio NO se limpia: es una sola grafía con una verruga, y tocarla no gana
+// nada. Lo de Falabella era otra cosa —dos grafías distintas peleando por la misma fila— y por
+// eso sí se unificó el 12/11/2026, una vez medido que nada aguas abajo lee la columna C: ninguna
+// fórmula de las 8 hojas la referencia, no hay tablas dinámicas en toda la planilla y el filtro
+// de PICKING no tiene criterios. Ver la cabecera de `FALABELLA_EN_HOJA`.
 //
 // ── EL COLOR ALTERNA MIRANDO AL DÍA ANTERIOR ──────────────────────────────────────────────────
 //
@@ -54,34 +56,53 @@ export const SECCION_EN_HOJA: Record<string, string> = {
   Chocolates: 'CHOCOLATES',
 };
 
-/** La grafía EXACTA de la fila de Falabella Full, por día de la semana (0 = domingo).
+/** La grafía de la fila de Falabella Full que esta planilla ESCRIBE, desde el 12/11/2026.
  *
  *  **Es una fila que nadie llena, y existe igual.** Falabella Full se abastece desde el CD, pero
  *  ese trabajo no se paga por esta planilla: el renglón está para que el bloque lo tenga, no para
- *  cobrar. Medido en la hoja el 10/11/2026 sobre las 45 filas con «fala» en la columna C desde el
- *  23/07/2026:
+ *  cobrar.
+ *
+ *  ── POR QUÉ SE UNIFICÓ, Y POR QUÉ RECIÉN AHORA ───────────────────────────────────────────────
+ *
+ *  La hoja traía DOS grafías, medidas el 10/11/2026 sobre las 45 filas con «fala» en la columna C
+ *  desde el 23/07/2026:
  *
  *      |Fala full|        16 filas · 16 de 16 LUNES               · 0 con nombre en F
  *      |falabella full|   29 filas · 14 mié, 12 jue, 2 mar, 1 vie · 1 con nombre («Apoyo picking»)
  *
- *  Dos grafías distintas, cada una en su día, y las dos en minúscula. Se reproducen tal cual, por
- *  el mismo criterio que «ASEO » con su espacio final: el calce de lectura es normalizado, pero no
- *  se sabe qué tabla dinámica de esa planilla compara la columna C en crudo.
+ *  Se reproducían tal cual porque **no se sabía** qué tabla dinámica o filtro de esa planilla
+ *  compara la columna C en crudo. El 12/11/2026 se midió y el desconocido se cerró: ninguna
+ *  fórmula de las 8 hojas lee `PICKING!C` —la única que toca esa hoja es el XLOOKUP del bono, que
+ *  mira T y F—, no hay **ninguna** tabla dinámica en toda la planilla, y el filtro de PICKING no
+ *  tiene criterios puestos. Nada aguas abajo depende de ese texto.
+ *
+ *  Unificada va en MAYÚSCULA porque es la regla que la hoja ya tiene: COMIDA, ASEO , HOGAR,
+ *  CHOCOLATES y CONGELADOS. Las dos de Falabella eran las únicas que se salían. Ojo que «ASEO »
+ *  conserva su espacio final: ese no se tocó, porque es un caso distinto —una sola grafía con una
+ *  verruga, no dos grafías en pelea—.
  *
  *  **Por qué solo lunes y miércoles.** El jueves existió 12 veces seguidas y se cortó el
  *  08/10/2026 — los 4 jueves siguientes no la tienen. El martes son 2 filas (29/09 y 06/10) y el
  *  viernes 1 (02/10), las tres en esa misma ventana de dos semanas. Lo que está vivo hoy son los
  *  lunes —16 de 16, sin faltar uno— y los miércoles —14 de 15, y los últimos 4 seguidos—.
  *
- *  El coordinador pidió el 10/11/2026 que la fila siga existiendo vacía «como hasta ahora». Esta
- *  tabla es «hasta ahora» medido: no son los lunes solos. */
-export const FALABELLA_POR_DIA: Readonly<Record<number, string>> = {
-  1: 'Fala full',        // lunes
-  3: 'falabella full',   // miércoles
-};
+ *  El coordinador pidió el 10/11/2026 que la fila siga existiendo vacía «como hasta ahora», y el
+ *  12/11/2026 que las dos grafías se unifiquen. */
+export const FALABELLA_EN_HOJA = 'FALABELLA FULL';
 
-/** Las grafías de Falabella que este módulo crea, para reconocer la fila sin repetir los textos. */
-const ES_FALABELLA: ReadonlySet<string> = new Set(Object.values(FALABELLA_POR_DIA));
+/** Los días de la semana que llevan la fila (0 = domingo). Medido, no supuesto: ver arriba. */
+export const FALABELLA_DIAS: ReadonlySet<number> = new Set([1, 3]);
+
+/** Las grafías que quedaron ESCRITAS en la hoja antes del 12/11/2026.
+ *
+ *  Siguen vivas en 45 filas históricas y hay que seguir reconociéndolas: si el registro dejara de
+ *  saltearlas, avisaría «sección desconocida» sobre cada lunes y cada miércoles anterior a la
+ *  unificación. Escribir una sola grafía y reconocer tres no es una inconsistencia: es la única
+ *  forma de cambiar el texto sin reescribir la historia de una planilla compartida. */
+export const FALABELLA_GRAFIAS_VIEJAS: readonly string[] = ['Fala full', 'falabella full'];
+
+/** Todas las grafías de Falabella que hay que reconocer: la que se escribe y las dos viejas. */
+const ES_FALABELLA: ReadonlySet<string> = new Set([FALABELLA_EN_HOJA, ...FALABELLA_GRAFIAS_VIEJAS]);
 
 /** Las tres secciones que llevan una fila por tienda. Chocolates va aparte, por persona. */
 const POR_TIENDA = ['Comida', 'Aseo', 'Hogar'] as const;
@@ -172,10 +193,10 @@ export function diaDeSemana(fechaISO: string): number | null {
   return d.getUTCDay();
 }
 
-/** La fila de Falabella Full que le toca a un día, con su grafía, o `null` si ese día no lleva. */
+/** La fila de Falabella Full si el día la lleva, o `null`. Una sola grafía desde el 12/11/2026. */
 export function filaFalabella(fechaISO: string): string | null {
   const d = diaDeSemana(fechaISO);
-  return d == null ? null : (FALABELLA_POR_DIA[d] ?? null);
+  return d != null && FALABELLA_DIAS.has(d) ? FALABELLA_EN_HOJA : null;
 }
 
 /**
