@@ -26,6 +26,7 @@
 // un dato, no un error: ya no hay techo de 8 horas.
 
 import { duracionMinutos } from '../planilla/horasPlanilla';
+import { minutosTrabajados, type OperacionConTanda } from './tandasDeTrabajo';
 import type { PickerStatRow } from '../picking-types';
 
 /** Una operación de Odoo con lo mínimo para medir. Las fechas llegan como el naive UTC, o `false`. */
@@ -42,12 +43,23 @@ export interface OperacionCruda {
    *  `read_group` lo devuelve ausente en vez de dar error. Ver `unidadesDeOdoo.ts`. */
   units: number;
   lines: number;
+  /** La TANDA (`batch_id`) en la que se trabajó, o `null` si fue suelto.
+   *
+   *  Decide el tiempo: a un picker se le asigna una tanda entera, así que los pedidos de una
+   *  tanda comparten el mismo lapso y contarlos por separado lo multiplica. Ver
+   *  `tandasDeTrabajo.ts`, que es donde está medido. */
+  tanda?: string | null;
 }
 
 /** Lo que ya mostraba la pantalla, más sobre cuántas operaciones se calcularon los promedios. */
 export interface RendimientoPicker extends PickerStatRow {
   /** Las que tenían hora de asignación y de validación. Es el divisor de los promedios. */
   opsMedidas: number;
+  /** Tandas distintas en las que se trabajó. Un pedido suelto no es una tanda.
+   *
+   *  Está publicado para que el tiempo se pueda explicar: «137 pedidos en 73 tandas» dice de una
+   *  por qué las horas no son la suma de los 137. Ver `tandasDeTrabajo.ts`. */
+  tandas: number;
   /**
    * Las cuentas de Odoo que aportaron a esta fila, ordenadas.
    *
@@ -70,7 +82,10 @@ interface Acum {
   /** Las cuentas de Odoo que aportaron a esta persona. Van a la fila para poder mostrarlas. */
   cuentas: Set<string>;
   ops: number; units: number; lines: number;
-  opsMedidas: number; minutosMedidos: number; unitsMedidas: number; lineasMedidas: number;
+  opsMedidas: number; unitsMedidas: number; lineasMedidas: number;
+  /** Las operaciones medidas, para sacar el tiempo POR TANDA al cerrar. No se suman minutos acá:
+   *  tres pedidos de la misma tanda son un solo lapso de trabajo. Ver `tandasDeTrabajo.ts`. */
+  medidas: OperacionConTanda[];
 }
 
 /**
@@ -103,7 +118,7 @@ export function rendimientoPorPicker(
     let u = porUsuario.get(persona);
     if (!u) {
       u = { name: persona, cuentas: new Set(), ops: 0, units: 0, lines: 0,
-            opsMedidas: 0, minutosMedidos: 0, unitsMedidas: 0, lineasMedidas: 0 };
+            opsMedidas: 0, unitsMedidas: 0, lineasMedidas: 0, medidas: [] };
       porUsuario.set(persona, u);
     }
     u.cuentas.add(o.userName);
@@ -118,25 +133,32 @@ export function rendimientoPorPicker(
     const min = duracionMinutos(o.asignadoEn, o.validadoEn);
     if (min === null) { sinMedir++; continue; }
     u.opsMedidas++;
-    u.minutosMedidos += min;
     u.unitsMedidas += o.units;
     u.lineasMedidas += o.lines;
+    // El tiempo NO se acumula acá. Se guarda la operación y al cerrar se mide por tanda: si se
+    // sumara la duración de cada pedido, una tanda de tres se contaría tres veces.
+    u.medidas.push({ tanda: o.tanda ?? null, asignadoEn: o.asignadoEn, validadoEn: o.validadoEn });
   }
 
   const filas = [...porUsuario.values()]
-    .map((u): RendimientoPicker => ({
-      name: u.name,
-      cuentas: [...u.cuentas].sort(),
-      ops: u.ops,
-      opsMedidas: u.opsMedidas,
-      units: Math.round(u.units),
-      lineCount: u.lines,
-      totalMinutes: Math.round(u.minutosMedidos),
-      avgMinutesPerOp: u.opsMedidas > 0 ? Math.round(u.minutosMedidos / u.opsMedidas) : 0,
-      avgSecondsPerLine: u.lineasMedidas > 0
-        ? Math.round((u.minutosMedidos * 60) / u.lineasMedidas) : 0,
-      cph: u.minutosMedidos > 0 ? Math.round((u.unitsMedidas / u.minutosMedidos) * 60) : 0,
-    }))
+    .map((u): RendimientoPicker => {
+      // El tiempo real de la persona: cada tanda una sola vez. Ver `tandasDeTrabajo.ts`.
+      const { minutos, tandas } = minutosTrabajados(u.medidas);
+      return {
+        name: u.name,
+        cuentas: [...u.cuentas].sort(),
+        ops: u.ops,
+        opsMedidas: u.opsMedidas,
+        tandas,
+        units: Math.round(u.units),
+        lineCount: u.lines,
+        totalMinutes: minutos,
+        avgMinutesPerOp: u.opsMedidas > 0 ? Math.round(minutos / u.opsMedidas) : 0,
+        avgSecondsPerLine: u.lineasMedidas > 0
+          ? Math.round((minutos * 60) / u.lineasMedidas) : 0,
+        cph: minutos > 0 ? Math.round((u.unitsMedidas / minutos) * 60) : 0,
+      };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return { filas, sinMedir, sinResponsable };
