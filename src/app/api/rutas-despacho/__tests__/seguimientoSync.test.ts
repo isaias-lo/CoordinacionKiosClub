@@ -82,6 +82,15 @@ describe('syncSeguimientoDespacho', () => {
     expect(rmUpd?.filtros['eq:seguimiento']).toBeUndefined();
   });
 
+  it('con un seguimiento de origen, solo toca las filas en ese (Reabrir camión: Pendiente → Registrado)', async () => {
+    const rm: Row[] = [{ cod: '49PTA', fecha: '16/11/2026', seguimiento: 'Pendiente', created_at: '2026-11-16T10:00:00Z' }];
+    const { sb, updates } = mockSb({ despacho_rm: rm });
+    await syncSeguimientoDespacho(sb as never, ['49PTA'], 'Registrado', 'Pendiente');
+    const rmUpd = updates.find(u => u.tabla === 'despacho_rm');
+    expect(rmUpd?.set).toEqual({ seguimiento: 'Registrado' });
+    expect(rmUpd?.filtros['eq:seguimiento']).toBe('Pendiente');
+  });
+
   it('si la tienda no tiene despacho, no actualiza', async () => {
     const { sb, updates } = mockSb({ despacho_rm: [], despacho_regiones: [] });
     await syncSeguimientoDespacho(sb as never, ['XXXXX'], 'Pendiente', true);

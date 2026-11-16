@@ -132,3 +132,106 @@ export function todasCerradas(rutas: RutaLike[], cerradas: Set<string>): boolean
   if (conTiendas.length === 0) return false;
   return conTiendas.every(r => isCerrada(cerradas, r.v.p));
 }
+
+// ── Reabrir un camión cerrado (16/11/2026) ────────────────────────────────────────────────────
+//
+// Hasta acá cerrar era monótono y el merge era la UNIÓN: un eco viejo de otro equipo no podía
+// des-cerrar un camión. Reabrir rompe esa monotonía a propósito, y con la unión sola no funciona:
+// se saca la patente del set, llega el eco del otro equipo que todavía la tiene, y vuelve cerrada
+// en un segundo (es el mismo problema que tuvo «Reabrir» un día registrado, ver
+// shared/registroPorFecha.ts).
+//
+// Por eso cada patente lleva, además, CUÁNDO se cerró y cuándo se reabrió por última vez. Gana la
+// decisión más reciente. Una patente sin hora de cierre (lo que escribía la versión anterior) se
+// toma como cerrada «desde siempre»: cualquier reapertura explícita le gana, y nada más la abre.
+
+/** Por patente: `c` = hora (ISO) del último cierre, `r` = hora del último «Reabrir». */
+export type MarcasCierre = Record<string, { c?: string; r?: string }>;
+
+export interface EstadoCierres {
+  patentes: Set<string>;
+  marcas: MarcasCierre;
+}
+
+function marcasDe(state: unknown): MarcasCierre {
+  const out: MarcasCierre = {};
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return out;
+  const m = (state as { marcas?: unknown }).marcas;
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return out;
+  for (const [p, v] of Object.entries(m as Record<string, unknown>)) {
+    const n = normPatente(p);
+    if (!n || !v || typeof v !== 'object') continue;
+    const { c, r } = v as { c?: unknown; r?: unknown };
+    const marca: { c?: string; r?: string } = {};
+    if (typeof c === 'string' && c) marca.c = c;
+    if (typeof r === 'string' && r) marca.r = r;
+    if (marca.c || marca.r) out[n] = marca;
+  }
+  return out;
+}
+
+/** ¿La reapertura de `p` es la decisión más reciente? */
+function reabiertaGana(m: { c?: string; r?: string } | undefined): boolean {
+  return !!m?.r && m.r >= (m.c ?? '');
+}
+
+/** Lee `'rutas_cerradas'` con sus marcas. Tolera el formato viejo (solo `patentes`). */
+export function parseEstadoCierres(state: unknown): EstadoCierres {
+  const marcas = marcasDe(state);
+  const patentes = new Set([...parseCerradas(state)].filter(p => !reabiertaGana(marcas[p])));
+  for (const [p, m] of Object.entries(marcas)) if (m.c && !reabiertaGana(m)) patentes.add(p);
+  return { patentes, marcas };
+}
+
+/** Payload que se guarda. `patentes` sigue siendo la lista de cerradas: lo que ya leía todo. */
+export function serializeEstadoCierres(e: EstadoCierres): { patentes: string[]; marcas: MarcasCierre } {
+  return { patentes: [...e.patentes].sort(), marcas: e.marcas };
+}
+
+/** Firma estable para no empujar dos veces lo mismo. */
+export function firmaEstadoCierres(e: EstadoCierres): string {
+  const marcas = Object.keys(e.marcas).sort().map(p => [p, e.marcas[p].c ?? '', e.marcas[p].r ?? '']);
+  return JSON.stringify([[...e.patentes].sort(), marcas]);
+}
+
+/**
+ * Merge entre equipos. Las marcas se quedan con la hora más reciente de cada lado; las patentes son
+ * la unión, MENOS las que tienen una reapertura posterior a su último cierre.
+ */
+export function mergeEstadoCierres(a: EstadoCierres, b: EstadoCierres): EstadoCierres {
+  const marcas: MarcasCierre = {};
+  for (const src of [a.marcas, b.marcas]) {
+    for (const [p, m] of Object.entries(src)) {
+      const n = normPatente(p);
+      const cur = marcas[n] ?? {};
+      const c = [cur.c, m.c].filter(Boolean).sort().at(-1);
+      const r = [cur.r, m.r].filter(Boolean).sort().at(-1);
+      marcas[n] = { ...(c ? { c } : {}), ...(r ? { r } : {}) };
+    }
+  }
+  const patentes = new Set<string>();
+  for (const p of [...mergeCerradas(a.patentes, b.patentes)]) if (!reabiertaGana(marcas[p])) patentes.add(p);
+  for (const [p, m] of Object.entries(marcas)) if (m.c && !reabiertaGana(m)) patentes.add(p);
+  return { patentes, marcas };
+}
+
+/** Cierra `patentes` a la hora `ahora` (ISO). */
+export function marcarCerradas(e: EstadoCierres, patentes: string[], ahora: string): EstadoCierres {
+  const marcas = { ...e.marcas };
+  const set = new Set(e.patentes);
+  for (const p of patentes) {
+    const n = normPatente(p);
+    if (!n) continue;
+    marcas[n] = { ...marcas[n], c: ahora };
+    set.add(n);
+  }
+  return { patentes: set, marcas };
+}
+
+/** Reabre `patente` a la hora `ahora` (ISO). */
+export function marcarReabierta(e: EstadoCierres, patente: string, ahora: string): EstadoCierres {
+  const n = normPatente(patente);
+  const set = new Set(e.patentes);
+  set.delete(n);
+  return { patentes: set, marcas: { ...e.marcas, [n]: { ...e.marcas[n], r: ahora } } };
+}

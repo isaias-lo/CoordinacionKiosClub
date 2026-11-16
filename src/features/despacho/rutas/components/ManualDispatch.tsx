@@ -50,6 +50,9 @@ interface Props {
   /** Con un camión ya cerrado, abre su manifiesto guardado para verlo o reimprimirlo. Antes el
    *  botón decía «ver manifiesto» pero quedaba desactivado: no abría nada. */
   onVerManifiesto?: (patente: string) => void;
+  /** Con un camión ya cerrado, lo reabre para corregirle la carga. Pregunta y valida afuera: acá
+   *  solo se ofrece el botón. Sin esto (2ª vuelta) no se dibuja. */
+  onReabrirCamion?: (patente: string) => void;
   /** [P4] Asigna lo que falta SIN tocar lo ya armado. Es el botón primario del pool. */
   onAsignar?: () => void;
   /** [P4] Rehace el tablero desde cero (destructivo). Secundario, y solo si ya hay trabajo. */
@@ -181,6 +184,7 @@ export default function ManualDispatch({
   onToggleSeleccion,
   onCerrarCamion,
   onVerManifiesto,
+  onReabrirCamion,
   onAsignar,
   onReasignarTodo,
   iaLoading,
@@ -1404,7 +1408,7 @@ export default function ManualDispatch({
 
               {/* Cerrar camión y generar su manifiesto (registro por camión). Cerrado → verde. */}
               {onCerrarCamion && stores.length > 0 && (
-                <div className={`${A ? 'px-3.5 pb-3' : 'px-2.5 pb-2.5'} pt-0.5`}>
+                <div className={`${A ? 'px-3.5 pb-3' : 'px-2.5 pb-2.5'} pt-0.5 flex gap-1.5`}>
                   <button
                     onClick={e => {
                       e.stopPropagation();
@@ -1416,13 +1420,26 @@ export default function ManualDispatch({
                     }}
                     disabled={cerrado && !onVerManifiesto}
                     title={cerrado ? (onVerManifiesto ? 'Abrir su manifiesto para verlo o imprimirlo' : undefined) : exceso ? `Lleva ${exceso.pallets} y caben ${exceso.capacidad}. Se registra tal cual.` : undefined}
-                    className={`w-full ${A ? 'min-h-[44px] text-apoyo' : 'h-[38px] text-[12px]'} rounded-[10px] font-bold flex items-center justify-center gap-1.5 transition-all ${
+                    className={`flex-1 min-w-0 ${A ? 'min-h-[44px] text-apoyo' : 'h-[38px] text-[12px]'} rounded-[10px] font-bold flex items-center justify-center gap-1.5 transition-all ${
                       cerrado ? `bg-green-50 text-green-700 border-[1.5px] border-green-500/40 ${onVerManifiesto ? 'hover:bg-green-100 active:scale-[0.98]' : 'cursor-default'}`
                       : exceso ? 'bg-amber-500 text-white active:scale-[0.98]'
                       : `${furgon ? 'bg-[#0E7490]' : deVuelta ? 'bg-[#5B21B6]' : 'bg-knavy'} text-white active:scale-[0.98]`}`}
                   >
                     {cerrado ? (onVerManifiesto ? '✓ Cerrado · ver manifiesto' : '✓ Cerrado') : furgon && !exceso ? 'Cerrar furgón y manifiesto' : textoBotonCerrar(!!exceso)}
                   </button>
+                  {/* Reabrir: secundario y al lado, no en lugar de «ver manifiesto». Lo de un camión
+                      cerrado que más se usa es mirar su manifiesto; reabrir es la excepción. */}
+                  {cerrado && onReabrirCamion && (
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); onReabrirCamion(v.p); }}
+                      title="Anular su manifiesto y volver a abrirlo para mover carga. Solo si no ha salido."
+                      aria-label={`Reabrir ${v.p}`}
+                      className={`flex-shrink-0 ${A ? 'min-h-[44px] px-3 text-apoyo' : 'h-[38px] px-2.5 text-[12px]'} rounded-[10px] font-bold border-[1.5px] border-black/[0.15] text-ktext bg-white hover:border-amber-500 hover:text-amber-700 active:scale-[0.98] transition-all`}
+                    >
+                      Reabrir
+                    </button>
+                  )}
                 </div>
               )}
             </div>
