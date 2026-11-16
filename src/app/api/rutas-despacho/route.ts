@@ -4,6 +4,8 @@ import { upsertTrazabilidadSheet } from '@/lib/sheetsTraza';
 import { verifyAuth } from '@/lib/apiAuth';
 import { norm } from '@/features/despacho/rutas/utils/helpers';
 import { ESTADO_TO_SEGUIMIENTO, syncSeguimientoDespacho } from './seguimientoSync';
+import { codigoEsDeOtroCamion, elegirManifiestoAReabrir, mismasTiendas, motivoNoReabrir } from './reabrir';
+import { siguienteCodigoLibre } from '@/features/despacho/rutas/utils/codigoRuta';
 import { fechaChile } from '@/lib/fechaChile';
 import { verifyOtpToken, verifyReciboEntrega } from '@/lib/otpToken';
 import { alcanceEntrega } from '@/lib/alcances';
@@ -158,12 +160,44 @@ export async function POST(request: NextRequest) {
   // "Guardar (N)" persiste varios de golpe, así que un doble clic o un reintento de red podía
   // crear filas duplicadas (el insert es plano y no hay unique en la tabla). Si el manifiesto ya
   // existe se reutiliza — conservando su `token_qr`, para que el QR ya impreso siga sirviendo.
-  const { data: existente } = await supabaseServer()
+  const { data: delCodigoConTiendas } = await supabaseServer()
     .from('rutas_despacho')
-    .select('*')
+    .select('*, ruta_tiendas(store_cod)')
     .eq('fecha', body.fecha)
     .eq('codigo_ruta', body.codigo_ruta)
     .maybeSingle();
+
+  // [Reabrir camión · 16/11/2026] El código lo calcula el cliente contando cierres, y desde que un
+  // camión se puede reabrir el conteo puede caer en el código de OTRO camión. Antes eso devolvía
+  // el manifiesto ajeno como si fuera el propio (el camión quedaba con el QR y las tiendas del
+  // otro). Ahora, si el código ya es de otra patente: o este mismo camión ya se guardó con otro
+  // código (un reintento → se reutiliza), o se le da el siguiente código libre del día. Lo mismo
+  // si el código es de esta patente pero con OTRAS tiendas (su manifiesto de la otra vuelta).
+  const { ruta_tiendas: tiendasDelCodigo, ...delCodigo } =
+    (delCodigoConTiendas ?? { ruta_tiendas: null }) as { ruta_tiendas?: { store_cod: string }[] | null; patente?: string | null; id?: number };
+  let codigoRutaFinal = body.codigo_ruta;
+  let existente = delCodigoConTiendas ? delCodigo : null;
+  const mismaPatente = (p: string | null | undefined) =>
+    String(p ?? '').trim().toUpperCase() === String(body.patente ?? '').trim().toUpperCase();
+  const pedido = { patente: body.patente, cods: (body.tiendas ?? []).map(t => t.store_cod) };
+  if (existente && codigoEsDeOtroCamion(
+    { patente: delCodigo.patente ?? null, cods: (tiendasDelCodigo ?? []).map(t => t.store_cod) }, pedido)) {
+    const { data: delDia } = await supabaseServer()
+      .from('rutas_despacho')
+      .select('*, ruta_tiendas(store_cod)')
+      .eq('fecha', body.fecha);
+    const filas = (delDia ?? []) as ({ patente: string | null; tipo: string | null; codigo_ruta: string | null; ruta_tiendas?: { store_cod: string }[] })[];
+    const yaGuardado = filas.find(f =>
+      mismaPatente(f.patente) && (f.tipo ?? 'seco') === (body.tipo ?? 'seco') &&
+      mismasTiendas((f.ruta_tiendas ?? []).map(t => t.store_cod), pedido.cods));
+    if (yaGuardado) {
+      const { ruta_tiendas: _rt, ...fila } = yaGuardado;
+      void _rt;
+      return NextResponse.json({ data: fila, idempotent: true });
+    }
+    codigoRutaFinal = siguienteCodigoLibre(body.fecha, filas.map(f => f.codigo_ruta));
+    existente = null;
+  }
 
   if (existente) {
     // Si quedó a medias (ruta creada pero sin tiendas, p. ej. por un error en el insert de
@@ -194,7 +228,7 @@ export async function POST(request: NextRequest) {
       // Día de llegada a tienda. `fecha` sigue siendo el de ARMADO: de ahí cuelgan codigo_ruta,
       // la búsqueda por día y la ventana de guías. Ver la migración add_fecha_salida_a_rutas_despacho.
       fecha_salida:   body.fecha_salida ?? null,
-      codigo_ruta:    body.codigo_ruta,
+      codigo_ruta:    codigoRutaFinal,
       chofer:         body.chofer,
       chofer_original: body.chofer,  // snapshot at creation
       patente:        body.patente,
@@ -579,4 +613,78 @@ export async function PATCH(request: NextRequest) {
   }
 
   return NextResponse.json({ ok: true });
+}
+
+/**
+ * [Reabrir camión · 16/11/2026] Deshace el manifiesto guardado al cerrar un camión, para poder
+ * volver a moverle carga en el Enrutador y cerrarlo de nuevo.
+ *
+ * Body: `{ fecha, patente, tipo, cods }`. `fecha` es la de ARMADO (la del manifiesto), `cods` las
+ * tiendas que el camión tiene en el tablero: el camión cerrado está congelado, así que calzan con
+ * las de su manifiesto, y con eso se distingue el de 1ª vuelta del de 2ª de la misma patente.
+ *
+ * Solo si el camión no salió (ver `motivoNoReabrir`); si salió, 409 con el motivo y no se toca
+ * nada. Lo que se borra es lo que el cierre creó: unidades de trazabilidad aún en CREADO, guías,
+ * paradas y la ruta, en ese orden (la ruta al final: si algo falla a mitad, el POST de volver a
+ * cerrar completa las paradas que falten en vez de duplicar la ruta). Las tiendas que quedaron en
+ * 'Pendiente' por este manifiesto vuelven a 'Registrado'. Las hojas no se tocan: DESPACHO RM y
+ * CONTROL DESPACHO se reescriben al volver a cerrar, y HISTORIAL es un registro append-only.
+ */
+export async function DELETE(request: NextRequest) {
+  if (!await verifyAuth(request))
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  const body = await request.json().catch(() => null) as {
+    fecha?: string; patente?: string; tipo?: 'seco' | 'congelado'; cods?: string[];
+  } | null;
+  if (!body?.fecha || !/^\d{4}-\d{2}-\d{2}$/.test(body.fecha) || !body.patente?.trim())
+    return NextResponse.json({ error: 'fecha y patente requeridas' }, { status: 400 });
+  const tipo = body.tipo === 'congelado' ? 'congelado' : 'seco';
+  const sb = supabaseServer();
+
+  const { data: candidatos, error: cErr } = await sb
+    .from('rutas_despacho')
+    .select('id, patente, tipo, estado, codigo_ruta, ruta_tiendas(store_cod, estado_entrega, hora_entrega)')
+    .eq('fecha', body.fecha)
+    .ilike('patente', body.patente.trim());
+  if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
+
+  type Fila = {
+    id: number; patente: string | null; tipo: string | null; estado: string | null; codigo_ruta: string | null;
+    ruta_tiendas: { store_cod: string; estado_entrega: string | null; hora_entrega: string | null }[] | null;
+  };
+  const filas = (candidatos ?? []) as Fila[];
+  // Sin manifiesto guardado no hay nada que deshacer en la base: se reabre igual (pasa cuando el
+  // cierre no alcanzó a guardar, el caso del aviso «cerrado sin manifiesto»).
+  if (!filas.some(f => (f.tipo ?? 'seco') === tipo))
+    return NextResponse.json({ ok: true, sinManifiesto: true });
+  const ruta = elegirManifiestoAReabrir(filas, body.patente, tipo, body.cods ?? []);
+  if (!ruta)
+    return NextResponse.json({ error: 'Esta patente tiene más de un manifiesto ese día y no se pudo saber cuál es el de este camión.' }, { status: 409 });
+
+  const [{ count: eventos }, { count: unidadesMovidas }] = await Promise.all([
+    sb.from('ruta_eventos').select('id', { count: 'exact', head: true }).eq('ruta_id', ruta.id),
+    sb.from('trazabilidad_unidades').select('id_unidad_logistica', { count: 'exact', head: true })
+      .eq('ruta_id', ruta.id).neq('estado_actual', 'CREADO'),
+  ]);
+  const motivo = motivoNoReabrir({
+    estado: ruta.estado, tiendas: ruta.ruta_tiendas ?? [],
+    eventos: eventos ?? 0, unidadesMovidas: unidadesMovidas ?? 0,
+  });
+  if (motivo) return NextResponse.json({ error: motivo }, { status: 409 });
+
+  const pasos: [string, () => PromiseLike<{ error: { message: string } | null }>][] = [
+    ['trazabilidad', () => sb.from('trazabilidad_unidades').delete().eq('ruta_id', ruta.id).eq('estado_actual', 'CREADO')],
+    ['guías',        () => sb.from('ruta_guias').delete().eq('ruta_id', ruta.id)],
+    ['paradas',      () => sb.from('ruta_tiendas').delete().eq('ruta_id', ruta.id)],
+    ['ruta',         () => sb.from('rutas_despacho').delete().eq('id', ruta.id)],
+  ];
+  for (const [nombre, paso] of pasos) {
+    const { error } = await paso();
+    if (error) return NextResponse.json({ error: `No se pudo reabrir (${nombre}): ${error.message}` }, { status: 500 });
+  }
+
+  const cods = (ruta.ruta_tiendas ?? []).map(t => t.store_cod);
+  await syncSeguimientoDespacho(sb, cods, 'Registrado', 'Pendiente');
+
+  return NextResponse.json({ ok: true, id: ruta.id, codigo_ruta: ruta.codigo_ruta });
 }

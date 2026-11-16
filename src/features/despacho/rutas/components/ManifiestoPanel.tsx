@@ -403,7 +403,9 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
           : base;
         // 2) …y lo guardado en ESTA sesión tiene la última palabra (es lo más reciente).
         const anterior = yaGuardado.get(pat);
-        return anterior ? { ...nuevo, id: anterior.id, token_qr: anterior.token_qr } : nuevo;
+        // El código también: si el servidor tuvo que darle otro (el pedido ya era de otro camión,
+        // ver POST /api/rutas-despacho), ese es el que quedó en la base y el que se imprime.
+        return anterior ? { ...nuevo, id: anterior.id, token_qr: anterior.token_qr, codigo_ruta: anterior.codigo_ruta } : nuevo;
       });
     });
     // Por defecto TODAS las patentes seleccionadas → "global" es la acción directa
@@ -513,10 +515,10 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
           guias:         [],
         }),
       });
-      const json = await res.json() as { data?: { id: number; token_qr: string }; error?: string };
+      const json = await res.json() as { data?: { id: number; token_qr: string; codigo_ruta?: string | null }; error?: string };
       if (!res.ok) throw new Error(json.error ?? 'Error guardando');
       setManifiestos(prev => prev.map((item, i) =>
-        i === idx ? { ...item, id: json.data!.id, token_qr: json.data!.token_qr } : item
+        i === idx ? { ...item, id: json.data!.id, token_qr: json.data!.token_qr, codigo_ruta: json.data!.codigo_ruta ?? item.codigo_ruta } : item
       ));
       setSaved(prev => ({ ...prev, [idx]: true }));
       setAutoGuardadoError(prev => {
@@ -525,7 +527,7 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
         delete next[idx];
         return next;
       });
-      if (!silent) showToast(`✓ ${m.codigo_ruta} guardado`);
+      if (!silent) showToast(`✓ ${json.data!.codigo_ruta ?? m.codigo_ruta} guardado`);
     } catch (e) {
       // El auto-guardado también avisa si falla — un fallo silencioso dejaría la ruta sin
       // aparecer en /conductor-hub sin que nadie se entere, que es justo lo que se quiere evitar.

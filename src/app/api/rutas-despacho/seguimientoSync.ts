@@ -28,13 +28,17 @@ export function isoToFecha(iso: string): string {
  *
  * `soloDesdeRegistrado`: solo avanza filas aún en 'Registrado' (guardar manifiesto: Registrado →
  * Pendiente sin regresar rutas ya despachadas). En false (cambio de estado explícito) sin condición.
+ * Con un texto, solo toca las filas que están en ESE seguimiento: «Reabrir camión» devuelve
+ * Pendiente → Registrado sin regresar una tienda que ya va en camino en otro camión.
  */
 export async function syncSeguimientoDespacho(
   sb: SupabaseClient,
   cods: string[],
   seguimiento: string,
-  soloDesdeRegistrado = false,
+  soloDesdeRegistrado: boolean | string = false,
 ): Promise<void> {
+  const soloDesde = typeof soloDesdeRegistrado === 'string' ? soloDesdeRegistrado
+                  : soloDesdeRegistrado ? 'Registrado' : null;
   const limpios = [...new Set((cods ?? []).filter(Boolean))];
   if (!limpios.length || !seguimiento) return;
 
@@ -56,7 +60,7 @@ export async function syncSeguimientoDespacho(
     if (!fecha) return;
     const upd = (tabla: 'despacho_rm' | 'despacho_regiones') => {
       const q = sb.from(tabla).update({ seguimiento }).eq('cod', cod).eq('fecha', fecha);
-      return soloDesdeRegistrado ? q.eq('seguimiento', 'Registrado') : q;
+      return soloDesde ? q.eq('seguimiento', soloDesde) : q;
     };
     await Promise.all([upd('despacho_rm'), upd('despacho_regiones')]);
   }));

@@ -54,7 +54,7 @@ import { rutasAAsignacion, contarEdiciones } from './ia/feedback';
 import { fetchAuthenticatedSheet, parseTSheetAuth, parseFSheetAuth, parseCalendarioAuth, guardarDespachoSplitFn, actualizarPionetasRMFn } from './utils/sheets';
 import { splitRoutingPorTabla, buildControlRows, type Grupo, type RutaControl, type PendienteControl } from './utils/vueltaRegistro';
 import { fechasBacklogV2, poolV2ParaFecha, conteoPorFecha, codsDeCierreV2 } from './utils/segundaVueltaFechas';
-import { parseCerradas, serializeCerradas, mergeCerradas, isCerrada, rutasNoCerradas, todasCerradas, normPatente, codsEnCerradas, preservarCerradas } from './utils/cierrePorVehiculo';
+import { parseCerradas, serializeCerradas, mergeCerradas, parseEstadoCierres, serializeEstadoCierres, mergeEstadoCierres, firmaEstadoCierres, marcarCerradas, marcarReabierta, type MarcasCierre, isCerrada, rutasNoCerradas, todasCerradas, normPatente, codsEnCerradas, preservarCerradas } from './utils/cierrePorVehiculo';
 import { fetchCounts, subscribeToSesion } from '../../../lib/despachoSesion';
 import { pushSessionState, pushSessionStateResult, fetchSessionState, subscribeToSessionState, fetchUnregisteredRutasDays, fetchPendientesV2Pasadas, type PendienteV2 } from '../../../lib/userSessionState';
 import { supabase } from '../../../lib/supabase';
@@ -77,6 +77,8 @@ import { aplicarCargaDelDia } from './utils/cargaFechaPasada';
 import { unirBacklog } from './utils/backlogSegundaVuelta';
 import { fetchBacklogCalculado } from '@/lib/backlogV2';
 import { toast } from 'sonner';
+import { confirmar } from '../shared/confirmar';
+import { pedidoReabrirCamion, avisoNoReabierto } from './utils/reabrirCamion';
 import { EnCampana } from '@/components/campana/EnCampana';
 import { cerrarCampana } from '@/components/campana/avisosCampana';
 
@@ -557,6 +559,10 @@ export default function RutasScreen() {
   // ── Real-time sync: cerradasV1 (patentes cerradas por vehículo) across devices ──
   const lastPushedCerradasRef = useRef<string>('');
   const isCerradasInitRef      = useRef(false);
+  // [Reabrir camión] Cuándo se cerró y se reabrió cada patente. Con la unión sola, reabrir no
+  // duraba: el eco del otro equipo devolvía la patente al set. Ver `mergeEstadoCierres`.
+  const marcasV1Ref   = useRef<MarcasCierre>({});
+  const marcasCongRef = useRef<MarcasCierre>({});
 
   // ── Lo mismo para CONGELADOS. Set aparte, clave aparte: los dos tableros corren en paralelo
   //    sobre la misma fecha, y una patente puede llevar seco y congelado el mismo día. Compartir
@@ -1264,20 +1270,23 @@ export default function RutasScreen() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     isCerradasInitRef.current = false;
+    marcasV1Ref.current = {};
 
     fetchSessionState('rutas_cerradas', fecha).then(remote => {
-      const set = parseCerradas(remote);
-      setCerradasV1(set);
-      lastPushedCerradasRef.current = JSON.stringify([...set].sort());
+      const estado = parseEstadoCierres(remote);
+      marcasV1Ref.current = estado.marcas;
+      setCerradasV1(estado.patentes);
+      lastPushedCerradasRef.current = firmaEstadoCierres(estado);
       isCerradasInitRef.current = true;
     }).catch(() => { isCerradasInitRef.current = true; });
 
     const unsub = subscribeToSessionState('rutas_cerradas', userId ?? '', (state) => {
-      const remote = parseCerradas(state);
+      const remote = parseEstadoCierres(state);
       setCerradasV1(prev => {
-        const merged = mergeCerradas(prev, remote);
-        lastPushedCerradasRef.current = JSON.stringify([...merged].sort());
-        return merged;
+        const merged = mergeEstadoCierres({ patentes: prev, marcas: marcasV1Ref.current }, remote);
+        marcasV1Ref.current = merged.marcas;
+        lastPushedCerradasRef.current = firmaEstadoCierres(merged);
+        return merged.patentes;
       });
     }, undefined, fecha);
 
@@ -1303,18 +1312,21 @@ export default function RutasScreen() {
   // ── Fetch + subscribe cerradasCong: mismo contrato que el seco, otra clave ──
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    marcasCongRef.current = {};
     fetchSessionState('rutas_cerradas_cong', fecha).then(remote => {
-      const set = parseCerradas(remote);
-      setCerradasCong(set);
-      lastPushedCerradasCongRef.current = JSON.stringify([...set].sort());
+      const estado = parseEstadoCierres(remote);
+      marcasCongRef.current = estado.marcas;
+      setCerradasCong(estado.patentes);
+      lastPushedCerradasCongRef.current = firmaEstadoCierres(estado);
     }).catch(() => {});
 
     return subscribeToSessionState('rutas_cerradas_cong', userId ?? '', (state) => {
-      const remote = parseCerradas(state);
+      const remote = parseEstadoCierres(state);
       setCerradasCong(prev => {
-        const merged = mergeCerradas(prev, remote);
-        lastPushedCerradasCongRef.current = JSON.stringify([...merged].sort());
-        return merged;
+        const merged = mergeEstadoCierres({ patentes: prev, marcas: marcasCongRef.current }, remote);
+        marcasCongRef.current = merged.marcas;
+        lastPushedCerradasCongRef.current = firmaEstadoCierres(merged);
+        return merged.patentes;
       });
     }, undefined, fecha);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1388,10 +1400,11 @@ export default function RutasScreen() {
   };
 
   const pushCerradasCong = (next: Set<string>) => {
-    const json = JSON.stringify([...next].sort());
+    const estado = { patentes: next, marcas: marcasCongRef.current };
+    const json = firmaEstadoCierres(estado);
     if (json === lastPushedCerradasCongRef.current) return;
     lastPushedCerradasCongRef.current = json;
-    void pushSessionStateResult('rutas_cerradas_cong', serializeCerradas(next), userId, fecha)
+    void pushSessionStateResult('rutas_cerradas_cong', serializeEstadoCierres(estado), userId, fecha)
       .then(({ ok }) => {
         if (ok) return;
         setErrors(prev => prev.includes(AVISO_CIERRE_NO_SINCRONIZADO) ? prev : [...prev, AVISO_CIERRE_NO_SINCRONIZADO]);
@@ -1401,12 +1414,13 @@ export default function RutasScreen() {
 
   // Persistir cerradasV1 (cross-device). Se llama tras cada cierre por vehículo.
   const pushCerradasV1 = (next: Set<string>) => {
-    const json = JSON.stringify([...next].sort());
+    const estado = { patentes: next, marcas: marcasV1Ref.current };
+    const json = firmaEstadoCierres(estado);
     if (json === lastPushedCerradasRef.current) return;
     lastPushedCerradasRef.current = json;
     // Que esto falle en silencio es peligroso: los otros dispositivos no se enteran de que el
     // camión se cerró y le pueden mover carga, con el manifiesto ya emitido.
-    void pushSessionStateResult('rutas_cerradas', serializeCerradas(next), userId, fecha)
+    void pushSessionStateResult('rutas_cerradas', serializeEstadoCierres(estado), userId, fecha)
       .then(({ ok }) => {
         if (ok) return;
         setErrors(prev => prev.includes(AVISO_CIERRE_NO_SINCRONIZADO) ? prev : [...prev, AVISO_CIERRE_NO_SINCRONIZADO]);
@@ -2007,7 +2021,9 @@ export default function RutasScreen() {
     // 5) Marcar la patente como cerrada (cross-device) y abrir su manifiesto.
     //    Merge sobre el REF (no el closure): así el cierre en masa acumula en vez de pisarse. En masa
     //    el push se hace una sola vez al final con el set completo (skipPush) para no correr N upserts.
-    const next = mergeCerradas(cerradasV1Ref.current, [patente]);
+    const cierre = marcarCerradas({ patentes: cerradasV1Ref.current, marcas: marcasV1Ref.current }, [patente], new Date().toISOString());
+    const next = cierre.patentes;
+    marcasV1Ref.current = cierre.marcas;
     cerradasV1Ref.current = next;
     setCerradasV1(next);
     if (!skipPush) pushCerradasV1(next);
@@ -2103,7 +2119,9 @@ export default function RutasScreen() {
 
     // 3) Marcar cerrada (cross-device) y acumular el manifiesto. Mismo motivo que en el seco para
     //    usar el ref y el updater funcional: el cierre en masa corre en un solo tick.
-    const next = mergeCerradas(cerradasCongRef.current, [patente]);
+    const cierre = marcarCerradas({ patentes: cerradasCongRef.current, marcas: marcasCongRef.current }, [patente], new Date().toISOString());
+    const next = cierre.patentes;
+    marcasCongRef.current = cierre.marcas;
     cerradasCongRef.current = next;
     setCerradasCong(next);
     if (!skipPush) pushCerradasCong(next);
@@ -2158,6 +2176,71 @@ export default function RutasScreen() {
     pushCerradasV1(cerradasV1Ref.current);               // un solo push con TODAS las cerradas
     setCerrarSel(new Set());
   };
+
+  // [Reabrir camión · 16/11/2026] Lo contrario de cerrar, para corregir un camión cerrado antes de
+  // que salga. Primero el servidor anula su manifiesto (y se niega si el camión ya salió); recién
+  // con eso confirmado se saca la patente de las cerradas. Al revés quedaría un camión abierto en el
+  // tablero con un manifiesto vivo en /conductor-hub y en Bodega, que es lo que «Un camión cerrado
+  // está CONGELADO» (utils/cierrePorVehiculo.ts) prohíbe.
+  //
+  // Las tiendas se quedan en el camión: reabrir no es vaciarlo. Al volver a cerrar se reescribe el
+  // ruteo y sale un manifiesto nuevo con otro código y otro QR.
+  //
+  // 2ª vuelta no tiene reabrir: ese tablero saca el camión al cerrarlo y le borra las pendientes,
+  // así que no queda un camión cerrado que reabrir.
+  const reabriendoRef = useRef<Set<string>>(new Set());
+  async function reabrirCamion(tablero: 'seco' | 'congelados', patente: string) {
+    const pat = normPatente(patente);
+    if (reabriendoRef.current.has(`${tablero}:${pat}`)) return;
+    const stores = (tablero === 'seco' ? manualAsignaciones : asignacionesCong)[patente] ?? [];
+    if (!(await confirmar(pedidoReabrirCamion(patente, stores.length)))) return;
+    reabriendoRef.current.add(`${tablero}:${pat}`);
+    const fechaDelPedido = fecha;
+    let idAnulado: number | null = null;
+    try {
+      const res = await fetch('/api/rutas-despacho', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fecha: fechaDelPedido, patente, tipo: tablero === 'seco' ? 'seco' : 'congelado',
+          cods: stores.map(t => t.c),
+        }),
+      });
+      const json = await res.json().catch(() => ({})) as { error?: string; id?: number };
+      if (!res.ok) throw new Error(json.error ?? `error ${res.status}`);
+      idAnulado = json.id ?? null;
+    } catch (e) {
+      // Toast largo y no el banner de errores: el banner no se puede cerrar, y esto no es un estado
+      // del tablero sino la respuesta a un clic. El camión sigue cerrado, que es lo seguro.
+      toast.error(avisoNoReabierto(patente, e instanceof Error ? e.message : 'sin conexión'), { duration: 10000 });
+      return;
+    } finally {
+      reabriendoRef.current.delete(`${tablero}:${pat}`);
+    }
+    // Cambió el día mientras volaba: lo de la base ya está hecho, pero las cerradas en pantalla son
+    // de otra fecha y no se tocan. Al volver a ese día se leen del servidor.
+    if (fechaDelPedido !== fecha) return;
+    const ahora = new Date().toISOString();
+    if (tablero === 'seco') {
+      const e = marcarReabierta({ patentes: cerradasV1Ref.current, marcas: marcasV1Ref.current }, patente, ahora);
+      marcasV1Ref.current = e.marcas;
+      cerradasV1Ref.current = e.patentes;
+      setCerradasV1(e.patentes);
+      pushCerradasV1(e.patentes);
+      setManifiestoV1(prev => prev?.filter(r => normPatente(r.v.p) !== pat) ?? null);
+    } else {
+      const e = marcarReabierta({ patentes: cerradasCongRef.current, marcas: marcasCongRef.current }, patente, ahora);
+      marcasCongRef.current = e.marcas;
+      cerradasCongRef.current = e.patentes;
+      setCerradasCong(e.patentes);
+      pushCerradasCong(e.patentes);
+      setManifiestoCong(prev => prev?.filter(r => normPatente(r.v.p) !== pat) ?? null);
+    }
+    // Se saca al tiro de lo guardado, sin esperar la relectura: si se vuelve a cerrar antes de que
+    // llegue, el panel tomaría el id y el QR del manifiesto recién anulado y no guardaría el nuevo.
+    if (idAnulado != null) setManifiestosGuardados(prev => prev.filter(m => m.id !== idAnulado));
+    setRecargaGuardados(n => n + 1);
+    toast.success(`${patente} quedó abierto. Al volver a cerrarlo sale un manifiesto nuevo.`);
+  }
 
   // [Cerrar en masa] al cambiar de fecha, limpiar la selección de camiones para cerrar.
   useEffect(() => { setCerrarSel(new Set()); setCerrarSelCong(new Set()); }, [fecha]);
@@ -3537,6 +3620,8 @@ export default function RutasScreen() {
             iaLoading={iaLoading}
             onCerrarCamion={cerrarCamionV1Board}
             onVerManifiesto={abrirManifiestoCamion}
+            onReabrirCamion={p => { void reabrirCamion('seco', p); }}
+            onReabrirCamionCong={p => { void reabrirCamion('congelados', p); }}
             cerrarSel={cerrarSel}
             onToggleCerrarSel={toggleCerrarSel}
             onCerrarVarios={cerrarVariosCamiones}
