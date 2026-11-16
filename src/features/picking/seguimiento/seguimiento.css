@@ -49,3 +49,31 @@
    crear uno (con `hidden` el sticky se pegaba a la tarjeta y no hacía nada). */
 .pk-card.pk-act{overflow:clip}
 .pk-card.pk-act thead th{position:sticky;top:-16px;z-index:2}
+
+/* ── Estadísticas: las mejoras visuales del 16/11/2026 ─────────────────────────────────────── */
+
+/* Cinco KPI en vez de cuatro: entró «Unidades por hora», la métrica de productividad. */
+.pk-kpis.cinco{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media (max-width:900px){.pk-kpis.cinco{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Con el gráfico cerrado, la tabla toma el ancho completo: el panel ocupaba 420 px fijos y
+   repetía lo que la columna «Unidades» ya dice, ordenada igual. */
+.pk-dos.stats.ancho{grid-template-columns:minmax(0,1fr)}
+
+/* El puesto en la columna por la que está ordenada la tabla. Los tres primeros se marcan: es
+   lo que se mira primero y contar con el dedo hasta el tercero no debería ser necesario. */
+.pk-puesto{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;
+  border-radius:6px;background:#EEF0F4;color:#6B7280;font-family:'IBM Plex Mono',monospace;
+  font-size:11.5px;font-weight:700;margin-right:9px;flex-shrink:0;vertical-align:middle}
+.pk-tabla tbody tr:nth-child(1) .pk-puesto{background:#3B5BDB;color:#fff}
+.pk-tabla tbody tr:nth-child(2) .pk-puesto,
+.pk-tabla tbody tr:nth-child(3) .pk-puesto{background:rgba(59,91,219,.18);color:#2B4BC8}
+/* La fila de totales es la última y no es un puesto. */
+.pk-tabla tbody tr.tot .pk-puesto{display:none}
+
+/* Qué significa cada columna, desplegable. */
+.pk-ayuda{border:1px solid #D5DCF5;background:#F5F7FD;color:#26304F;border-radius:10px;
+  padding:12px 15px;font-size:13px;display:grid;gap:7px}
+.pk-ayuda>div{display:grid;grid-template-columns:168px minmax(0,1fr);gap:12px;align-items:start}
+.pk-ayuda b{color:#2B4BC8;font-family:'IBM Plex Mono',monospace;font-size:11.5px}
+@media (max-width:700px){.pk-ayuda>div{grid-template-columns:minmax(0,1fr);gap:2px}}

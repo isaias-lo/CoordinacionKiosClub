@@ -2359,7 +2359,8 @@ export function PickingScreen() {
 
           {/* ── Tab content: Estadísticas ── */}
           {rightTab === 'estadisticas' && (
-            <StatsTab hasOdoo={hasOdoo} odooDesactivado={odooDesactivado} canonicalNames={canonicalNames} escritorio={isDesktop} />
+            <StatsTab hasOdoo={hasOdoo} odooDesactivado={odooDesactivado} canonicalNames={canonicalNames} escritorio={isDesktop}
+              onAbrirConfig={() => setRightTab('configuracion')} />
           )}
 
           {/* ── Tab content: Actividad ── */}
