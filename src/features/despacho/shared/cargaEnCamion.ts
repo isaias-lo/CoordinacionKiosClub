@@ -17,9 +17,21 @@
 // manda el ÚLTIMO manifiesto que la nombra.
 //
 // Congelados va aparte: su camión no lleva el seco de la tienda. Bodega seco ignora esas rutas.
+//
+// LA 2ª VUELTA LLEVA LA CARGA DE OTRO DÍA. Isaias, 12/11/2026: «las tiendas que quedan en segunda
+// vuelta y cierro camión, en la bodega salen que las tiendas de hoy ya están asignadas en camión».
+// Un camión de 2ª vuelta se cierra HOY (su `fecha` es hoy) pero lleva lo que Bodega registró el día
+// de ORIGEN. Ese 12/11 los cuatro camiones cerrados eran de 2ª vuelta del 11; 02SCL y 05LP también
+// tenían pedido el 12, y Bodega los pintaba «Cargada en VRYL52» con la carga del 12 todavía abajo.
+// Por eso cada manifiesto cuenta para el día cuya carga lleva: `fecha_origen` si la tiene (2ª
+// vuelta), si no `fecha`. Los manifiestos de 2ª vuelta guardados antes del 12/11 no la traen.
 
 export interface RutaCargada {
   patente: string | null;
+  /** Día de armado (cuándo se cerró el camión). */
+  fecha?: string | null;
+  /** Día cuya carga lleva, solo en 2ª vuelta. Nulo = la de `fecha`. */
+  fecha_origen?: string | null;
   codigo_ruta?: string | null;
   tipo?: string | null;
   created_at: string;
@@ -38,15 +50,22 @@ export function claveTienda(cod: string): string {
   return String(cod ?? '').replace(/\s+/g, '').toUpperCase();
 }
 
+/** El día de Bodega cuya carga lleva el manifiesto. */
+export function diaDeLaCarga(r: Pick<RutaCargada, 'fecha' | 'fecha_origen'>): string | null {
+  return r.fecha_origen || r.fecha || null;
+}
+
 /**
  * Por tienda, el camión del último manifiesto que la nombra. `tipo` es 'seco' o 'congelado': las
  * rutas del otro tipo no cuentan. Una ruta sin tipo se toma como seca (las primeras no lo traían).
+ * Con `dia`, solo cuentan los manifiestos que llevan la carga de ese día (ver `diaDeLaCarga`).
  */
-export function cargaPorTienda(rutas: readonly RutaCargada[], tipo: 'seco' | 'congelado' = 'seco'): Map<string, CargaCamion> {
+export function cargaPorTienda(rutas: readonly RutaCargada[], tipo: 'seco' | 'congelado' = 'seco', dia?: string): Map<string, CargaCamion> {
   const out = new Map<string, CargaCamion>();
   const ordenadas = [...rutas].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
   for (const r of ordenadas) {
     if ((r.tipo || 'seco') !== tipo) continue;
+    if (dia && diaDeLaCarga(r) !== dia) continue;
     const patente = String(r.patente ?? '').trim().toUpperCase();
     if (!patente) continue;
     for (const t of r.ruta_tiendas ?? []) {
@@ -59,6 +78,14 @@ export function cargaPorTienda(rutas: readonly RutaCargada[], tipo: 'seco' | 'co
     }
   }
   return out;
+}
+
+/**
+ * ¿El error es porque `rutas_despacho.fecha_origen` todavía no existe? Así la API sigue guardando y
+ * leyendo manifiestos si el código llega antes que la migración (sql/2026-11-12_fecha_origen_rutas.sql).
+ */
+export function faltaFechaOrigen(mensaje: string | null | undefined): boolean {
+  return /fecha_origen/.test(String(mensaje ?? '')) && /(column|columna|schema cache|does not exist|no existe)/i.test(String(mensaje ?? ''));
 }
 
 /** «Cargada en TDCV15». */
