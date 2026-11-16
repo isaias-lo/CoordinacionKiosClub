@@ -790,12 +790,45 @@ export async function POST(req: NextRequest) {
     if (action === 'picking_stats_range') {
       /** Cuántos pickings se traen como máximo. Ver `truncado` en la respuesta. */
       const TOPE_PICKINGS = 8000;
+      // ── EL MISMO CONJUNTO QUE LA PLANILLA DEL BONO ────────────────────────────────────────
+      //
+      // Antes esto filtraba por `origin ilike 'Abastecimiento'`, y el `origin` de Odoo es TEXTO
+      // LIBRE. Eso hacía que la pantalla y la planilla con la que la jefatura paga el bono
+      // —hoja «Tiempo Picking» de «Abastecimiento por Olas»— contaran cosas distintas, así que
+      // los números nunca se podían comparar. Medido sobre octubre de 2026 el 13/11:
+      //
+      //     la planilla del jefe ...................................... 3.123 movimientos
+      //     el filtro por `origin` .................................... 3.336
+      //       de esos, 351 NO son del tipo «Despacho Tiendas»: son ajustes y faltantes
+      //       con la palabra «abastecimiento» escrita a mano en el origen
+      //     y le FALTABAN 179 que la planilla sí tiene, porque su origen no dice
+      //       «Abastecimiento» sino «Agregado», «Solicitud de tienda» o «Pack»
+      //
+      // Lo que define el conjunto no es el texto del origen: es el TIPO DE OPERACIÓN. Los 3.123
+      // movimientos de la planilla son, los 3.123, `BODEGA RECOLETA: Despacho Tiendas` con
+      // `sequence_code = 'DT'` (hay un segundo tipo con el mismo nombre y código `DTP`, que en
+      // octubre no tuvo ninguno).
+      //
+      // ── POR QUÉ SE EXIGE TANDA ────────────────────────────────────────────────────────────
+      //
+      // La planilla sale del reporte de tandas, así que solo trae lo que pasó por una. Con las
+      // tres condiciones quedan 3.149 contra sus 3.123 — menos de un 1%.
+      //
+      // Y no se pierde nada medible: de las 4.095 operaciones de «Despacho Tiendas» que NO
+      // tienen tanda, **8 tienen hora de asignación**. El resto no se podía medir de ninguna
+      // forma —3.735 ni siquiera tienen origen— y solo engordaba «Ops» y el aviso de
+      // «operaciones sin hora de asignación».
       const domainPick: unknown[] = [
         ['state', '=', 'done'],
         ['date_done', '>=', dateFrom + ' 00:00:00'],
         ['date_done', '<=', dateTo   + ' 23:59:59'],
-        ['origin', 'ilike', 'Abastecimiento'],
+        // Por el código de secuencia y no por el id: el id (1661) es de esta base y una copia
+        // tendría otro. Medido: el camino punteado devuelve las mismas 3.149 filas en 1 s.
+        ['picking_type_id.sequence_code', '=', 'DT'],
         ['origin', 'not ilike', 'AUDITORIA'],
+        // Sin tanda no hay tiempo que medir — ver arriba. Se filtra en Odoo y no acá porque
+        // baja el volumen de 7.244 a 3.149 y aleja el tope de 8.000 del período «Este mes».
+        ['batch_id', '!=', false],
       ];
 
       // 1. Fetch all done pickings in range (user + timing)
