@@ -1080,7 +1080,14 @@ const CSS_IMPRESION = `
   td.aud { height: 15px; }
   th.aud { color: #4B5563; background: #EEF2F7; }
   /* Las palabras largas se parten antes que desbordar: con el layout fijo, el ancho manda. */
-  td, th { overflow-wrap: anywhere; }
+  /* Partir palabras tiene sentido en un nombre; en un número es un defecto: «10» se leía
+     «1 0». Por eso la regla vive SOLO en las columnas de nombre, y las de número llevan
+     nowrap para que no se partan pase lo que pase. */
+  td.nom, td.aud { overflow-wrap: anywhere; }
+  td.idx, td.cod, td.der { white-space: nowrap; }
+  /* Un encabezado que no entre se RECORTA en su celda en vez de pisar la columna vecina: un
+     recorte se ve y se arregla, una línea pisada parece un defecto de impresión. */
+  th { overflow: hidden; white-space: nowrap; }
   .cab { display: flex; align-items: flex-end; justify-content: space-between;
          border-bottom: 2px solid #111827; padding-bottom: 5px; margin-bottom: 7px; }
   .firmas { display: flex; gap: 22px; margin-top: 12px; }
@@ -1135,13 +1142,30 @@ const FIRMAS = `<div class="firmas">
  * La cuenta, para que se pueda rehacer si cambia algo (carta apaisada, margen de 10 mm):
  *
  *     ancho útil .................................... 980 px
- *     fijas: # 18 + Tienda 52 + 4 secciones × 30 .... 190 px
- *     quedan para las 8 columnas de nombre .......... 790 px → 98 px cada una
+ *     fijas: # 26 + Tienda 50 + 4 secciones × 40 .... 236 px
+ *     quedan para las 8 columnas de nombre .......... 744 px → 93 px cada una
  *     lo más largo que puede caer ahí:
  *       «↳118 B. Montecinos», 18 caracteres .........  ~76 px
  *
  * Medido el 16/11/2026 contra `picker_canonical_names`: las 31 cuentas tienen nombres de DOS
  * palabras, y el más largo abreviado son 13 caracteres («B. Montecinos», «D. Echeverria»).
+ *
+ * ── DE DÓNDE SALE CADA ANCHO (y los dos que estuvieron mal) ──────────────────────────────────
+ *
+ * Ninguno es redondo: los tres se midieron contra lo que de verdad va adentro.
+ *
+ *   #        26 px  Dos dígitos a 7,5 px. Estuvo en 18 y el «10» se partía en «1 / 0»: con 8 px
+ *                   de relleno quedaban 10 px de texto, y en la ventana de impresión **Barlow no
+ *                   está cargada**, así que el sistema usa una fuente más ancha que la medida.
+ *   Tienda   50 px  «41ANA» en monoespaciada ocupa ~38 px.
+ *   Sección  40 px  No lo manda el número sino el ENCABEZADO: «COMIDA» son 6 letras a 7,5 px en
+ *                   negrita mayúscula, ~32 px + 8 de relleno. Estuvo en 30 y el rótulo se salía
+ *                   por encima de la línea de la columna vecina.
+ *
+ * Los dos defectos son de la misma causa: antes de fijar el ancho, la tabla se ensanchaba sola
+ * para que todo entrara, y al fijarlo esos dos casos dejaron de caber. Por eso ahora los
+ * encabezados llevan `overflow: hidden`: si alguien cambia una etiqueta por una más larga, se
+ * recorta en su celda en vez de pisar a la vecina.
  *
  * ── LA COLUMNA «AUDITOR» ──────────────────────────────────────────────────────────────────────
  *
@@ -1150,9 +1174,9 @@ const FIRMAS = `<div class="firmas">
  * sería peor que una en blanco. Pedido del coordinador, 16/11/2026.
  */
 function htmlPlanilla(p: Planilla, fecha: string, recorte = ''): string {
-  const th = ['<th style="width:18px">#</th>', '<th style="width:52px">Tienda</th>'];
+  const th = ['<th style="width:26px">#</th>', '<th style="width:50px">Tienda</th>'];
   for (const s of SECCIONES) {
-    th.push(`<th class="der" style="width:30px">${esc(s === 'Chocolates' ? 'Choc.' : s)}</th>`);
+    th.push(`<th class="der" style="width:40px">${esc(s === 'Chocolates' ? 'Choc.' : s)}</th>`);
     th.push('<th>Usuario</th>');
     th.push('<th class="aud">Auditor</th>');
   }
@@ -1160,14 +1184,14 @@ function htmlPlanilla(p: Planilla, fecha: string, recorte = ''): string {
   const trs = p.filas.map((f, i) => {
     const c = COLOR_ZONA[f.zona];
     const tds = [
-      `<td style="text-align:center;font-size:7.5px;color:#6B7280">${i + 1}</td>`,
+      `<td class="idx" style="text-align:center;font-size:7.5px;color:#6B7280">${i + 1}</td>`,
       `<td class="cod" style="background:${c.bg};color:${c.text};border-left:3px solid ${c.border}">${esc(f.cod)}</td>`,
     ];
     for (const s of SECCIONES) {
       const celda = f.celdas[s];
       const clase = celda.length === 0 ? 'nada' : '';
       tds.push(`<td class="der ${clase}">${celda.map(x => esc(x.registros)).join('<br>')}</td>`);
-      tds.push(`<td class="${clase}" style="font-size:9px">${
+      tds.push(`<td class="nom ${clase}" style="font-size:9px">${
         celda.map(x => {
           // La marca ↳4 va ANTES del nombre: en papel la columna es angosta y lo primero que se
           // lee tiene que ser que esta línea quedó de otra.
