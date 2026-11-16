@@ -683,6 +683,60 @@ export async function POST(req: NextRequest) {
     //
     // A este endpoint NO se le aplica la ventana de 7 días de `diaDeOdoo.ts` (ver el comentario de
     // ese archivo): la fecha llega ya resuelta y se usa tal cual sobre `scheduled_date`.
+    /* ── dias_con_trabajo ──
+     *
+     * Cuántos movimientos y cuántas tiendas tuvo cada día de una ventana. Alimenta el aviso de
+     * días sin registrar, que necesita saber qué días TUVIERON trabajo para no avisar por un
+     * sábado en el que no se trabajó.
+     *
+     * No se reutiliza `planilla_dia` porque topea en 4 fechas y devuelve los movimientos
+     * enteros: para barrer diez días serían tres llamadas y unos 1.300 movimientos con todos
+     * sus campos. Acá se traen DOS campos y se agrupa en JS.
+     */
+    if (action === 'dias_con_trabajo') {
+      // `dateFrom`/`dateTo`, los mismos nombres que usa `picking_stats_range`.
+      const desde = String(body.dateFrom ?? '').trim();
+      const hasta = String(body.dateTo ?? '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(desde) || !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) {
+        return NextResponse.json({ ok: false, error: 'fechas inválidas' }, { status: 400 });
+      }
+
+      // El MISMO conjunto que mide Estadísticas y que usa la planilla del bono: lo define el
+      // tipo de operación, no el texto del origen. Ver el comentario de `picking_stats_range`.
+      const movs = (await odooRpc(url, {
+        service: 'object', method: 'execute_kw',
+        args: [db, uid, apiKey, 'stock.picking', 'search_read', [[
+          ['state', '=', 'done'],
+          ['date_done', '>=', desde + ' 00:00:00'],
+          ['date_done', '<=', hasta + ' 23:59:59'],
+          ['picking_type_id.sequence_code', '=', 'DT'],
+          ['origin', 'not ilike', 'AUDITORIA'],
+          ['batch_id', '!=', false],
+        ]], { fields: ['origin', 'date_done'], limit: 8000 }],
+      })) as Array<{ origin: string | false; date_done: string | false }>;
+
+      const porDia = new Map<string, { movimientos: number; tiendas: Set<string> }>();
+      for (const m of movs) {
+        // `date_done` viene como el naive UTC; el día local sale de `odooDateToISO`, que es lo
+        // mismo que usa el resto de la pantalla. Un movimiento validado a las 22:00 de Chile es
+        // del día de Chile, no del siguiente en UTC.
+        const dia = odooDateToISO(typeof m.date_done === 'string' ? m.date_done : null);
+        if (!dia) continue;
+        let a = porDia.get(dia);
+        if (!a) { a = { movimientos: 0, tiendas: new Set() }; porDia.set(dia, a); }
+        a.movimientos++;
+        const cod = /\b(\d{2}[A-ZÑ]{2,4}\d?)\b/.exec(String(m.origin ?? '').toUpperCase())?.[1];
+        if (cod) a.tiendas.add(cod);
+      }
+
+      return NextResponse.json({
+        ok: true,
+        dias: [...porDia].map(([fecha, a]) => ({
+          fecha, movimientos: a.movimientos, tiendas: a.tiendas.size,
+        })).sort((x, y) => y.fecha.localeCompare(x.fecha)),
+      });
+    }
+
     if (action === 'planilla_dia') {
       const pedidas: unknown = body.fechas;
       const fechas = Array.isArray(pedidas)
