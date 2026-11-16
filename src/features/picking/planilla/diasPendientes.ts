@@ -125,3 +125,48 @@ export function detallePendiente(d: DiaPendiente): string {
   const t = d.tiendas === 1 ? '1 tienda' : `${d.tiendas} tiendas`;
   return `${d.movimientos} movimiento${d.movimientos === 1 ? '' : 's'} · ${t}`;
 }
+
+/** Un movimiento de Odoo, con lo mínimo para agruparlo por día. */
+export interface MovimientoCrudo {
+  /** El día local YA resuelto: `YYYY-MM-DD`. Ver la advertencia de abajo. */
+  dia: string;
+  /** El `origin` de Odoo, de donde sale el código de tienda. */
+  origin?: string | null;
+}
+
+/**
+ * Agrupa movimientos por día y cuenta tiendas distintas.
+ *
+ * ── LA ADVERTENCIA QUE JUSTIFICA QUE ESTO SEA UNA FUNCIÓN ────────────────────────────────────
+ *
+ * `dia` tiene que ser `YYYY-MM-DD` y nada más. La primera versión de esto vivía suelta dentro de
+ * la ruta y armaba la clave con `odooDateToISO`, que **no devuelve un día**: devuelve la marca de
+ * tiempo entera, `2026-11-04T13:19:46Z`. Con eso cada movimiento fue su propio «día» y el aviso
+ * salió con una fila por movimiento — decenas de filas diciendo «1 movimiento · 0 tiendas».
+ *
+ * La que da el día local en Chile es `fechaChileDe`. Y la diferencia no es cosmética: un
+ * movimiento validado a las 22:00 de Chile es del día de Chile, no del siguiente en UTC.
+ *
+ * Por eso esta función descarta cualquier clave que no tenga la forma de un día: si vuelve a
+ * entrar una marca de tiempo, el resultado queda vacío y se nota, en vez de producir una lista
+ * larga y creíble.
+ */
+export function agruparPorDia(movs: readonly MovimientoCrudo[]): DiaConTrabajo[] {
+  const SOLO_DIA = /^\d{4}-\d{2}-\d{2}$/;
+  const COD_TIENDA = /\b(\d{2}[A-ZÑ]{2,4}\d?)\b/;
+  const porDia = new Map<string, { movimientos: number; tiendas: Set<string> }>();
+
+  for (const m of movs) {
+    const dia = String(m.dia ?? '').trim();
+    if (!SOLO_DIA.test(dia)) continue;
+    let a = porDia.get(dia);
+    if (!a) { a = { movimientos: 0, tiendas: new Set() }; porDia.set(dia, a); }
+    a.movimientos++;
+    const cod = COD_TIENDA.exec(String(m.origin ?? '').toUpperCase())?.[1];
+    if (cod) a.tiendas.add(cod);
+  }
+
+  return [...porDia]
+    .map(([fecha, a]) => ({ fecha, movimientos: a.movimientos, tiendas: a.tiendas.size }))
+    .sort((x, y) => y.fecha.localeCompare(x.fecha));
+}

@@ -6,6 +6,7 @@ import { fechaChileDe, limitesDiaChile, odooDateToISO } from '@/lib/fechaChile';
 import { verifyAuth } from '@/lib/apiAuth';
 import { diaParaConsultarOdoo } from '@/features/despacho/shared/diaDeOdoo';
 import { rendimientoPorPicker } from '@/features/picking/seguimiento/rendimiento';
+import { agruparPorDia } from '@/features/picking/planilla/diasPendientes';
 import { unidadesPorMovimiento, unidadesSonDudosas, type GrupoMoveLine } from '@/features/picking/seguimiento/unidadesDeOdoo';
 import { agruparAperturas, esApertura, type MovimientoApertura } from '@/features/despacho/shared/aperturaOdoo';
 import { camposAPedir, camposMedidaDe, camposNumericosConValor, esTextoDeMedida, normalizarCodigo, productoDesdeOdoo, type DefinicionCampos } from '@/features/despacho/shared/productosBodega';
@@ -715,26 +716,17 @@ export async function POST(req: NextRequest) {
         ]], { fields: ['origin', 'date_done'], limit: 8000 }],
       })) as Array<{ origin: string | false; date_done: string | false }>;
 
-      const porDia = new Map<string, { movimientos: number; tiendas: Set<string> }>();
-      for (const m of movs) {
-        // `date_done` viene como el naive UTC; el día local sale de `odooDateToISO`, que es lo
-        // mismo que usa el resto de la pantalla. Un movimiento validado a las 22:00 de Chile es
-        // del día de Chile, no del siguiente en UTC.
-        const dia = odooDateToISO(typeof m.date_done === 'string' ? m.date_done : null);
-        if (!dia) continue;
-        let a = porDia.get(dia);
-        if (!a) { a = { movimientos: 0, tiendas: new Set() }; porDia.set(dia, a); }
-        a.movimientos++;
-        const cod = /\b(\d{2}[A-ZÑ]{2,4}\d?)\b/.exec(String(m.origin ?? '').toUpperCase())?.[1];
-        if (cod) a.tiendas.add(cod);
-      }
+      // `fechaChileDe` y NO `odooDateToISO`: la segunda devuelve la marca de tiempo entera
+      // («2026-11-04T13:19:46Z»), no un día. Con ella cada movimiento fue su propio «día» y el
+      // aviso salió con una fila por movimiento. El agrupado vive en `diasPendientes.ts`, que
+      // descarta cualquier clave que no tenga forma de día justamente para que, si esto se
+      // vuelve a equivocar, el resultado quede vacío y se note.
+      const dias = agruparPorDia(movs.map(m => ({
+        dia: typeof m.date_done === 'string' ? fechaChileDe(odooDateToISO(m.date_done) ?? '') : '',
+        origin: typeof m.origin === 'string' ? m.origin : null,
+      })));
 
-      return NextResponse.json({
-        ok: true,
-        dias: [...porDia].map(([fecha, a]) => ({
-          fecha, movimientos: a.movimientos, tiendas: a.tiendas.size,
-        })).sort((x, y) => y.fecha.localeCompare(x.fecha)),
-      });
+      return NextResponse.json({ ok: true, dias });
     }
 
     if (action === 'planilla_dia') {

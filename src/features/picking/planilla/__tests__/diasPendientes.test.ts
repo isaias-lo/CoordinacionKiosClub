@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  diasPendientes, detallePendiente, UMBRAL_LLENO,
+  agruparPorDia, diasPendientes, detallePendiente, UMBRAL_LLENO,
   type DiaConTrabajo, type DiaEnHoja,
 } from '../diasPendientes';
 
@@ -112,5 +112,61 @@ describe('detallePendiente', () => {
   it('el singular no queda feo', () => {
     expect(detallePendiente({ fecha: '2026-11-13', motivo: 'sin-bloque', movimientos: 1, tiendas: 1 }))
       .toBe('1 movimiento · 1 tienda');
+  });
+});
+
+describe('agruparPorDia: el bug que mandó una fila por movimiento', () => {
+  it('agrupa por día, no por movimiento', () => {
+    const r = agruparPorDia([
+      { dia: '2026-11-04', origin: 'Abastecimiento Comida 41ANA 04/11/2026' },
+      { dia: '2026-11-04', origin: 'Abastecimiento Aseo 41ANA 04/11/2026' },
+      { dia: '2026-11-04', origin: 'Abastecimiento Hogar 17MAI 04/11/2026' },
+      { dia: '2026-11-03', origin: 'Abastecimiento Comida 05LP 03/11/2026' },
+    ]);
+    expect(r).toEqual([
+      { fecha: '2026-11-04', movimientos: 3, tiendas: 2 },
+      { fecha: '2026-11-03', movimientos: 1, tiendas: 1 },
+    ]);
+  });
+
+  it('una MARCA DE TIEMPO no es un día y se descarta', () => {
+    // Es el bug exacto: `odooDateToISO` devuelve «2026-11-04T13:19:46Z» y cada movimiento quedó
+    // siendo su propio día. Con esto el resultado queda VACÍO y se nota, en vez de producir una
+    // lista larga y creíble de «1 movimiento · 0 tiendas».
+    const r = agruparPorDia([
+      { dia: '2026-11-04T13:19:46Z', origin: 'Abastecimiento Comida 41ANA' },
+      { dia: '2026-11-04T13:16:03Z', origin: 'Abastecimiento Aseo 41ANA' },
+    ]);
+    expect(r).toEqual([]);
+  });
+
+  it('descarta cualquier clave que no sea un día', () => {
+    expect(agruparPorDia([{ dia: '' }, { dia: '2026-11' }, { dia: 'hoy' }])).toEqual([]);
+  });
+
+  it('un origen sin código de tienda cuenta el movimiento pero no la tienda', () => {
+    // «Pack» y «Agregado» no llevan código. El trabajo existe; la tienda no se sabe.
+    const r = agruparPorDia([
+      { dia: '2026-11-04', origin: 'Pack' },
+      { dia: '2026-11-04', origin: 'Abastecimiento Comida 41ANA 04/11/2026' },
+    ]);
+    expect(r).toEqual([{ fecha: '2026-11-04', movimientos: 2, tiendas: 1 }]);
+  });
+
+  it('la misma tienda dos veces cuenta una', () => {
+    const r = agruparPorDia([
+      { dia: '2026-11-04', origin: 'Abastecimiento Comida 23PEÑ' },
+      { dia: '2026-11-04', origin: 'Abastecimiento Aseo 23peñ' },
+    ]);
+    expect(r[0].tiendas).toBe(1);
+  });
+
+  it('del día más reciente al más viejo', () => {
+    const r = agruparPorDia([{ dia: '2026-11-02' }, { dia: '2026-11-13' }, { dia: '2026-11-06' }]);
+    expect(r.map(d => d.fecha)).toEqual(['2026-11-13', '2026-11-06', '2026-11-02']);
+  });
+
+  it('sin movimientos no rompe', () => {
+    expect(agruparPorDia([])).toEqual([]);
   });
 });

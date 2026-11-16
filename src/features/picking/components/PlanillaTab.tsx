@@ -604,7 +604,10 @@ export function PlanillaTab({ cods: codsHoy, aperturas }: PlanillaTabProps) {
           <span style={{ fontWeight: 700, color: '#8A4A06', fontSize: 14 }}>
             ⚠ {pendientes.length === 1 ? 'Hay un día sin registrar' : `Hay ${pendientes.length} días sin registrar`} en la hoja de olas
           </span>
-          {pendientes.map(d => (
+          {/* Tope de 5. Aunque el cruce falle y devuelva una lista larga, el aviso sigue
+              siendo un aviso y no una pantalla: el 16/11 un error de agrupado llenó esto con
+              decenas de filas de «1 movimiento · 0 tiendas» y tapó todo lo demás. */}
+          {pendientes.slice(0, 5).map(d => (
             <div key={d.fecha} style={{ display: 'flex', alignItems: 'center', gap: 10,
                                         background: '#fff', border: '1px solid #E2E8F0',
                                         borderRadius: 8, padding: '7px 10px', flexWrap: 'wrap' }}>
@@ -627,6 +630,11 @@ export function PlanillaTab({ cods: codsHoy, aperturas }: PlanillaTabProps) {
           ))}
           {/* El bloque se agrega al FINAL de la hoja: si se registra hoy primero, el día viejo
               queda escrito DESPUÉS y la hoja pierde el orden cronológico. */}
+          {pendientes.length > 5 && (
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+              y {pendientes.length - 5} día{pendientes.length - 5 === 1 ? '' : 's'} más.
+            </span>
+          )}
           <span style={{ fontSize: 12.5 }}>
             Conviene cargarlos <b>antes</b> de cerrar hoy: el bloque se agrega al final de la hoja.
           </span>
