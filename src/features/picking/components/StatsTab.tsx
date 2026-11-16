@@ -21,6 +21,9 @@ interface Props {
   canonicalNames: Record<string, string>;
   /** Escritorio: el rediseño (VistaEstadisticas). Teléfono: la tabla de siempre. */
   escritorio?: boolean;
+  /** Lleva a Ajustes → Configuración desde el aviso de cuentas fuera de la lista de pickers.
+   *  El aviso decía qué hacer y no llevaba. */
+  onAbrirConfig?: () => void;
 }
 
 // Columnas de la tabla — en orden exacto pedido por el negocio.
@@ -68,7 +71,8 @@ const COLS: {
   },
 ];
 
-export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames, escritorio = false }: Props) {
+export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames, escritorio = false,
+                          onAbrirConfig }: Props) {
   const [cacheInicial] = useState<StatsCache | null>(() => {
     if (typeof window === 'undefined') return null;
     try { return JSON.parse(localStorage.getItem(STATS_CACHE_KEY) ?? 'null') as StatsCache | null; }
@@ -252,7 +256,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
 
   if (escritorio) {
     return (
-      <VistaEstadisticas rows={sorted} rowsPrevio={previoFiltrado}
+      <VistaEstadisticas rows={sorted} rowsPrevio={previoFiltrado} onAbrirConfig={onAbrirConfig}
         canonicalNames={canonicalNames} desde={dateFrom} hasta={dateTo}
         onPeriodo={(desde, hasta) => {
           // Lo mismo que «Aplicar» con fechas a mano: el período nuevo reemplaza al guardado.

@@ -13,7 +13,12 @@ import { compararPeriodos, resumen, type Direccion, type Tendencia } from './ten
 import { textoCuentasFuera } from './filtroPickers';
 import type { RendimientoPicker } from './rendimiento';
 
-type Orden = 'name' | 'ops' | 'lineCount' | 'units' | 'porOp' | 'avgMinutesPerOp' | 'avgSecondsPerLine';
+type Orden = 'name' | 'ops' | 'lineCount' | 'units' | 'porOp' | 'avgMinutesPerOp'
+  | 'avgSecondsPerLine' | 'totalMinutes' | 'cph';
+
+/** `132.2` a partir de los minutos. Una hora con decimal es como la jefatura lee el tiempo. */
+const textoHoras = (min: number): string =>
+  min > 0 ? (min / 60).toLocaleString('es-CL', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '—';
 
 const valor = (r: PickerStatRow, o: Orden): number | string =>
   o === 'porOp' ? unidadesPorOp(r) : r[o];
@@ -25,6 +30,15 @@ const COLUMNAS: { key: Orden; label: string; hint: string; celda: (r: PickerStat
   { key: 'porOp', label: 'PROM. / OP.', hint: 'Unidades promedio por operación', celda: r => miles(unidadesPorOp(r)) },
   { key: 'avgMinutesPerOp', label: 'T. PROM. / PEDIDO', hint: 'Tiempo promedio por pedido completo', celda: r => textoMinutos(r.avgMinutesPerOp) },
   { key: 'avgSecondsPerLine', label: 'T. PROM. / SKU', hint: 'Tiempo promedio entre pistolazos', celda: r => textoSegundos(r.avgSecondsPerLine) },
+  { key: 'totalMinutes', label: 'HORAS',
+    hint: 'Horas de trabajo medidas. Cada TANDA se cuenta una sola vez: a un picker se le asignan varios pedidos juntos, y sumar la duración de cada uno inflaba el tiempo hasta 1,7 veces.',
+    celda: r => textoHoras(r.totalMinutes) },
+  // La métrica de productividad. El sistema la calculaba desde siempre para la flecha de
+  // tendencia y nunca la mostró: es la única columna que compara justo a quien hizo 154
+  // operaciones chicas con quien hizo 51 grandes. Es la «CPH_Real» de la planilla del bono.
+  { key: 'cph', label: 'U / HORA',
+    hint: 'Unidades por hora. Es la métrica de productividad, y la misma «CPH_Real» de la planilla con la que se paga el bono.',
+    celda: r => miles(r.cph) },
 ];
 
 interface Props {
@@ -54,11 +68,14 @@ interface Props {
   /** Lo que el filtro de pickers dejó afuera. Se MUESTRA: un filtro silencioso es lo que hizo
    *  que la pantalla dijera 72 operaciones teniendo Odoo 868 y nadie pudiera notarlo. */
   fueraDeLista?: { opsFuera: number; cuentasFuera: string[] };
+  /** Lleva a Ajustes → Configuración desde el aviso de cuentas fuera de la lista. Sin esto el
+   *  aviso dice qué hacer pero no lleva, y hay que ir a buscarlo a mano. */
+  onAbrirConfig?: () => void;
 }
 
 export function VistaEstadisticas({
   rows, rowsPrevio, canonicalNames, desde, hasta, onPeriodo, onActualizar, onImprimir, cargando, hayDatos, actualizado, error, sinOdoo,
-  sinMedir, truncado, unidadesDudosas, fueraDeLista,
+  sinMedir, truncado, unidadesDudosas, fueraDeLista, onAbrirConfig,
 }: Props) {
   const ahora = useMemo(() => new Date(), []);
   const periodo = periodoDe(desde, hasta, ahora);
@@ -67,6 +84,12 @@ export function VistaEstadisticas({
   const [d2, setD2] = useState(hasta);
   const [orden, setOrden] = useState<Orden>('units');
   const [asc, setAsc] = useState(false);
+  /** El panel de barras ocupa 420 px fijos y repite lo que «Unidades» ya dice, ordenada igual.
+   *  Cerrarlo le da el ancho completo a la tabla, que es donde están las siete columnas. */
+  const [verBarras, setVerBarras] = useState(true);
+  /** Qué significa cada columna. Existía solo como `title` del encabezado: hay que saber que
+   *  está para encontrarlo, y en una tablet no hay hover. */
+  const [verAyuda, setVerAyuda] = useState(false);
 
   const ordenadas = useMemo(() => [...rows].sort((a, b) => {
     const x = valor(a, orden), y = valor(b, orden);
@@ -122,6 +145,22 @@ export function VistaEstadisticas({
             <button type="button" className={periodo === 'elegir' || eligiendo ? 'on' : ''} aria-pressed={periodo === 'elegir' || eligiendo}
               disabled={sinConexion || cargando} onClick={() => { setD1(desde); setD2(hasta); setEligiendo(true); }}>Elegir</button>
           </span>
+          {/* El de la ayuda y el del gráfico van en la barra fija y NO dentro del panel: si
+              el de «Ocultar» viviera adentro, al cerrarlo se iría con él y no habría cómo
+              volver a abrirlo. Lo encontró el coordinador en el mockup. */}
+          {rows.length > 0 && (
+            <button type="button" className="pk-btn" aria-pressed={verAyuda}
+              onClick={() => setVerAyuda(v => !v)}>
+              {verAyuda ? 'Ocultar la ayuda' : '¿Qué es cada columna?'}
+            </button>
+          )}
+          {rows.length > 0 && (
+            <button type="button" className="pk-btn" aria-pressed={!verBarras}
+              onClick={() => setVerBarras(v => !v)}
+              title={verBarras ? 'La tabla pasa a ocupar el ancho completo' : undefined}>
+              {verBarras ? 'Ocultar gráfico' : 'Ver gráfico'}
+            </button>
+          )}
           <button type="button" className="pk-btn" onClick={onImprimir} disabled={rows.length === 0}>Imprimir</button>
           <button type="button" className="pk-btn pri" onClick={onActualizar} disabled={cargando || sinConexion}
             title={sinConexion ? 'Las estadísticas salen de Odoo, que ahora no está disponible' : undefined}>
@@ -139,12 +178,15 @@ export function VistaEstadisticas({
             <button type="button" className="pk-btn" onClick={() => setEligiendo(false)}>Cancelar</button>
           </div>
         )}
-        <div className="pk-kpis">
+        <div className="pk-kpis cinco">
           <div className="pk-kpi"><span className="l">Operaciones</span><span className="v">{miles(t.ops)}</span></div>
           <div className="pk-kpi"><span className="l">SKU distintos</span><span className="v">{miles(t.sku)}</span></div>
           <div className="pk-kpi"><span className="l">Unidades</span><span className="v">{miles(t.unidades)}</span></div>
-          <div className="pk-kpi"><span className="l">Tiempo promedio por pedido</span>
-            <span className="v">{t.minPorPedido > 0 ? <>{Math.round(t.minPorPedido)} <small>min</small></> : '—'}</span></div>
+          <div className="pk-kpi"><span className="l">Horas de trabajo</span>
+            <span className="v">{textoHoras(t.minutos)} <small>h</small></span></div>
+          {/* La métrica de productividad del período, al lado de los volúmenes. */}
+          <div className="pk-kpi"><span className="l">Unidades por hora</span>
+            <span className="v">{t.cph > 0 ? <>{miles(t.cph)} <small>u/h</small></> : '—'}</span></div>
         </div>
       </div>
 
@@ -177,7 +219,12 @@ export function VistaEstadisticas({
             Son de {fueraDeLista.cuentasFuera.length === 1 ? 'una cuenta de Odoo que no está' : 'cuentas de Odoo que no están'}{' '}
             en la lista de pickers: {textoCuentasFuera(fueraDeLista.cuentasFuera)}.
             {' '}Se agregan en Ajustes → Configuración.
-          </span></div>
+          </span>
+          {/* El aviso decía qué hacer pero no llevaba. */}
+          {onAbrirConfig && (
+            <button type="button" className="pk-btn" style={{ marginLeft: 'auto', flexShrink: 0 }}
+              onClick={onAbrirConfig}>Abrir Configuración</button>
+          )}</div>
         )}
         {sinMedir > 0 && (
           <div className="pk-alert warn" role="status"><span>
@@ -200,7 +247,20 @@ export function VistaEstadisticas({
         ) : hayDatos && rows.length === 0 ? (
           <div className="pk-vacio"><b>Sin operaciones en el período</b></div>
         ) : rows.length > 0 && (
-          <div className="pk-dos stats">
+          <>
+          {verAyuda && (
+            // Las mismas definiciones que el `title` del encabezado, pero desplegadas: hay que
+            // saber que el tooltip está para encontrarlo, y en una tablet no hay hover.
+            <div className="pk-ayuda">
+              <div><b>PICKER</b><span>La persona. Debajo, la cuenta de Odoo con la que trabajó;
+                si usó dos pistolas, la fila es la suma de las dos.</span></div>
+              {COLUMNAS.map(c => <div key={c.key}><b>{c.label}</b><span>{c.hint}</span></div>)}
+              <div><b>VS. PERÍODO ANTERIOR</b><span>Unidades por hora comparadas con el período
+                anterior, del mismo largo. Menos de 5% de diferencia se considera igual.</span></div>
+            </div>
+          )}
+          <div className={`pk-dos stats${verBarras ? '' : ' ancho'}`}>
+            {verBarras && (
             <div className="pk-card pk-barras">
               <span className="pk-ttl">Unidades por picker</span>
               {porUnidades.map(r => (
@@ -214,6 +274,7 @@ export function VistaEstadisticas({
                 {textoRango(desde, hasta)} · desde Odoo{actualizado ? ` · actualizado ${actualizado}` : ''}
               </span>
             </div>
+            )}
             <div className="pk-card tabla">
               <table className="pk-tabla" aria-label="Estadísticas por picker">
                 <thead>
@@ -228,9 +289,13 @@ export function VistaEstadisticas({
                   </tr>
                 </thead>
                 <tbody>
-                  {ordenadas.map(r => (
+                  {ordenadas.map((r, i) => (
                     <tr key={r.name}>
                       <td>
+                        {/* El puesto en la columna por la que está ordenada la tabla. Se
+                            recalcula al cambiar de columna a propósito: ordenar por u/hora da
+                            otro ranking que ordenar por unidades, y esa es la gracia. */}
+                        <span className="pk-puesto" aria-hidden="true">{i + 1}</span>
                         <b style={{ fontWeight: 600 }}>{nombre(r)}</b>
                         {canonicalNames[r.name] && <div className="pk-sub">{r.name}</div>}
                       </td>
@@ -248,6 +313,8 @@ export function VistaEstadisticas({
                     <td className="pk-n">{miles(t.unidadesPorOp)}</td>
                     <td className="pk-n">{textoMinutos(t.minPorPedido)}</td>
                     <td className="pk-n">{textoSegundos(t.segPorSku)}</td>
+                    <td className="pk-n">{textoHoras(t.minutos)}</td>
+                    <td className="pk-n">{miles(t.cph)}</td>
                     {porNombre && conteo && (
                       <td className="pk-n" style={{ fontWeight: 600 }}>
                         {conteo.sube > 0 && <span style={{ color: '#15803D' }}>▲{conteo.sube} </span>}
@@ -260,6 +327,7 @@ export function VistaEstadisticas({
               </table>
             </div>
           </div>
+          </>
         )}
       </div>
     </main>
