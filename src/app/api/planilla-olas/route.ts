@@ -27,7 +27,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyActor } from '@/lib/apiAuth';
 import {
   BloqueNoEncontrado, SinPermisoDeEscritura, correoDeServicio, crearBloqueDia, escribirCeldas,
-  leerBloqueDia, leerColaHoja,
+  leerBloqueDia, leerColaHoja, resumenPorDia,
 } from '@/lib/olasSheet';
 import { planRegistro } from '@/features/picking/planilla/registroOlas';
 import { colorAlternado, describirEsqueleto, filasEsqueleto }
@@ -184,9 +184,34 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/** GET — solo informa a quién hay que darle permiso, para poder mostrarlo sin intentar escribir. */
+/**
+ * GET — a quién hay que darle permiso, y con `?resumen=` qué tiene la hoja de cada día.
+ *
+ * El modo `resumen` alimenta el aviso de días sin registrar: devuelve, por cada fecha pedida,
+ * cuántas filas tiene en la hoja y cuántas llevan nombre. Un día que no está NO sale en la
+ * respuesta — «no está» y «está vacío» son cosas distintas y quien llama las distingue.
+ *
+ * Va en el GET que ya existía y no en una ruta nueva por lo mismo de siempre: es el mismo
+ * recurso visto de otra forma, y una ruta más es una ruta más que mantener.
+ */
 export async function GET(request: NextRequest) {
   const actor = await verifyActor(request);
   if (!actor) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+
+  const pedido = request.nextUrl.searchParams.get('resumen');
+  if (pedido) {
+    // Tope de 31: el aviso mira los últimos días hábiles, no la historia. Sin tope, una URL
+    // armada a mano podría pedir mil fechas y hacer el trabajo de agrupar mil veces.
+    const fechas = pedido.split(',').map(f => f.trim())
+      .filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f)).slice(0, 31);
+    if (fechas.length === 0) return NextResponse.json({ ok: true, dias: [] });
+    try {
+      return NextResponse.json({ ok: true, dias: await resumenPorDia(fechas) });
+    } catch (e) {
+      console.error('[planilla-olas:resumen]', e);
+      return NextResponse.json({ error: 'No se pudo leer la planilla de olas' }, { status: 502 });
+    }
+  }
+
   return NextResponse.json({ ok: true, cuenta: correoDeServicio() });
 }

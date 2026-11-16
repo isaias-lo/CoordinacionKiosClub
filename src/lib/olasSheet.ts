@@ -315,3 +315,54 @@ export async function crearBloqueDia(
 
   return { desde, hasta };
 }
+
+/** Lo que la hoja tiene de un día, sin traerse el bloque entero. */
+export interface ResumenDia {
+  fecha: string;
+  filas: number;
+  conNombre: number;
+  desde: number;
+  hasta: number;
+}
+
+/**
+ * Cuántas filas tiene cada día en la hoja y cuántas llevan nombre.
+ *
+ * Es para el aviso de días sin registrar, que pregunta por varios días a la vez. Se hace con UNA
+ * lectura de dos columnas —A (la fecha) y F (el nombre)— en vez de un `leerBloqueDia` por día:
+ * esa función hace dos lecturas cada vez y una de ellas trae la columna A entera, así que
+ * preguntar por diez días costaría veinte lecturas de ~36.000 filas.
+ *
+ * Un día que no está en la hoja simplemente no sale en el resultado; quien llama distingue «no
+ * está» de «está vacío», que son cosas distintas.
+ */
+export async function resumenPorDia(fechas: readonly string[]): Promise<ResumenDia[]> {
+  const buscados = new Map<number, string>();
+  for (const f of fechas) {
+    const s = serialDeFecha(f);
+    if (Number.isFinite(s)) buscados.set(s, f);
+  }
+  if (buscados.size === 0) return [];
+
+  const gs = cliente(true);
+  const r = await gs.spreadsheets.values.batchGet({
+    spreadsheetId: OLAS_ID,
+    ranges: [`${HOJA}!A:A`, `${HOJA}!F:F`],
+    valueRenderOption: 'UNFORMATTED_VALUE',
+  });
+  const colA = r.data.valueRanges?.[0]?.values ?? [];
+  const colF = r.data.valueRanges?.[1]?.values ?? [];
+
+  const acum = new Map<string, ResumenDia>();
+  for (let i = 0; i < colA.length; i++) {
+    const fecha = buscados.get(Number(colA[i]?.[0]));
+    if (!fecha) continue;
+    const fila = i + 1;
+    let a = acum.get(fecha);
+    if (!a) { a = { fecha, filas: 0, conNombre: 0, desde: fila, hasta: fila }; acum.set(fecha, a); }
+    a.filas++;
+    a.hasta = fila;
+    if (String(colF[i]?.[0] ?? '').trim()) a.conNombre++;
+  }
+  return [...acum.values()];
+}
