@@ -13,11 +13,12 @@ import { seAbastecePorCalendario } from '@/features/despacho/rutas/utils/codigos
 import { ZONAS_DEFAULT, type ConfigZonas } from '@/features/despacho/rutas/utils/zonasTransporte';
 import { opcionesSector } from '@/lib/sectores';
 import {
-  Store, CalendarDays, Snowflake, Plus, RefreshCw, Upload, Truck, History,
+  Store, CalendarDays, Snowflake, Plus, RefreshCw, Upload, Truck, History, Ruler,
   Search, Settings2, ChevronUp, ChevronDown, ToggleLeft, ToggleRight, Trash2,
 } from 'lucide-react';
 import CalendarioColumnas from './CalendarioColumnas';
 import TransportistasTab from './TransportistasTab';
+import TopesTab from './TopesTab';
 import BitacoraTab from './BitacoraTab';
 import { parseCoord } from './coords';
 import { etiquetaDeUso, partirPorBorrable, type UsoTienda } from './usoDeTienda';
@@ -195,7 +196,7 @@ export default function TiendasAdminContent({
   } | null>(null);
   const [skipped,      setSkipped]      = useState<{ row: number; raw: string; reason: string }[]>([]);
   const [activeTab,    setActiveTab]    = usePestanaRecordada('config_tab',
-    ['tiendas', 'calendario', 'congelados', 'transportistas', 'bitacora'] as const, 'tiendas');
+    ['tiendas', 'calendario', 'congelados', 'transportistas', 'topes', 'bitacora'] as const, 'tiendas');
   const [activeFilter, setActiveFilter] = useState<'all' | 'activas' | 'inactivas'>('all');
   const [coherenciaAbierta, setCoherenciaAbierta] = useState(false);
   // Autocompletado de dirección: lo que Google devolvió y el sector que se propone a partir de eso.
@@ -636,6 +637,7 @@ export default function TiendasAdminContent({
             ? [
                 { id: 'congelados'     as const, label: 'Calendario de Congelados', Icon: Snowflake },
                 { id: 'transportistas' as const, label: 'Transportistas',           Icon: Truck },
+                { id: 'topes'          as const, label: 'Topes',                    Icon: Ruler },
                 { id: 'bitacora' as const,       label: 'Bitácora',                 Icon: History },
               ]
             : []),
@@ -667,6 +669,10 @@ export default function TiendasAdminContent({
 
         {/* Transportistas por zona (capa 3 del Enrutador) */}
         {activeTab === 'transportistas' && <TransportistasTab canEdit={canEditTiendas} />}
+
+        {/* Cuántos pallets aguanta recibir cada tienda. Es una señal para Bodega, no un bloqueo.
+            Ver `features/despacho/shared/topeTienda.ts`. */}
+        {activeTab === 'topes' && <TopesTab canEdit={canEditTiendas} />}
 
         {/* [Fase 5] Quién cambió qué. Va acá porque es donde se hacen los cambios que registra. */}
         {activeTab === 'bitacora' && <BitacoraTab />}

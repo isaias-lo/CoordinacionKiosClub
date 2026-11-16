@@ -22,6 +22,9 @@ import { createPortal } from 'react-dom';
 import { Printer, Download, Loader2, RotateCcw, Search, X, ClipboardCheck } from 'lucide-react';
 import { AUTO_REFRESH_MS } from '../picking-types';
 import { fechaISOLocal } from '@/features/despacho/shared/fechaLocal';
+import { refreshCalendario } from '@/features/despacho/utils/useCalendario';
+import { codsDelDia } from '../planilla/codsDelDia';
+import { diasPendientes, detallePendiente, type DiaPendiente } from '../planilla/diasPendientes';
 import { agruparConsultasPorDia } from '@/features/despacho/shared/consultasPorDia';
 import { armarPlanilla, SECCIONES, porAsignacion, type CeldaPlanilla, type MovimientoPlanilla, type Planilla, type SeccionPlanilla } from '../planilla/armarPlanilla';
 import { avanceAsignacion, type AvanceAsignacion } from '../planilla/avanceAsignacion';
@@ -50,8 +53,24 @@ interface FichaTienda {
   nombre?: string | null;
 }
 
-export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
-  const fecha = fechaISOLocal();
+export function PlanillaTab({ cods: codsHoy, aperturas }: PlanillaTabProps) {
+  // El día que se está mirando. Arranca SIEMPRE en hoy: abrir en otro día sería el peor
+  // resultado posible, porque la pantalla se parece demasiado a la de hoy. Solo se mueve
+  // desde el aviso de días sin registrar, que es una acción explícita.
+  const hoy = useMemo(() => fechaISOLocal(), []);
+  const [fecha, setFecha] = useState(hoy);
+  const esHoy = fecha === hoy;
+  /** Los días con trabajo que la hoja de olas no tiene, o tiene a medio llenar. */
+  const [pendientes, setPendientes] = useState<DiaPendiente[]>([]);
+  /** Las tiendas del día que se mira. Para hoy llegan de la pantalla; para un día pasado se
+   *  arman del calendario de ese día de la semana. Ver `codsDelDia`. */
+  const [codsOtroDia, setCodsOtroDia] = useState<string[] | null>(null);
+  // Memoizado, y no es decoración: el `?? []` crea un arreglo NUEVO en cada render, y con eso
+  // `consultas` y `fechas` también cambian aunque digan lo mismo. El efecto que carga el día
+  // depende de esa clave y se dispararía en bucle contra Odoo — el mismo problema que ya está
+  // documentado unas líneas más abajo, en `claveFechas`.
+  const VACIO = useMemo<string[]>(() => [], []);
+  const cods = esHoy ? codsHoy : (codsOtroDia ?? VACIO);
   const [vista, setVista]     = useState<Vista>('planilla');
   const [crudos, setCrudos]   = useState<MovimientoOdoo[] | null>(null);
   const [nombres, setNombres] = useState<Record<string, string>>({});
@@ -191,6 +210,53 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
     document.addEventListener('visibilitychange', alVolver);
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', alVolver); };
   }, [cargar]);
+
+  // ── Días que quedaron sin registrar ───────────────────────────────────────────────────────
+  //
+  // Se barren los últimos 12 días: cubre dos semanas de trabajo y alcanza para que un olvido de
+  // un lunes se vea el lunes siguiente. Mirar más atrás no sirve — un día de hace un mes ya no
+  // se registra, se arregla a mano.
+  //
+  // Son dos preguntas en paralelo: qué días TUVO trabajo (Odoo) y qué tiene la hoja de cada uno.
+  // El cruce lo hace `diasPendientes`, que es puro y está testeado contra los días reales.
+  const buscarPendientes = useCallback(async () => {
+    const desde = new Date(Date.now() - 12 * 86400000).toISOString().slice(0, 10);
+    try {
+      // En dos pasos y no en paralelo a propósito: a la hoja se le pregunta por las fechas que
+      // Odoo acaba de decir que tuvieron trabajo, no por un rango. Así se lee una sola vez y no
+      // se pregunta por días que nunca existieron.
+      const rOdoo = await fetch('/api/odoo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'dias_con_trabajo', dateFrom: desde, dateTo: hoy }),
+      }).then(r => r.json()).catch(() => null);
+
+      const conTrabajo = (rOdoo?.dias ?? []) as { fecha: string; movimientos: number; tiendas: number }[];
+      if (conTrabajo.length === 0) { setPendientes([]); return; }
+
+      const fechas = conTrabajo.map(d => d.fecha).join(',');
+      const jHoja = await fetch(`/api/planilla-olas?resumen=${encodeURIComponent(fechas)}`)
+        .then(r => r.json()).catch(() => null);
+      setPendientes(diasPendientes(conTrabajo, jHoja?.dias ?? [], hoy));
+    } catch {
+      // Un fallo acá no puede romper la pantalla: el aviso es un extra, no el contenido.
+      setPendientes([]);
+    }
+  }, [hoy]);
+  useEffect(() => { void buscarPendientes(); }, [buscarPendientes]);
+
+  // Las tiendas de un día pasado: del calendario de ESE día de la semana, más las que tuvieron
+  // carga y no estaban (las de adelanto). Ver `codsDelDia`.
+  useEffect(() => {
+    if (esHoy) { setCodsOtroDia(null); return; }
+    let vivo = true;
+    refreshCalendario()
+      .then(cal => { if (vivo) setCodsOtroDia(codsDelDia(cal as never, fecha, movimientos)); })
+      .catch(() => { if (vivo) setCodsOtroDia(codsDelDia(null, fecha, movimientos)); });
+    return () => { vivo = false; };
+    // `movimientos` a propósito NO está en las dependencias: entra en la primera vuelta con lo
+    // que haya y volver a correr esto en cada carga reharía la lista mientras se mira.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [esHoy, fecha]);
 
   const tiendas = useMemo(
     () => cods.map(cod => {
@@ -338,12 +404,16 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
       });
       const j = await r.json().catch(() => null);
       setRegistro(j ?? { ok: false, error: 'No se pudo hablar con el servidor' });
+      // Si se escribió, el aviso de días pendientes puede haber quedado viejo: el día que
+      // acabamos de registrar ya no lo está. Sin esto seguiría avisando de algo ya resuelto,
+      // que es la forma más rápida de que un aviso deje de leerse.
+      if (j?.modo === 'escrito') void buscarPendientes();
     } catch {
       setRegistro({ ok: false, error: 'No se pudo hablar con el servidor' });
     } finally {
       setConsultandoOlas(false);
     }
-  }, [fecha, movimientos, cods]);
+  }, [fecha, movimientos, cods, buscarPendientes]);
 
   const bajar = useCallback(() => {
     const texto = vista === 'planilla'
@@ -524,6 +594,62 @@ export function PlanillaTab({ cods, aperturas }: PlanillaTabProps) {
         </div>
       </div>
 
+      {/* El aviso de días sin registrar y la banda de «no estás en hoy». Van ARRIBA de la barra
+          de avance: son lo primero que hay que leer, porque los dos cambian el significado de
+          todo lo que viene abajo. Ver `diasPendientes`. */}
+      {esHoy && pendientes.length > 0 && (
+        <div style={{ margin: '0 0 10px', border: '1.5px solid #8A4A06', background: '#FFFAF0',
+                      color: '#5C3A06', borderRadius: 10, padding: '10px 13px',
+                      display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontWeight: 700, color: '#8A4A06', fontSize: 14 }}>
+            ⚠ {pendientes.length === 1 ? 'Hay un día sin registrar' : `Hay ${pendientes.length} días sin registrar`} en la hoja de olas
+          </span>
+          {/* Tope de 5. Aunque el cruce falle y devuelva una lista larga, el aviso sigue
+              siendo un aviso y no una pantalla: el 16/11 un error de agrupado llenó esto con
+              decenas de filas de «1 movimiento · 0 tiendas» y tapó todo lo demás. */}
+          {pendientes.slice(0, 5).map(d => (
+            <div key={d.fecha} style={{ display: 'flex', alignItems: 'center', gap: 10,
+                                        background: '#fff', border: '1px solid #E2E8F0',
+                                        borderRadius: 8, padding: '7px 10px', flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 700, fontSize: 13.5, minWidth: 150 }}>{textoFechaLarga(d.fecha)}</span>
+              <span style={{ fontSize: 12.5, color: '#64748B', fontFamily: 'ui-monospace, monospace' }}>
+                {detallePendiente(d)}
+              </span>
+              <span style={{ flex: 1 }} />
+              <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
+                             fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap',
+                             background: d.motivo === 'sin-bloque' ? 'rgba(185,28,28,.09)' : '#FFFAF0',
+                             color: d.motivo === 'sin-bloque' ? '#B91C1C' : '#8A4A06' }}>
+                {d.motivo === 'sin-bloque' ? 'sin bloque' : 'a medio llenar'}
+              </span>
+              <button type="button" onClick={() => setFecha(d.fecha)}
+                style={{ ...BTN_SEC, background: '#8A4A06', color: '#fff', borderColor: '#8A4A06' }}>
+                {d.motivo === 'sin-bloque' ? 'Revisar y registrar' : 'Revisar y completar'}
+              </button>
+            </div>
+          ))}
+          {/* El bloque se agrega al FINAL de la hoja: si se registra hoy primero, el día viejo
+              queda escrito DESPUÉS y la hoja pierde el orden cronológico. */}
+          {pendientes.length > 5 && (
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+              y {pendientes.length - 5} día{pendientes.length - 5 === 1 ? '' : 's'} más.
+            </span>
+          )}
+          <span style={{ fontSize: 12.5 }}>
+            Conviene cargarlos <b>antes</b> de cerrar hoy: el bloque se agrega al final de la hoja.
+          </span>
+        </div>
+      )}
+      {!esHoy && (
+        <div style={{ margin: '0 0 10px', border: '1.5px solid #8A4A06', background: '#FFFAF0',
+                      color: '#5C3A06', borderRadius: 10, padding: '9px 13px',
+                      display: 'flex', alignItems: 'center', gap: 11, flexWrap: 'wrap' }}>
+          <b style={{ color: '#8A4A06' }}>Estás viendo el {textoFechaLarga(fecha)}, no hoy.</b>
+          <span style={{ flex: 1 }} />
+          <button type="button" onClick={() => setFecha(hoy)}
+            style={{ ...BTN_SEC, borderColor: '#8A4A06', color: '#8A4A06' }}>Volver a hoy</button>
+        </div>
+      )}
       <BarraAvance a={avance} />
 
       {/* Mientras hay filtro, lo que se ve NO es el día: eso tiene que estar dicho en pantalla
@@ -1066,13 +1192,28 @@ const CSS_IMPRESION = `
   @page { size: letter landscape; margin: 10mm; }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: Barlow, system-ui, sans-serif; color: #111827; }
-  table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  /* table-layout fixed: las columnas obedecen su ancho y un nombre largo se parte en dos líneas
+     en vez de empujar la tabla fuera del margen. La cuenta está en htmlPlanilla. */
+  table { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
   th, td { border: 1px solid #9CA3AF; padding: 1px 4px; text-align: left; vertical-align: top; }
   th { background: #DBEAFE; font-size: 7.5px; font-weight: 800; text-transform: uppercase;
        letter-spacing: .03em; border-color: #111827; }
   .der { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
   .cod { font-family: ui-monospace, monospace; font-weight: 700; }
   .nada { background: #E5E7EB; }
+  /* Para escribir a mano: se deja más alta que una celda de texto y con el rótulo en gris, para
+     que se lea como «esto lo completás vos» y no como un dato que el sistema no trajo. */
+  td.aud { height: 15px; }
+  th.aud { color: #4B5563; background: #EEF2F7; }
+  /* Las palabras largas se parten antes que desbordar: con el layout fijo, el ancho manda. */
+  /* Partir palabras tiene sentido en un nombre; en un número es un defecto: «10» se leía
+     «1 0». Por eso la regla vive SOLO en las columnas de nombre, y las de número llevan
+     nowrap para que no se partan pase lo que pase. */
+  td.nom, td.aud { overflow-wrap: anywhere; }
+  td.idx, td.cod, td.der { white-space: nowrap; }
+  /* Un encabezado que no entre se RECORTA en su celda en vez de pisar la columna vecina: un
+     recorte se ve y se arregla, una línea pisada parece un defecto de impresión. */
+  th { overflow: hidden; white-space: nowrap; }
   .cab { display: flex; align-items: flex-end; justify-content: space-between;
          border-bottom: 2px solid #111827; padding-bottom: 5px; margin-bottom: 7px; }
   .firmas { display: flex; gap: 22px; margin-top: 12px; }
@@ -1087,6 +1228,19 @@ const CSS_IMPRESION = `
 `;
 
 const DIAS = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO'];
+
+/**
+ * «viernes 13 de noviembre». Para los avisos, donde la fecha tiene que leerse de un vistazo:
+ * «2026-11-13» obliga a traducir mentalmente qué día de la semana fue, y es justo el dato que
+ * dice si ese día se trabajó.
+ *
+ * Mediodía para que el día no se corra por zona horaria, igual que en `cabecera`.
+ */
+function textoFechaLarga(fechaISO: string): string {
+  const d = new Date(fechaISO + 'T12:00:00');
+  if (Number.isNaN(d.getTime())) return fechaISO;
+  return d.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
+}
 
 function cabecera(fecha: string, titulo: string, resumen: string, recorte = ''): string {
   // Mediodía para que el día no se corra por zona horaria, igual que `bandaApertura.ts`.
@@ -1115,36 +1269,87 @@ const FIRMAS = `<div class="firmas">
 </div>`;
 
 /** La hoja horizontal de la vista PLANILLA. */
+/**
+ * La hoja que se imprime y se firma.
+ *
+ * ── POR QUÉ `table-layout: fixed` Y ANCHOS EXPLÍCITOS ─────────────────────────────────────────
+ *
+ * Con el layout automático, un nombre largo ensancha su columna y empuja la tabla fuera del
+ * margen: la hoja sale cortada y nadie se entera hasta que está impresa. Con `fixed` las columnas
+ * obedecen el ancho declarado y el peor caso es un nombre en dos líneas.
+ *
+ * La cuenta, para que se pueda rehacer si cambia algo (carta apaisada, margen de 10 mm):
+ *
+ *     ancho útil .................................... 980 px
+ *     fijas: # 26 + Tienda 50 + 4 secciones × 40 .... 236 px
+ *     quedan para las 8 columnas de nombre .......... 744 px → 93 px cada una
+ *     lo más largo que puede caer ahí:
+ *       «↳118 B. Montecinos», 18 caracteres .........  ~76 px
+ *
+ * Medido el 16/11/2026 contra `picker_canonical_names`: las 31 cuentas tienen nombres de DOS
+ * palabras, y el más largo abreviado son 13 caracteres («B. Montecinos», «D. Echeverria»).
+ *
+ * ── DE DÓNDE SALE CADA ANCHO (y los dos que estuvieron mal) ──────────────────────────────────
+ *
+ * Ninguno es redondo: los tres se midieron contra lo que de verdad va adentro.
+ *
+ *   #        26 px  Dos dígitos a 7,5 px. Estuvo en 18 y el «10» se partía en «1 / 0»: con 8 px
+ *                   de relleno quedaban 10 px de texto, y en la ventana de impresión **Barlow no
+ *                   está cargada**, así que el sistema usa una fuente más ancha que la medida.
+ *   Tienda   50 px  «41ANA» en monoespaciada ocupa ~38 px.
+ *   Sección  40 px  No lo manda el número sino el ENCABEZADO: «COMIDA» son 6 letras a 7,5 px en
+ *                   negrita mayúscula, ~32 px + 8 de relleno. Estuvo en 30 y el rótulo se salía
+ *                   por encima de la línea de la columna vecina.
+ *
+ * Los dos defectos son de la misma causa: antes de fijar el ancho, la tabla se ensanchaba sola
+ * para que todo entrara, y al fijarlo esos dos casos dejaron de caber. Por eso ahora los
+ * encabezados llevan `overflow: hidden`: si alguien cambia una etiqueta por una más larga, se
+ * recorta en su celda en vez de pisar a la vecina.
+ *
+ * ── LA COLUMNA «AUDITOR» ──────────────────────────────────────────────────────────────────────
+ *
+ * Va VACÍA a propósito: es para escribir a mano quién auditó esa sección. El sistema no tiene de
+ * dónde sacarla —en Odoo no hay un auditor por movimiento— y una columna con un dato inventado
+ * sería peor que una en blanco. Pedido del coordinador, 16/11/2026.
+ */
 function htmlPlanilla(p: Planilla, fecha: string, recorte = ''): string {
-  const th = ['<th style="width:18px">#</th>', '<th style="width:52px">Tienda</th>'];
+  const th = ['<th style="width:26px">#</th>', '<th style="width:50px">Tienda</th>'];
   for (const s of SECCIONES) {
-    th.push(`<th class="der" style="width:32px">${esc(s === 'Chocolates' ? 'Choc.' : s)}</th>`);
+    th.push(`<th class="der" style="width:40px">${esc(s === 'Chocolates' ? 'Choc.' : s)}</th>`);
     th.push('<th>Usuario</th>');
+    th.push('<th class="aud">Auditor</th>');
   }
 
   const trs = p.filas.map((f, i) => {
     const c = COLOR_ZONA[f.zona];
     const tds = [
-      `<td style="text-align:center;font-size:7.5px;color:#6B7280">${i + 1}</td>`,
+      `<td class="idx" style="text-align:center;font-size:7.5px;color:#6B7280">${i + 1}</td>`,
       `<td class="cod" style="background:${c.bg};color:${c.text};border-left:3px solid ${c.border}">${esc(f.cod)}</td>`,
     ];
     for (const s of SECCIONES) {
       const celda = f.celdas[s];
       const clase = celda.length === 0 ? 'nada' : '';
       tds.push(`<td class="der ${clase}">${celda.map(x => esc(x.registros)).join('<br>')}</td>`);
-      tds.push(`<td class="${clase}" style="font-size:9px">${
+      tds.push(`<td class="nom ${clase}" style="font-size:9px">${
         celda.map(x => {
           // La marca ↳4 va ANTES del nombre: en papel la columna es angosta y lo primero que se
           // lee tiene que ser que esta línea quedó de otra.
           const m = x.backorderDe ? esc(marcaBackorder(x.backorderDe)) + ' ' : '';
           return m + esc(x.picker ? corto(x.picker) : x.backorderDe ? '' : '—');
         }).join('<br>')}</td>`);
+      // Para escribir a mano. Una sección sin carga lleva el mismo gris que su «Usuario»: no hay
+      // nada que auditar ahí y pedir una firma sobre una celda vacía confunde.
+      tds.push(`<td class="aud ${clase}"></td>`);
     }
     return '<tr>' + tds.join('') + '</tr>';
   });
 
   const tot = ['<td></td>', '<td style="font-size:8px;font-weight:800">TOTAL</td>'];
-  for (const s of SECCIONES) { tot.push(`<td class="der">${p.totales[s]}</td>`); tot.push('<td></td>'); }
+  for (const s of SECCIONES) {
+    tot.push(`<td class="der">${p.totales[s]}</td>`);
+    tot.push('<td></td>');
+    tot.push('<td class="aud"></td>');
+  }
 
   const conCarga = p.filas.filter(f => !f.sinCarga).length;
   return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">

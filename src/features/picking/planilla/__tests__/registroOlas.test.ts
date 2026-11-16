@@ -284,8 +284,10 @@ describe('planRegistro: la fila de Falabella Full', () => {
   });
 
   it('no saca un aviso de «sección desconocida», en ninguna de sus grafías', () => {
-    // Las dos que la hoja tiene, medidas el 10/11/2026, más una mayúscula por si alguien la
-    // reescribe: el calce es normalizado.
+    // «FALABELLA FULL» es la que se escribe desde el 12/11/2026. Las dos en minúscula quedaron en
+    // 45 filas históricas y tienen que seguir pasando: si dejaran de reconocerse, cada lunes y
+    // cada miércoles anterior a la unificación sacaría un aviso falso. «Falabella Full» entra de
+    // yapa porque el calce es normalizado.
     for (const grafia of ['Fala full', 'falabella full', 'FALABELLA FULL', 'Falabella Full']) {
       const plan = planRegistro([mov()], conCola(grafia), NOMBRES);
       expect(plan.avisos.map(a => a.detalle).join(' | ')).not.toContain('desconocida');

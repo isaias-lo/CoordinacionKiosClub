@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
     const sb = supabaseServer();
     const { data, error } = await sb
       .from('tiendas')
-      .select('codigo, nombre, direccion, region, sector_comuna, corredor, tipo, ventana, ventana_congelados, observacion, frecuencia, prom_por_dia, lat, lon, correos, tel_encargado, supervisor, tel_supervisor, transportista, recepcion_pallet, region_sendu, comuna, calle, numero, complemento, nombre_dest, str_val, activo, created_at, updated_at')
+      .select('codigo, nombre, direccion, region, sector_comuna, corredor, tipo, ventana, ventana_congelados, observacion, frecuencia, prom_por_dia, lat, lon, correos, tel_encargado, supervisor, tel_supervisor, transportista, recepcion_pallet, max_pallets, region_sendu, comuna, calle, numero, complemento, nombre_dest, str_val, activo, created_at, updated_at')
       .order('codigo');
     if (error) throw error;
     return NextResponse.json({ tiendas: data });

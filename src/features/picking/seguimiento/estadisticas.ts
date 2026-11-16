@@ -42,6 +42,14 @@ export interface Totales {
   segPorSku: number;
   /** Unidades promedio por operación. */
   unidadesPorOp: number;
+  /** Minutos de trabajo del período, sumando los de cada persona.
+   *
+   *  Sale de `totalMinutes`, que desde el #806 cuenta cada TANDA una sola vez. NO se calcula
+   *  como `minPorPedido × ops`: ese promedio se redondea por fila y, multiplicado de vuelta
+   *  por 27 personas, el total se corre. */
+  minutos: number;
+  /** Unidades por hora del período. La métrica de productividad; la «CPH_Real» del bono. */
+  cph: number;
 }
 
 export function totales(rows: PickerStatRow[]): Totales {
@@ -50,11 +58,15 @@ export function totales(rows: PickerStatRow[]): Totales {
   const unidades = rows.reduce((s, r) => s + r.units, 0);
   const minutos = rows.reduce((s, r) => s + r.avgMinutesPerOp * r.ops, 0);
   const segSku = rows.reduce((s, r) => s + r.avgSecondsPerLine * r.lineCount, 0);
+  // El tiempo real del período: la suma de lo medido por persona, no un promedio reconstruido.
+  const reales = rows.reduce((s, r) => s + r.totalMinutes, 0);
   return {
     ops, sku, unidades,
     minPorPedido: ops ? minutos / ops : 0,
     segPorSku: sku ? segSku / sku : 0,
     unidadesPorOp: ops ? unidades / ops : 0,
+    minutos: reales,
+    cph: reales > 0 ? (unidades / reales) * 60 : 0,
   };
 }
 
