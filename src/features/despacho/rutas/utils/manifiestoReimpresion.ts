@@ -35,6 +35,8 @@ export interface ManifiestoData {
   salida_sugerida?: string;
   /** Día en que la carga llega a la tienda. Distinto del de armado; ver utils/fechaSalida. */
   fecha_salida?: string | null;
+  /** [2ª vuelta] Día cuya carga lleva, si no es la de `fecha`. Ver shared/cargaEnCamion.ts. */
+  fecha_origen?: string | null;
   /** [Panel Conductor] 'seco' | 'congelado' — decide qué fotos pide el chofer por parada. Se
    *  toma del vehículo al cerrar, se graba en la ruta (no se re-deriva cada vez: un camión
    *  refrigerado puede llevar carga seca ese día). */

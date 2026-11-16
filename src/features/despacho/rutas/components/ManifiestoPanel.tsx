@@ -43,6 +43,12 @@ interface Props {
   /** Día de despacho (llegada a tienda). Se imprime y se guarda junto al manifiesto. */
   fechaSalida?: string | null;
   /**
+   * [2ª vuelta] Día cuya carga lleva el camión (la fecha de origen de la sub-pestaña). Se guarda
+   * para que Bodega no marque como cargada la tienda de HOY que tiene el mismo código: ver
+   * shared/cargaEnCamion.ts. Solo lo pasa el manifiesto de 2ª vuelta.
+   */
+  fechaOrigen?: string | null;
+  /**
    * [Reimprimir] Manifiestos YA guardados, armados tal cual quedaron (ver
    * utils/manifiestoReimpresion). Con esto el panel solo muestra e imprime: no arma nada desde
    * `rutas` y no auto-guarda — ya están en la base, con su código y su QR.
@@ -69,12 +75,13 @@ function infoTienda(cod: string, tiendas: Record<string, TiendaInfo & { _parada?
   return tiendas[cod] ?? tiendas[cod.toUpperCase()] ?? tiendas[cod.toLowerCase()] ?? { n: cod, v: '—', z: '—' };
 }
 
-function fromRuta(ruta: Ruta, idx: number, fecha: string, tiendas: Record<string, TiendaInfo & { _parada?: boolean }>, seq: number = idx, fechaSalida?: string | null): ManifiestoData {
+function fromRuta(ruta: Ruta, idx: number, fecha: string, tiendas: Record<string, TiendaInfo & { _parada?: boolean }>, seq: number = idx, fechaSalida?: string | null, fechaOrigen?: string | null): ManifiestoData {
   return {
     idx,
     codigo_ruta:   codigoRuta(fecha, seq),
     fecha,
     fecha_salida:  fechaSalida ?? null,
+    ...(fechaOrigen && fechaOrigen !== fecha ? { fecha_origen: fechaOrigen } : {}),
     chofer:        ruta._choferAsignado || ruta.v.ch || 'Sin asignar',
     patente:       ruta.v.p,
     transporte:    ruta.v.empresa || 'Luis Fica',   // empresa del camión (FLOTA) → columna TRANSPORTE
@@ -340,7 +347,7 @@ ${body}
 }
 
 /* ── Component ──────────────────────────────────────────── */
-export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor, tiendas, isOpen, onClose, offsetSeq = 0, guardados, salida, reimpresion }: Props) {
+export default function ManifiestoPanel({ rutas, fecha, fechaSalida, fechaOrigen, supervisor, tiendas, isOpen, onClose, offsetSeq = 0, guardados, salida, reimpresion }: Props) {
   const [manifiestos, setManifiestos] = useState<ManifiestoData[]>([]);
   const [itemsByStore, setItemsByStore] = useState<Record<string, ItemDetalle[]>>({}); // detalle por tienda
   const [driveByStore, setDriveByStore] = useState<Record<string, string>>({}); // drive_url (Guías PDF) por tienda
@@ -386,7 +393,7 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
           .map(g => [String(g.patente).trim().toUpperCase(), g]),
       );
       return rutas.map((r, i) => {
-        const base0 = fromRuta(r, i, fecha, tiendas, i + offsetSeq, fechaSalida);
+        const base0 = fromRuta(r, i, fecha, tiendas, i + offsetSeq, fechaSalida, fechaOrigen);
         // Misma configuración con la que el Enrutador armó las rutas (OPCIONES_DEFAULT).
         const sale = salida ? salidaSugerida(r.ts.map(t => t.c), salida.gps, salida.cd, OPCIONES_DEFAULT, tiendas) : null;
         const salidaBase = aMinutos(OPCIONES_DEFAULT.horaSalida) ?? 8 * 60;
@@ -409,7 +416,7 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
     // Por defecto TODAS las patentes seleccionadas → "global" es la acción directa
     // (imprimir/guardar todo). Elegir un subconjunto = destildar las que no quieras.
     setSelected(new Set(rutas.map((_, i) => i)));
-  }, [rutas, fecha, fechaSalida, tiendas, offsetSeq, guardados, salida, reimpresion]);
+  }, [rutas, fecha, fechaSalida, fechaOrigen, tiendas, offsetSeq, guardados, salida, reimpresion]);
 
   // Detalle ítem-a-ítem por tienda (para el manifiesto por tienda). Toma, por tienda, los ítems
   // de su fecha MÁS RECIENTE en picking_pallets → sirve para 1ª vuelta (hoy) y 2ª vuelta (fecha origen).
@@ -504,6 +511,7 @@ export default function ManifiestoPanel({ rutas, fecha, fechaSalida, supervisor,
         body: JSON.stringify({
           fecha:         m.fecha,
           fecha_salida:  m.fecha_salida ?? null,
+          fecha_origen:  m.fecha_origen ?? null,
           codigo_ruta:   m.codigo_ruta,
           chofer:        m.chofer,
           patente:       m.patente,
