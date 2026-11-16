@@ -1066,13 +1066,21 @@ const CSS_IMPRESION = `
   @page { size: letter landscape; margin: 10mm; }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: Barlow, system-ui, sans-serif; color: #111827; }
-  table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  /* table-layout fixed: las columnas obedecen su ancho y un nombre largo se parte en dos líneas
+     en vez de empujar la tabla fuera del margen. La cuenta está en htmlPlanilla. */
+  table { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
   th, td { border: 1px solid #9CA3AF; padding: 1px 4px; text-align: left; vertical-align: top; }
   th { background: #DBEAFE; font-size: 7.5px; font-weight: 800; text-transform: uppercase;
        letter-spacing: .03em; border-color: #111827; }
   .der { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
   .cod { font-family: ui-monospace, monospace; font-weight: 700; }
   .nada { background: #E5E7EB; }
+  /* Para escribir a mano: se deja más alta que una celda de texto y con el rótulo en gris, para
+     que se lea como «esto lo completás vos» y no como un dato que el sistema no trajo. */
+  td.aud { height: 15px; }
+  th.aud { color: #4B5563; background: #EEF2F7; }
+  /* Las palabras largas se parten antes que desbordar: con el layout fijo, el ancho manda. */
+  td, th { overflow-wrap: anywhere; }
   .cab { display: flex; align-items: flex-end; justify-content: space-between;
          border-bottom: 2px solid #111827; padding-bottom: 5px; margin-bottom: 7px; }
   .firmas { display: flex; gap: 22px; margin-top: 12px; }
@@ -1115,11 +1123,38 @@ const FIRMAS = `<div class="firmas">
 </div>`;
 
 /** La hoja horizontal de la vista PLANILLA. */
+/**
+ * La hoja que se imprime y se firma.
+ *
+ * ── POR QUÉ `table-layout: fixed` Y ANCHOS EXPLÍCITOS ─────────────────────────────────────────
+ *
+ * Con el layout automático, un nombre largo ensancha su columna y empuja la tabla fuera del
+ * margen: la hoja sale cortada y nadie se entera hasta que está impresa. Con `fixed` las columnas
+ * obedecen el ancho declarado y el peor caso es un nombre en dos líneas.
+ *
+ * La cuenta, para que se pueda rehacer si cambia algo (carta apaisada, margen de 10 mm):
+ *
+ *     ancho útil .................................... 980 px
+ *     fijas: # 18 + Tienda 52 + 4 secciones × 30 .... 190 px
+ *     quedan para las 8 columnas de nombre .......... 790 px → 98 px cada una
+ *     lo más largo que puede caer ahí:
+ *       «↳118 B. Montecinos», 18 caracteres .........  ~76 px
+ *
+ * Medido el 16/11/2026 contra `picker_canonical_names`: las 31 cuentas tienen nombres de DOS
+ * palabras, y el más largo abreviado son 13 caracteres («B. Montecinos», «D. Echeverria»).
+ *
+ * ── LA COLUMNA «AUDITOR» ──────────────────────────────────────────────────────────────────────
+ *
+ * Va VACÍA a propósito: es para escribir a mano quién auditó esa sección. El sistema no tiene de
+ * dónde sacarla —en Odoo no hay un auditor por movimiento— y una columna con un dato inventado
+ * sería peor que una en blanco. Pedido del coordinador, 16/11/2026.
+ */
 function htmlPlanilla(p: Planilla, fecha: string, recorte = ''): string {
   const th = ['<th style="width:18px">#</th>', '<th style="width:52px">Tienda</th>'];
   for (const s of SECCIONES) {
-    th.push(`<th class="der" style="width:32px">${esc(s === 'Chocolates' ? 'Choc.' : s)}</th>`);
+    th.push(`<th class="der" style="width:30px">${esc(s === 'Chocolates' ? 'Choc.' : s)}</th>`);
     th.push('<th>Usuario</th>');
+    th.push('<th class="aud">Auditor</th>');
   }
 
   const trs = p.filas.map((f, i) => {
@@ -1139,12 +1174,19 @@ function htmlPlanilla(p: Planilla, fecha: string, recorte = ''): string {
           const m = x.backorderDe ? esc(marcaBackorder(x.backorderDe)) + ' ' : '';
           return m + esc(x.picker ? corto(x.picker) : x.backorderDe ? '' : '—');
         }).join('<br>')}</td>`);
+      // Para escribir a mano. Una sección sin carga lleva el mismo gris que su «Usuario»: no hay
+      // nada que auditar ahí y pedir una firma sobre una celda vacía confunde.
+      tds.push(`<td class="aud ${clase}"></td>`);
     }
     return '<tr>' + tds.join('') + '</tr>';
   });
 
   const tot = ['<td></td>', '<td style="font-size:8px;font-weight:800">TOTAL</td>'];
-  for (const s of SECCIONES) { tot.push(`<td class="der">${p.totales[s]}</td>`); tot.push('<td></td>'); }
+  for (const s of SECCIONES) {
+    tot.push(`<td class="der">${p.totales[s]}</td>`);
+    tot.push('<td></td>');
+    tot.push('<td class="aud"></td>');
+  }
 
   const conCarga = p.filas.filter(f => !f.sinCarga).length;
   return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
