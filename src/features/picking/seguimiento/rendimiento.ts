@@ -24,6 +24,12 @@
 // **Nada se descarta en silencio.** Lo que no se pudo medir se devuelve contado en `sinMedir`, y
 // cada fila dice en `opsMedidas` sobre cuántas se calculó su promedio. Una jornada de 14 horas es
 // un dato, no un error: ya no hay techo de 8 horas.
+//
+// ── EL TIEMPO NO SE SUMA ACÁ ───────────────────────────────────────────────────────────────────
+//
+// Las horas salen de `tandasDeTrabajo.ts` y no de sumar duraciones, por dos razones medidas que
+// están explicadas allá: los pedidos de una misma tanda son un solo lapso, y las tandas de una
+// persona se pisan entre sí. Sin lo segundo, tres cuentas daban más de 24 horas por día.
 
 import { duracionMinutos } from '../planilla/horasPlanilla';
 import { minutosTrabajados, type OperacionConTanda } from './tandasDeTrabajo';
@@ -66,6 +72,14 @@ export interface RendimientoPicker extends PickerStatRow {
    *  Está publicado para que el tiempo se pueda explicar: «137 pedidos en 73 tandas» dice de una
    *  por qué las horas no son la suma de los 137. Ver `tandasDeTrabajo.ts`. */
   tandas: number;
+  /** Cuántos de esos lapsos se pisaron con otro. Cero = el reloj y la suma dan lo mismo. */
+  tandasSolapadas: number;
+  /** Los minutos SUMADOS en vez de unidos: el número que da la planilla del bono.
+   *
+   *  Se publica por la misma razón que `tandas`: cuando se separa de `totalMinutes`, la pantalla
+   *  dejó de coincidir con la hoja de la jefatura y eso hay que poder decirlo, no esconderlo.
+   *  En seis cuentas de treinta la diferencia va de 1,15× a 9,49×. Ver `tandasDeTrabajo.ts`. */
+  totalMinutesSumados: number;
   /**
    * Las cuentas de Odoo que aportaron a esta fila, ordenadas.
    *
@@ -148,14 +162,17 @@ export function rendimientoPorPicker(
 
   const filas = [...porUsuario.values()]
     .map((u): RendimientoPicker => {
-      // El tiempo real de la persona: cada tanda una sola vez. Ver `tandasDeTrabajo.ts`.
-      const { minutos, tandas } = minutosTrabajados(u.medidas);
+      // El tiempo real de la persona: cada tanda una sola vez Y los lapsos que se pisan
+      // unidos. Ver `tandasDeTrabajo.ts`, que es donde está medido el porqué de las dos cosas.
+      const { minutos, minutosSumados, tandasSolapadas, tandas } = minutosTrabajados(u.medidas);
       return {
         name: u.name,
         cuentas: [...u.cuentas].sort(),
         ops: u.ops,
         opsMedidas: u.opsMedidas,
         tandas,
+        tandasSolapadas,
+        totalMinutesSumados: minutosSumados,
         units: Math.round(u.units),
         lineCount: u.lines,
         totalMinutes: minutos,

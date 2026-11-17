@@ -89,7 +89,9 @@ describe('minutosTrabajados: lo que no se puede medir', () => {
   });
 
   it('sin operaciones da cero y no rompe', () => {
-    expect(minutosTrabajados([])).toEqual({ minutos: 0, medidas: 0, sinMedir: 0, tandas: 0 });
+    expect(minutosTrabajados([])).toEqual({
+      minutos: 0, minutosSumados: 0, tandasSolapadas: 0, medidas: 0, sinMedir: 0, tandas: 0,
+    });
   });
 });
 
@@ -118,5 +120,109 @@ describe('la inflación que esto corrige, medida', () => {
     expect(r.minutos).toBe(120);        // dos horas, no veinte
     expect(r.medidas).toBe(10);
     expect(r.tandas).toBe(1);
+  });
+});
+
+describe('minutosTrabajados: las tandas que se pisan entre sí se UNEN', () => {
+  it('EL caso de Diego Farr: tres tandas encadenadas son el rato que marcó el reloj', () => {
+    // Se le asigna la siguiente mientras cierra la anterior. Sumadas dan 5,37 h; de 09:14 a
+    // 12:18 pasaron 3,07 h. Es lo que hacía que 150 tandas con 118 solapes dieran 14,9 h/día.
+    const r = minutosTrabajados([
+      op({ tanda: 'A', asignadoEn: '2026-11-11 09:14:00', validadoEn: '2026-11-11 11:02:00' }),
+      op({ tanda: 'B', asignadoEn: '2026-11-11 09:51:00', validadoEn: '2026-11-11 11:40:00' }),
+      op({ tanda: 'C', asignadoEn: '2026-11-11 10:33:00', validadoEn: '2026-11-11 12:18:00' }),
+    ]);
+    expect(r.minutos).toBe(184);              // 09:14 → 12:18
+    expect(r.minutosSumados).toBe(108 + 109 + 105);   // 322: lo que daba antes
+    expect(r.tandasSolapadas).toBe(2);
+    expect(r.tandas).toBe(3);                 // siguen siendo tres tandas distintas
+  });
+
+  it('una tanda metida ENTERA dentro de otra no agrega nada', () => {
+    const r = minutosTrabajados([
+      op({ tanda: 'A', asignadoEn: '2026-11-11 08:00:00', validadoEn: '2026-11-11 12:00:00' }),
+      op({ tanda: 'B', asignadoEn: '2026-11-11 09:00:00', validadoEn: '2026-11-11 10:00:00' }),
+    ]);
+    expect(r.minutos).toBe(240);
+    expect(r.tandasSolapadas).toBe(1);
+  });
+
+  it('dos tandas que se tocan justo en el límite son trabajo continuo', () => {
+    // 09:00 cierra una y abre la otra: no hubo pausa, así que es un solo lapso de dos horas.
+    const r = minutosTrabajados([
+      op({ tanda: 'A', asignadoEn: '2026-11-11 08:00:00', validadoEn: '2026-11-11 09:00:00' }),
+      op({ tanda: 'B', asignadoEn: '2026-11-11 09:00:00', validadoEn: '2026-11-11 10:00:00' }),
+    ]);
+    expect(r.minutos).toBe(120);
+    expect(r.minutosSumados).toBe(120);       // acá los dos métodos coinciden
+    expect(r.tandasSolapadas).toBe(1);
+  });
+
+  it('con un hueco en medio NO se une: el hueco es tiempo que no se trabajó', () => {
+    const r = minutosTrabajados([
+      op({ tanda: 'A', asignadoEn: '2026-11-11 08:00:00', validadoEn: '2026-11-11 09:00:00' }),
+      op({ tanda: 'B', asignadoEn: '2026-11-11 13:00:00', validadoEn: '2026-11-11 14:00:00' }),
+    ]);
+    expect(r.minutos).toBe(120);
+    expect(r.tandasSolapadas).toBe(0);
+  });
+
+  it('un pedido suelto trabajado DENTRO de una tanda no se cuenta aparte', () => {
+    // Antes el suelto se sumaba por su cuenta, aunque cayera en medio de la tanda.
+    const r = minutosTrabajados([
+      op({ tanda: 'A', asignadoEn: '2026-11-11 08:00:00', validadoEn: '2026-11-11 10:00:00' }),
+      op({ tanda: null, asignadoEn: '2026-11-11 08:30:00', validadoEn: '2026-11-11 09:00:00' }),
+    ]);
+    expect(r.minutos).toBe(120);
+    expect(r.minutosSumados).toBe(150);
+    expect(r.tandas).toBe(1);                 // el suelto no es una tanda
+  });
+
+  it('no depende del orden en que Odoo devolvió las filas', () => {
+    const filas = [
+      op({ tanda: 'C', asignadoEn: '2026-11-11 10:33:00', validadoEn: '2026-11-11 12:18:00' }),
+      op({ tanda: 'A', asignadoEn: '2026-11-11 09:14:00', validadoEn: '2026-11-11 11:02:00' }),
+      op({ tanda: 'B', asignadoEn: '2026-11-11 09:51:00', validadoEn: '2026-11-11 11:40:00' }),
+    ];
+    expect(minutosTrabajados(filas).minutos).toBe(184);
+    expect(minutosTrabajados([...filas].reverse()).minutos).toBe(184);
+  });
+
+  it('sin solapes el reloj y la suma dan lo MISMO: las 24 cuentas que no cambian', () => {
+    const r = minutosTrabajados([
+      op({ tanda: 'A', asignadoEn: '2026-11-11 08:00:00', validadoEn: '2026-11-11 09:00:00' }),
+      op({ tanda: 'B', asignadoEn: '2026-11-11 11:00:00', validadoEn: '2026-11-11 11:30:00' }),
+      op({ tanda: null, asignadoEn: '2026-11-11 15:00:00', validadoEn: '2026-11-11 15:10:00' }),
+    ]);
+    expect(r.minutos).toBe(r.minutosSumados);
+    expect(r.minutos).toBe(100);
+    expect(r.tandasSolapadas).toBe(0);
+  });
+
+  it('el truncado se hace al cerrar el lapso UNIDO, no pedazo por pedazo', () => {
+    // Dos tandas que se pisan y que empiezan y terminan con segundos sueltos. Truncar cada
+    // pedazo antes de unir perdería minutos: lo que vale es 08:00:30 → 09:30:50.
+    const r = minutosTrabajados([
+      op({ tanda: 'A', asignadoEn: '2026-11-11 08:00:30', validadoEn: '2026-11-11 09:00:50' }),
+      op({ tanda: 'B', asignadoEn: '2026-11-11 08:59:40', validadoEn: '2026-11-11 09:30:50' }),
+    ]);
+    expect(r.minutos).toBe(90);               // 08:00 → 09:30 truncado
+    expect(r.tandasSolapadas).toBe(1);
+  });
+
+  it('la cuenta compartida: 20 tandas encadenadas no son 20 jornadas', () => {
+    // «Mario Patiño», que hoy usan Joe Idrovo y Haisemberg Garmendia con el mismo usuario de
+    // Odoo: 226 tandas en el mes, 201 pisándose con otra, 745,5 h sumadas contra 78,5 de reloj.
+    // Acá en chico: 20 tandas de 1 h que arrancan cada 15 minutos.
+    const t0 = Date.UTC(2026, 10, 11, 8, 0, 0);
+    const iso = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+    const r = minutosTrabajados(Array.from({ length: 20 }, (_, i) => op({
+      tanda: `BATCH/${i}`,
+      asignadoEn: iso(t0 + i * 15 * 60000),
+      validadoEn: iso(t0 + i * 15 * 60000 + 60 * 60000),
+    })));
+    expect(r.minutosSumados).toBe(20 * 60);   // 20 h, el número imposible
+    expect(r.minutos).toBe(19 * 15 + 60);     // 345 min: de 08:00 a 13:45
+    expect(r.tandasSolapadas).toBe(19);
   });
 });

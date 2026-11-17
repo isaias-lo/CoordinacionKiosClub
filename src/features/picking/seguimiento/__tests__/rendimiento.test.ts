@@ -197,12 +197,28 @@ describe('rendimientoPorPicker: la tanda no se cuenta dos veces', () => {
     expect(filas[0].tandas).toBe(2);
   });
 
-  it('sin tanda se comporta como antes: cada pedido con su duración', () => {
-    // Importa que no cambie: los pedidos sueltos no tienen nada que des-duplicar, y así el
-    // número de quien trabaja suelto sigue siendo el mismo de siempre.
-    const { filas } = rendimientoPorPicker([op(), op(), op()]);
-    expect(filas[0].totalMinutes).toBe(180);
+  it('sueltos en horarios distintos: cada uno con su duración', () => {
+    // Quien trabaja suelto y de corrido sigue dando el mismo número de siempre.
+    const { filas } = rendimientoPorPicker([
+      op(),                                                                         // 11:00 → 12:00
+      op({ asignadoEn: '2026-11-03 13:00:00', validadoEn: '2026-11-03 13:30:00' }),
+      op({ asignadoEn: '2026-11-03 15:00:00', validadoEn: '2026-11-03 15:15:00' }),
+    ]);
+    expect(filas[0].totalMinutes).toBe(105);
     expect(filas[0].tandas).toBe(0);
+  });
+
+  it('tres sueltos en la MISMA hora son una hora, no tres', () => {
+    // Este test decía antes que daban 180 minutos, con el argumento de que «los pedidos sueltos
+    // no tienen nada que des-duplicar». Es falso con estos datos: son tres pedidos ocupando el
+    // mismo 11:00 → 12:00. Lo que no hay que des-duplicar es una tanda; el solape en el reloj
+    // existe igual, con tanda o sin ella. Ver `tandasDeTrabajo.ts`.
+    const { filas } = rendimientoPorPicker([op(), op(), op()]);
+    expect(filas[0].totalMinutes).toBe(60);
+    expect(filas[0].totalMinutesSumados).toBe(180);   // lo que daba antes, publicado para comparar
+    expect(filas[0].tandasSolapadas).toBe(2);
+    expect(filas[0].tandas).toBe(0);
+    expect(filas[0].ops).toBe(3);                    // los totales cuentan los tres igual
   });
 
   it('la cuenta compartida es el caso extremo y queda acotado', () => {
