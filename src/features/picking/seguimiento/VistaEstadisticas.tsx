@@ -12,6 +12,7 @@ import {
 import { compararPeriodos, resumen, type Direccion, type Tendencia } from './tendencia';
 import { textoCuentasFuera } from './filtroPickers';
 import { ESPECIALIDADES, NOMBRE_ESPECIALIDAD, type Especialidad } from './especialidad';
+import { buscadorDeNombres } from './nombreDeCuenta';
 import type { RendimientoPicker } from './rendimiento';
 
 type Orden = 'name' | 'ops' | 'lineCount' | 'units' | 'porOp' | 'avgMinutesPerOp'
@@ -120,7 +121,11 @@ export function VistaEstadisticas({
   const porUnidades = useMemo(() => [...rows].sort((a, b) => b.units - a.units), [rows]);
   const t = useMemo(() => totales(rows), [rows]);
   const max = porUnidades[0]?.units || 1;
-  const nombre = (r: PickerStatRow) => canonicalNames[r.name] || r.name;
+  // Tolerante a mayúsculas y espacios, igual que el filtro y que el resto del flujo: un cache
+  // guardado antes del #788 trae la CUENTA en `name`, y «Control Interno» no calzaba con la
+  // clave «control interno» de la tabla. Ver `nombreDeCuenta.ts`.
+  const buscarNombre = useMemo(() => buscadorDeNombres(canonicalNames), [canonicalNames]);
+  const nombre = (r: PickerStatRow) => buscarNombre(r.name) || r.name;
 
   // La tendencia se indexa por el nombre QUE SE MUESTRA, que es el mismo con el que el servidor
   // agrupó las filas. Indexar por `r.name` crudo fallaría justo en quien usó dos pistolas.
@@ -344,7 +349,7 @@ export function VistaEstadisticas({
                             {NOMBRE_ESPECIALIDAD[e].toLowerCase()}
                           </span>
                         ))}
-                        {canonicalNames[r.name] && <div className="pk-sub">{r.name}</div>}
+                        {buscarNombre(r.name) && <div className="pk-sub">{r.name}</div>}
                       </td>
                       {COLUMNAS.map(c => <td key={c.key} className="pk-n">{c.celda(r)}</td>)}
                       {porNombre && (

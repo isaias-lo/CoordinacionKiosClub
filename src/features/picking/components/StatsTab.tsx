@@ -6,6 +6,7 @@ import type { PickerStatRow, StatsCache } from '../picking-types';
 import { periodoAnterior } from '../seguimiento/tendencia';
 import { STATS_CACHE_KEY, STATS_DATE_FROM, STATS_DATE_TO } from '../picking-types';
 import { fmtDuration, fmtSecs, isAllowedPicker, buildPickerKeyList } from '../picking-utils';
+import { buscadorDeNombres } from '../seguimiento/nombreDeCuenta';
 import { escapeHtml } from '@/lib/escapeHtml';
 import { InlineConfirm } from './InlineConfirm';
 import { avisoOdoo, motivoOdoo } from '../avisoOdoo';
@@ -151,6 +152,10 @@ export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames, esc
     [canonicalNames],
   );
 
+  // El nombre configurado, con la misma tolerancia a mayúsculas que el filtro de abajo: Odoo
+  // devuelve «Control Interno» donde la tabla dice «control interno». Ver `nombreDeCuenta.ts`.
+  const buscarNombre = useMemo(() => buscadorDeNombres(canonicalNames), [canonicalNames]);
+
   // La pregunta se le hace a la CUENTA de Odoo, no al nombre de la fila. Desde el #788 la fila
   // se llama como la PERSONA, y ninguna persona está en una lista de cuentas: preguntando por el
   // nombre se caían todas menos «control interno» —la única entrada cuyo `key` es igual a su
@@ -196,7 +201,7 @@ export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames, esc
     if (!win) return;
     const fmt = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' });
     const rows = sorted.map((r, i) => {
-      const confName = canonicalNames[r.name] ?? '';
+      const confName = buscarNombre(r.name);
       return `<tr class="${i % 2 === 0 ? '' : 'alt'}">
 <td class="name">${escapeHtml(r.name)}${confName ? `<span class="conf"> · ${escapeHtml(confName)}</span>` : ''}</td>
 <td class="r">${r.ops}</td>
@@ -402,7 +407,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
                 </thead>
                 <tbody>
                   {sorted.map((row, i) => {
-                    const confName = canonicalNames[row.name] ?? '';
+                    const confName = buscarNombre(row.name);
                     return (
                       <tr key={row.name} style={{ background: i % 2 === 0 ? '#fff' : '#F8FAFC', borderBottom: '1px solid #F1F5F9' }}>
                         {/* Nombre Odoo + nombre config */}

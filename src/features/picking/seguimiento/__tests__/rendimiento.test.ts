@@ -225,3 +225,37 @@ describe('rendimientoPorPicker: la tanda no se cuenta dos veces', () => {
     for (const f of filas) expect(f.totalMinutes).toBe(60);
   });
 });
+
+describe('rendimientoPorPicker: el nombre no lo deciden las mayúsculas', () => {
+  it('Odoo manda «Control Interno» y la tabla dice «control interno»', () => {
+    // Medido el 17/11/2026: es la única de las 30 cuentas con trabajo que no calzaba. En octubre
+    // esa cuenta hizo 54 tandas y 139,1 h. Ver `nombreDeCuenta.ts`.
+    const { filas } = rendimientoPorPicker(
+      [op({ userId: 9, userName: 'Control Interno' })],
+      { 'control interno': 'Francisca Farias' },
+    );
+    expect(filas).toHaveLength(1);
+    expect(filas[0].name).toBe('Francisca Farias');
+    expect(filas[0].cuentas).toEqual(['Control Interno']);   // la cuenta se guarda como vino
+  });
+
+  it('las dos grafías de la misma cuenta caen en UNA fila, no en dos', () => {
+    // Es lo que de verdad importa: el nombre es la clave con la que se agrupa. Partido en dos
+    // filas, el ritmo de la persona no está en ninguna de las dos.
+    const { filas } = rendimientoPorPicker([
+      op({ userId: 9, userName: 'Control Interno',  units: 100 }),
+      op({ userId: 9, userName: 'control interno',  units: 300,
+           asignadoEn: '2026-11-03 15:00:00', validadoEn: '2026-11-03 16:00:00' }),
+    ], { 'control interno': 'Francisca Farias' });
+    expect(filas).toHaveLength(1);
+    expect(filas[0].ops).toBe(2);
+    expect(filas[0].units).toBe(400);
+    expect(filas[0].cuentas).toEqual(['Control Interno', 'control interno']);
+  });
+
+  it('sin nombre configurado la fila se llama como la cuenta, con su grafía de Odoo', () => {
+    const { filas } = rendimientoPorPicker(
+      [op({ userId: 7, userName: 'Mario Patiño' })], { 'control interno': 'Francisca Farias' });
+    expect(filas[0].name).toBe('Mario Patiño');
+  });
+});

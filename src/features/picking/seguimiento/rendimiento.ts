@@ -26,6 +26,7 @@
 // un dato, no un error: ya no hay techo de 8 horas.
 
 import { duracionMinutos } from '../planilla/horasPlanilla';
+import { buscadorDeNombres, personaDeCuenta } from './nombreDeCuenta';
 import { minutosTrabajados, type OperacionConTanda } from './tandasDeTrabajo';
 import type { Especialidad } from './especialidad';
 import type { PickerStatRow } from '../picking-types';
@@ -117,10 +118,17 @@ export function rendimientoPorPicker(
   let sinMedir = 0;
   let sinResponsable = 0;
 
+  // El índice se arma UNA vez: resolver el nombre recorriendo la tabla por cada operación sería
+  // hacerlo unas 2.000 veces en un mes. Ver `nombreDeCuenta.ts`.
+  const buscar = buscadorDeNombres(canonicos);
+
   for (const o of operaciones) {
     if (!o.userId || !o.userName) { sinResponsable++; continue; }
 
-    const persona = canonicos?.[o.userName] || o.userName;
+    // La traducción NO es un acceso exacto al objeto: Odoo devuelve «Control Interno» donde la
+    // tabla dice «control interno», y con la comparación exacta esa cuenta quedaba como una
+    // persona aparte, con su propia fila. Ver `nombreDeCuenta.ts`.
+    const persona = personaDeCuenta(buscar, o.userName);
     let u = porUsuario.get(persona);
     if (!u) {
       u = { name: persona, cuentas: new Set(), ops: 0, units: 0, lines: 0,
