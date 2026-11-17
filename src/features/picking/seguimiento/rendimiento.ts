@@ -27,6 +27,7 @@
 
 import { duracionMinutos } from '../planilla/horasPlanilla';
 import { minutosTrabajados, type OperacionConTanda } from './tandasDeTrabajo';
+import type { Especialidad } from './especialidad';
 import type { PickerStatRow } from '../picking-types';
 
 /** Una operación de Odoo con lo mínimo para medir. Las fechas llegan como el naive UTC, o `false`. */
@@ -43,6 +44,11 @@ export interface OperacionCruda {
    *  `read_group` lo devuelve ausente en vez de dar error. Ver `unidadesDeOdoo.ts`. */
   units: number;
   lines: number;
+  /** Seco, chocolates o congelados, deducido del `origin`. Ver `especialidad.ts`.
+   *
+   *  No se usa acá: la pantalla pide el cálculo una vez por especialidad, filtrando antes. Está
+   *  en el tipo para que ese filtro sea seguro y no un `any` con otro nombre. */
+  especialidad?: Especialidad;
   /** La TANDA (`batch_id`) en la que se trabajó, o `null` si fue suelto.
    *
    *  Decide el tiempo: a un picker se le asigna una tanda entera, así que los pedidos de una

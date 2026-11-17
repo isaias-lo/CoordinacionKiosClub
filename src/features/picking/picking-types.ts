@@ -127,6 +127,11 @@ export interface StatsCache {
   /** Odoo no devolvió la cantidad agregada en ningún grupo: las unidades son ceros falsos.
    *  Ver `seguimiento/unidadesDeOdoo.ts` — un campo no almacenado no da error, da un cero. */
   unidadesDudosas?: boolean;
+  /** Las mismas filas, pero calculadas DENTRO de cada especialidad: seco, chocolates y
+   *  congelados. No es un reparto de los totales: es el mismo cálculo corrido sobre los
+   *  movimientos de esa especialidad, para que las horas y el ritmo también sean los de ahí.
+   *  Ver `seguimiento/especialidad.ts`. */
+  porEspecialidad?: Record<string, PickerStatRow[]>;
 }
 
 export type PickerType = 'P' | 'C' | 'B' | 'CH' | 'CC' | 'CN';

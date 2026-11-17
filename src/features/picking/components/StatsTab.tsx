@@ -115,16 +115,17 @@ export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames, esc
       ]);
       const data = (await res.json()) as {
         stats?: PickerStatRow[]; error?: string; sinMedir?: number; truncado?: boolean;
-        unidadesDudosas?: boolean };
+        unidadesDudosas?: boolean; porEspecialidad?: Record<string, PickerStatRow[]> };
       if (!res.ok || data.error) throw new Error(data.error ?? 'Error Odoo');
       // Si el período anterior falla, la pantalla sigue andando SIN tendencia. Es un dato de
       // contexto: que falte no puede dejar sin ver los números del período que se pidió.
       const dPrevio = resPrevio?.ok
-        ? await resPrevio.json().catch(() => null) as { stats?: PickerStatRow[] } | null
+        ? await resPrevio.json().catch(() => null) as { stats?: PickerStatRow[]; porEspecialidad?: Record<string, PickerStatRow[]> } | null
         : null;
       const newCache: StatsCache = { cachedAt: new Date().toISOString(), rows: data.stats ?? [], desde: from, hasta: to,
         rowsPrevio: dPrevio?.stats ?? undefined,
-        sinMedir: data.sinMedir, truncado: data.truncado, unidadesDudosas: data.unidadesDudosas };
+        sinMedir: data.sinMedir, truncado: data.truncado, unidadesDudosas: data.unidadesDudosas,
+        porEspecialidad: data.porEspecialidad };
       setCache(newCache);
       localStorage.setItem(STATS_CACHE_KEY, JSON.stringify(newCache));
     } catch (e) {
@@ -257,6 +258,7 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
   if (escritorio) {
     return (
       <VistaEstadisticas rows={sorted} rowsPrevio={previoFiltrado} onAbrirConfig={onAbrirConfig}
+        porEspecialidad={cache?.porEspecialidad}
         canonicalNames={canonicalNames} desde={dateFrom} hasta={dateTo}
         onPeriodo={(desde, hasta) => {
           // Lo mismo que «Aplicar» con fechas a mano: el período nuevo reemplaza al guardado.

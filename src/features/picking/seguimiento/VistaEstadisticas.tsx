@@ -11,6 +11,7 @@ import {
 } from './estadisticas';
 import { compararPeriodos, resumen, type Direccion, type Tendencia } from './tendencia';
 import { textoCuentasFuera } from './filtroPickers';
+import { ESPECIALIDADES, NOMBRE_ESPECIALIDAD, type Especialidad } from './especialidad';
 import type { RendimientoPicker } from './rendimiento';
 
 type Orden = 'name' | 'ops' | 'lineCount' | 'units' | 'porOp' | 'avgMinutesPerOp'
@@ -71,12 +72,19 @@ interface Props {
   /** Lleva a Ajustes → Configuración desde el aviso de cuentas fuera de la lista. Sin esto el
    *  aviso dice qué hacer pero no lleva, y hay que ir a buscarlo a mano. */
   onAbrirConfig?: () => void;
+  /** Las mismas filas calculadas DENTRO de cada especialidad. Con un chip puesto, la tabla
+   *  muestra estas: las operaciones, las unidades Y las horas de esa especialidad, no un
+   *  recorte del total. Ver `especialidad.ts`. */
+  porEspecialidad?: Record<string, PickerStatRow[]>;
 }
 
 export function VistaEstadisticas({
-  rows, rowsPrevio, canonicalNames, desde, hasta, onPeriodo, onActualizar, onImprimir, cargando, hayDatos, actualizado, error, sinOdoo,
-  sinMedir, truncado, unidadesDudosas, fueraDeLista, onAbrirConfig,
+  rows: rowsTodas, rowsPrevio, canonicalNames, desde, hasta, onPeriodo, onActualizar, onImprimir, cargando, hayDatos, actualizado, error, sinOdoo,
+  sinMedir, truncado, unidadesDudosas, fueraDeLista, onAbrirConfig, porEspecialidad,
 }: Props) {
+  /** Qué especialidad se está mirando. `todas` junta el trabajo de cada persona en una fila,
+   *  que es lo que se veía siempre. */
+  const [esp, setEsp] = useState<Especialidad | 'todas'>('todas');
   const ahora = useMemo(() => new Date(), []);
   const periodo = periodoDe(desde, hasta, ahora);
   const [eligiendo, setEligiendo] = useState(false);
@@ -90,6 +98,19 @@ export function VistaEstadisticas({
   /** Qué significa cada columna. Existía solo como `title` del encabezado: hay que saber que
    *  está para encontrarlo, y en una tablet no hay hover. */
   const [verAyuda, setVerAyuda] = useState(false);
+
+  // Con un chip puesto, las filas son las de ESA especialidad. Si el servidor todavía no las
+  // manda —un cache viejo, por ejemplo—, se cae a «todas» en vez de mostrar una tabla vacía.
+  const delChip = esp === 'todas' ? null : porEspecialidad?.[esp];
+  const rows = delChip ?? rowsTodas;
+  /** En qué especialidades trabajó cada persona, para la etiqueta de la fila. */
+  const espsDe = useMemo(() => {
+    const m = new Map<string, Especialidad[]>();
+    for (const e of ESPECIALIDADES)
+      for (const f of porEspecialidad?.[e] ?? [])
+        m.set(f.name, [...(m.get(f.name) ?? []), e]);
+    return m;
+  }, [porEspecialidad]);
 
   const ordenadas = useMemo(() => [...rows].sort((a, b) => {
     const x = valor(a, orden), y = valor(b, orden);
@@ -176,6 +197,24 @@ export function VistaEstadisticas({
             <button type="button" className="pk-btn pri" disabled={!d1 || !d2 || d1 > d2}
               onClick={() => { setEligiendo(false); onPeriodo(d1, d2); }}>Ver estas fechas</button>
             <button type="button" className="pk-btn" onClick={() => setEligiendo(false)}>Cancelar</button>
+          </div>
+        )}
+        {/* Los chips de especialidad. No son un recorte de la tabla: con uno puesto, las
+            filas son el MISMO cálculo corrido sobre los movimientos de esa especialidad, con
+            sus horas y su ritmo. Por eso Flores aparece en «Congelados» con 52 u/h y en «Seco»
+            con 726, y no con su promedio mezclado. Ver `especialidad.ts`. */}
+        {porEspecialidad && rowsTodas.length > 0 && (
+          <div className="pk-esp" role="group" aria-label="Especialidad">
+            <button type="button" aria-pressed={esp === 'todas'} onClick={() => setEsp('todas')}>
+              Todas <span className="c">{rowsTodas.length}</span>
+            </button>
+            {ESPECIALIDADES.map(e => (
+              <button key={e} className={e} aria-pressed={esp === e} onClick={() => setEsp(e)}
+                disabled={!(porEspecialidad[e]?.length)}>
+                <i aria-hidden="true" /> {NOMBRE_ESPECIALIDAD[e]}{' '}
+                <span className="c">{porEspecialidad[e]?.length ?? 0}</span>
+              </button>
+            ))}
           </div>
         )}
         <div className="pk-kpis cinco">
@@ -297,6 +336,14 @@ export function VistaEstadisticas({
                             otro ranking que ordenar por unidades, y esa es la gracia. */}
                         <span className="pk-puesto" aria-hidden="true">{i + 1}</span>
                         <b style={{ fontWeight: 600 }}>{nombre(r)}</b>
+                        {/* La etiqueta de lo que se está mirando va encendida y las otras
+                            apagadas: así se lee que esta fila es «la parte de congelados de
+                            Flores» y no todo Flores. */}
+                        {(espsDe.get(r.name) ?? []).map(e => (
+                          <span key={e} className={`pk-tag ${e}${esp === e ? ' on' : ''}${esp !== 'todas' && esp !== e ? ' off' : ''}`}>
+                            {NOMBRE_ESPECIALIDAD[e].toLowerCase()}
+                          </span>
+                        ))}
                         {canonicalNames[r.name] && <div className="pk-sub">{r.name}</div>}
                       </td>
                       {COLUMNAS.map(c => <td key={c.key} className="pk-n">{c.celda(r)}</td>)}

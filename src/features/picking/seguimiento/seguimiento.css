@@ -77,3 +77,29 @@
 .pk-ayuda>div{display:grid;grid-template-columns:168px minmax(0,1fr);gap:12px;align-items:start}
 .pk-ayuda b{color:#2B4BC8;font-family:'IBM Plex Mono',monospace;font-size:11.5px}
 @media (max-width:700px){.pk-ayuda>div{grid-template-columns:minmax(0,1fr);gap:2px}}
+
+/* ── Chips de especialidad (seco · chocolates · congelados) ────────────────────────────────── */
+.pk-esp{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.pk-esp button{font-size:12.5px;font-weight:600;padding:4px 11px;border-radius:999px;
+  border:1px solid #E4E7EC;background:#fff;color:#6B7280;cursor:pointer;display:inline-flex;
+  align-items:center;gap:6px;font-family:inherit}
+.pk-esp button[disabled]{opacity:.4;cursor:not-allowed}
+.pk-esp button[aria-pressed="true"]{border-color:currentColor}
+.pk-esp button i{width:7px;height:7px;border-radius:2px;display:inline-block;flex-shrink:0}
+.pk-esp button.seco i{background:#3B5BDB} .pk-esp button.chocolates i{background:#B45309}
+.pk-esp button.congelados i{background:#0E7490}
+.pk-esp button.seco[aria-pressed="true"]{color:#3B5BDB;background:rgba(59,91,219,.10)}
+.pk-esp button.chocolates[aria-pressed="true"]{color:#B45309;background:rgba(180,83,9,.10)}
+.pk-esp button.congelados[aria-pressed="true"]{color:#0E7490;background:rgba(14,116,144,.10)}
+.pk-esp button .c{font-family:'IBM Plex Mono',monospace;font-size:11px;opacity:.75}
+
+/* La etiqueta de la fila: encendida la que se está mirando, apagadas las otras. */
+.pk-tag{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;margin-left:7px;
+  font-family:'IBM Plex Mono',monospace;white-space:nowrap}
+.pk-tag.seco{background:rgba(59,91,219,.13);color:#3B5BDB}
+.pk-tag.chocolates{background:rgba(180,83,9,.13);color:#B45309}
+.pk-tag.congelados{background:rgba(14,116,144,.13);color:#0E7490}
+.pk-tag.on.seco{background:#3B5BDB;color:#fff}
+.pk-tag.on.chocolates{background:#B45309;color:#fff}
+.pk-tag.on.congelados{background:#0E7490;color:#fff}
+.pk-tag.off{opacity:.45}

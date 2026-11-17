@@ -7,6 +7,7 @@ import { verifyAuth } from '@/lib/apiAuth';
 import { diaParaConsultarOdoo } from '@/features/despacho/shared/diaDeOdoo';
 import { rendimientoPorPicker } from '@/features/picking/seguimiento/rendimiento';
 import { agruparPorDia } from '@/features/picking/planilla/diasPendientes';
+import { ESPECIALIDADES, especialidadDeOrigin } from '@/features/picking/seguimiento/especialidad';
 import { unidadesPorMovimiento, unidadesSonDudosas, type GrupoMoveLine } from '@/features/picking/seguimiento/unidadesDeOdoo';
 import { agruparAperturas, esApertura, type MovimientoApertura } from '@/features/despacho/shared/aperturaOdoo';
 import { camposAPedir, camposMedidaDe, camposNumericosConValor, esTextoDeMedida, normalizarCodigo, productoDesdeOdoo, type DefinicionCampos } from '@/features/despacho/shared/productosBodega';
@@ -889,7 +890,9 @@ export async function POST(req: NextRequest) {
           // duración completa y las horas salían hasta 10 veces infladas. Ver
           // `seguimiento/tandasDeTrabajo.ts`, donde está medido contra Odoo y contra la
           // planilla con la que la jefatura paga el bono.
-          fields: ['id', 'user_id', 'date_done', 'user_assigned_date', 'batch_id'],
+          // `origin` entra para poder repartir por ESPECIALIDAD: es de donde sale si el
+          // movimiento fue de seco, chocolates o congelados. Ver `seguimiento/especialidad.ts`.
+          fields: ['id', 'user_id', 'date_done', 'user_assigned_date', 'batch_id', 'origin'],
           limit: TOPE_PICKINGS, order: 'id asc',
         }],
       })) as Array<{
@@ -898,6 +901,7 @@ export async function POST(req: NextRequest) {
         date_done: string | false;
         user_assigned_date: string | false;
         batch_id: [number, string] | false;
+        origin: string | false;
       }>;
 
       if (!rawPickings.length) {
@@ -989,8 +993,7 @@ export async function POST(req: NextRequest) {
       //    se traduce la forma de Odoo a la suya. Ver el comentario de ese archivo: la versión que
       //    estaba acá medía desde `scheduled_date`, descartaba el 14% en silencio y dividía la
       //    suma de las que contó por el total de todas.
-      const { filas, sinMedir, sinResponsable } = rendimientoPorPicker(
-        rawPickings.map(p => {
+      const crudas = rawPickings.map(p => {
           const ml = mlByPicking[p.id];
           return {
             userId:   Array.isArray(p.user_id) ? p.user_id[0] : 0,
@@ -998,15 +1001,24 @@ export async function POST(req: NextRequest) {
             asignadoEn: p.user_assigned_date,
             validadoEn: p.date_done,
             tanda: Array.isArray(p.batch_id) ? p.batch_id[1] : null,
+            especialidad: especialidadDeOrigin(typeof p.origin === 'string' ? p.origin : null),
             units: ml?.units ?? 0,
             lines: ml?.lines ?? 0,
           };
-        }),
-        canonicos,
-      );
+        });
+
+      const { filas, sinMedir, sinResponsable } = rendimientoPorPicker(crudas, canonicos);
+
+      // El mismo cálculo, una vez por especialidad. Se hace así y no reestructurando la
+      // función porque es pura y barata —cuatro pasadas sobre un arreglo que ya está en
+      // memoria— y porque las horas tienen que medirse DENTRO de cada especialidad: una tanda
+      // pertenece a una sola (comprobado sobre las 2.294 del mes), así que partirla no inventa
+      // nada. Repartir un total ya calculado sí lo habría inventado.
+      const porEspecialidad = Object.fromEntries(ESPECIALIDADES.map(e =>
+        [e, rendimientoPorPicker(crudas.filter(o => o.especialidad === e), canonicos).filas]));
 
       return NextResponse.json({
-        stats: filas, dateFrom, dateTo, total: rawPickings.length,
+        stats: filas, porEspecialidad, dateFrom, dateTo, total: rawPickings.length,
         // Lo que no se pudo medir se informa; la pantalla lo muestra en vez de esconderlo.
         sinMedir, sinResponsable,
         // El tope de 8.000 corta en silencio: un período más largo devolvería números BAJOS sin
