@@ -108,6 +108,11 @@ export interface PickerStatRow {
   opsMedidas?: number;
   /** Las cuentas de Odoo que aportaron a esta fila. Más de una = la persona usó dos pistolas. */
   cuentas?: string[];
+  /** Los minutos SUMADOS en vez de unidos: el número que da la hoja del bono. Opcional porque las
+   *  filas guardadas antes del #816 no lo traen. Ver `seguimiento/desacuerdoPlanilla.ts`. */
+  totalMinutesSumados?: number;
+  /** Lapsos de trabajo que se pisaron con otro. Es el porqué de la diferencia con la hoja. */
+  tandasSolapadas?: number;
 }
 
 // `desde`/`hasta`: el período de esas filas. Sin él, al volver a la pestaña se mostraban los números

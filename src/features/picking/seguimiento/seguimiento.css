@@ -103,3 +103,11 @@
 .pk-tag.on.chocolates{background:#B45309;color:#fff}
 .pk-tag.on.congelados{background:#0E7490;color:#fff}
 .pk-tag.off{opacity:.45}
+
+/* ── El número de la hoja del bono, debajo del de reloj ────────────────────────────────────── */
+/* Apilado y no en columna aparte: elegido por el coordinador el 18/11/2026 —«no roba tanto
+   espacio a lo ancho y puedo ver todo completo al ocultar el gráfico»—. Son dos columnas menos
+   que ponerlo al lado, y como solo sale en 6 de 30 filas, la tabla no crece casi nada.
+   En ámbar y no en rojo: no es un error nuestro, es otra forma de contar. */
+.pk-plan{display:block;font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;
+  line-height:1.3;color:#B45309;margin-top:1px;white-space:nowrap;cursor:help}

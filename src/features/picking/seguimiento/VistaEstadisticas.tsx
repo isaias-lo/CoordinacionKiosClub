@@ -13,6 +13,7 @@ import { compararPeriodos, resumen, type Direccion, type Tendencia } from './ten
 import { textoCuentasFuera } from './filtroPickers';
 import { ESPECIALIDADES, NOMBRE_ESPECIALIDAD, type Especialidad } from './especialidad';
 import { buscadorDeNombres } from './nombreDeCuenta';
+import { desacuerdoConLaPlanilla, explicacionDesacuerdo } from './desacuerdoPlanilla';
 import type { RendimientoPicker } from './rendimiento';
 
 type Orden = 'name' | 'ops' | 'lineCount' | 'units' | 'porOp' | 'avgMinutesPerOp'
@@ -33,13 +34,13 @@ const COLUMNAS: { key: Orden; label: string; hint: string; celda: (r: PickerStat
   { key: 'avgMinutesPerOp', label: 'T. PROM. / PEDIDO', hint: 'Tiempo promedio por pedido completo', celda: r => textoMinutos(r.avgMinutesPerOp) },
   { key: 'avgSecondsPerLine', label: 'T. PROM. / SKU', hint: 'Tiempo promedio entre pistolazos', celda: r => textoSegundos(r.avgSecondsPerLine) },
   { key: 'totalMinutes', label: 'HORAS',
-    hint: 'Horas de trabajo medidas. Cada TANDA se cuenta una sola vez: a un picker se le asignan varios pedidos juntos, y sumar la duración de cada uno inflaba el tiempo hasta 1,7 veces.',
+    hint: 'Horas de RELOJ: cada tanda se cuenta una vez y los lapsos que se pisan se unen. Donde dice «planilla», la hoja del bono cuenta otro número porque los suma en vez de unirlos.',
     celda: r => textoHoras(r.totalMinutes) },
   // La métrica de productividad. El sistema la calculaba desde siempre para la flecha de
   // tendencia y nunca la mostró: es la única columna que compara justo a quien hizo 154
   // operaciones chicas con quien hizo 51 grandes. Es la «CPH_Real» de la planilla del bono.
   { key: 'cph', label: 'U / HORA',
-    hint: 'Unidades por hora. Es la métrica de productividad, y la misma «CPH_Real» de la planilla con la que se paga el bono.',
+    hint: 'Unidades por hora. Es la métrica de productividad, y la misma «CPH_Real» con la que se paga el bono — calculada sobre las horas de reloj.',
     celda: r => miles(r.cph) },
 ];
 
@@ -301,6 +302,12 @@ export function VistaEstadisticas({
               {COLUMNAS.map(c => <div key={c.key}><b>{c.label}</b><span>{c.hint}</span></div>)}
               <div><b>VS. PERÍODO ANTERIOR</b><span>Unidades por hora comparadas con el período
                 anterior, del mismo largo. Menos de 5% de diferencia se considera igual.</span></div>
+              {/* Sin esto, el «planilla 238,8» de una fila no se puede interpretar. */}
+              <div><b>PLANILLA</b><span>Cuando aparece debajo de las horas o del ritmo, es el
+                número que da la hoja del bono de la jefatura. Difiere porque esa hoja SUMA los
+                lapsos de trabajo y acá se unen los que se pisan: quien arma varias tandas en
+                paralelo —chocolate y congelados— sale con horas que no existen. Pasa en 6 de 30
+                cuentas; en las otras los dos números son iguales y no se muestra.</span></div>
             </div>
           )}
           <div className={`pk-dos stats${verBarras ? '' : ' ancho'}`}>
@@ -351,7 +358,23 @@ export function VistaEstadisticas({
                         ))}
                         {buscarNombre(r.name) && <div className="pk-sub">{r.name}</div>}
                       </td>
-                      {COLUMNAS.map(c => <td key={c.key} className="pk-n">{c.celda(r)}</td>)}
+                      {COLUMNAS.map(c => {
+                        // El número de la hoja del bono va DEBAJO del de reloj, y solo en las
+                        // filas donde se separan: repetirlo en las que coinciden es ruido que
+                        // esconde las que importan. Ver `desacuerdoPlanilla.ts`.
+                        const d = c.key === 'totalMinutes' || c.key === 'cph'
+                          ? desacuerdoConLaPlanilla(r) : null;
+                        return (
+                          <td key={c.key} className="pk-n">
+                            {c.celda(r)}
+                            {d && (
+                              <span className="pk-plan" title={explicacionDesacuerdo(d)}>
+                                planilla {c.key === 'totalMinutes' ? textoHoras(d.minutos) : miles(d.cph)}
+                              </span>
+                            )}
+                          </td>
+                        );
+                      })}
                       {porNombre && (
                         <td className="pk-n"><Flecha t={porNombre.get(nombre(r))} /></td>
                       )}
