@@ -19,7 +19,7 @@
 // media hoja. Ver `registroOlas.ts` para el porqué de cada columna.
 
 import { google } from 'googleapis';
-import { formulasDe } from '@/features/picking/planilla/esqueletoOlas';
+import { formulasDe, gruposDeTienda } from '@/features/picking/planilla/esqueletoOlas';
 import { fechaDeSerial, serialDeFecha, type Escritura, type FilaHoja }
   from '@/features/picking/planilla/registroOlas';
 
@@ -225,19 +225,40 @@ export interface FilaACrear { tienda: string; seccion: string }
  *
  * El orden importa y es este:
  *
- * 1. **Copiar formato y validación** de la fila molde sobre el rango nuevo. Son dos pegados
- *    distintos: `PASTE_FORMAT` no trae las listas desplegables, para eso está
- *    `PASTE_DATA_VALIDATION`. Sin esto las filas nuevas pierden los desplegables de B, C, F, G
- *    y H, que es con lo que se completa a mano.
+ * 1. **Soltar las combinaciones** que hubiera en el rango, y **copiar formato y validación** de
+ *    la fila molde. Son dos pegados distintos: `PASTE_FORMAT` no trae las listas desplegables,
+ *    para eso está `PASTE_DATA_VALIDATION`. Sin esto las filas nuevas pierden los desplegables
+ *    de B, C, F, G y H, que es con lo que se completa a mano.
  * 2. **Pintar el fondo** del color que toca, encima del que vino en el formato copiado.
- * 3. **Escribir A, B y C** en RAW. La fecha va como NÚMERO DE SERIE y no como texto: la columna
+ * 3. **Combinar la columna B** sobre las filas de cada tienda, que es lo que hace que el código
+ *    se vea una vez, centrado sobre sus tres secciones. Ver abajo.
+ * 4. **Escribir A, B y C** en RAW. La fecha va como NÚMERO DE SERIE y no como texto: la columna
  *    es numérica con formato de fecha, y un texto «11/11/2026» ahí se leería distinto según la
  *    configuración regional de la planilla — en una local en inglés, el 06/11 sería el 11 de
  *    junio.
- * 4. **Escribir las fórmulas** de T, U y X en USER_ENTERED, que es lo único que las interpreta
+ * 5. **Escribir las fórmulas** de T, U y X en USER_ENTERED, que es lo único que las interpreta
  *    como fórmula y no como texto.
  *
  * No se escribe nada entre D y S: esas quedan vacías, igual que en los días que arma una persona.
+ *
+ * ── POR QUÉ HAY QUE DESCOMBINAR Y VOLVER A COMBINAR ───────────────────────────────────────────
+ *
+ * La hoja viene prearmada hasta la fila ~42.999 con la columna B combinada **cada tres filas, de
+ * corrido**. Esa rejilla no coincide con los bloques: un bloque no mide un múltiplo de tres —tras
+ * las tiendas van las filas de chocolates, las dos de congelados y, lunes y miércoles, la de
+ * Falabella Full— así que cada día arranca corrido respecto del anterior. Medido el 19/11/2026:
+ * el bloque del 18 terminó en la 36.904 y el del 19 arrancó en la 36.905, que cae en mitad del
+ * grupo prearmado 36.903–36.905.
+ *
+ * Por eso no alcanza con respetar lo que venga: hay que **soltar** lo que haya en el rango y
+ * **poner** las combinaciones sobre los grupos reales, que los calcula `gruposDeTienda`.
+ *
+ * El `unmergeCells` puede alcanzar una combinación prearmada que empiece en la última fila del
+ * bloque anterior. No importa: ahí la columna B está vacía y no se ve nada.
+ *
+ * Hasta el 19/11/2026 esto no se hacía, y el pegado de formato —que copia una fila SOLA, sin
+ * combinación— las borraba todas: el bloque de ese día quedó con las 94 filas sueltas y un
+ * desplegable de tienda en cada una, donde los demás días tienen uno por tienda.
  */
 export async function crearBloqueDia(
   fecha: string, filas: FilaACrear[], color: string, cola: ColaHoja,
@@ -270,6 +291,9 @@ export async function crearBloqueDia(
     await gs.spreadsheets.batchUpdate({
       spreadsheetId: OLAS_ID,
       requestBody: { requests: [
+        // Primero soltar: el pegado de formato de una fila sola ya las borraría, pero las que
+        // empiezan antes del bloque sobrevivirían y se cruzarían con las nuevas.
+        { unmergeCells: { range: destino } },
         { copyPaste: { source: molde, destination: destino, pasteType: 'PASTE_FORMAT' } },
         { copyPaste: { source: molde, destination: destino, pasteType: 'PASTE_DATA_VALIDATION' } },
         { repeatCell: {
@@ -306,6 +330,24 @@ export async function crearBloqueDia(
         ],
       },
     });
+
+    // Combinar al FINAL, no antes de escribir: en una celda ya combinada solo existe la de arriba
+    // a la izquierda, y escribir sobre las otras no se puede. Con el orden al revés el bloque se
+    // crearía sin tiendas ni secciones.
+    //
+    // La columna B es la 1 (A es la 0). Las filas van 0-based y el final es exclusivo, así que un
+    // grupo que va de `g.desde` a `g.hasta` dentro del bloque se escribe `[base+desde, base+hasta+1)`.
+    const combinar = gruposDeTienda(filas).map(g => ({
+      mergeCells: {
+        range: rango(desde - 1 + g.desde, desde - 1 + g.hasta + 1, 1, 2),
+        mergeType: 'MERGE_ALL' as const,
+      },
+    }));
+    if (combinar.length) {
+      await gs.spreadsheets.batchUpdate({
+        spreadsheetId: OLAS_ID, requestBody: { requests: combinar },
+      });
+    }
   } catch (e) {
     const codigo = (e as { code?: number; status?: number })?.code
       ?? (e as { status?: number })?.status;
