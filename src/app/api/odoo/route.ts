@@ -767,6 +767,68 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, movimientos });
     }
 
+    /* ── auditorias_dia ──
+       Las AUDITORÍAS de uno o varios días, para la columna «Auditor» de la planilla.
+
+       Va en su propia consulta y no en `planilla_dia` por una razón concreta: `getDayPickings`
+       excluye las auditorías en el dominio de Odoo —`['origin','not ilike','AUDITORIA']`— y eso
+       está bien, porque no son trabajo de picking y contarlas infla las unidades de quien
+       audita. Sacar ese filtro afectaría a todos los módulos que la usan (el semáforo de Bodega,
+       Control Cruce, Estadísticas). Así que las auditorías se piden aparte y se usan solo para
+       poner el nombre.
+
+       El dominio pide `ilike 'AUDI'` en vez de la palabra entera: el 19/11/2026 apareció una
+       escrita «AUDIOTORIA», con la T y la O cambiadas de lugar. `esAuditoria` afina después, en
+       `planilla/auditores.ts`. Son pocas filas —unas 50 por día—, así que la consulta es
+       barata. */
+    if (action === 'auditorias_dia') {
+      const pedidas: unknown = body.fechas;
+      const fechas = Array.isArray(pedidas)
+        ? [...new Set(pedidas.filter((d): d is string =>
+            typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)))].slice(0, 4)
+        : [];
+      if (fechas.length === 0) return NextResponse.json({ ok: true, auditorias: [] });
+
+      const url = SRV_URL_PROCESSED, db = SRV_DB, apiKey = SRV_API_KEY, uid = _cachedUid;
+      if (!uid || !url || !db || !apiKey) return NextResponse.json({ ok: true, auditorias: [] });
+
+      const auditorias: Array<Record<string, unknown>> = [];
+      for (const fecha of fechas) {
+        const { desde, hasta } = diaChileParaOdoo(fecha);
+        const filas = (await odooRpc(url, {
+          service: 'object', method: 'execute_kw',
+          args: [db, uid, apiKey, 'stock.picking', 'search_read', [[
+            ['state', 'not in', ['draft', 'cancel']],
+            ['origin', 'ilike', 'AUDI'],
+            '|',
+            '&', ['scheduled_date', '>=', desde], ['scheduled_date', '<', hasta],
+            '&', ['date_done', '>=', desde], ['date_done', '<', hasta],
+          ]], { fields: ['name', 'origin', 'state', 'user_id', 'date_done',
+                         'location_dest_id', 'partner_id'], limit: 400 }],
+        })) as Array<{
+          name: string; origin: string | false; state: string;
+          user_id: [number, string] | false; date_done: string | false;
+          location_dest_id: [number, string] | false; partner_id: [number, string] | false;
+        }>;
+
+        for (const f of filas) {
+          auditorias.push({
+            ref: f.name,
+            origin: typeof f.origin === 'string' ? f.origin : '',
+            estado: f.state,
+            registros: 0,
+            responsable: Array.isArray(f.user_id) ? f.user_id[1] : '',
+            asignadoEn: null,
+            validadoEn: typeof f.date_done === 'string' ? f.date_done : null,
+            toLocation: Array.isArray(f.location_dest_id) ? String(f.location_dest_id[1] ?? '') : '',
+            partner: Array.isArray(f.partner_id) ? String(f.partner_id[1] ?? '') : '',
+            dia: fecha,
+          });
+        }
+      }
+      return NextResponse.json({ ok: true, auditorias });
+    }
+
     /* ── movimientos_apertura ──
        Los movimientos de APERTURA de una tienda que siguen PREPARADOS, agrupados por el día en
        que Abastecimiento los dejó. Ver `aperturaOdoo.ts` para el porqué de cada filtro.

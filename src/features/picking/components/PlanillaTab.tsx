@@ -17,7 +17,7 @@
 // Imprimir usa el mismo patrón que `CalendarioColumnas.handlePrint`: se arma el HTML y se abre una
 // ventana. Cada vista imprime en SU formato, porque el botón imprime la vista en la que estás.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Printer, Download, Loader2, RotateCcw, Search, X, ClipboardCheck } from 'lucide-react';
 import { AUTO_REFRESH_MS } from '../picking-types';
@@ -31,6 +31,8 @@ import { avanceAsignacion, type AvanceAsignacion } from '../planilla/avanceAsign
 import { conCorrecciones, type FilaGuardada } from '../planilla/conCorrecciones';
 import { validarCorreccion, textoConfirmacion, type PedidoCorreccion } from '../planilla/correccionPicker';
 import { movimientosDesdeOdoo, type MovimientoOdoo } from '../planilla/desdeOdoo';
+import { auditoresPorCelda, claveCelda, seAuditoSolo, type AuditorCelda }
+  from '../planilla/auditores';
 import { COLOR_ZONA, ZONAS, zonaPlanilla, type ZonaPlanilla } from '../planilla/zonaPlanilla';
 import { contarPorZona, describirFiltro, filtrarMovimientos, filtrarPlanilla, sinFiltro,
          type FiltroPlanilla } from '../planilla/filtrarPlanilla';
@@ -73,6 +75,9 @@ export function PlanillaTab({ cods: codsHoy, aperturas }: PlanillaTabProps) {
   const cods = esHoy ? codsHoy : (codsOtroDia ?? VACIO);
   const [vista, setVista]     = useState<Vista>('planilla');
   const [crudos, setCrudos]   = useState<MovimientoOdoo[] | null>(null);
+  // Las auditorías van aparte de los movimientos: la consulta de la planilla las excluye en
+  // Odoo —no son trabajo de picking— y acá solo sirven para poner el nombre de quien revisó.
+  const [auditorias, setAuditorias] = useState<MovimientoOdoo[]>([]);
   const [nombres, setNombres] = useState<Record<string, string>>({});
   const [fichas, setFichas]   = useState<Record<string, FichaTienda>>({});
   const [error, setError]     = useState<string | null>(null);
@@ -142,7 +147,7 @@ export function PlanillaTab({ cods: codsHoy, aperturas }: PlanillaTabProps) {
     setCargando(true);
     {
       try {
-        const [rOdoo, rNombres, rTiendas, rCorr] = await Promise.all([
+        const [rOdoo, rNombres, rTiendas, rCorr, rAud] = await Promise.all([
           fetch('/api/odoo', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'planilla_dia', fechas }),
@@ -150,11 +155,19 @@ export function PlanillaTab({ cods: codsHoy, aperturas }: PlanillaTabProps) {
           fetch('/api/picker-canonical-names'),
           fetch('/api/tiendas'),
           fetch(`/api/planilla-picker?fecha=${fecha}`),
+          fetch('/api/odoo', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'auditorias_dia', fechas }),
+          }),
         ]);
         const jOdoo = await rOdoo.json();
         if (!vivo) return;
         if (!jOdoo?.ok) { setError('No se pudo traer el día de Odoo'); return; }
         setCrudos(jOdoo.movimientos ?? []);
+
+        // Si las auditorías fallan, la planilla igual sirve: sale sin la columna de auditor.
+        const jAud = await rAud.json().catch(() => null);
+        if (vivo) setAuditorias(jAud?.ok ? (jAud.auditorias ?? []) : []);
 
         // Los nombres: el endpoint devuelve filas con `key` y `display_name`.
         const jNombres = await rNombres.json().catch(() => null);
@@ -286,6 +299,12 @@ export function PlanillaTab({ cods: codsHoy, aperturas }: PlanillaTabProps) {
     const sinRef = vivos.filter(m => !m.ref);
     return [...conCorrecciones(conRef, guardados), ...sinRef];
   }, [crudos, nombres, diaPorTienda, guardados]);
+
+  // Quién auditó cada celda. Se empareja por tienda, sección y FECHA DEL ORIGEN: una auditoría
+  // se cierra cuando se cierra, y la del 17 puede quedar registrada el 18. Ver `auditores.ts`.
+  const auditores = useMemo(
+    () => auditoresPorCelda(auditorias, nombres, diaPorTienda),
+    [auditorias, nombres, diaPorTienda]);
 
   const planillaCompleta = useMemo(() => armarPlanilla(movimientos, tiendas), [movimientos, tiendas]);
 
@@ -434,7 +453,7 @@ export function PlanillaTab({ cods: codsHoy, aperturas }: PlanillaTabProps) {
   const imprimir = useCallback(() => {
     const recorte = describirFiltro(filtro);
     const html = vista === 'planilla'
-      ? htmlPlanilla(planilla, fecha, recorte)
+      ? htmlPlanilla(planilla, fecha, auditores, recorte)
       : htmlDetalle(delDia, fecha, recorte);
     const w = window.open('', '_blank');
     if (!w) return;
@@ -442,7 +461,9 @@ export function PlanillaTab({ cods: codsHoy, aperturas }: PlanillaTabProps) {
     w.document.close();
     w.focus();
     w.print();
-  }, [vista, planilla, delDia, fecha, filtro]);
+    // `auditores` va en las dependencias y no es un detalle: la hoja imprime lo que haya al
+    // momento del clic, así que con el mapa viejo saldrían los auditores de hace tres minutos.
+  }, [vista, planilla, delDia, fecha, filtro, auditores]);
 
   // Un refresco fallido NO borra la hoja. Antes cualquier error reemplazaba todo por un mensaje
   // rojo: una sesión que caducó un momento, y el coordinador perdía la planilla que estaba
@@ -707,7 +728,7 @@ export function PlanillaTab({ cods: codsHoy, aperturas }: PlanillaTabProps) {
             </div>
           )
           : vista === 'planilla'
-            ? <TablaPlanilla planilla={planilla} onCorregir={abrirCorreccion} ahora={ahora} />
+            ? <TablaPlanilla planilla={planilla} auditores={auditores} onCorregir={abrirCorreccion} ahora={ahora} />
             : <TablaDetalle movimientos={delDia} onCorregir={abrirCorreccion} />}
       </div>
 
@@ -841,8 +862,10 @@ function BarraAvance({ a }: { a: AvanceAsignacion }) {
 }
 
 /** La matriz: una fila por tienda; una celda con varios movimientos los apila. */
-function TablaPlanilla({ planilla, onCorregir, ahora }: {
+function TablaPlanilla({ planilla, auditores, onCorregir, ahora }: {
   planilla: Planilla;
+  /** `cod|seccion` → quién auditó esa celda. Ver `planilla/auditores.ts`. */
+  auditores: ReadonlyMap<string, AuditorCelda[]>;
   onCorregir: (celda: CeldaPlanilla, cod: string, seccion: SeccionPlanilla) => void;
   /** El reloj compartido. `null` hasta el primer efecto: ver el comentario en `PlanillaTab`. */
   ahora: Date | null;
@@ -859,13 +882,28 @@ function TablaPlanilla({ planilla, onCorregir, ahora }: {
           par va junto en una celda, con el número en tipografía tabular para que las unidades
           se comparen entre filas aunque el nombre de al lado sea más largo o más corto.
           Son cuatro columnas menos, que es el ancho que necesitaba el contador. */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 900 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1180 }}>
         <thead>
+          {/* Dos filas de encabezado, igual que la hoja impresa: cada sección abre su par
+              «Usuario / Auditor». El auditor AL LADO y no debajo — apilado, el nombre que cobra
+              y el que revisa se leen como dos pickers de la misma celda, que es justo la
+              confusión que esto viene a sacar. */}
           <tr style={{ background: '#F8FAFC' }}>
-            <th style={TH_NUM}>#</th>
-            <th style={TH}>Tienda</th>
+            <th style={TH_NUM} rowSpan={2}>#</th>
+            <th style={TH} rowSpan={2}>Tienda</th>
             {SECCIONES.map(s => (
-              <th key={s} style={TH}>{s === 'Chocolates' ? 'Choc.' : s}</th>
+              <th key={s} colSpan={2}
+                  style={{ ...TH, textAlign: 'center', borderLeft: '1px solid #E2E8F0' }}>
+                {s === 'Chocolates' ? 'Choc.' : s}
+              </th>
+            ))}
+          </tr>
+          <tr style={{ background: '#F8FAFC' }}>
+            {SECCIONES.map(s => (
+              <Fragment key={s}>
+                <th style={{ ...TH, fontSize: 10, color: '#94A3B8', borderLeft: '1px solid #E2E8F0' }}>Usuario</th>
+                <th style={{ ...TH, fontSize: 10, color: '#94A3B8' }}>Auditor</th>
+              </Fragment>
             ))}
           </tr>
         </thead>
@@ -888,8 +926,10 @@ function TablaPlanilla({ planilla, onCorregir, ahora }: {
                   // La banda alterna por SECCIÓN y no por fila: separa las cuatro columnas sin
                   // pelearse con el rayado por tienda ni con el resalte del mouse.
                   const clase = celda.length === 0 ? 'vacia' : j % 2 ? 'banda' : undefined;
+                  const quienes = auditores.get(claveCelda(f.cod, s)) ?? [];
                   return (
-                    <td key={s} className={clase} style={TD_SEC}>
+                    <Fragment key={s}>
+                    <td className={clase} style={{ ...TD_SEC, borderLeft: '1px solid #F1F5F9' }}>
                       {celda.length === 0
                         ? <span style={{ color: '#CBD5E1' }}>·</span>
                         : celda.map((x, k) => (
@@ -897,6 +937,11 @@ function TablaPlanilla({ planilla, onCorregir, ahora }: {
                                          onCorregir={onCorregir} ahora={ahora} />
                           ))}
                     </td>
+                    <td className={clase} style={TD_SEC}>
+                      <CeldaAuditor quienes={quienes}
+                        cuentasDelPicker={celda.map(x => x.cuenta ?? '').filter(Boolean)} />
+                    </td>
+                    </Fragment>
                   );
                 })}
               </tr>
@@ -914,6 +959,45 @@ function TablaPlanilla({ planilla, onCorregir, ahora }: {
           </tr>
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/**
+ * La celda de la columna «Auditor».
+ *
+ * Vacía cuando nadie auditó, que son siete de cada diez: un «sin auditar» repetido sería más
+ * tinta que dato, y la planilla ya usa el punto gris para «acá no hay nada».
+ *
+ * El cartel ámbar cuando el auditor es la misma cuenta que pickeó NO es un error del sistema:
+ * pasa poco y puede pasar. Solo conviene que se vea.
+ */
+function CeldaAuditor({ quienes, cuentasDelPicker }: {
+  quienes: readonly AuditorCelda[];
+  cuentasDelPicker: readonly string[];
+}) {
+  if (quienes.length === 0) return <span style={{ color: '#CBD5E1' }}>·</span>;
+  return (
+    <div style={{ display: 'grid', gap: 3 }}>
+      {quienes.map(a => {
+        const solo = seAuditoSolo(cuentasDelPicker, a);
+        return (
+          <div key={a.cuenta} style={{ display: 'grid', gap: 1 }}>
+            <span style={{ color: solo ? '#B45309' : '#6D28D9', fontSize: 12.5 }}>{a.nombre}</span>
+            {a.hora && (
+              <span style={{ color: '#94A3B8', fontSize: 11,
+                             fontVariantNumeric: 'tabular-nums' }}>{a.hora}</span>
+            )}
+            {solo && (
+              <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.04em',
+                             textTransform: 'uppercase', color: '#B45309', background: '#FEF3C7',
+                             borderRadius: 4, padding: '1px 5px', justifySelf: 'start' }}>
+                mismo que pickeó
+              </span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1308,11 +1392,19 @@ const FIRMAS = `<div class="firmas">
  *
  * ── LA COLUMNA «AUDITOR» ──────────────────────────────────────────────────────────────────────
  *
- * Va VACÍA a propósito: es para escribir a mano quién auditó esa sección. El sistema no tiene de
- * dónde sacarla —en Odoo no hay un auditor por movimiento— y una columna con un dato inventado
- * sería peor que una en blanco. Pedido del coordinador, 16/11/2026.
+ * Hasta el 19/11/2026 iba VACÍA a propósito, y el motivo escrito acá era: «el sistema no tiene de
+ * dónde sacarla — en Odoo no hay un auditor por movimiento». **Esa premisa resultó falsa.** Al
+ * auditar, Odoo crea un movimiento gemelo del original con la palabra AUDITORIA delante del
+ * origen y el auditor como responsable; el origen dice tienda, sección y fecha. Ver
+ * `planilla/auditores.ts`, donde está medido.
+ *
+ * Así que ahora imprime **lo que haya al momento de dar clic**, y lo que todavía no se auditó
+ * sigue saliendo en blanco para escribir a mano. Importa cuándo se imprime: el 19/11/2026 las
+ * auditorías se cerraron entre las 13:12 y las 19:07, así que una hoja de media mañana sale casi
+ * toda en blanco y una del cierre, casi toda llena. Decisión del coordinador, 19/11/2026.
  */
-function htmlPlanilla(p: Planilla, fecha: string, recorte = ''): string {
+function htmlPlanilla(p: Planilla, fecha: string,
+                      auditores: ReadonlyMap<string, AuditorCelda[]>, recorte = ''): string {
   const th = ['<th style="width:26px">#</th>', '<th style="width:50px">Tienda</th>'];
   for (const s of SECCIONES) {
     th.push(`<th class="der" style="width:40px">${esc(s === 'Chocolates' ? 'Choc.' : s)}</th>`);
@@ -1337,9 +1429,12 @@ function htmlPlanilla(p: Planilla, fecha: string, recorte = ''): string {
           const m = x.backorderDe ? esc(marcaBackorder(x.backorderDe)) + ' ' : '';
           return m + esc(x.picker ? corto(x.picker) : x.backorderDe ? '' : '—');
         }).join('<br>')}</td>`);
-      // Para escribir a mano. Una sección sin carga lleva el mismo gris que su «Usuario»: no hay
-      // nada que auditar ahí y pedir una firma sobre una celda vacía confunde.
-      tds.push(`<td class="aud ${clase}"></td>`);
+      // Lo que ya se auditó sale impreso; lo que no, en blanco para escribir a mano. Una sección
+      // sin carga lleva el mismo gris que su «Usuario»: no hay nada que auditar ahí y pedir una
+      // firma sobre una celda vacía confunde.
+      const quienes = auditores.get(claveCelda(f.cod, s)) ?? [];
+      tds.push(`<td class="aud ${clase}" style="font-size:8px">${
+        quienes.map(a => esc(corto(a.nombre))).join('<br>')}</td>`);
     }
     return '<tr>' + tds.join('') + '</tr>';
   });
