@@ -409,6 +409,9 @@ export function PickingScreen() {
 
   const [labelConfig, setLabelConfig]     = useLocalStorage<LabelConfig>(LABEL_CONFIG_KEY, DEFAULT_LABEL_CONFIG);
   const [canonicalNames, setCanonicalNames] = useLocalStorage<Record<string, string>>(CANONICAL_NAMES_KEY, {});
+  // El nombre de la planilla del bono, por cuenta. No se guarda en el navegador: no se usa
+  // para dibujar nada fuera de Configuración y lo que vale es lo que diga la base.
+  const [nombresOlas, setNombresOlas] = useState<Record<string, string>>({});
 
   // ── Shared session state: picker names + types visible across all supervisor desktops ──
   const [sessionStateRows, setSessionStateRows] = useState<SessionStateRow[]>([]);
@@ -1044,15 +1047,23 @@ export function PickingScreen() {
     try {
       const { data } = await supabase
         .from('picker_canonical_names')
-        .select('key, display_name')
+        .select('key, display_name, nombre_olas')
         .order('key');
       if (!data?.length) return;
       const next: Record<string, string> = {};
+      // `nombre_olas` va en su PROPIO mapa y no mezclado: son dos nombres distintos de la misma
+      // persona —el de la aplicación y el que escribe la planilla del bono— y confundirlos es lo
+      // que deja un bono en cero sin ningún error. Ver `ajustes/nombresDePicker.ts`.
+      const olas: Record<string, string> = {};
       // Una fila con el nombre VACÍO es una pistola que existe y no usa nadie. Descartarla acá
       // la hacía desaparecer de Configuración y de Estadísticas al recargar, aunque la fila
       // estuviera en la base. Ver `ajustes/nombresDePicker.ts`.
-      for (const r of data) next[r.key] = r.display_name ?? '';
+      for (const r of data) {
+        next[r.key] = r.display_name ?? '';
+        olas[r.key] = r.nombre_olas ?? '';
+      }
       setCanonicalNames(next);
+      setNombresOlas(olas);
     } catch { /* silent */ }
   }, []);
 
@@ -1085,8 +1096,11 @@ export function PickingScreen() {
 
   // `accion` dice si se guardó un nombre o se quitó la pistola. El servidor ya no lo deduce de
   // un nombre vacío: así era como borrarle el nombre a una cuenta la eliminaba entera.
-  const handleCanonicalNamesChange = useCallback((names: Record<string, string>, changedKey?: string, changedVal?: string, byName?: string, accion: 'nombre' | 'quitar' = 'nombre') => {
-    setCanonicalNames(names); // persisted automatically by useLocalStorage
+  const handleCanonicalNamesChange = useCallback((names: Record<string, string>, changedKey?: string, changedVal?: string, byName?: string, accion: 'nombre' | 'quitar' | 'olas' = 'nombre') => {
+    // `olas` no cambia el nombre de la aplicación: cambia el de la planilla del bono, que vive en
+    // su propio mapa. Mandarlo a `setCanonicalNames` renombraría a la persona en toda la pantalla.
+    if (accion === 'olas') setNombresOlas(names);
+    else setCanonicalNames(names); // persisted automatically by useLocalStorage
     if (changedKey !== undefined) {
       void pickingFetch('/api/picker-canonical-names', {
         method: 'POST',
@@ -2398,6 +2412,7 @@ export function PickingScreen() {
               labelConfig={labelConfig}
               onLabelConfigChange={setLabelConfig}
               canonicalNames={canonicalNames}
+              nombresOlas={nombresOlas}
               onCanonicalNamesChange={handleCanonicalNamesChange}
               colsPerRow={colsPerRow}
               onColsPerRowChange={handleColsPerRowChange}

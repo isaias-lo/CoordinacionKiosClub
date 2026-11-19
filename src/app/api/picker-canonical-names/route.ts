@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   if (!await verifyAuth(request)) return UNAUTH();
   const { data, error } = await supabaseServer()
     .from('picker_canonical_names')
-    .select('key, display_name, updated_by_name, updated_at')
+    .select('key, display_name, nombre_olas, updated_by_name, updated_at')
     .order('key');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ data });
@@ -28,12 +28,27 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   if (!await verifyAuth(request)) return UNAUTH();
   const body = await request.json() as {
-    key: string; display_name: string; updated_by_name?: string; accion?: 'nombre' | 'quitar';
+    key: string; display_name: string; updated_by_name?: string;
+    accion?: 'nombre' | 'quitar' | 'olas';
   };
   const sb = supabaseServer();
 
   const newName = body.display_name?.trim() ?? '';
   const byName  = body.updated_by_name?.trim() ?? '';
+
+  // `olas` escribe el nombre con el que la planilla del bono busca a la persona, y SOLO ese: no
+  // toca `display_name`. Hasta el 19/11/2026 esta columna solo se podía cargar por SQL, así que
+  // un picker agregado desde Configuración nunca quedaba registrado en la hoja — se veía
+  // completo en la aplicación y sus filas salían en blanco. Ver `ajustes/nombresDePicker.ts`.
+  if (body.accion === 'olas') {
+    const { error } = await sb
+      .from('picker_canonical_names')
+      .update({ nombre_olas: newName || null, updated_by_name: byName,
+                updated_at: new Date().toISOString() })
+      .eq('key', body.key);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
 
   if (body.accion === 'quitar') {
     const { error } = await sb.from('picker_canonical_names').delete().eq('key', body.key);
