@@ -4,15 +4,20 @@ import React, { useState, useEffect } from 'react';
 import { RotateCcw, Plus, X, Check, AlertTriangle } from 'lucide-react';
 import { LabelConfig, DEFAULT_LABEL_CONFIG, CFG_SLIDER_CSS, BarcodeCard, PropRow } from '@/features/despacho/shared/BarcodeCard';
 import { buildPickerKeyList, isCustomPickerKey } from '../picking-utils';
-import { guardarNombre, quitarPicker } from '../ajustes/nombresDePicker';
+import { faltaNombreOlas, guardarNombre, guardarNombreOlas, quitarPicker } from '../ajustes/nombresDePicker';
 import { InlineConfirm } from './InlineConfirm';
 import { VistaConfiguracion } from '../ajustes/VistaConfiguracion';
 
 // ─── PickerNameRow ────────────────────────────────────────────────────────────
 
-function PickerNameRow({ pickerKey, savedValue, onSave, onRemove }: {
+function PickerNameRow({ pickerKey, savedValue, olasValue, falta, onSave, onSaveOlas, onRemove }: {
   pickerKey: string; savedValue: string;
+  /** El nombre con el que la planilla del bono busca a esta persona (`nombre_olas`). */
+  olasValue: string;
+  /** Hay persona y no hay nombre de planilla: su trabajo no se registra. */
+  falta: boolean;
   onSave: (key: string, val: string) => void;
+  onSaveOlas: (key: string, val: string) => void;
   /** Solo para pickers agregados (custom): muestra la ✕ para eliminarlos. */
   onRemove?: (key: string) => void;
 }) {
@@ -21,7 +26,21 @@ function PickerNameRow({ pickerKey, savedValue, onSave, onRemove }: {
   const [pendingAction, setPendingAction] = useState<'save' | 'remove' | null>(null);
   const isDirty = draft !== savedValue;
 
+  // El nombre de la planilla se guarda SIN confirmación: cambiarlo no renombra a nadie en la
+  // aplicación ni borra nada — solo decide con qué texto sale esa persona en la hoja del bono.
+  const [olas, setOlas] = useState(olasValue);
+  const [olasStatus, setOlasStatus] = useState<'idle' | 'saved'>('idle');
+  const olasDirty = olas !== olasValue;
+
   useEffect(() => { setDraft(savedValue); }, [savedValue]);
+  useEffect(() => { setOlas(olasValue); }, [olasValue]);
+
+  const saveOlas = () => {
+    if (!olasDirty) return;
+    onSaveOlas(pickerKey, olas);
+    setOlasStatus('saved');
+    setTimeout(() => setOlasStatus('idle'), 2000);
+  };
 
   const requestSave = () => { if (isDirty) setPendingAction('save'); };
   const confirmSave = () => {
@@ -66,6 +85,31 @@ function PickerNameRow({ pickerKey, savedValue, onSave, onRemove }: {
           </button>
         )}
       </div>
+      {/* El nombre de la planilla del bono. Va debajo y más chico: es un dato de la hoja de
+          Mario, no el nombre con el que se ve a la persona en la aplicación. */}
+      <div className="flex items-center gap-2 mt-1.5 pl-[6.5rem]">
+        <input
+          type="text" value={olas} placeholder="Nombre en la planilla del bono…"
+          aria-label={`Nombre en la planilla del bono para ${pickerKey}`}
+          onChange={e => setOlas(e.target.value)}
+          onBlur={saveOlas}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveOlas(); } }}
+          className="flex-1 min-w-0 border rounded px-2.5 py-1 text-[12px] bg-white outline-none transition-colors"
+          style={{ borderColor: olasDirty ? '#D97706' : olasStatus === 'saved' ? '#16A34A'
+                                 : falta ? '#D97706' : '#E2E8F0',
+                   background: falta && !olasDirty ? '#FFFBEB' : '#fff', color: '#334155' }}
+        />
+        {olasStatus === 'saved' && (
+          <span className="text-[12px] shrink-0 flex items-center" style={{ color: '#16A34A' }} aria-live="polite">
+            <Check size={12} aria-label="Guardado" />
+          </span>
+        )}
+      </div>
+      {falta && !olasDirty && (
+        <div className="text-[11px] mt-1 pl-[6.5rem]" style={{ color: '#B45309' }}>
+          Sin esto, lo que pickee no se escribe en la planilla de olas.
+        </div>
+      )}
       {pendingAction === 'save' && (
         <InlineConfirm
           message={`Cambiar nombre: "${oldLabel}" → "${newLabel}". Será visible para todos.`}
@@ -89,9 +133,11 @@ interface Props {
   labelConfig:           LabelConfig;
   onLabelConfigChange:   (cfg: LabelConfig) => void;
   canonicalNames:        Record<string, string>;
-  /** `accion` distingue guardar un nombre de QUITAR la pistola. Sin ella se asume `'nombre'`,
-   *  que es el lado que no borra nada. */
-  onCanonicalNamesChange:(names: Record<string, string>, changedKey?: string, changedVal?: string, byName?: string, accion?: 'nombre' | 'quitar') => void;
+  /** `nombre_olas` por cuenta: el nombre con el que la planilla del bono busca a cada persona. */
+  nombresOlas:           Record<string, string>;
+  /** `accion` distingue guardar un nombre de QUITAR la pistola y de guardar el nombre de la
+   *  planilla del bono. Sin ella se asume `'nombre'`, que es el lado que no borra nada. */
+  onCanonicalNamesChange:(names: Record<string, string>, changedKey?: string, changedVal?: string, byName?: string, accion?: 'nombre' | 'quitar' | 'olas') => void;
   colsPerRow:            number;
   onColsPerRowChange:    (n: number) => void;
   currentUserName:       string;
@@ -99,7 +145,7 @@ interface Props {
   escritorio?:           boolean;
 }
 
-export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, onCanonicalNamesChange, colsPerRow, onColsPerRowChange, currentUserName, escritorio = false }: Props) {
+export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, nombresOlas, onCanonicalNamesChange, colsPerRow, onColsPerRowChange, currentUserName, escritorio = false }: Props) {
   const previewScale = 0.50;
   // Altura base subida de 600→780: con la fila de Batch/Hora término y el código de tienda
   // más grande, el contenido real de la etiqueta ya no cabía en 600px y se recortaba por abajo.
@@ -149,6 +195,13 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
     onCanonicalNamesChange(c.names, key, c.envio.display_name, currentUserName, c.envio.accion);
   };
 
+  // El nombre de la planilla del bono viaja por el MISMO canal con `accion: 'olas'`, y el
+  // servidor escribe solo esa columna. Ver `api/picker-canonical-names`.
+  const handleOlasSave = (key: string, val: string) => {
+    const c = guardarNombreOlas(nombresOlas, key, val);
+    onCanonicalNamesChange(c.names, key, c.envio.display_name, currentUserName, c.envio.accion);
+  };
+
   const handleAddPicker = () => {
     const key = newPicker.trim();
     if (!key) return;
@@ -174,8 +227,9 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
   if (escritorio) {
     return (
       <VistaConfiguracion labelConfig={labelConfig} onLabelConfigChange={onLabelConfigChange}
-        pickerKeys={pickerKeys} canonicalNames={canonicalNames} esAgregado={isCustomPickerKey}
-        onGuardarNombre={handleNameSave} onQuitarPicker={handleRemovePicker}
+        pickerKeys={pickerKeys} canonicalNames={canonicalNames} nombresOlas={nombresOlas}
+        esAgregado={isCustomPickerKey}
+        onGuardarNombre={handleNameSave} onGuardarOlas={handleOlasSave} onQuitarPicker={handleRemovePicker}
         onAgregarPicker={key => {
           if (pickerKeys.some(k => k.toLowerCase() === key.toLowerCase())) return `Ya existe un picker o pistola con el nombre «${key}».`;
           onCanonicalNamesChange({ ...canonicalNames, [key]: key }, key, key, currentUserName);
@@ -318,7 +372,9 @@ export function ConfigTab({ labelConfig, onLabelConfigChange, canonicalNames, on
               {pickerKeys.map(key => (
                 <PickerNameRow
                   key={key} pickerKey={key} savedValue={canonicalNames[key] ?? ''}
-                  onSave={handleNameSave}
+                  olasValue={nombresOlas[key] ?? ''}
+                  falta={faltaNombreOlas(canonicalNames, nombresOlas, key)}
+                  onSave={handleNameSave} onSaveOlas={handleOlasSave}
                   onRemove={isCustomPickerKey(key) ? handleRemovePicker : undefined}
                 />
               ))}

@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { LabelConfig, DEFAULT_LABEL_CONFIG, BarcodeCard } from '@/features/despacho/shared/BarcodeCard';
 import { InlineConfirm } from '../components/InlineConfirm';
 import { Ayudita } from '../marco/Ayudita';
+import { faltaNombreOlas } from './nombresDePicker';
 
 type Pestana = 'etiqueta' | 'nombres' | 'pantalla';
 type Numero = { [K in keyof LabelConfig]: LabelConfig[K] extends number ? K : never }[keyof LabelConfig];
@@ -64,8 +65,11 @@ interface Props {
   onLabelConfigChange: (cfg: LabelConfig) => void;
   pickerKeys: string[];
   canonicalNames: Record<string, string>;
+  /** `nombre_olas` por cuenta: con qué texto la planilla del bono busca a cada persona. */
+  nombresOlas: Record<string, string>;
   esAgregado: (key: string) => boolean;
   onGuardarNombre: (key: string, val: string) => void;
+  onGuardarOlas: (key: string, val: string) => void;
   onAgregarPicker: (key: string) => string | null;
   onQuitarPicker: (key: string) => void;
   colsPerRow: number;
@@ -176,7 +180,7 @@ function Nombres(p: Props) {
   return (
     <div className="pk-card pk-nombres" style={{ maxWidth: 720 }}>
       <div className="pk-card-t" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-        Nombres de pickers<span className="pk-sp" /><span className="pk-sub" style={{ fontWeight: 400 }}>Cómo sale en Odoo → cómo sale en la etiqueta</span>
+        Nombres de pickers<span className="pk-sp" /><span className="pk-sub" style={{ fontWeight: 400 }}>Cómo sale en Odoo → cómo sale en la etiqueta → cómo sale en la planilla del bono</span>
       </div>
       <div className="pk-hrow" style={{ padding: '10px 14px', borderBottom: '1px solid #E4E7EC', background: '#F8F9FB' }}>
         <span className="pk-field" style={{ flex: 1 }}>
@@ -190,7 +194,10 @@ function Nombres(p: Props) {
       <table className="pk-tabla" aria-label="Nombres de pickers">
         <tbody>
           {p.pickerKeys.map(k => (
-            <FilaNombre key={k} pickerKey={k} guardado={p.canonicalNames[k] ?? ''} onGuardar={p.onGuardarNombre}
+            <FilaNombre key={k} pickerKey={k} guardado={p.canonicalNames[k] ?? ''}
+              olas={p.nombresOlas[k] ?? ''}
+              falta={faltaNombreOlas(p.canonicalNames, p.nombresOlas, k)}
+              onGuardar={p.onGuardarNombre} onGuardarOlas={p.onGuardarOlas}
               onQuitar={p.esAgregado(k) ? p.onQuitarPicker : undefined} />
           ))}
         </tbody>
@@ -200,15 +207,32 @@ function Nombres(p: Props) {
 }
 
 /** Misma lógica que PickerNameRow (ConfigTab): guardar y quitar piden confirmación. */
-function FilaNombre({ pickerKey, guardado, onGuardar, onQuitar }: {
+function FilaNombre({ pickerKey, guardado, olas, falta, onGuardar, onGuardarOlas, onQuitar }: {
   pickerKey: string; guardado: string;
+  /** El nombre con el que la planilla del bono busca a esta persona (`nombre_olas`). */
+  olas: string;
+  /** Hay persona y no hay nombre de planilla: su trabajo no se registra en la hoja. */
+  falta: boolean;
   onGuardar: (key: string, val: string) => void;
+  onGuardarOlas: (key: string, val: string) => void;
   onQuitar?: (key: string) => void;
 }) {
   const [borrador, setBorrador] = useState(guardado);
   const [listo, setListo] = useState(false);
   const [pendiente, setPendiente] = useState<'guardar' | 'quitar' | null>(null);
+  // El nombre de la planilla se guarda al salir del campo, sin confirmación: no renombra a nadie
+  // en la aplicación ni borra nada — solo decide con qué texto sale esa persona en la hoja.
+  const [borradorOlas, setBorradorOlas] = useState(olas);
+  const [listoOlas, setListoOlas] = useState(false);
+  const cambiadoOlas = borradorOlas !== olas;
+  const guardarOlas = () => {
+    if (!cambiadoOlas) return;
+    onGuardarOlas(pickerKey, borradorOlas);
+    setListoOlas(true);
+    setTimeout(() => setListoOlas(false), 2000);
+  };
   useEffect(() => { setBorrador(guardado); }, [guardado]);
+  useEffect(() => { setBorradorOlas(olas); }, [olas]);
   const cambiado = borrador !== guardado;
   const confirmar = () => {
     onGuardar(pickerKey, borrador);
@@ -226,6 +250,21 @@ function FilaNombre({ pickerKey, guardado, onGuardar, onQuitar }: {
               onKeyDown={e => { if (e.key === 'Enter' && cambiado) { e.preventDefault(); setPendiente('guardar'); } }} />
           </span>
         </td>
+        <td style={{ width: 230 }}>
+          <span className={`pk-field${cambiadoOlas ? ' cambiado' : listoOlas ? ' listo' : ''}`}>
+            <input value={borradorOlas} placeholder="Nombre en la planilla del bono…"
+              aria-label={`Nombre en la planilla del bono para ${pickerKey}`}
+              style={falta && !cambiadoOlas ? { background: '#FFFBEB' } : undefined}
+              onChange={e => setBorradorOlas(e.target.value)}
+              onBlur={guardarOlas}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); guardarOlas(); } }} />
+          </span>
+          {falta && !cambiadoOlas && (
+            <div className="pk-sub" style={{ color: '#B45309', marginTop: 3 }}>
+              Sin esto, lo que pickee no se escribe en la planilla de olas.
+            </div>
+          )}
+        </td>
         <td style={{ width: 110, textAlign: 'right', whiteSpace: 'nowrap' }}>
           {cambiado
             ? <button type="button" className="pk-btn pri" style={{ padding: '4px 10px' }} onClick={() => setPendiente('guardar')}>Guardar</button>
@@ -239,7 +278,7 @@ function FilaNombre({ pickerKey, guardado, onGuardar, onQuitar }: {
         </td>
       </tr>
       {pendiente && (
-        <tr><td colSpan={3}>
+        <tr><td colSpan={4}>
           {pendiente === 'guardar' ? (
             <InlineConfirm message={`Cambiar nombre: «${guardado || pickerKey}» → «${borrador.trim() || '(sin nombre)'}». Lo verán todos.`}
               confirmLabel="Guardar" onCancel={() => setPendiente(null)} onConfirm={confirmar} />

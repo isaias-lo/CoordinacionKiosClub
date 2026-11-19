@@ -28,7 +28,7 @@
 // nombre que nadie confirmó no se adivina. Ver `planilla/registroOlas.ts`.
 
 /** Qué se le pide al servidor. El servidor NO lo deduce del nombre vacío: se le dice. */
-export type AccionNombre = 'nombre' | 'quitar';
+export type AccionNombre = 'nombre' | 'quitar' | 'olas';
 
 export interface CambioDeNombre {
   /** El mapa que queda en el cliente. Una pistola sin nombre sigue presente, con `''`. */
@@ -63,6 +63,54 @@ export function quitarPicker(
   const names = { ...actuales };
   delete names[key];
   return { names, envio: { key, display_name: '', accion: 'quitar' } };
+}
+
+/**
+ * Guardar el nombre con el que la persona aparece en la planilla del bono.
+ *
+ * ── POR QUÉ ES UN CAMPO APARTE Y NO EL MISMO ──────────────────────────────────────────────────
+ *
+ * Son dos nombres distintos y los dos tienen que existir:
+ *
+ *   `display_name`  el de la aplicación y la etiqueta impresa — lo elige el coordinador.
+ *   `nombre_olas`   el de la hoja «Abastecimiento por Olas» — lo manda la lista de Mario.
+ *
+ * El registro de olas escribe la columna F con `nombre_olas`, y del otro lado `Bono Picking` cruza
+ * por ese texto con un SUMIFS. Una letra de diferencia no da error: el XLOOKUP encuentra el
+ * nombre, el SUMIFS no, y el bono queda en cero en silencio. Por eso no se deduce del
+ * `display_name` — se escribe tal cual lo pide esa hoja.
+ *
+ * ── POR QUÉ HACÍA FALTA ESTA PANTALLA ─────────────────────────────────────────────────────────
+ *
+ * Hasta el 19/11/2026 `nombre_olas` solo se podía cargar por SQL. Matías Pereira y Marcela Ulloa
+ * se agregaron en Configuración el 18/11 y el registro saltó sus filas los dos días siguientes:
+ * en la aplicación se veían completos y en la hoja no salían. Cinco celdas a mano.
+ */
+export function guardarNombreOlas(
+  actuales: Readonly<Record<string, string>>,
+  key: string,
+  valor: string,
+): CambioDeNombre {
+  const nombre = valor.trim();
+  return {
+    names: { ...actuales, [key]: nombre },
+    envio: { key, display_name: nombre, accion: 'olas' },
+  };
+}
+
+/**
+ * ¿Esta pistola tiene persona pero no tiene nombre para la planilla del bono?
+ *
+ * Es el aviso de Configuración. Vacío NO es un error por sí solo: una pistola sin persona
+ * —«Sin asignar»— tampoco necesita nombre de planilla, y marcarla sería ruido. Lo que hay que
+ * ver es la combinación: alguien asignado cuyo trabajo la hoja no va a registrar.
+ */
+export function faltaNombreOlas(
+  canonicalNames: Readonly<Record<string, string>>,
+  nombresOlas: Readonly<Record<string, string>>,
+  key: string,
+): boolean {
+  return !!canonicalNames[key]?.trim() && !nombresOlas[key]?.trim();
 }
 
 /**
