@@ -83,6 +83,14 @@ export interface MovimientoPlanilla {
 export interface CeldaPlanilla {
   registros: number;
   picker: string;
+  /**
+   * La cuenta de Odoo que hizo el movimiento.
+   *
+   * Hace falta para comparar contra el auditor: dos cuentas distintas pueden mostrar la misma
+   * persona, así que preguntar por el nombre marcaría «se auditó solo» donde no lo hizo. Ver
+   * `planilla/auditores.ts`.
+   */
+  cuenta?: string;
   /** La referencia de Odoo del movimiento de esta celda: es lo que se manda al corregir. */
   ref?: string;
   /** El id de su fila en `planilla_movimientos`, si ya se corrigió antes. */
@@ -196,6 +204,7 @@ export function armarPlanilla(
         .sort(porAsignacion)
         .map(m => ({ registros: m.registros, picker: m.picker, ref: m.ref, id: m.id,
                      origen: m.origen, pickerOdoo: m.pickerOdoo, backorderDe: m.backorderDe,
+                     cuenta: m.cuenta,
                      asignadoEn: m.asignadoEn, validadoEn: m.validadoEn }));
     }
     return { cod: t.cod, zona: t.zona, celdas, sinCarga: suyos.length === 0 };
