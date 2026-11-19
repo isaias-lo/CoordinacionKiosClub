@@ -251,6 +251,60 @@ export function filasEsqueleto(
   return filas;
 }
 
+/** Un tramo de filas de la columna B que va combinado, en índices 0-based dentro del bloque. */
+export interface GrupoTienda {
+  /** Primera fila del grupo, la que lleva el código. */
+  desde: number;
+  /** Última fila del grupo, inclusive. */
+  hasta: number;
+}
+
+/**
+ * Qué tramos de la columna B hay que combinar: uno por tienda, sobre sus secciones.
+ *
+ * ── POR QUÉ HACE FALTA CALCULARLOS ────────────────────────────────────────────────────────────
+ *
+ * La hoja viene prearmada hasta la fila ~42.999 con la columna B combinada **cada tres filas, de
+ * corrido**, desde un ancla fija. Esa rejilla no sirve: un bloque no mide un múltiplo de tres
+ * —después de las tiendas vienen las de chocolates, las dos de congelados y, los lunes y
+ * miércoles, la de Falabella Full— así que cada día empieza corrido respecto del anterior.
+ * Medido el 19/11/2026: el bloque del 18 terminó en la fila 36.904 y el del 19 arrancó en la
+ * 36.905, que cae en mitad del grupo prearmado 36.903–36.905.
+ *
+ * Así que las combinaciones se ponen sobre los grupos REALES, calculados acá.
+ *
+ * ── DÓNDE TERMINA UN GRUPO ────────────────────────────────────────────────────────────────────
+ *
+ * Un grupo arranca en una fila con código de tienda y sigue mientras las siguientes vengan sin
+ * código. Pero **se corta antes de una sección que no es de tienda**: chocolates, congelados y
+ * Falabella Full también vienen con la columna B vacía, y sin este corte quedarían absorbidas por
+ * la última tienda del día — su recuadro se estiraría seis filas de más.
+ *
+ * Un grupo de una sola fila no se devuelve: combinar una celda consigo misma no es nada, y la API
+ * de Sheets lo rechaza.
+ */
+export function gruposDeTienda(filas: readonly FilaNueva[]): GrupoTienda[] {
+  const propias = new Set<string>(POR_TIENDA.map(s => SECCION_EN_HOJA[s]));
+  const grupos: GrupoTienda[] = [];
+  let actual: GrupoTienda | null = null;
+
+  const cerrar = () => {
+    if (actual && actual.hasta > actual.desde) grupos.push(actual);
+    actual = null;
+  };
+
+  filas.forEach((f, i) => {
+    if (!propias.has(f.seccion)) { cerrar(); return; }
+    if (f.tienda.trim()) { cerrar(); actual = { desde: i, hasta: i }; return; }
+    if (actual) actual.hasta = i;
+    // Una sección de tienda sin código y sin grupo abierto no puede pertenecer a nadie: se deja
+    // sin combinar en vez de colgarla del grupo anterior, que sería inventarle una tienda.
+  });
+  cerrar();
+
+  return grupos;
+}
+
 /**
  * Las tres fórmulas de una fila, con su número ya puesto.
  *

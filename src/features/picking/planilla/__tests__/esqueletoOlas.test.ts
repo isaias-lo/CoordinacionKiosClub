@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   AMARILLO, CIAN, FALABELLA_EN_HOJA, FALABELLA_GRAFIAS_VIEJAS, SECCION_EN_HOJA,
   SECCIONES_A_MANO, colorAlternado, describirEsqueleto,
-  diaDeSemana, filaFalabella, filasEsqueleto, formulasDe,
+  diaDeSemana, filaFalabella, filasEsqueleto, formulasDe, gruposDeTienda,
 } from '../esqueletoOlas';
 import type { MovimientoPlanilla } from '../armarPlanilla';
 
@@ -56,6 +56,54 @@ describe('colorAlternado', () => {
     for (const _ of ['30', '31', '01', '02']) { c = colorAlternado(c); serie.push(c); }
     expect(serie).toEqual([AMARILLO, CIAN, AMARILLO, CIAN]);
     for (let i = 1; i < serie.length; i++) expect(serie[i]).not.toBe(serie[i - 1]);
+  });
+});
+
+describe('gruposDeTienda · qué se combina en la columna B', () => {
+  const fila = (tienda: string, seccion: string) => ({ tienda, seccion });
+  const tienda = (cod: string) => [
+    fila(cod, 'COMIDA'), fila('', 'ASEO '), fila('', 'HOGAR'),
+  ];
+
+  it('un grupo por tienda, de tres filas', () => {
+    expect(gruposDeTienda([...tienda('57CAS'), ...tienda('28TEM')]))
+      .toEqual([{ desde: 0, hasta: 2 }, { desde: 3, hasta: 5 }]);
+  });
+
+  it('corta antes de chocolates, congelados y Falabella: no son de ninguna tienda', () => {
+    // Es el bloque real del 19/11/2026 en chico: tiendas, después la cola sin tienda.
+    const filas = [
+      ...tienda('57CAS'),
+      fila('', 'CHOCOLATES'), fila('', 'CHOCOLATES'),
+      fila('', 'CONGELADOS'), fila('', 'CONGELADOS'),
+      fila('', FALABELLA_EN_HOJA),
+    ];
+    // Sin el corte, el grupo de 57CAS se estiraría de la fila 0 a la 7.
+    expect(gruposDeTienda(filas)).toEqual([{ desde: 0, hasta: 2 }]);
+  });
+
+  it('el bloque entero de un lunes tiene un grupo por tienda y ni uno más', () => {
+    const filas = filasEsqueleto(['57CAS', '28TEM', '60PBL'], [], LUNES);
+    const grupos = gruposDeTienda(filas);
+    expect(grupos).toHaveLength(3);
+    expect(grupos.every(g => g.hasta - g.desde === 2)).toBe(true);
+    // Lo que queda fuera: la fila de chocolates, las dos de congelados y la de Falabella Full.
+    // Son cuatro y no cinco porque sin movimientos va UNA sola de chocolates (`Math.max(1, 0)`).
+    expect(filas.length - grupos.reduce((n, g) => n + (g.hasta - g.desde + 1), 0)).toBe(4);
+  });
+
+  it('una tienda con una sola sección no se combina', () => {
+    expect(gruposDeTienda([fila('57CAS', 'COMIDA'), fila('28TEM', 'COMIDA')])).toEqual([]);
+  });
+
+  it('una sección de tienda sin código y sin grupo abierto se deja sola', () => {
+    // No se le cuelga al grupo anterior: eso sería inventarle una tienda.
+    expect(gruposDeTienda([fila('', 'ASEO '), ...tienda('57CAS')]))
+      .toEqual([{ desde: 1, hasta: 3 }]);
+  });
+
+  it('sin filas no devuelve nada', () => {
+    expect(gruposDeTienda([])).toEqual([]);
   });
 });
 
