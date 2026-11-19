@@ -9,7 +9,7 @@ import { rendimientoPorPicker } from '@/features/picking/seguimiento/rendimiento
 import { agruparPorDia } from '@/features/picking/planilla/diasPendientes';
 import { ESPECIALIDADES, especialidadDeOrigin } from '@/features/picking/seguimiento/especialidad';
 import { unidadesPorMovimiento, unidadesSonDudosas, type GrupoMoveLine } from '@/features/picking/seguimiento/unidadesDeOdoo';
-import { agruparAperturas, esApertura, type MovimientoApertura } from '@/features/despacho/shared/aperturaOdoo';
+import { agruparAperturas, esApertura, esAuditoria, type MovimientoApertura } from '@/features/despacho/shared/aperturaOdoo';
 import { camposAPedir, camposMedidaDe, camposNumericosConValor, esTextoDeMedida, normalizarCodigo, productoDesdeOdoo, type DefinicionCampos } from '@/features/despacho/shared/productosBodega';
 
 // Credentials are read from server-side env vars only — never from the request body.
@@ -904,11 +904,17 @@ export async function POST(req: NextRequest) {
         origin: string | false;
       }>;
 
-      if (!rawPickings.length) {
+      // El `not ilike 'AUDITORIA'` de arriba compara contra una palabra escrita a mano y deja
+      // pasar las erratas: el 19/11/2026 una decía «AUDIOTORIA». Una auditoría colada acá no se
+      // ve como un error — se ve como un picker que hizo 89 unidades más, y esas unidades son la
+      // base del CPH y de la tendencia. Ver `esAuditoria`.
+      const pickings = rawPickings.filter(p => !esAuditoria(typeof p.origin === 'string' ? p.origin : ''));
+
+      if (!pickings.length) {
         return NextResponse.json({ stats: [], dateFrom, dateTo });
       }
 
-      const pickingIds = rawPickings.map(p => p.id);
+      const pickingIds = pickings.map(p => p.id);
 
       // 2. Unidades y líneas por picking, desde stock.move.line.
       //
@@ -993,7 +999,7 @@ export async function POST(req: NextRequest) {
       //    se traduce la forma de Odoo a la suya. Ver el comentario de ese archivo: la versión que
       //    estaba acá medía desde `scheduled_date`, descartaba el 14% en silencio y dividía la
       //    suma de las que contó por el total de todas.
-      const crudas = rawPickings.map(p => {
+      const crudas = pickings.map(p => {
           const ml = mlByPicking[p.id];
           return {
             userId:   Array.isArray(p.user_id) ? p.user_id[0] : 0,
@@ -1018,7 +1024,10 @@ export async function POST(req: NextRequest) {
         [e, rendimientoPorPicker(crudas.filter(o => o.especialidad === e), canonicos).filas]));
 
       return NextResponse.json({
-        stats: filas, porEspecialidad, dateFrom, dateTo, total: rawPickings.length,
+        // `total` son los movimientos MEDIDOS, ya sin las auditorías que se colaron por una
+        // errata. `truncado`, en cambio, mira lo que Odoo devolvió de verdad: es lo que se
+        // compara contra el tope.
+        stats: filas, porEspecialidad, dateFrom, dateTo, total: pickings.length,
         // Lo que no se pudo medir se informa; la pantalla lo muestra en vez de esconderlo.
         sinMedir, sinResponsable,
         // El tope de 8.000 corta en silencio: un período más largo devolvería números BAJOS sin
