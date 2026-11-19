@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  esApertura, categoriaDeOrigin, agruparAperturas, diaPropuesto, desgloseEnPalabras,
+  esApertura, esAuditoria, categoriaDeOrigin, agruparAperturas, diaPropuesto, desgloseEnPalabras,
   type MovimientoApertura,
 } from '../aperturaOdoo';
 
@@ -23,6 +23,42 @@ describe('esApertura', () => {
     expect(esApertura(null)).toBe(false);
     expect(esApertura(undefined)).toBe(false);
     expect(esApertura('')).toBe(false);
+  });
+});
+
+describe('esAuditoria · el filtro que no depende de cómo se escribió la palabra', () => {
+  it('reconoce la grafía normal', () => {
+    expect(esAuditoria('AUDITORIA Abastecimiento Aseo 53VAL 19/11/2026')).toBe(true);
+    expect(esAuditoria('auditoria abastecimiento hogar 47PTV 19/11/2026')).toBe(true);
+  });
+
+  it('reconoce la ERRATA real del 19/11/2026, que el not ilike de Odoo dejó pasar', () => {
+    // 99REC/DT/153399: la T y la O cambiadas de lugar. Es la que dejó 53VAL Comida con dos
+    // responsables —Pickers 16 pickeó, Movimiento interno auditó— y obligó a llenar a mano.
+    expect(esAuditoria('AUDIOTORIA Abastecimiento Comida 53VAL 19/11/2026')).toBe(true);
+  });
+
+  it('la tilde no cambia nada', () => {
+    expect(esAuditoria('AUDITORÍA Abastecimiento Comida 05LP 19/11/2026')).toBe(true);
+    expect(esAuditoria('Auditoría Abastecimiento Hogar 26ALC 18/11/2026')).toBe(true);
+  });
+
+  it('un movimiento normal NO es auditoría', () => {
+    expect(esAuditoria('Abastecimiento Comida 53VAL 19/11/2026')).toBe(false);
+    expect(esAuditoria('Abastecimiento Apertura Hogar 62PLD 30/10/2026')).toBe(false);
+    expect(esAuditoria('PEGADOS Abastecimiento Comida 05LP 17/11/2026')).toBe(false);
+  });
+
+  it('no se come palabras parecidas que no lo son', () => {
+    // El límite de la regla: entre AUDI y ORIA caben hasta tres letras, no una palabra entera.
+    expect(esAuditoria('Abastecimiento Audio Comida 09LEO')).toBe(false);
+    expect(esAuditoria('Abastecimiento Accesoria 09LEO')).toBe(false);
+  });
+
+  it('vacío, null y undefined no son auditoría', () => {
+    expect(esAuditoria(null)).toBe(false);
+    expect(esAuditoria(undefined)).toBe(false);
+    expect(esAuditoria('')).toBe(false);
   });
 });
 

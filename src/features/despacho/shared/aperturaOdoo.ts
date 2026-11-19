@@ -39,6 +39,44 @@ export function esApertura(origin: string | null | undefined): boolean {
 }
 
 /**
+ * ¿Este movimiento es una AUDITORÍA y no trabajo de picking?
+ *
+ * Cuando alguien audita una tienda, Odoo crea un movimiento gemelo del original —las mismas
+ * líneas, la misma tienda, la misma sección— con el nombre del auditor como responsable. No es
+ * trabajo de picking y no puede contarse como tal.
+ *
+ * ── POR QUÉ NO ALCANZA CON EL FILTRO DE ODOO ──────────────────────────────────────────────────
+ *
+ * Las consultas ya piden `['origin', 'not ilike', 'AUDITORIA']`. Pero ese filtro compara contra
+ * UNA palabra escrita a mano, y el 19/11/2026 apareció `99REC/DT/153399`:
+ *
+ *     «AUDIOTORIA Abastecimiento Comida 53VAL 19/11/2026»   ← la T y la O cambiadas de lugar
+ *
+ * El `not ilike` no lo vio. Resultado: 53VAL Comida quedó con DOS responsables —Pickers 16, que
+ * pickeó las 89 líneas, y Movimiento interno, que las auditó— y el registro de olas saltó la fila
+ * entera («se deja a mano»), que es lo correcto cuando hay dos personas, pero el segundo nunca
+ * debió estar ahí. En el mismo período hubo **1 errata entre 714** movimientos de auditoría: no es
+ * frecuente, y por eso duele — pasa cada tanto y nunca se parece a un error.
+ *
+ * ── LA REGLA ──────────────────────────────────────────────────────────────────────────────────
+ *
+ * Se acepta cualquier cosa entre `AUDI` y `ORIA`: cubre AUDITORIA, AUDIOTORIA, AUDITORÍA y
+ * AUDIORIA. Los acentos se sacan antes de comparar, así que la tilde no cambia nada.
+ *
+ * No se vuelve más permisiva a propósito. Una regla del tipo «empieza con AUDI» también dejaría
+ * fuera un día a un movimiento legítimo que empezara así, y descartar trabajo real es peor que
+ * dejar pasar una auditoría: lo primero le quita unidades a una persona en silencio; lo segundo
+ * salta una fila y lo informa.
+ *
+ * El filtro de Odoo se queda donde está: baja el volumen de la consulta. Este es el segundo
+ * cerrojo, el que no depende de cómo se escribió la palabra.
+ */
+export function esAuditoria(origin: string | null | undefined): boolean {
+  const limpio = String(origin ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return /AUDI[A-Z]{0,3}ORIA/i.test(limpio);
+}
+
+/**
  * La categoría de un movimiento, sea de apertura o no.
  *
  * Existe porque el mapa de Picking busca `'Abastecimiento Comida'` con las dos palabras PEGADAS, y

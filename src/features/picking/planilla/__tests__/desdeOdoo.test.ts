@@ -30,6 +30,22 @@ describe('movimientosDesdeOdoo', () => {
     expect(m.estado).toBe('done');
   });
 
+  it('descarta la auditoría aunque venga con la errata «AUDIOTORIA»', () => {
+    // El caso real del 19/11/2026: 53VAL Comida tenía el movimiento de Pickers 16 (89 líneas,
+    // quien pickeó) y su gemelo de auditoría con Movimiento interno. El `not ilike 'AUDITORIA'`
+    // de la consulta no vio la errata, la celda quedó con dos personas y el registro de olas
+    // saltó la fila.
+    const movs = movimientosDesdeOdoo([
+      crudo({ origin: 'Abastecimiento Comida 27MCH 03/11/2026', responsable: 'Pickers 1' }),
+      crudo({ origin: 'AUDIOTORIA Abastecimiento Comida 27MCH 03/11/2026',
+              responsable: 'Pickers 15', ref: '99REC/DT/153399' }),
+      crudo({ origin: 'AUDITORIA Abastecimiento Comida 27MCH 03/11/2026',
+              responsable: 'Pickers 15', ref: '99REC/DT/153400' }),
+    ], NOMBRES, dias());
+    expect(movs).toHaveLength(1);
+    expect(movs[0].picker).toBe('Maria Camila');
+  });
+
   it('un código con Ñ se reconoce', () => {
     const [m] = movimientosDesdeOdoo(
       [crudo({ origin: 'Abastecimiento Aseo 23PEÑ 03/11/2026', responsable: 'Pickers 15' })],

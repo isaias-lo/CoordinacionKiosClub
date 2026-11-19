@@ -25,7 +25,7 @@
 // dice qué día le toca a cada una y acá se descarta todo lo demás. Sin este filtro, una tienda
 // normal sumaría dos veces: sus movimientos de hoy y los del día de la apertura.
 
-import { categoriaDeOrigin } from '@/features/despacho/shared/aperturaOdoo';
+import { categoriaDeOrigin, esAuditoria } from '@/features/despacho/shared/aperturaOdoo';
 import { resolveStoreCode } from '@/features/picking/picking-utils';
 import { SECCIONES, type MovimientoPlanilla, type SeccionPlanilla } from './armarPlanilla';
 import { indiceRegistros, resolverOrigen } from './backorders';
@@ -72,6 +72,12 @@ export function movimientosDesdeOdoo(
 
   const out: MovimientoPlanilla[] = [];
   for (const m of crudos) {
+    // Una auditoría es un movimiento GEMELO del original —mismas líneas, misma tienda, misma
+    // sección— con el auditor como responsable. La consulta a Odoo ya las descarta, pero por el
+    // texto exacto «AUDITORIA», y el 19/11/2026 una venía escrita «AUDIOTORIA»: se coló, 53VAL
+    // Comida quedó con dos personas y el registro de olas tuvo que saltar la fila. Ver
+    // `esAuditoria`.
+    if (esAuditoria(m.origin)) continue;
     const cat = categoriaDeOrigin(m.origin);
     // Congelados tiene su propia pestaña: no es de esta planilla.
     if (!cat || !ES_SECCION.has(cat)) continue;
