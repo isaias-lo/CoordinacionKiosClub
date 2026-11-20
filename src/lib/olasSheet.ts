@@ -19,7 +19,8 @@
 // media hoja. Ver `registroOlas.ts` para el porqué de cada columna.
 
 import { google } from 'googleapis';
-import { formulasDe, gruposDeTienda } from '@/features/picking/planilla/esqueletoOlas';
+import { formulasDe, gruposDeTienda, rangoASoltar }
+  from '@/features/picking/planilla/esqueletoOlas';
 import { fechaDeSerial, serialDeFecha, type Escritura, type FilaHoja }
   from '@/features/picking/planilla/registroOlas';
 
@@ -253,8 +254,11 @@ export interface FilaACrear { tienda: string; seccion: string }
  * Por eso no alcanza con respetar lo que venga: hay que **soltar** lo que haya en el rango y
  * **poner** las combinaciones sobre los grupos reales, que los calcula `gruposDeTienda`.
  *
- * El `unmergeCells` puede alcanzar una combinación prearmada que empiece en la última fila del
- * bloque anterior. No importa: ahí la columna B está vacía y no se ve nada.
+ * **El rango que se suelta no es el del bloque**, sino el que devuelve `rangoASoltar`: la API
+ * rechaza con 400 un `unmergeCells` que parta una combinación por la mitad, y como el bloque casi
+ * nunca mide un múltiplo de tres, sus bordes caen dentro de la rejilla. Eso tumbó el registro del
+ * 20/11/2026 entero — ver la cabecera de `rangoASoltar`. Lo que se suelta de más son dos filas a
+ * cada lado como mucho, de rejilla vacía.
  *
  * Hasta el 19/11/2026 esto no se hacía, y el pegado de formato —que copia una fila SOLA, sin
  * combinación— las borraba todas: el bloque de ese día quedó con las 94 filas sueltas y un
@@ -287,13 +291,25 @@ export async function crearBloqueDia(
     blue: parseInt(hex.slice(5, 7), 16) / 255,
   });
 
+  // Qué combinaciones toca el bloque. Pedir la hoja CON un rango acota la respuesta a las que lo
+  // cruzan: sin el rango vendrían las ~14.000 de la rejilla entera.
+  const conMerges = await gs.spreadsheets.get({
+    spreadsheetId: OLAS_ID,
+    ranges: [`${HOJA}!A${desde}:Y${hasta}`],
+    fields: 'sheets.merges',
+  });
+  const tocadas = (conMerges.data.sheets?.[0]?.merges ?? [])
+    .filter((m): m is { startRowIndex: number; endRowIndex: number } =>
+      typeof m.startRowIndex === 'number' && typeof m.endRowIndex === 'number');
+  const soltar = rangoASoltar(desde, hasta, tocadas);
+
   try {
     await gs.spreadsheets.batchUpdate({
       spreadsheetId: OLAS_ID,
       requestBody: { requests: [
         // Primero soltar: el pegado de formato de una fila sola ya las borraría, pero las que
         // empiezan antes del bloque sobrevivirían y se cruzarían con las nuevas.
-        { unmergeCells: { range: destino } },
+        { unmergeCells: { range: rango(soltar.startRowIndex, soltar.endRowIndex, 0, 25) } },
         { copyPaste: { source: molde, destination: destino, pasteType: 'PASTE_FORMAT' } },
         { copyPaste: { source: molde, destination: destino, pasteType: 'PASTE_DATA_VALIDATION' } },
         { repeatCell: {
