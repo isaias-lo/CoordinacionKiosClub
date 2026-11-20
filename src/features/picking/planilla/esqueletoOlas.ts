@@ -305,6 +305,65 @@ export function gruposDeTienda(filas: readonly FilaNueva[]): GrupoTienda[] {
   return grupos;
 }
 
+/** Una combinación ya existente en la hoja, en filas 0-based con el final EXCLUSIVO, que es como
+ *  las devuelve la API de Sheets. */
+export interface CombinacionExistente {
+  startRowIndex: number;
+  /** Exclusivo: una combinación de las filas 1 a 3 llega como `{start: 0, end: 3}`. */
+  endRowIndex: number;
+}
+
+/**
+ * Hasta dónde hay que estirar el `unmergeCells` para no partir ninguna combinación por la mitad.
+ *
+ * ── EL BUG QUE ESTO ARREGLA ───────────────────────────────────────────────────────────────────
+ *
+ * `unmergeCells` **exige que el rango no cruce una combinación por la mitad**. No la recorta: si
+ * el rango empieza o termina dentro de una, la llamada entera falla con 400 y el bloque no se
+ * crea. El 20/11/2026 el registro del día murió con «No se pudo crear el día en la planilla de
+ * olas» por exactamente esto, en el primer día que corrió el arreglo del #821.
+ *
+ * La rejilla prearmada de la hoja combina la columna B **cada tres filas desde un ancla fija**, y
+ * un bloque casi nunca mide un múltiplo de tres: 3 por tienda, más las de chocolates, más las dos
+ * de congelados, más la de Falabella los lunes y miércoles. Medido el 20/11/2026: el bloque
+ * arrancaba en la fila 36.999 —que sí calzaba con el inicio de la combinación 36.999–37.001— y
+ * terminaba en la 37.078, que es la **segunda** fila de la combinación 37.077–37.079. Ahí se
+ * partía.
+ *
+ * Que el inicio calzara ese día fue casualidad: con otro largo de bloque se parte del otro lado.
+ * Por eso se miran los dos extremos y no solo el final.
+ *
+ * ── POR QUÉ ESTIRAR Y NO SOLTAR UNA POR UNA ───────────────────────────────────────────────────
+ *
+ * Soltar cada combinación con su propio rango también funcionaría, pero son ~30 por bloque y la
+ * rejilla llega hasta la fila ~42.999: una petición con 30 `unmergeCells` donde hoy va una. Un
+ * solo rango estirado hace lo mismo en una.
+ *
+ * Lo que se suelta de más son **como mucho dos filas a cada lado**, siempre de la rejilla
+ * prearmada y siempre con la columna B vacía. Hacia abajo es territorio virgen. Hacia arriba
+ * solo puede alcanzar la cola del bloque anterior, que son filas de CONGELADOS —sin código de
+ * tienda, así que nunca están combinadas por nosotros—. Las combinaciones que este módulo pone
+ * (`gruposDeTienda`) terminan dentro de su propio bloque y no cruzan el borde.
+ */
+export function rangoASoltar(
+  desde: number, hasta: number, combinaciones: readonly CombinacionExistente[],
+): { startRowIndex: number; endRowIndex: number } {
+  // `desde`/`hasta` vienen 1-based y con el final inclusivo, que es como se habla de las filas de
+  // la hoja. El rango de la API es 0-based con el final exclusivo.
+  let inicio = desde - 1;
+  let fin = hasta;
+
+  for (const m of combinaciones) {
+    if (!Number.isFinite(m?.startRowIndex) || !Number.isFinite(m?.endRowIndex)) continue;
+    if (m.endRowIndex <= m.startRowIndex) continue;           // una combinación vacía no existe
+    if (m.endRowIndex <= inicio || m.startRowIndex >= fin) continue;   // no toca el bloque
+    if (m.startRowIndex < inicio) inicio = m.startRowIndex;
+    if (m.endRowIndex > fin) fin = m.endRowIndex;
+  }
+
+  return { startRowIndex: inicio, endRowIndex: fin };
+}
+
 /**
  * Las tres fórmulas de una fila, con su número ya puesto.
  *

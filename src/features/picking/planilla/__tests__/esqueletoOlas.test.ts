@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   AMARILLO, CIAN, FALABELLA_EN_HOJA, FALABELLA_GRAFIAS_VIEJAS, SECCION_EN_HOJA,
   SECCIONES_A_MANO, colorAlternado, describirEsqueleto,
-  diaDeSemana, filaFalabella, filasEsqueleto, formulasDe, gruposDeTienda,
+  diaDeSemana, filaFalabella, filasEsqueleto, formulasDe, gruposDeTienda, rangoASoltar,
 } from '../esqueletoOlas';
 import type { MovimientoPlanilla } from '../armarPlanilla';
 
@@ -393,6 +393,81 @@ describe('SECCIONES_A_MANO', () => {
         const s = norm(f.seccion);
         expect(seLlenan.has(s) || aMano.has(s)).toBe(true);
       }
+    }
+  });
+});
+
+// ── rangoASoltar ────────────────────────────────────────────────────────────────────────────
+//
+// El caso real está medido sobre el 20/11/2026: el bloque iba de la fila 36.999 a la 37.078 y la
+// rejilla prearmada combina la columna B cada tres filas desde la 36.999. El final del bloque cae
+// dentro de 37.077–37.079, y soltarlo con el rango del bloque hacía fallar la llamada entera.
+
+/** La rejilla prearmada de la hoja: combinaciones de 3 filas, 0-based y con el final exclusivo. */
+const rejilla = (primeraFila1Based: number, cuantas: number) =>
+  Array.from({ length: cuantas }, (_, k) => ({
+    startRowIndex: primeraFila1Based - 1 + k * 3,
+    endRowIndex: primeraFila1Based - 1 + k * 3 + 3,
+  }));
+
+describe('rangoASoltar', () => {
+  it('deja el rango del bloque cuando no hay ninguna combinación', () => {
+    expect(rangoASoltar(36999, 37078, [])).toEqual({ startRowIndex: 36998, endRowIndex: 37078 });
+  });
+
+  it('el caso del 20/11/2026: estira el final hasta cerrar la combinación que partía', () => {
+    // 36.999 es inicio de grupo, así que el principio no se mueve; el final sí.
+    const r = rangoASoltar(36999, 37078, rejilla(36999, 40));
+    expect(r).toEqual({ startRowIndex: 36998, endRowIndex: 37079 });
+  });
+
+  it('estira también hacia arriba cuando el bloque arranca en mitad de un grupo', () => {
+    // El bloque del 19/11 arrancó en la 36.905, dentro del grupo prearmado 36.903–36.905.
+    const r = rangoASoltar(36905, 36998, rejilla(36903, 40));
+    expect(r.startRowIndex).toBe(36902);   // 0-based de la fila 36.903
+    // El final no se mueve: con la rejilla anclada en 36.903, la 36.998 es la ÚLTIMA fila de su
+    // grupo (36.996–36.998), así que el borde ya cerraba.
+    expect(r.endRowIndex).toBe(36998);
+  });
+
+  it('no mueve nada cuando el bloque calza exacto con la rejilla', () => {
+    // 3 filas justas: un bloque de una tienda sola sobre un grupo completo.
+    expect(rangoASoltar(100, 102, rejilla(100, 5)))
+      .toEqual({ startRowIndex: 99, endRowIndex: 102 });
+  });
+
+  it('ignora las combinaciones que no tocan el bloque', () => {
+    const lejos = [{ startRowIndex: 10, endRowIndex: 13 }, { startRowIndex: 500, endRowIndex: 503 }];
+    expect(rangoASoltar(100, 102, lejos)).toEqual({ startRowIndex: 99, endRowIndex: 102 });
+  });
+
+  it('una combinación que termina justo donde empieza el bloque no lo toca', () => {
+    // endRowIndex es EXCLUSIVO: {start: 96, end: 99} son las filas 97–99, el bloque empieza en la 100.
+    expect(rangoASoltar(100, 102, [{ startRowIndex: 96, endRowIndex: 99 }]))
+      .toEqual({ startRowIndex: 99, endRowIndex: 102 });
+  });
+
+  it('descarta combinaciones vacías o con índices que no son números', () => {
+    const basura = [
+      { startRowIndex: 99, endRowIndex: 99 },
+      { startRowIndex: Number.NaN, endRowIndex: 200 },
+    ] as unknown as { startRowIndex: number; endRowIndex: number }[];
+    expect(rangoASoltar(100, 102, basura)).toEqual({ startRowIndex: 99, endRowIndex: 102 });
+  });
+
+  it('una combinación que envuelve al bloque entero lo estira por los dos lados', () => {
+    expect(rangoASoltar(100, 101, [{ startRowIndex: 98, endRowIndex: 104 }]))
+      .toEqual({ startRowIndex: 98, endRowIndex: 104 });
+  });
+
+  it('sobre un bloque de verdad, el rango soltado nunca parte un grupo de la rejilla', () => {
+    const grid = rejilla(36999, 60);
+    for (let largo = 1; largo <= 100; largo++) {
+      const r = rangoASoltar(36999, 36998 + largo, grid);
+      const partidas = grid.filter(m =>
+        (m.startRowIndex < r.startRowIndex && m.endRowIndex > r.startRowIndex) ||
+        (m.startRowIndex < r.endRowIndex && m.endRowIndex > r.endRowIndex));
+      expect({ largo, partidas: partidas.length }).toEqual({ largo, partidas: 0 });
     }
   });
 });
