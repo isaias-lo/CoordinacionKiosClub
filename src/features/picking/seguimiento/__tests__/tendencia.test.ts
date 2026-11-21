@@ -115,9 +115,26 @@ describe('periodoAnterior', () => {
       .toEqual({ desde: '2026-10-25', hasta: '2026-10-31' });
   });
 
-  it('un solo día contra el día anterior', () => {
+  it('un solo día contra el mismo día de la semana pasada', () => {
     expect(periodoAnterior('2026-11-05', '2026-11-05'))
-      .toEqual({ desde: '2026-11-04', hasta: '2026-11-04' });
+      .toEqual({ desde: '2026-10-29', hasta: '2026-10-29' });
+  });
+
+  it('un lunes no se compara con el domingo', () => {
+    // Retrocediendo solo un día, el lunes caía en un domingo sin picking y no salía tendencia.
+    expect(periodoAnterior('2026-11-16', '2026-11-16'))
+      .toEqual({ desde: '2026-11-09', hasta: '2026-11-09' });
+  });
+
+  it('la semana en curso contra los mismos días de la semana pasada', () => {
+    // Lunes 16 a sábado 21 contra lunes 9 a sábado 14, no contra martes 10 a domingo 15.
+    expect(periodoAnterior('2026-11-16', '2026-11-21'))
+      .toEqual({ desde: '2026-11-09', hasta: '2026-11-14' });
+  });
+
+  it('desde una semana, el período inmediatamente anterior', () => {
+    expect(periodoAnterior('2026-11-01', '2026-11-21'))
+      .toEqual({ desde: '2026-10-11', hasta: '2026-10-31' });
   });
 
   it('cruza el cambio de mes sin perder un día', () => {
@@ -139,6 +156,8 @@ describe('periodoAnterior', () => {
 
   it('cruza el año', () => {
     expect(periodoAnterior('2027-01-01', '2027-01-03'))
-      .toEqual({ desde: '2026-12-29', hasta: '2026-12-31' });
+      .toEqual({ desde: '2026-12-25', hasta: '2026-12-27' });
+    expect(periodoAnterior('2027-01-01', '2027-01-10'))
+      .toEqual({ desde: '2026-12-22', hasta: '2026-12-31' });
   });
 });

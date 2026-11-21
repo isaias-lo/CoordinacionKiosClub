@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { fechaChileDe, limitesDiaChile, odooDateToISO } from '@/lib/fechaChile';
+import { fechaChileDe, limitesDiaChile, odooDateToISO, rangoChileParaOdoo } from '@/lib/fechaChile';
 import { verifyAuth } from '@/lib/apiAuth';
 import { diaParaConsultarOdoo } from '@/features/despacho/shared/diaDeOdoo';
 import { rendimientoPorPicker } from '@/features/picking/seguimiento/rendimiento';
@@ -927,10 +927,17 @@ export async function POST(req: NextRequest) {
       // tienen tanda, **8 tienen hora de asignación**. El resto no se podía medir de ninguna
       // forma —3.735 ni siquiera tienen origen— y solo engordaba «Ops» y el aviso de
       // «operaciones sin hora de asignación».
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+        return NextResponse.json({ error: 'fechas inválidas' }, { status: 400 });
+      }
+      // Días de CHILE. Odoo guarda `date_done` en UTC, y pedirle `dateFrom + ' 00:00:00'` cortaba
+      // el día a las 21:00 de Chile (20:00 en invierno): lo validado después se contaba en el día
+      // siguiente. Ver `rangoChileParaOdoo`.
+      const rangoOdoo = rangoChileParaOdoo(dateFrom, dateTo);
       const domainPick: unknown[] = [
         ['state', '=', 'done'],
-        ['date_done', '>=', dateFrom + ' 00:00:00'],
-        ['date_done', '<=', dateTo   + ' 23:59:59'],
+        ['date_done', '>=', rangoOdoo.desde],
+        ['date_done', '<',  rangoOdoo.hasta],
         // Por el código de secuencia y no por el id: el id (1661) es de esta base y una copia
         // tendría otro. Medido: el camino punteado devuelve las mismas 3.149 filas en 1 s.
         ['picking_type_id.sequence_code', '=', 'DT'],

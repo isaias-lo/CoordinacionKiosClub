@@ -172,5 +172,3 @@ export const CANONICAL_PICKER_KEYS = [
   'Jefferson Negrete',
 ];
 
-export const STATS_DATE_FROM = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; })();
-export const STATS_DATE_TO   = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth()+1, 0).toISOString().slice(0,10); })();
