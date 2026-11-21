@@ -4,6 +4,7 @@ import {
   SECCIONES_A_MANO, colorAlternado, describirEsqueleto,
   diaDeSemana, filaFalabella, filasEsqueleto, formulasDe, gruposDeTienda, rangoASoltar,
 } from '../esqueletoOlas';
+import { planRegistro, type FilaHoja } from '../registroOlas';
 import type { MovimientoPlanilla } from '../armarPlanilla';
 
 // Los días que importan, medidos en la hoja el 10/11/2026. El MARTES es el día «sin nada raro»:
@@ -199,6 +200,101 @@ describe('filasEsqueleto: chocolates y congelados', () => {
   });
 });
 
+describe('filasEsqueleto: una fila por persona y sección', () => {
+  // 62PLD, miércoles 18/11/2026: la Comida la hicieron dos cuentas. Es el caso con el que se
+  // aprobó el cambio el 20/11/2026.
+  const PLD18 = [
+    mov({ cod: '62PLD', seccion: 'Comida', picker: 'Sebasthian Cortez', cuenta: 'Adquisiciones', registros: 40 }),
+    mov({ cod: '62PLD', seccion: 'Comida', picker: 'Marcelo Vergara', cuenta: 'Pickers 7', registros: 20 }),
+    mov({ cod: '62PLD', seccion: 'Aseo', picker: 'Sebasthian Cortez', cuenta: 'Adquisiciones' }),
+    mov({ cod: '62PLD', seccion: 'Hogar', picker: 'Sebasthian Cortez', cuenta: 'Adquisiciones' }),
+  ];
+
+  // 62PLD, lunes 02/11/2026: el techo del mes, verificado en Odoo. Apertura partida en «Comida 5»
+  // y «Comida 6», «Aseo 1» y «Aseo 2», y «Hogar 1» a «Hogar 5», cada uno con otra cuenta.
+  const PLD02 = [
+    ...['Pickers 10', 'Laura Roiatti Finato'].map((c, i) =>
+      mov({ cod: '62PLD', seccion: 'Comida', picker: `Comida ${i}`, cuenta: c })),
+    ...['Adquisiciones', 'Pickers 17'].map((c, i) =>
+      mov({ cod: '62PLD', seccion: 'Aseo', picker: `Aseo ${i}`, cuenta: c })),
+    ...['Pickers 15', 'Pickers 2', 'Pickers 9', 'Pickers 14', 'Pickers 18'].map((c, i) =>
+      mov({ cod: '62PLD', seccion: 'Hogar', picker: `Hogar ${i}`, cuenta: c })),
+  ];
+
+  it('dos personas en la Comida de una tienda: dos filas de COMIDA, juntas', () => {
+    const f = filasEsqueleto(['62PLD', '01TPS'], PLD18, MARTES);
+    expect(f.slice(0, 7)).toEqual([
+      { tienda: '62PLD', seccion: 'COMIDA' },
+      { tienda: '',      seccion: 'COMIDA' },
+      { tienda: '',      seccion: 'ASEO ' },
+      { tienda: '',      seccion: 'HOGAR' },
+      { tienda: '01TPS', seccion: 'COMIDA' },
+      { tienda: '',      seccion: 'ASEO ' },
+      { tienda: '',      seccion: 'HOGAR' },
+    ]);
+  });
+
+  it('el recuadro de la columna B se estira solo a las cuatro filas', () => {
+    // Las combinaciones salen de los grupos reales y no de un 3 fijo, así que esta parte no se
+    // tocó: alcanza con que el esqueleto emita las filas en el orden correcto.
+    const f = filasEsqueleto(['62PLD', '01TPS'], PLD18, MARTES);
+    expect(gruposDeTienda(f)).toEqual([{ desde: 0, hasta: 3 }, { desde: 4, hasta: 6 }]);
+  });
+
+  it('el techo del mes: 62PLD el 02/11 pasa de 3 filas a 9', () => {
+    const f = filasEsqueleto(['62PLD'], PLD02, LUNES);
+    expect(f.slice(0, 9).map(x => x.seccion)).toEqual([
+      'COMIDA', 'COMIDA', 'ASEO ', 'ASEO ', 'HOGAR', 'HOGAR', 'HOGAR', 'HOGAR', 'HOGAR',
+    ]);
+    expect(f.slice(0, 9).filter(x => x.tienda)).toEqual([{ tienda: '62PLD', seccion: 'COMIDA' }]);
+    expect(gruposDeTienda(f)).toEqual([{ desde: 0, hasta: 8 }]);
+  });
+
+  it('dos movimientos de la misma persona con la misma cuenta no suman fila', () => {
+    const f = filasEsqueleto(['57CAS'], [
+      mov({ cod: '57CAS', seccion: 'Comida', picker: 'Cristian Morales', cuenta: 'Pickers 18', registros: 30 }),
+      mov({ cod: '57CAS', seccion: 'Comida', picker: 'Cristian Morales', cuenta: 'Pickers 18', registros: 54 }),
+    ], MARTES);
+    expect(f.filter(x => x.seccion === 'COMIDA')).toHaveLength(1);
+  });
+
+  it('un movimiento anulado o sin reservar no suma fila', () => {
+    const f = filasEsqueleto(['62PLD'], [
+      ...PLD18.slice(0, 1),
+      mov({ cod: '62PLD', seccion: 'Comida', picker: 'Marcelo Vergara', cuenta: 'Pickers 7', estado: 'cancel' }),
+      mov({ cod: '62PLD', seccion: 'Comida', picker: 'Juliette Mendoza', cuenta: 'Pickers 6', estado: 'confirmed' }),
+    ], MARTES);
+    expect(f.filter(x => x.seccion === 'COMIDA')).toHaveLength(1);
+  });
+
+  it('las filas de más no mueven la cola: chocolates, congelados y Falabella siguen al final', () => {
+    const f = filasEsqueleto(['62PLD'], [...PLD02, mov()], LUNES);
+    expect(f.slice(9).map(x => x.seccion))
+      .toEqual(['CHOCOLATES', 'CONGELADOS', 'CONGELADOS', 'FALABELLA FULL']);
+  });
+
+  it('un día sin nadie compartiendo queda exactamente igual que antes', () => {
+    // El 98,8% de las celdas de noviembre. Es lo que no puede cambiar.
+    const cods = Array.from({ length: 29 }, (_, i) => `T${String(i).padStart(2, '0')}`);
+    const unoPorCelda = cods.flatMap(cod => (['Comida', 'Aseo', 'Hogar'] as const).map(s =>
+      mov({ cod, seccion: s, picker: `Persona ${cod}`, cuenta: `Cuenta ${cod}` })));
+    expect(filasEsqueleto(cods, unoPorCelda, MARTES)).toHaveLength(29 * 3 + 1 + 2);
+  });
+
+  it('el registro encuentra una fila para cada par: el esqueleto y el registro usan la misma lista', () => {
+    // De punta a punta, sobre el techo del mes: se arma el bloque, se lee como lo leería la hoja y
+    // se registra. Cada una de las nueve filas tiene que recibir su cuenta, sin avisos.
+    const nombres = new Map(PLD02.map(m => [m.picker, m.picker.toUpperCase()]));
+    const bloque: FilaHoja[] = filasEsqueleto(['62PLD'], PLD02, LUNES).map((x, i) =>
+      ({ fila: 100 + i, tienda: x.tienda, seccion: x.seccion, pistolero: '', usuario: '' }));
+    const plan = planRegistro(PLD02, bloque, nombres);
+    expect(plan.avisos).toEqual([]);
+    const cuentas = plan.escrituras.filter(e => e.columna === 'S');
+    expect(cuentas.map(e => e.fila)).toEqual([100, 101, 102, 103, 104, 105, 106, 107, 108]);
+    expect(new Set(cuentas.map(e => e.valor)).size).toBe(9);
+  });
+});
+
 describe('formulasDe', () => {
   it('T es la llave con la que el bono busca', () => {
     expect(formulasDe(36400).T).toBe('=CONCATENATE(A36400;S36400)');
@@ -234,6 +330,24 @@ describe('describirEsqueleto', () => {
   it('nombra la de Falabella Full solo cuando el día la lleva', () => {
     expect(describirEsqueleto(filasEsqueleto(['57CAS'], [], LUNES))).toContain('Falabella Full');
     expect(describirEsqueleto(filasEsqueleto(['57CAS'], [], MARTES))).not.toContain('Falabella');
+  });
+
+  it('nombra las filas de más, para que la cuenta del resumen cierre', () => {
+    // Sin esto diría «10 filas: 2 tiendas × 3 secciones, 1 de chocolates y 2 de congelados»,
+    // que suman 9.
+    const f = filasEsqueleto(['62PLD', '01TPS'], [
+      mov({ cod: '62PLD', seccion: 'Comida', picker: 'Sebasthian Cortez', cuenta: 'Adquisiciones' }),
+      mov({ cod: '62PLD', seccion: 'Comida', picker: 'Marcelo Vergara', cuenta: 'Pickers 7' }),
+    ], MARTES);
+    expect(describirEsqueleto(f)).toBe(
+      '10 filas: 2 tiendas × 3 secciones, 1 fila de más donde dos personas hicieron la misma ' +
+      'sección, 1 de chocolates y 2 de congelados en blanco');
+  });
+
+  it('las filas de más van en plural cuando son varias', () => {
+    const f = filasEsqueleto(['62PLD'], ['Pickers 15', 'Pickers 2', 'Pickers 9'].map((c, i) =>
+      mov({ cod: '62PLD', seccion: 'Hogar', picker: `Hogar ${i}`, cuenta: c })), MARTES);
+    expect(describirEsqueleto(f)).toContain('2 filas de más');
   });
 });
 
