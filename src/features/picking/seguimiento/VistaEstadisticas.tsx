@@ -32,7 +32,7 @@ const COLUMNAS: { key: Orden; label: string; hint: string; celda: (r: PickerStat
   { key: 'units', label: 'UNIDADES', hint: 'Unidades movidas', celda: r => miles(r.units) },
   { key: 'porOp', label: 'PROM. / OP.', hint: 'Unidades promedio por operación', celda: r => miles(unidadesPorOp(r)) },
   { key: 'avgMinutesPerOp', label: 'T. PROM. / PEDIDO', hint: 'Tiempo promedio por pedido completo', celda: r => textoMinutos(r.avgMinutesPerOp) },
-  { key: 'avgSecondsPerLine', label: 'T. PROM. / SKU', hint: 'Tiempo promedio entre pistolazos', celda: r => textoSegundos(r.avgSecondsPerLine) },
+  { key: 'avgSecondsPerLine', label: 'T. PROM. / SKU', hint: 'Tiempo promedio entre pistolazos, en minutos:segundos (1:30 es un minuto y medio)', celda: r => textoSegundos(r.avgSecondsPerLine) },
   { key: 'totalMinutes', label: 'HORAS',
     hint: 'Horas de RELOJ: cada tanda se cuenta una vez y los lapsos que se pisan se unen. Donde dice «planilla», la hoja del bono cuenta otro número porque los suma en vez de unirlos.',
     celda: r => textoHoras(r.totalMinutes) },
