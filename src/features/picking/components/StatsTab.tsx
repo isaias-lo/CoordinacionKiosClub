@@ -4,7 +4,8 @@ import { useState, useMemo, useCallback } from 'react';
 import { RotateCcw, Printer, BarChart3 } from 'lucide-react';
 import type { PickerStatRow, StatsCache } from '../picking-types';
 import { periodoAnterior } from '../seguimiento/tendencia';
-import { STATS_CACHE_KEY, STATS_DATE_FROM, STATS_DATE_TO } from '../picking-types';
+import { STATS_CACHE_KEY } from '../picking-types';
+import { rangoDe, diaLocal } from '../seguimiento/estadisticas';
 import { fmtDuration, fmtSecs, isAllowedPicker, buildPickerKeyList } from '../picking-utils';
 import { buscadorDeNombres } from '../seguimiento/nombreDeCuenta';
 import { escapeHtml } from '@/lib/escapeHtml';
@@ -87,10 +88,13 @@ export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames, esc
   const [sortAsc, setSortAsc] = useState(true);
 
   // El período arranca en el de las filas guardadas, para que título y números digan lo mismo.
-  const [dateFrom,     setDateFrom]     = useState(cacheInicial?.desde ?? STATS_DATE_FROM);
-  const [dateTo,       setDateTo]       = useState(cacheInicial?.hasta ?? STATS_DATE_TO);
-  const [pendingFrom,  setPendingFrom]  = useState(cacheInicial?.desde ?? STATS_DATE_FROM);
-  const [pendingTo,    setPendingTo]    = useState(cacheInicial?.hasta ?? STATS_DATE_TO);
+  // Sin filas guardadas, «Este mes» calculado al abrir la pantalla. Era una constante del módulo,
+  // fijada al cargar la página: con la aplicación abierta de un mes a otro quedaba en el anterior.
+  const [mesActual] = useState(() => rangoDe('mes', new Date()));
+  const [dateFrom,     setDateFrom]     = useState(cacheInicial?.desde ?? mesActual.desde);
+  const [dateTo,       setDateTo]       = useState(cacheInicial?.hasta ?? mesActual.hasta);
+  const [pendingFrom,  setPendingFrom]  = useState(cacheInicial?.desde ?? mesActual.desde);
+  const [pendingTo,    setPendingTo]    = useState(cacheInicial?.hasta ?? mesActual.hasta);
   const [showDateConfirm, setShowDateConfirm] = useState(false);
   const datesChanged = pendingFrom !== dateFrom || pendingTo !== dateTo;
 
@@ -100,7 +104,7 @@ export function StatsTab({ hasOdoo, odooDesactivado = false, canonicalNames, esc
     const from = fromOverride ?? dateFrom;
     const to   = toOverride   ?? dateTo;
     try {
-      // Los DOS períodos a la vez: el que se mira y el inmediatamente anterior del mismo largo,
+      // Los DOS períodos a la vez: el que se mira y el anterior del mismo largo (`periodoAnterior`),
       // que es con el que se dice si cada persona subió o bajó. En paralelo y no uno después del
       // otro: son dos consultas pesadas y en serie la pantalla tardaría el doble.
       const previo = periodoAnterior(from, to);
@@ -290,11 +294,11 @@ footer{margin-top:10px;font-size:10px;color:#999;text-align:right}
               Estadísticas de pickers
             </div>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
-              <input type="date" value={pendingFrom} onChange={e => setPendingFrom(e.target.value)}
+              <input type="date" value={pendingFrom} max={diaLocal(new Date())} onChange={e => setPendingFrom(e.target.value)}
                 className="border rounded px-2 py-1 text-[13px] outline-none cursor-pointer"
                 style={{ borderColor: '#E2E8F0', color: '#334155', background: '#fff' }} />
               <span className="text-[13px]" style={{ color: '#94A3B8' }}>—</span>
-              <input type="date" value={pendingTo} onChange={e => setPendingTo(e.target.value)}
+              <input type="date" value={pendingTo} max={diaLocal(new Date())} onChange={e => setPendingTo(e.target.value)}
                 className="border rounded px-2 py-1 text-[13px] outline-none cursor-pointer"
                 style={{ borderColor: '#E2E8F0', color: '#334155', background: '#fff' }} />
               {datesChanged && (

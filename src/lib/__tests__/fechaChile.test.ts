@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fechaChile, fechaChileDe, fmtHoraChile, fmtFechaChile, fmtFechaHoraChile, odooDateToISO, limitesDiaChile } from '@/lib/fechaChile';
+import { fechaChile, fechaChileDe, fmtHoraChile, fmtFechaChile, fmtFechaHoraChile, odooDateToISO, limitesDiaChile, rangoChileParaOdoo } from '@/lib/fechaChile';
 
 // Instantes escritos en UTC: el resultado no puede depender del huso donde corra el test.
 describe('fechaChileDe — el día del CD de un instante', () => {
@@ -133,6 +133,36 @@ describe('limitesDiaChile', () => {
       expect(fechaChileDe(new Date(new Date(hasta).getTime() - 1))).toBe(f);
       expect(fechaChileDe(hasta)).not.toBe(f);
       expect(fechaChileDe(new Date(new Date(desde).getTime() - 1))).not.toBe(f);
+    }
+  });
+});
+
+describe('rangoChileParaOdoo — los días de Chile en el formato de Odoo', () => {
+  it('verano (UTC−3): del 03:00 del primer día al 03:00 del día siguiente al último', () => {
+    expect(rangoChileParaOdoo('2026-11-01', '2026-11-20'))
+      .toEqual({ desde: '2026-11-01 03:00:00', hasta: '2026-11-21 03:00:00' });
+  });
+  it('invierno (UTC−4): del 04:00 al 04:00', () => {
+    expect(rangoChileParaOdoo('2026-06-15', '2026-06-15'))
+      .toEqual({ desde: '2026-06-15 04:00:00', hasta: '2026-06-16 04:00:00' });
+  });
+  it('lo validado a las 22:30 de Chile cuenta en su día y no en el siguiente', () => {
+    // 20/11 22:30 en Chile = 21/11 01:30 UTC, que es como lo guarda Odoo.
+    const r = rangoChileParaOdoo('2026-11-20', '2026-11-20');
+    expect('2026-11-21 01:30:00' >= r.desde && '2026-11-21 01:30:00' < r.hasta).toBe(true);
+    const sig = rangoChileParaOdoo('2026-11-21', '2026-11-21');
+    expect('2026-11-21 01:30:00' >= sig.desde).toBe(false);
+  });
+  it('lo de la noche anterior ya no entra', () => {
+    // 31/10 23:00 en Chile = 01/11 02:00 UTC: con el día UTC entraba en noviembre.
+    const r = rangoChileParaOdoo('2026-11-01', '2026-11-01');
+    expect('2026-11-01 02:00:00' >= r.desde).toBe(false);
+  });
+  it('los extremos coinciden con limitesDiaChile también en los días de cambio de hora', () => {
+    for (const [d, h] of [['2026-04-04', '2026-04-05'], ['2026-09-05', '2026-09-06']]) {
+      const r = rangoChileParaOdoo(d, h);
+      expect(r.desde).toBe(limitesDiaChile(d).desde.slice(0, 19).replace('T', ' '));
+      expect(r.hasta).toBe(limitesDiaChile(h).hasta.slice(0, 19).replace('T', ' '));
     }
   });
 });

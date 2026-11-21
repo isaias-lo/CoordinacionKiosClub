@@ -61,6 +61,20 @@ export function limitesDiaChile(fecha: string): { desde: string; hasta: string }
   };
 }
 
+/**
+ * Un rango de días de Chile en el formato de Odoo ('YYYY-MM-DD HH:MM:SS', UTC sin zona), para
+ * filtrar `date_done`. `desde` incluido, `hasta` EXCLUIDO: es el comienzo del día siguiente al
+ * último.
+ *
+ * Es `limitesDiaChile` aplicado a los dos extremos. Pedirle a Odoo `${dia} 00:00:00` toma el día
+ * UTC, que en Chile termina a las 21:00 (20:00 en invierno): lo validado después caía en el día
+ * siguiente.
+ */
+export function rangoChileParaOdoo(desde: string, hasta: string): { desde: string; hasta: string } {
+  const odoo = (iso: string) => iso.slice(0, 19).replace('T', ' ');
+  return { desde: odoo(limitesDiaChile(desde).desde), hasta: odoo(limitesDiaChile(hasta).hasta) };
+}
+
 // ── Formato de timestamps para mostrar SIEMPRE en hora de Chile ──────────────
 // Los timestamptz se guardan en UTC (correcto). Estos helpers convierten al
 // mostrar, forzando timeZone America/Santiago para que la hora sea la real de
