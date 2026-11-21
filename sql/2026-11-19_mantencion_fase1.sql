@@ -20,9 +20,12 @@
 --     1 `control-interno` y 1 `despachador`. El catálogo real (`roles`) tiene 12 roles. Quedó
 --     atrás y **no es la verdad**: colgar de ahí el permiso sería construir sobre un dato malo.
 --   · La tabla `roles` — es el CATÁLOGO de roles, no dice qué rol tiene cada persona.
---   · **El JWT** — `src/middleware.ts:96-98` lee `user.user_metadata.role` y es lo que la
---     aplicación entera ya obedece. Es el único que está al día, y una política lo lee con
---     `auth.jwt()`. Se usa este.
+--   · **El JWT** — es lo que la aplicación entera obedece y lo único al día, y una política lo
+--     lee con `auth.jwt()`. Se usa este, y de él **`app_metadata.role`, NO `user_metadata.role`**.
+--     `user_metadata` lo escribe el propio usuario desde el navegador
+--     (`supabase.auth.updateUser({ data: { role: 'admin' } })`): colgar de ahí el permiso dejaba a
+--     cualquier supervisor verlo todo con dos líneas en la consola. El PR #826 movió el rol de la
+--     app entera a `app_metadata`, que solo escribe el servidor.
 --
 -- Entonces, para leer una solicitud hay que cumplir una de dos cosas:
 --
@@ -30,7 +33,7 @@
 --      ningún rol: la pertenencia ES el permiso), o
 --   2. el rol del JWT está en la lista de los que ven todo: `admin` y `encargado-mantencion`.
 --
--- **La trampa operativa, que hay que saber:** `user_metadata` viaja dentro del token. Cambiarle
+-- **La trampa operativa, que hay que saber:** `app_metadata` viaja dentro del token. Cambiarle
 -- el rol a alguien NO cambia su token: sigue con el rol viejo hasta que vuelve a iniciar sesión.
 -- Ya es así hoy para el middleware, así que no es nuevo — pero cuando se cree el rol
 -- `encargado-mantencion` en la Etapa 4, Jesús tiene que cerrar sesión y volver a entrar.
@@ -76,8 +79,8 @@ create table if not exists mant_supervisor_tiendas (
 );
 
 comment on table mant_supervisor_tiendas is
-  'Qué tiendas ve cada supervisor en Mantención. El permiso se aplica en la API, no en RLS: '
-  'ver la cabecera de sql/2026-11-19_mantencion_fase1.sql.';
+  'Qué tiendas ve cada supervisor en Mantención. La LECTURA la filtra RLS (mant_es_mi_tienda); '
+  'la escritura va solo por la API con service role. Ver la cabecera de sql/2026-11-19_mantencion_fase1.sql.';
 
 create index if not exists mant_sup_tiendas_por_tienda
   on mant_supervisor_tiendas (codigo_tienda);
@@ -300,13 +303,13 @@ create trigger trg_mant_eventos_no_delete
 create or replace function mant_ve_todo() returns boolean
 language sql stable security definer set search_path = public, pg_temp as $$
   select coalesce(
-    (auth.jwt() -> 'user_metadata' ->> 'role') in ('admin', 'encargado-mantencion'),
+    (auth.jwt() -> 'app_metadata' ->> 'role') in ('admin', 'encargado-mantencion'),
     false);
 $$;
 
 comment on function mant_ve_todo() is
-  'El rol sale del JWT (user_metadata.role), que es lo que lee middleware.ts y lo único al día: '
-  'profiles.role quedó atrás (12 de 20 filas en «pending»). OJO: cambiarle el rol a alguien no '
+  'El rol sale del JWT, de app_metadata.role (solo lo escribe el servidor; user_metadata lo escribe '
+  'el propio usuario, ver PR #826). profiles.role quedó atrás (12 de 20 en «pending»). OJO: cambiarle el rol a alguien no '
   'cambia su token — tiene que volver a iniciar sesión.';
 
 create or replace function mant_es_mi_tienda(cod text) returns boolean
