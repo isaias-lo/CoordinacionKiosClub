@@ -48,6 +48,12 @@
 
 import type { MovimientoPlanilla, SeccionPlanilla } from './armarPlanilla';
 import { SECCIONES_A_MANO } from './esqueletoOlas';
+import { normalizar, parejasDeCelda, type Pareja } from './parejasCelda';
+
+// `normalizar` vive en `parejasCelda` desde el 21/11/2026 —el esqueleto la necesita y no puede
+// importarla de acá sin armar un ciclo entre los dos módulos— y se reexporta para que nada de lo
+// que la importa desde este archivo tenga que cambiar.
+export { normalizar };
 
 /** Una fila del bloque del día en la hoja, tal como se leyó. */
 export interface FilaHoja {
@@ -74,7 +80,7 @@ export interface Escritura {
 /** Algo que el registro no pudo o no quiso hacer. Todo lo que no se escribe sale acá. */
 export interface Aviso {
   tipo: 'sin-nombre-olas' | 'sin-fila' | 'ya-escrita' | 'pickers-distintos' | 'fila-sin-dato'
-      | 'chocolates-no-calza';
+      | 'chocolates-no-calza' | 'sin-fila-libre';
   detalle: string;
 }
 
@@ -87,17 +93,6 @@ export interface PlanRegistro {
 
 /** Las secciones de la planilla que tienen fila por tienda en la hoja. */
 const POR_TIENDA: SeccionPlanilla[] = ['Comida', 'Aseo', 'Hogar'];
-
-/**
- * Compara textos de la hoja con los de la app.
- *
- * Sin acentos, sin mayúsculas y sin espacios al borde: la columna C trae «ASEO » con espacio
- * final y los códigos pueden venir con Ñ en cualquier forma Unicode. Es la MISMA regla que usa
- * `flatCode` del catálogo, escrita acá sobre texto libre y no solo códigos.
- */
-export function normalizar(s: string): string {
-  return (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
-}
 
 /**
  * Las secciones que la hoja tiene y este registro NO llena, normalizadas.
@@ -144,13 +139,26 @@ function nombreOlas(persona: string, porPersona: ReadonlyMap<string, string>): s
   return null;
 }
 
-/** Los movimientos reales de una celda: los que la hoja cuenta como trabajo. */
-function deLaCelda(
-  movs: MovimientoPlanilla[], cod: string, seccion: SeccionPlanilla,
-): MovimientoPlanilla[] {
-  return movs.filter(m =>
-    normalizar(m.cod) === normalizar(cod) && m.seccion === seccion &&
-    (m.estado === 'done' || m.estado === 'assigned') && (m.picker ?? '').trim() !== '');
+/** Un par con el nombre que le toca en esta planilla, o `null` si esa persona no tiene uno. */
+type ParConNombre = Pareja & { nombre: string | null };
+
+/**
+ * Si lo que una fila ya tiene escrito corresponde a ese par.
+ *
+ * Una fila a medio llenar —solo el nombre, o solo la cuenta— corresponde al par que coincide en lo
+ * que tiene. A un par sin nombre para la planilla no se le puede comparar el nombre de la hoja:
+ * se lo reconoce por la cuenta, o por su nombre del sistema si alguien lo escribió a mano.
+ */
+function calza(f: FilaHoja, p: ParConNombre): boolean {
+  const yaF = f.pistolero.trim(), yaS = f.usuario.trim();
+  if (p.nombre === null) {
+    return yaS
+      ? !!p.cuenta && normalizar(yaS) === normalizar(p.cuenta)
+      : normalizar(yaF) === normalizar(p.persona);
+  }
+  const okF = !yaF || normalizar(yaF) === normalizar(p.nombre);
+  const okS = !yaS || !p.cuenta || normalizar(yaS) === normalizar(p.cuenta);
+  return okF && okS;
 }
 
 /**
@@ -170,7 +178,22 @@ export function planRegistro(
   const porFila = tiendaDeCadaFila(filas);
   const tocadas = new Set<number>();
 
-  // ── Las filas por tienda: COMIDA, ASEO, HOGAR ──
+  /** Escribe lo que le falta a una fila para ese par. Devuelve si escribió algo. */
+  const completar = (f: FilaHoja, p: ParConNombre): boolean => {
+    if (p.nombre === null) return false;
+    let algo = false;
+    if (!f.pistolero.trim()) { escrituras.push({ fila: f.fila, columna: 'F', valor: p.nombre }); algo = true; }
+    if (!f.usuario.trim() && p.cuenta) { escrituras.push({ fila: f.fila, columna: 'S', valor: p.cuenta }); algo = true; }
+    return algo;
+  };
+
+  // ── Las filas por tienda: COMIDA, ASEO, HOGAR, celda por celda ──
+  //
+  // Desde el 21/11/2026 una celda (tienda × sección) puede tener VARIAS filas: el esqueleto arma
+  // una por cada par persona-cuenta que la hizo (ver `parejasCelda.ts`). Por eso ya no se recorre
+  // fila por fila sino celda por celda: primero se juntan las filas de cada celda, y después sus
+  // pares se reparten entre ellas.
+  const celdas = new Map<string, { cod: string; seccion: SeccionPlanilla; filas: FilaHoja[] }>();
   for (const f of filas) {
     const sec = normalizar(f.seccion);
     if (sec === 'CHOCOLATES' || A_MANO.has(sec)) continue;
@@ -184,40 +207,69 @@ export function planRegistro(
       avisos.push({ tipo: 'fila-sin-dato', detalle: `Fila ${f.fila}: ninguna tienda antes de esta fila` });
       continue;
     }
+    const k = `${normalizar(cod)}|${seccion}`;
+    const c = celdas.get(k) ?? { cod, seccion, filas: [] };
+    c.filas.push(f);
+    celdas.set(k, c);
+  }
 
-    const celda = deLaCelda(movimientos, cod, seccion);
-    if (celda.length === 0) continue;   // sin carga o sin asignar: se deja vacía, como hoy
+  for (const { cod, seccion, filas: suyas } of celdas.values()) {
+    const parejas = parejasDeCelda(movimientos, cod, seccion);
+    if (parejas.length === 0) continue;   // sin carga o sin asignar: se deja vacía, como hoy
 
-    // Dos movimientos de la misma sección con DISTINTO picker no caben en una fila, y elegir
-    // uno sería decidir a quién se le abona. Se informa y se deja a mano.
-    const personas = [...new Set(celda.map(m => m.picker.trim()))];
-    if (personas.length > 1) {
+    // Más pares que filas. Pasa en un día armado antes del 21/11/2026 —tres filas fijas— o si
+    // alguien se sumó a la sección después de armado el bloque. Ahí sigue valiendo la regla de
+    // siempre: los pares no caben, y elegir cuál se escribe sería decidir a quién se le abona. Se
+    // informa y la celda entera queda a mano.
+    if (parejas.length > suyas.length) {
+      const quienes = [...new Set(parejas.map(p => p.persona))];
       avisos.push({ tipo: 'pickers-distintos',
-        detalle: `${cod} ${seccion}: ${personas.join(' y ')} en la misma celda — se deja a mano` });
+        detalle: `${cod} ${seccion}: ${quienes.join(' y ')} en la misma celda, y la hoja tiene ` +
+                 `${suyas.length} ${suyas.length === 1 ? 'fila' : 'filas'} para esa sección — se deja a mano` });
       continue;
     }
 
-    const persona = personas[0];
-    const nombre = nombreOlas(persona, nombrePorPersona);
-    if (nombre === null) {
+    const conNombre: ParConNombre[] = parejas.map(p =>
+      ({ ...p, nombre: nombreOlas(p.persona, nombrePorPersona) }));
+    for (const p of conNombre) {
+      if (p.nombre !== null) continue;
       avisos.push({ tipo: 'sin-nombre-olas',
-        detalle: `${cod} ${seccion}: «${persona}» no tiene nombre para esta planilla` });
-      continue;
+        detalle: `${cod} ${seccion}: «${p.persona}» no tiene nombre para esta planilla` });
     }
-    const cuenta = (celda[0].cuenta ?? '').trim();
 
-    const yaF = f.pistolero.trim(), yaS = f.usuario.trim();
-    if ((yaF && normalizar(yaF) !== normalizar(nombre)) ||
-        (yaS && cuenta && normalizar(yaS) !== normalizar(cuenta))) {
-      avisos.push({ tipo: 'ya-escrita',
-        detalle: `Fila ${f.fila} (${cod} ${seccion}): ya dice «${yaF}»/«${yaS}» — no se tocó` });
-      continue;
+    // 1. Las filas que ya tienen algo se reconocen PRIMERO. Así registrar dos veces no mueve a
+    //    nadie de fila aunque entre una vez y otra haya cambiado quién hizo más, y una fila que
+    //    alguien completó a mano con uno de los pares no se toma como libre.
+    const pendientes = [...conNombre];
+    const libres: FilaHoja[] = [];
+    for (const f of suyas) {
+      const yaF = f.pistolero.trim(), yaS = f.usuario.trim();
+      if (!yaF && !yaS) { libres.push(f); continue; }
+      const i = pendientes.findIndex(p => calza(f, p));
+      if (i < 0) {
+        avisos.push({ tipo: 'ya-escrita',
+          detalle: `Fila ${f.fila} (${cod} ${seccion}): ya dice «${yaF}»/«${yaS}» — no se tocó` });
+        continue;
+      }
+      const [p] = pendientes.splice(i, 1);
+      if (completar(f, p)) tocadas.add(f.fila);
     }
-    if (yaF && yaS) continue;   // ya está igual: nada que hacer
 
-    if (!yaF) escrituras.push({ fila: f.fila, columna: 'F', valor: nombre });
-    if (!yaS && cuenta) escrituras.push({ fila: f.fila, columna: 'S', valor: cuenta });
-    tocadas.add(f.fila);
+    // 2. Los pares que quedan van a las filas libres, del que más trabajó al que menos. Uno sin
+    //    nombre para la planilla ya está avisado y no toma fila: la que sobre queda para
+    //    completarlo a mano.
+    for (const p of pendientes) {
+      if (p.nombre === null) continue;
+      const f = libres.shift();
+      if (!f) {
+        // Solo pasa si una fila de la celda ya tenía escrito a otra persona: ese aviso dice qué
+        // fila no se tocó, y este dice a quién le faltó lugar.
+        avisos.push({ tipo: 'sin-fila-libre',
+          detalle: `${cod} ${seccion}: «${p.persona}» queda sin escribir — no hay fila libre` });
+        continue;
+      }
+      if (completar(f, p)) tocadas.add(f.fila);
+    }
   }
 
   // ── Las filas de CHOCOLATES: una por persona, sin tienda, del día entero ──
@@ -278,6 +330,10 @@ export function planRegistro(
       avisos.push({ tipo: 'sin-fila', detalle: `${cod} tiene trabajo del día y no tiene fila en la hoja` });
     }
   }
+
+  // En orden de fila. Las de una celda salen primero las reconocidas y después las libres, y la
+  // vista previa mostraría la fila 12 antes que la 11; para la API el orden da igual.
+  escrituras.sort((a, b) => a.fila - b.fila || a.columna.localeCompare(b.columna));
 
   return { escrituras, avisos, filasAEscribir: tocadas.size };
 }

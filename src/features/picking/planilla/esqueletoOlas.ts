@@ -28,6 +28,19 @@
 // resto: la hoja la tiene desde el 23/07/2026 y el coordinador pidió que siga. Ver
 // `FALABELLA_EN_HOJA` y `FALABELLA_DIAS`, que es donde está medido qué días la llevan.
 //
+// **Tres es el mínimo, no un número fijo, desde el 21/11/2026.** Cuando dos personas hacen la
+// misma sección de una tienda, esa sección lleva una fila por cada una, juntas, y el código sigue
+// solo en la primera fila de la tienda:
+//
+//     18/11/2026   62PLD    COMIDA      SEBASTHIAN CORTEZ   Adquisiciones
+//     18/11/2026            COMIDA      MARCELO VERGARA     Pickers 7      ← la fila de más
+//     18/11/2026            ASEO        SEBASTHIAN CORTEZ   Adquisiciones
+//     18/11/2026            HOGAR       SEBASTHIAN CORTEZ   Adquisiciones
+//
+// Pasa en el 1,2% de las celdas y suma 17 filas en todo noviembre. El porqué, lo medido y la
+// regla exacta de quién cuenta como «otra persona» están en `parejasCelda.ts`, que es la misma
+// lista que usa el registro para saber qué escribir en cada fila.
+//
 // Las secciones se escriben con la grafía que la hoja ya usa, **espacio final de «ASEO »
 // incluido**. Ese espacio NO se limpia: es una sola grafía con una verruga, y tocarla no gana
 // nada. Lo de Falabella era otra cosa —dos grafías distintas peleando por la misma fila— y por
@@ -43,6 +56,7 @@
 // mirar de qué color es el día de arriba y poner el otro.
 
 import type { MovimientoPlanilla } from './armarPlanilla';
+import { parejasDeCelda } from './parejasCelda';
 
 /** Los dos colores que la hoja alterna, leídos de ella el 06/11/2026. */
 export const CIAN = '#00FFFF';
@@ -203,12 +217,13 @@ export function filaFalabella(fechaISO: string): string | null {
  * Las filas del bloque de un día.
  *
  * `cods` son las tiendas del día **en el orden del calendario**, que es el mismo que la planilla
- * muestra. `movimientos` sirve solo para saber cuántas personas hicieron chocolates: en la hoja
- * esa sección es una fila por persona y no una por tienda.
+ * muestra. `movimientos` dice cuántas filas lleva cada sección: una por cada par persona-cuenta
+ * que la hizo (ver `parejasCelda.ts`), y en chocolates una por persona del día entero.
  *
- * Siempre se crean las tres filas de cada tienda, tenga carga o no. Una tienda del día sin fila
- * no se puede llenar después sin insertar en el medio, y en la hoja de hoy las tiendas sin carga
- * están igual, con sus tres filas vacías.
+ * Cada sección de cada tienda lleva **al menos una fila**, tenga carga o no: una tienda del día
+ * sin fila no se puede llenar después sin insertar en el medio, y en la hoja las tiendas sin carga
+ * están igual, con sus tres filas vacías. Las filas de más de una sección van juntas, debajo de la
+ * primera de esa sección.
  */
 export function filasEsqueleto(
   cods: string[], movimientos: MovimientoPlanilla[], fechaISO: string,
@@ -219,9 +234,14 @@ export function filasEsqueleto(
   for (const cod of cods) {
     if (vistas.has(cod)) continue;   // el calendario puede repetir un adelanto
     vistas.add(cod);
-    POR_TIENDA.forEach((s, i) => {
-      filas.push({ tienda: i === 0 ? cod : '', seccion: SECCION_EN_HOJA[s] });
-    });
+    let primera = true;
+    for (const s of POR_TIENDA) {
+      const cuantas = Math.max(1, parejasDeCelda(movimientos, cod, s).length);
+      for (let i = 0; i < cuantas; i++) {
+        filas.push({ tienda: primera ? cod : '', seccion: SECCION_EN_HOJA[s] });
+        primera = false;
+      }
+    }
   }
 
   // Chocolates: una fila por persona distinta del día. Si nadie hizo, igual va una, para que la
@@ -390,7 +410,14 @@ export function describirEsqueleto(filas: FilaNueva[]): string {
   const choc = filas.filter(f => f.seccion === SECCION_EN_HOJA.Chocolates).length;
   const cong = filas.filter(f => f.seccion === 'CONGELADOS').length;
   const fala = filas.some(f => ES_FALABELLA.has(f.seccion));
+  // Las filas de tienda que pasan de tres por tienda. Sin nombrarlas, la cuenta del resumen no
+  // cerraría: «29 tiendas × 3» son 87 y el bloque tendría 88.
+  const deTienda = new Set<string>(POR_TIENDA.map(s => SECCION_EN_HOJA[s]));
+  const extra = filas.filter(f => deTienda.has(f.seccion)).length - tiendas * POR_TIENDA.length;
   return `${filas.length} filas: ${tiendas} ${tiendas === 1 ? 'tienda' : 'tiendas'} × 3 secciones, ` +
+         (extra > 0
+           ? `${extra} ${extra === 1 ? 'fila' : 'filas'} de más donde dos personas hicieron la misma sección, `
+           : '') +
          `${choc} de chocolates y ${cong} de congelados en blanco` +
          (fala ? ', más la de Falabella Full' : '');
 }
