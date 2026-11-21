@@ -14,6 +14,7 @@ const TONO: Record<Tono, { fondo: string; letra: string }> = {
   azul:   { fondo: 'var(--uni-pallet-suave)',   letra: 'var(--uni-pallet)' },
   verde:  { fondo: 'var(--est-ok-suave)',       letra: 'var(--est-ok)' },
   gris:   { fondo: 'var(--color-bg-2)',         letra: 'var(--color-text-sub)' },
+  rojo:   { fondo: 'var(--est-error-suave)',    letra: 'var(--est-error)' },
 };
 
 export function Insignia({ tono, children }: { tono: Tono; children: ReactNode }) {

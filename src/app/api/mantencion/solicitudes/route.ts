@@ -4,7 +4,7 @@ import { verifyPersona } from '@/lib/apiAuth';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { fechaChile } from '@/lib/fechaChile';
 import {
-  BUCKET_MANT, SEGUNDOS_URL_FIRMADA, tiendasDe, todasLasFilas, enTandas, type Persona,
+  BUCKET_MANT, SEGUNDOS_URL_FIRMADA, anotarEventos, tiendasDe, todasLasFilas, enTandas, type Persona,
 } from '@/lib/mantencionServer';
 import { veTodo } from '@/features/mantencion/utils/permisoMantencion';
 import { validarSolicitud } from '@/features/mantencion/utils/validarSolicitud';
@@ -12,6 +12,7 @@ import { leerFotos, rutaFoto } from '@/features/mantencion/utils/fotos';
 import { comentarioDeFila, solicitudDeFila, type FilaComentario, type FilaSolicitud } from '@/features/mantencion/utils/filas';
 import { comentariosParaTienda } from '@/features/mantencion/utils/conversacion';
 import type { ComentarioMant, FotoMant } from '@/features/mantencion/tipos';
+import type { ParDescartado } from '@/features/mantencion/utils/tablero';
 
 /**
  * /api/mantencion/solicitudes
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest) {
     if (pedida && !todo && !nombres.has(pedida)) {
       return NextResponse.json({ error: 'Esa tienda no está entre las tuyas' }, { status: 403 });
     }
-    if (!todo && tiendas.length === 0) return NextResponse.json({ solicitudes: [] });
+    if (!todo && tiendas.length === 0) return NextResponse.json({ solicitudes: [], paresDescartados: [] });
 
     let q = sb.from('mant_solicitudes').select(COLUMNAS)
       .order('created_at', { ascending: false }).limit(MAX_SOLICITUDES);
@@ -59,7 +60,9 @@ export async function GET(request: NextRequest) {
     const lista = (filas ?? []) as unknown as FilaSolicitud[];
     const ids = lista.map(s => s.id);
 
-    const [fotos, comentarios] = await Promise.all([fotosDe(sb, ids), comentariosDe(sb, ids)]);
+    const [fotos, comentarios, paresDescartados] = await Promise.all([
+      fotosDe(sb, ids), comentariosDe(sb, ids), todo ? paresNoDuplicados(sb, ids) : Promise.resolve([]),
+    ]);
 
     const solicitudes = lista.map(f => {
       const propios = comentarios.get(f.id) ?? [];
@@ -70,7 +73,7 @@ export async function GET(request: NextRequest) {
         comentarios: todo ? propios : comentariosParaTienda(propios),
       });
     });
-    return NextResponse.json({ solicitudes });
+    return NextResponse.json({ solicitudes, paresDescartados });
   } catch (err) {
     console.error('[mantencion/solicitudes GET]', err);
     return NextResponse.json({ error: 'No se pudieron cargar las solicitudes' }, { status: 500 });
@@ -95,6 +98,22 @@ async function fotosDe(sb: SupabaseClient, ids: string[]): Promise<Map<string, F
       lista.push({ id: f.id, tipo: f.tipo === 'despues' ? 'despues' : 'antes', url: url.get(f.ruta) ?? null });
       out.set(f.solicitud_id, lista);
     }
+  }
+  return out;
+}
+
+/**
+ * Los pares que Mantención ya marcó «no es duplicado». La decisión vive en la bitácora: el evento
+ * cuelga de la solicitud posible y su `valor_nuevo` es la original (ver `acciones.ts`).
+ */
+async function paresNoDuplicados(sb: SupabaseClient, ids: string[]): Promise<ParDescartado[]> {
+  const out: ParDescartado[] = [];
+  for (const tanda of enTandas(ids)) {
+    const filas = await todasLasFilas<{ solicitud_id: string; valor_nuevo: string | null }>(
+      (desde, hasta) => sb.from('mant_eventos').select('solicitud_id, valor_nuevo')
+        .eq('campo', 'no_es_duplicado').in('solicitud_id', tanda).order('id').range(desde, hasta),
+    );
+    for (const f of filas) if (f.valor_nuevo) out.push({ originalId: f.valor_nuevo, posibleId: f.solicitud_id });
   }
   return out;
 }
@@ -198,7 +217,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'La solicitud llegó, pero las fotos no. Reintenta.' }, { status: 500 });
     }
 
-    await bitacora(sb, persona, id, 'creada', null, v.datos.origen);
+    await anotarEventos(sb, persona, id, [{ campo: 'creada', anterior: null, nuevo: v.datos.origen }]);
     return NextResponse.json({ id, yaExistia: false });
   } catch (err) {
     console.error('[mantencion/solicitudes POST]', err);
@@ -252,16 +271,4 @@ async function completarFotosSiFaltan(
     solicitud_id: sol.id, tipo: 'antes', ruta, subida_por: persona.id, subida_por_nombre: persona.name,
   })));
   if (error) console.error('[mantencion] completar fotos de', sol.id, error.message);
-}
-
-async function bitacora(
-  sb: SupabaseClient, persona: Persona, solicitudId: string,
-  campo: string, anterior: string | null, nuevo: string | null,
-): Promise<void> {
-  const { error } = await sb.from('mant_eventos').insert({
-    solicitud_id: solicitudId, campo, valor_anterior: anterior, valor_nuevo: nuevo,
-    usuario_id: persona.id, usuario_nombre: persona.name,
-  });
-  // La bitácora no puede tumbar lo que ya se guardó, pero tampoco puede fallar callada.
-  if (error) console.error('[mantencion] bitácora', solicitudId, campo, error.message);
 }

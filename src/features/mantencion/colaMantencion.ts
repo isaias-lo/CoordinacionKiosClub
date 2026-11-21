@@ -22,6 +22,8 @@ export interface CuerpoSolicitud {
   /** Data URL de cada foto. */
   fotos: string[];
   clientOpId: string;
+  /** Solo Mantención manda `whatsapp`; para la tienda el servidor lo fuerza a `app`. */
+  origen?: 'app' | 'whatsapp';
 }
 
 export interface SolicitudEnCola {

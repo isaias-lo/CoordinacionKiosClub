@@ -83,6 +83,20 @@ export const ENTIDADES = {
       activo: 'activo', en_servicio: 'en servicio',
     } as Record<string, string>,
   },
+  // Mantención: lo que Jesús cambia en Ajustes. Los cambios de cada SOLICITUD van en su propia
+  // bitácora (`mant_eventos`), que cuelga de la solicitud; la configuración no cuelga de ninguna.
+  mantencion_config: {
+    label: 'Mantención · Ajustes',
+    campos: {
+      umbral_sin_programar: 'alerta sin programar', umbral_total: 'alerta abiertas',
+      dias_antiguedad: 'alerta días', peso_urgente: 'peso urgente',
+      dias_por_solicitud: 'días por solicitud', dias_aviso_precierre: 'aviso precierre',
+    } as Record<string, string>,
+  },
+  mantencion_categoria: {
+    label: 'Mantención · Categoría',
+    campos: { nombre: 'nombre', activa: 'activa' } as Record<string, string>,
+  },
 } as const;
 
 export type Entidad = keyof typeof ENTIDADES;

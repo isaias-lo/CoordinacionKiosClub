@@ -73,3 +73,23 @@ export function enTandas<T>(lista: readonly T[], tamano = 100): T[][] {
   for (let i = 0; i < lista.length; i += tamano) out.push(lista.slice(i, i + tamano));
   return out;
 }
+
+/**
+ * Anota cambios en la bitácora de una solicitud (`mant_eventos`).
+ *
+ * No lanza: lo que se cambió ya se guardó, y perder una línea de registro es menos grave que
+ * devolverle un error a quien hizo bien su trabajo. Pero tampoco calla: el error queda en el log.
+ */
+export async function anotarEventos(
+  sb: SupabaseClient,
+  persona: Persona,
+  solicitudId: string,
+  eventos: ReadonlyArray<{ campo: string; anterior: string | null; nuevo: string | null }>,
+): Promise<void> {
+  if (eventos.length === 0) return;
+  const { error } = await sb.from('mant_eventos').insert(eventos.map(e => ({
+    solicitud_id: solicitudId, campo: e.campo, valor_anterior: e.anterior, valor_nuevo: e.nuevo,
+    usuario_id: persona.id, usuario_nombre: persona.name,
+  })));
+  if (error) console.error('[mantencion] bitácora', solicitudId, eventos.map(e => e.campo).join(','), error.message);
+}

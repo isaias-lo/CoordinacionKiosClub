@@ -39,8 +39,13 @@ function aDataUrl(file: File): Promise<string> {
  *   · Categoría opcional: sugerida o escrita.
  *   · De 1 a 5 fotos, comprimidas en el celular antes de mandarlas.
  *   · Sin señal se guarda en la cola offline y sale sola.
+ *
+ * Con `modo="whatsapp"` es la misma pantalla para Mantención (`/mantencion/nueva`): Jesús carga a
+ * nombre de una tienda lo que le llegó por WhatsApp, y la solicitud queda con `origen = whatsapp`.
  */
-export function NuevaSolicitud() {
+export function NuevaSolicitud({ modo = 'tienda' }: { modo?: 'tienda' | 'whatsapp' } = {}) {
+  const porWhatsapp = modo === 'whatsapp';
+  const volver = porWhatsapp ? '/mantencion' : '/mantencion/tienda';
   const router = useRouter();
   const { contexto } = useContextoMant();
   const tiendas = useMemo(() => contexto?.tiendas ?? [], [contexto]);
@@ -120,6 +125,7 @@ export function NuevaSolicitud() {
 
       const cuerpo: CuerpoSolicitud = {
         codigoTienda: tienda, categoria, descripcion: descripcion.trim(), fotos: datos, clientOpId: nuevoId(),
+        origen: porWhatsapp ? 'whatsapp' : 'app',
       };
       const vista = {
         nombreTienda: tiendas.find(t => t.codigo === tienda)?.nombre ?? tienda,
@@ -128,7 +134,7 @@ export function NuevaSolicitud() {
 
       const guardarEnCelular = async () => {
         if (await encolarSolicitud({ cuerpo, vista })) {
-          router.push('/mantencion/tienda?aviso=guardada');
+          router.push(`${volver}?aviso=guardada`);
         } else {
           // Ni salió ni quedó guardada: decirlo, nunca un «listo» falso.
           setError('No se pudo enviar ni guardar en el celular. Revisa la señal e intenta de nuevo.');
@@ -137,7 +143,7 @@ export function NuevaSolicitud() {
 
       if (typeof navigator !== 'undefined' && !navigator.onLine) { await guardarEnCelular(); return; }
       const r = await crearSolicitud(cuerpo);
-      if (r.ok) router.push('/mantencion/tienda?aviso=enviada');
+      if (r.ok) router.push(porWhatsapp ? '/mantencion?tab=revisar&aviso=enviada' : `${volver}?aviso=enviada`);
       else if (r.red) await guardarEnCelular();
       else setError(r.error);
     } catch (e) {
@@ -149,7 +155,7 @@ export function NuevaSolicitud() {
 
   return (
     <div className="min-h-full" style={{ background: 'var(--color-bg)' }}>
-      <PageHeader title="Nueva solicitud" backHref="/mantencion/tienda" />
+      <PageHeader title={porWhatsapp ? 'Ingresar por WhatsApp' : 'Nueva solicitud'} backHref={volver} />
       <main className="mx-auto max-w-xl px-4 py-4 space-y-4" style={{ color: 'var(--color-text)' }}>
         <Tarjeta className="space-y-2">
           <label htmlFor="mant-tienda" className="block font-semibold">Tienda</label>
@@ -209,7 +215,9 @@ export function NuevaSolicitud() {
             maxLength={2000} placeholder="Ej.: la vitrina de lácteos marca 12 °C desde la mañana"
             className="w-full rounded-xl p-3 text-base" style={estiloCampo} />
           <p className="text-sm" style={{ color: 'var(--color-text-sub)' }}>
-            La urgencia la define Mantención. Si es una emergencia, llama o escribe por WhatsApp.
+            {porWhatsapp
+              ? 'Queda a nombre de la tienda y marcada «por WhatsApp». La urgencia la clasificas después, en «Por revisar».'
+              : 'La urgencia la define Mantención. Si es una emergencia, llama o escribe por WhatsApp.'}
           </p>
         </Tarjeta>
 

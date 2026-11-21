@@ -122,3 +122,16 @@ describe('historialParaTienda', () => {
     expect(h.join(' ')).not.toMatch(/escalera/);
   });
 });
+
+describe('solicitud unida a otra', () => {
+  it('la tienda la ve «Unida a otra», no «Descartada»', () => {
+    expect(estadoParaTienda('descartada', { unida: true })).toEqual({ texto: 'Unida a otra', tono: 'gris' });
+  });
+
+  it('el historial explica que se resuelve junto con la otra', () => {
+    const h = historialParaTienda(
+      { creadaEn: '2026-11-21T13:00:00Z', estado: 'descartada', urgencia: null, duplicadaDe: 'x' }, [],
+      new Date('2026-11-21T15:00:00Z'));
+    expect(h.at(-1)).toMatch(/unió a otra solicitud/);
+  });
+});

@@ -42,7 +42,8 @@ const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/auditoria':               ClipboardCheck,
   '/auditoria-admin':         ClipboardCheck,
   '/picking':                 PackageCheck,
-  '/mantencion/tienda':       Wrench,
+  '/mantencion':              Wrench,
+  '/mantencion/tienda':       Store,
 };
 
 const GROUP_META: Record<string, { Icon: React.ElementType; color: string }> = {

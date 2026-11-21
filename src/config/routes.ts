@@ -84,12 +84,14 @@ export const MODULE_GROUPS: ModuleGroup[] = [
     ],
   },
   {
-    // Mantención (Fase 1). El supervisor de tienda tiene SOLO `/mantencion/tienda`: ahí ve sus
-    // solicitudes y, como subpágina sin registrar, crea una nueva (`/mantencion/tienda/nueva`, que
-    // entra por la regla de prefijo de `isPathAllowed`). El panel de Jesús (`/mantencion`) se
-    // registra cuando exista su página: registrar una ruta sin página manda al sidebar a un 404.
+    // Mantención (Fase 1). Cada rol tiene UNA ruta:
+    //   · `/mantencion` — el panel de Jesús (encargado-mantencion). Sus pestañas van en `?tab=` y el
+    //     ingreso por WhatsApp (`/mantencion/nueva`) entra por la regla de prefijo.
+    //   · `/mantencion/tienda` — el supervisor de tienda. Al estar REGISTRADA, tener `/mantencion` no
+    //     la abre (ver `isPathAllowed`), y `/mantencion/tienda/nueva` entra por prefijo.
     id: 'mantencion', label: 'Mantención', color: '#0F766E',
     routes: [
+      { path: '/mantencion',        label: 'Panel Mantención'      },
       { path: '/mantencion/tienda', label: 'Solicitudes de tienda' },
     ],
   },
@@ -143,6 +145,7 @@ export const HOME_OPTIONS: { value: string; label: string }[] = [
   { value: '/tiendas',         label: 'Conductores'      },
   { value: '/picking',         label: 'Abastecimiento'    },
   { value: '/conteo-flota',    label: 'Conteo de Flota'  },
+  { value: '/mantencion',        label: 'Mantención · Panel'  },
   { value: '/mantencion/tienda', label: 'Mantención · Tienda' },
   { value: '/perfil',          label: 'Perfil'           },
 ];

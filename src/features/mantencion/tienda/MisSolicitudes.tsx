@@ -216,7 +216,7 @@ export function MisSolicitudes() {
 }
 
 function FichaSolicitud({ s, abierta, alternar }: { s: SolicitudMant; abierta: boolean; alternar: () => void }) {
-  const e = estadoParaTienda(s.estado);
+  const e = estadoParaTienda(s.estado, { unida: !!s.duplicadaDe });
   return (
     <Tarjeta>
       <button type="button" onClick={alternar} aria-expanded={abierta} className="w-full text-left">

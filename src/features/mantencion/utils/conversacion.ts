@@ -17,7 +17,7 @@ export function esAbierta(estado: EstadoSolicitud): boolean {
   return !TERMINADOS.includes(estado);
 }
 
-export type Tono = 'neutro' | 'ambar' | 'azul' | 'verde' | 'gris';
+export type Tono = 'neutro' | 'ambar' | 'azul' | 'verde' | 'gris' | 'rojo';
 
 const ETIQUETA: Record<EstadoSolicitud, { texto: string; tono: Tono }> = {
   pendiente:    { texto: 'Pendiente',    tono: 'neutro' },
@@ -32,12 +32,16 @@ const ETIQUETA: Record<EstadoSolicitud, { texto: string; tono: Tono }> = {
 /**
  * El estado como lo ve la tienda. «Por enviar» le gana a todo: es una solicitud que está en el
  * celular y todavía no existe en el servidor.
+ *
+ * Una solicitud unida a otra queda `descartada` en la base, pero para la tienda «descartada» se
+ * lee como «no la van a hacer», y no es así: se hace, dentro de la otra. Por eso tiene su texto.
  */
 export function estadoParaTienda(
   estado: EstadoSolicitud,
-  opciones: { porEnviar?: boolean } = {},
+  opciones: { porEnviar?: boolean; unida?: boolean } = {},
 ): { texto: string; tono: Tono } {
   if (opciones.porEnviar) return { texto: 'Por enviar', tono: 'ambar' };
+  if (opciones.unida) return { texto: 'Unida a otra', tono: 'gris' };
   return ETIQUETA[estado] ?? { texto: estado, tono: 'neutro' };
 }
 
@@ -91,7 +95,7 @@ export function haceCuanto(iso: string, ahora: Date = new Date()): string {
  * La última línea dice qué se está esperando, porque es lo que la tienda viene a averiguar.
  */
 export function historialParaTienda(
-  solicitud: { creadaEn: string; estado: EstadoSolicitud; urgencia: Urgencia | null },
+  solicitud: { creadaEn: string; estado: EstadoSolicitud; urgencia: Urgencia | null; duplicadaDe?: string | null },
   comentarios: readonly ComentarioMant[],
   ahora: Date = new Date(),
 ): string[] {
@@ -100,6 +104,10 @@ export function historialParaTienda(
   for (const c of propios) {
     if (c.tipo === 'pregunta') lineas.push(`Mantención pregunta: ${c.texto}`);
     else lineas.push(`Respuesta de la tienda: ${c.texto}`);
+  }
+  if (solicitud.duplicadaDe) {
+    lineas.push('Mantención la unió a otra solicitud igual de esta tienda: se resuelve junto con esa');
+    return lineas;
   }
   if (preguntasSinResponder(propios).length) {
     lineas.push('Mantención espera tu respuesta');

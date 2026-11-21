@@ -5,6 +5,8 @@
 
 import type { ComentarioMant, ContextoMant, SolicitudMant } from './tipos';
 import type { CuerpoSolicitud } from './colaMantencion';
+import type { ConfigMant, ParDescartado } from './utils/tablero';
+import type { AccionSolicitud } from './utils/acciones';
 
 async function leer<T>(res: Response): Promise<T> {
   let json: unknown = null;
@@ -66,4 +68,50 @@ export async function comentar(
     body: JSON.stringify({ solicitudId, tipo, texto }),
   }));
   return r.comentario;
+}
+
+/* ── Panel de Mantención ──────────────────────────────────────────────────────────────────── */
+
+export interface DatosPanel { solicitudes: SolicitudMant[]; paresDescartados: ParDescartado[] }
+
+export async function traerPanel(): Promise<DatosPanel> {
+  const r = await leer<Partial<DatosPanel>>(await fetch('/api/mantencion/solicitudes', { cache: 'no-store' }));
+  return { solicitudes: r.solicitudes ?? [], paresDescartados: r.paresDescartados ?? [] };
+}
+
+export async function decidir(solicitudId: string, accion: AccionSolicitud): Promise<void> {
+  await leer<{ ok: true }>(await fetch(`/api/mantencion/solicitudes/${encodeURIComponent(solicitudId)}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(accion),
+  }));
+}
+
+export interface CategoriaMant { id: number; nombre: string; activa: boolean; orden: number }
+export interface DatosAjustes {
+  config: ConfigMant;
+  actualizado: { en: string; por: string | null } | null;
+  categorias: CategoriaMant[];
+}
+
+export async function traerAjustes(): Promise<DatosAjustes> {
+  return leer<DatosAjustes>(await fetch('/api/mantencion/ajustes', { cache: 'no-store' }));
+}
+
+export async function guardarAjustes(config: ConfigMant): Promise<ConfigMant> {
+  const r = await leer<{ config: ConfigMant }>(await fetch('/api/mantencion/ajustes', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config),
+  }));
+  return r.config;
+}
+
+export async function agregarCategoria(nombre: string): Promise<CategoriaMant> {
+  const r = await leer<{ categoria: CategoriaMant }>(await fetch('/api/mantencion/categorias', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre }),
+  }));
+  return r.categoria;
+}
+
+export async function cambiarCategoria(id: number, activa: boolean): Promise<void> {
+  await leer<{ ok: true }>(await fetch('/api/mantencion/categorias', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, activa }),
+  }));
 }
