@@ -13,12 +13,20 @@ function cookies(session: object, chunkSize?: number): (name: string) => string 
   return name => jar.get(name);
 }
 
-const user = { id: 'u1', email: 'a@b.cl', user_metadata: { role: 'asistente-despacho' } };
+const user = {
+  id: 'u1', email: 'a@b.cl',
+  user_metadata: { full_name: 'Ana' },
+  app_metadata: { role: 'asistente-despacho' },
+};
 
 describe('sessionFromCookies', () => {
   it('lee la sesión vigente de la cookie', async () => {
     const s = await sessionFromCookies(KEY, cookies({ expires_at: NOW / 1000 + 60, user }), NOW);
-    expect(s).toEqual({ sub: 'u1', email: 'a@b.cl', user_metadata: { role: 'asistente-despacho' } });
+    expect(s).toEqual({
+      sub: 'u1', email: 'a@b.cl',
+      user_metadata: { full_name: 'Ana' },
+      app_metadata: { role: 'asistente-despacho' },
+    });
   });
 
   it('arma la sesión aunque venga partida en varias cookies', async () => {

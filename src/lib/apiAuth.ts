@@ -1,6 +1,7 @@
 import { jwtVerify } from 'jose';
 import { combineChunks, stringFromBase64URL } from '@supabase/ssr';
 import type { NextRequest } from 'next/server';
+import { permisoDe } from './permisoUsuario';
 
 // Supabase JWT secret is base64-encoded in the dashboard — must Buffer.from(..., 'base64').
 // Falls back to network validation if not set or if local verification fails.
@@ -18,7 +19,9 @@ interface JwtPayload {
   sub?: string;
   exp?: number;
   email?: string;
-  user_metadata?: { role?: string; full_name?: string; name?: string };
+  // Solo el NOMBRE se lee de acá: este lo escribe el propio usuario. El rol, de `app_metadata`.
+  user_metadata?: { full_name?: string; name?: string };
+  app_metadata?: unknown;
 }
 
 async function verifyJwt(token: string): Promise<JwtPayload | null> {
@@ -39,7 +42,11 @@ async function verifyJwt(token: string): Promise<JwtPayload | null> {
   );
   const { data: { user } } = await sb.auth.getUser(token);
   if (!user) return null;
-  return { sub: user.id, email: user.email, user_metadata: user.user_metadata as JwtPayload['user_metadata'] };
+  return {
+    sub: user.id, email: user.email,
+    user_metadata: user.user_metadata as JwtPayload['user_metadata'],
+    app_metadata: user.app_metadata,
+  };
 }
 
 // Fallback for the many client call sites that use a bare fetch('/api/...')
@@ -64,7 +71,7 @@ const SESSION_COOKIE = (() => {
 
 interface CookieSession {
   expires_at?: number;
-  user?: { id?: string; email?: string; user_metadata?: JwtPayload['user_metadata'] };
+  user?: { id?: string; email?: string; user_metadata?: JwtPayload['user_metadata']; app_metadata?: unknown };
 }
 
 /** La sesión guardada en la cookie, sin refrescarla ni validarla contra Supabase. Puro y testeable. */
@@ -85,7 +92,7 @@ export async function sessionFromCookies(
   const user = session?.user;
   if (!user?.id) return null;
   if (!session.expires_at || session.expires_at * 1000 <= now) return null;
-  return { sub: user.id, email: user.email, user_metadata: user.user_metadata };
+  return { sub: user.id, email: user.email, user_metadata: user.user_metadata, app_metadata: user.app_metadata };
 }
 
 async function verifyFromCookie(request: NextRequest): Promise<JwtPayload | null> {
@@ -108,17 +115,20 @@ export async function verifyAuth(request: NextRequest): Promise<boolean> {
   return (await resolvePayload(request)) !== null;
 }
 
-/** Returns true only if the request belongs to an admin user. */
+/**
+ * True solo si quien llama es admin. El rol sale de `app_metadata`: el de `user_metadata` lo puede
+ * escribir cualquiera desde el navegador (ver lib/permisoUsuario.ts).
+ */
 export async function verifyAdmin(request: NextRequest): Promise<boolean> {
   const payload = await resolvePayload(request);
-  return payload?.user_metadata?.role === 'admin';
+  return permisoDe(payload).role === 'admin';
 }
 
 /** Returns the user's id and role, or null if unauthenticated. */
 export async function verifyAnyUser(request: NextRequest): Promise<{ id: string; role: string } | null> {
   const payload = await resolvePayload(request);
   if (!payload?.sub) return null;
-  return { id: payload.sub, role: payload.user_metadata?.role ?? '' };
+  return { id: payload.sub, role: permisoDe(payload).role ?? '' };
 }
 
 /**

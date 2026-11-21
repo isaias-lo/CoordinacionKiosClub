@@ -7,6 +7,7 @@ import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { borrarCookiesDeSesion, cerrarSesion } from '@/lib/cerrarSesion';
 import { destinoTrasLogin, mensajeDeErrorLogin } from '@/lib/login';
+import { permisoDe } from '@/lib/permisoUsuario';
 
 /** Último correo que entró en este equipo, para no tener que escribirlo en la handheld. */
 const CLAVE_ULTIMO_CORREO = 'kios.login.ultimoCorreo';
@@ -82,7 +83,7 @@ export default function LoginPage() {
     // Carga completa y no `router.push`: si en este equipo antes hubo otra cuenta, cualquier dato
     // suyo que siguiera en memoria (caché de consultas, contextos, caché del router) se descarta y
     // la cuenta nueva arranca de cero. `replace` para que "atrás" no vuelva al formulario.
-    window.location.replace(destinoTrasLogin(data.user.user_metadata, leerNext()));
+    window.location.replace(destinoTrasLogin(permisoDe(data.user), leerNext()));
   }
 
   function olvidarCorreo() {
@@ -226,7 +227,7 @@ export default function LoginPage() {
               </div>
               <button
                 type="button"
-                onClick={() => window.location.replace(destinoTrasLogin(abierta.user_metadata, leerNext()))}
+                onClick={() => window.location.replace(destinoTrasLogin(permisoDe(abierta), leerNext()))}
                 disabled={cambiando}
                 className="lg-submit w-full py-3.5 rounded-xl font-barlow-condensed text-lg font-bold tracking-wider text-white uppercase cursor-pointer disabled:opacity-50 active:scale-95 transition-all"
                 style={{ background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)', boxShadow: '0 8px 24px rgba(37,99,235,0.4)' }}
