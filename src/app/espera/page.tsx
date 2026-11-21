@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { cerrarSesion } from '@/lib/cerrarSesion';
+import { permisoDe } from '@/lib/permisoUsuario';
 
 export default function EsperaPage() {
   const router = useRouter();
@@ -18,7 +19,7 @@ export default function EsperaPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/registro'); return; }
 
-      const role = (user.user_metadata?.role as string) ?? 'pending';
+      const role = permisoDe(user).role ?? 'pending';
       if (role !== 'pending') {
         router.push('/login');
       } else {

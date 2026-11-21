@@ -31,7 +31,10 @@ export async function POST(request: NextRequest) {
     email,
     password: crypto.randomUUID(),
     email_confirm: true,
-    user_metadata: { full_name, role: 'pending' },
+    user_metadata: { full_name },
+    // En `app_metadata`: si el `pending` fuera a `user_metadata`, quien se registra podría
+    // cambiárselo solo desde el navegador y saltarse la aprobación.
+    app_metadata:  { role: 'pending' },
   });
 
   if (error) {

@@ -90,17 +90,31 @@ describe('verifyAdmin', () => {
     expect(await verifyAdmin(makeReq())).toBe(false);
   });
 
-  it('returns true for a JWT with role=admin', async () => {
-    const token = await signToken({ sub: 'admin-1', user_metadata: { role: 'admin' } });
+  it('returns true for a JWT with app_metadata.role=admin', async () => {
+    const token = await signToken({ sub: 'admin-1', app_metadata: { role: 'admin' } });
     expect(await verifyAdmin(makeReq(`Bearer ${token}`))).toBe(true);
   });
 
   it('returns false for a JWT with role=despachador', async () => {
-    const token = await signToken({ sub: 'user-1', user_metadata: { role: 'despachador' } });
+    const token = await signToken({ sub: 'user-1', app_metadata: { role: 'despachador' } });
     expect(await verifyAdmin(makeReq(`Bearer ${token}`))).toBe(false);
   });
 
-  it('returns false for a JWT with no user_metadata', async () => {
+  // El agujero que cierra este cambio: `user_metadata` lo escribe el propio usuario con
+  // `supabase.auth.updateUser({ data: { role: 'admin' } })`, así que ahí no vale nada.
+  it('NO es admin quien se puso role=admin en user_metadata', async () => {
+    const token = await signToken({
+      sub: 'user-1', user_metadata: { role: 'admin' }, app_metadata: { role: 'web' },
+    });
+    expect(await verifyAdmin(makeReq(`Bearer ${token}`))).toBe(false);
+  });
+
+  it('NO es admin con role=admin solo en user_metadata y sin app_metadata', async () => {
+    const token = await signToken({ sub: 'user-1', user_metadata: { role: 'admin' } });
+    expect(await verifyAdmin(makeReq(`Bearer ${token}`))).toBe(false);
+  });
+
+  it('returns false for a JWT with no metadata', async () => {
     const token = await signToken({ sub: 'user-1' });
     expect(await verifyAdmin(makeReq(`Bearer ${token}`))).toBe(false);
   });
@@ -114,13 +128,13 @@ describe('verifyAnyUser', () => {
   });
 
   it('returns id and role from a valid JWT', async () => {
-    const token = await signToken({ sub: 'user-xyz', user_metadata: { role: 'auditor' } });
+    const token = await signToken({ sub: 'user-xyz', app_metadata: { role: 'auditor' } });
     const result = await verifyAnyUser(makeReq(`Bearer ${token}`));
     expect(result).toEqual({ id: 'user-xyz', role: 'auditor' });
   });
 
-  it('returns empty role string when user_metadata has no role', async () => {
-    const token = await signToken({ sub: 'user-xyz' });
+  it('returns empty role string when app_metadata has no role (aunque user_metadata traiga uno)', async () => {
+    const token = await signToken({ sub: 'user-xyz', user_metadata: { role: 'admin' } });
     const result = await verifyAnyUser(makeReq(`Bearer ${token}`));
     expect(result).toEqual({ id: 'user-xyz', role: '' });
   });

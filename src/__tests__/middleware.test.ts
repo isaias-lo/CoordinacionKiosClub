@@ -25,7 +25,7 @@ beforeEach(() => { usuario = null; escribe = []; });
 
 describe('middleware — redirecciones', () => {
   it('al redirigir conserva la cookie que Supabase acaba de refrescar', async () => {
-    usuario = { user_metadata: { role: 'asistente-despacho' } };
+    usuario = { app_metadata: { role: 'asistente-despacho' } };
     escribe = [{ name: 'sb-x-auth-token', value: 'nuevo' }];
     const r = await pedir('/');  // la app instalada arranca en `/`
     expect(r.headers.get('location')).toBe('https://app.test/despacho');
@@ -40,7 +40,7 @@ describe('middleware — redirecciones', () => {
   });
 
   it('un token sin rutas no entra en bucle: Perfil se abre', async () => {
-    usuario = { user_metadata: { role: 'asistente-despacho', allowed_paths: [] } };
+    usuario = { app_metadata: { role: 'asistente-despacho', allowed_paths: [] } };
     const r1 = await pedir('/despacho');
     expect(r1.headers.get('location')).toBe('https://app.test/perfil');
     const r2 = await pedir('/perfil');
@@ -48,13 +48,13 @@ describe('middleware — redirecciones', () => {
   });
 
   it('con una sesión abierta, /login se abre en vez de rebotar al inicio de esa cuenta', async () => {
-    usuario = { user_metadata: { role: 'admin' } };
+    usuario = { app_metadata: { role: 'admin' } };
     const r = await pedir('/login');
     expect(r.headers.get('location')).toBeNull();
   });
 
   it('las otras páginas públicas siguen mandando al inicio a quien ya entró', async () => {
-    usuario = { user_metadata: { role: 'asistente-despacho' } };
+    usuario = { app_metadata: { role: 'asistente-despacho' } };
     const r = await pedir('/registro');
     expect(r.headers.get('location')).toBe('https://app.test/despacho');
   });
@@ -67,6 +67,24 @@ describe('middleware — redirecciones', () => {
   });
 });
 
+describe('middleware — el rol sale de app_metadata', () => {
+  // `user_metadata` lo escribe el propio usuario desde el navegador: ahí un rol no vale nada.
+  it('quien se puso role=admin en user_metadata no abre /admin', async () => {
+    usuario = {
+      user_metadata: { role: 'admin', allowed_paths: ['*'] },
+      app_metadata:  { role: 'web', allowed_paths: ['/web', '/perfil'], home_path: '/web' },
+    };
+    const r = await pedir('/admin/usuarios');
+    expect(r.headers.get('location')).toBe('https://app.test/web');
+  });
+
+  it('el admin de verdad (app_metadata) sí abre /admin', async () => {
+    usuario = { app_metadata: { role: 'admin' } };
+    const r = await pedir('/admin/usuarios');
+    expect(r.headers.get('location')).toBeNull();
+  });
+});
+
 describe('middleware — rol con la página vieja /despacho-hub', () => {
   // Así está hoy el rol "Asistente Despacho" en la tabla `roles` de producción.
   const asistente = {
@@ -76,7 +94,7 @@ describe('middleware — rol con la página vieja /despacho-hub', () => {
   };
 
   it('entra a Inicio y no hay bucle', async () => {
-    usuario = { user_metadata: asistente };
+    usuario = { app_metadata: asistente };
     const inicio = await pedir('/');
     expect(inicio.headers.get('location')).toBeNull();
     const hub = await pedir('/despacho-hub');
@@ -84,7 +102,7 @@ describe('middleware — rol con la página vieja /despacho-hub', () => {
   });
 
   it('no le regala el Enrutador', async () => {
-    usuario = { user_metadata: asistente };
+    usuario = { app_metadata: asistente };
     const r = await pedir('/despacho');
     expect(r.headers.get('location')).toBe('https://app.test/');
   });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyAdmin } from '@/lib/apiAuth';
 import { parseBody, CreateUserSchema, UpdateUserSchema } from '@/lib/schemas';
+import { permisoDe, permisoParaRol, reemplazoDePermiso, type FilaRol } from '@/lib/permisoUsuario';
 
 const URL_  = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SRK   = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
   // The Auth admin API has no metadata-role filter, so listUsers is still required, but this
   // trims the server→client payload to a single number (polled periodically by every admin tab).
   if (new URL(request.url).searchParams.get('count') === 'pending') {
-    const pendingCount = users.filter(u => (u.user_metadata?.role as string) === 'pending').length;
+    const pendingCount = users.filter(u => permisoDe(u).role === 'pending').length;
     return NextResponse.json({ pendingCount });
   }
 
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
       id:           u.id,
       email:        u.email ?? '',
       full_name:    (u.user_metadata?.full_name as string) ?? u.email ?? '',
-      role:         (u.user_metadata?.role     as string) ?? 'auditor',
+      role:         permisoDe(u).role ?? 'auditor',
       created_at:   u.created_at,
       last_sign_in: u.last_sign_in_at ?? null,
     })),
@@ -50,33 +51,14 @@ export async function POST(request: NextRequest) {
 
   const sb = adminSb();
 
-  // Fetch role config so allowed_paths/home_path land in the JWT from day 1.
-  // Only select columns guaranteed to exist — permissions column may not be present yet.
-  const user_metadata: Record<string, unknown> = { full_name: full_name || email, role };
-  const { data: roleData, error: roleErr } = await sb
-    .from('roles')
-    .select('allowed_paths,home_path')
-    .eq('id', role)
-    .single();
-
-  if (!roleErr && roleData) {
-    user_metadata.allowed_paths = Array.isArray(roleData.allowed_paths) ? roleData.allowed_paths : [];
-    user_metadata.home_path     = roleData.home_path ?? '/perfil';
-  }
-
-  // Try to also fetch permissions (column may not exist yet — ignore error)
-  const { data: permData } = await sb
-    .from('roles')
-    .select('permissions')
-    .eq('id', role)
-    .single();
-  if (permData?.permissions) user_metadata.permissions = permData.permissions;
-
+  // El permiso va en `app_metadata` (solo lo escribe el servidor) y desde el primer token. En
+  // `user_metadata` va solo el nombre: ese lo puede reescribir el propio usuario desde el navegador.
   const { data: { user }, error } = await sb.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
-    user_metadata,
+    user_metadata: { full_name: full_name || email },
+    app_metadata:  await permisoDelRol(sb, role),
   });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -96,31 +78,20 @@ export async function PATCH(request: NextRequest) {
 
   const sb = adminSb();
   const { data: { user: existing } } = await sb.auth.admin.getUserById(id);
-  const meta: Record<string, unknown> = { ...(existing?.user_metadata ?? {}) };
-  if (role)      meta.role      = role;
-  if (full_name) meta.full_name = full_name;
 
+  const updatePayload: Record<string, unknown> = {};
+  if (full_name) updatePayload.user_metadata = { ...(existing?.user_metadata ?? {}), full_name };
+  // El rol va a `app_metadata`. Supabase MEZCLA `app_metadata` clave por clave: omitir una no la
+  // borra, solo mandarla en `null`. Por eso van las cuatro siempre —en null las que el rol nuevo
+  // no trae—, o quedarían, por ejemplo, los `permissions` del rol anterior con el rol nuevo.
+  // Lo que ya había (`provider`, `providers`) va igual: así queda bien aunque la API reemplazara
+  // en vez de mezclar.
   if (role) {
-    // Select only guaranteed columns to avoid silent query failure
-    const { data: roleData, error: roleErr } = await sb
-      .from('roles')
-      .select('allowed_paths,home_path')
-      .eq('id', role)
-      .single();
-    if (!roleErr && roleData) {
-      meta.allowed_paths = Array.isArray(roleData.allowed_paths) ? roleData.allowed_paths : [];
-      meta.home_path     = roleData.home_path ?? '/perfil';
-    }
-    // Permissions fetched separately — column may not exist yet
-    const { data: permData } = await sb
-      .from('roles')
-      .select('permissions')
-      .eq('id', role)
-      .single();
-    if (permData?.permissions) meta.permissions = permData.permissions;
+    updatePayload.app_metadata = {
+      ...(existing?.app_metadata ?? {}),
+      ...reemplazoDePermiso(await permisoDelRol(sb, role)),
+    };
   }
-
-  const updatePayload: Record<string, unknown> = { user_metadata: meta };
   if (password) updatePayload.password = password;
 
   const { error } = await sb.auth.admin.updateUserById(id, updatePayload);
@@ -157,4 +128,18 @@ export async function DELETE(request: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });
+}
+
+/**
+ * El permiso que se estampa al darle `role` a alguien, leído de la tabla `roles`.
+ *
+ * `permissions` se pide aparte, como antes: hubo un tiempo en que la columna no existía, y pedirla
+ * junto con las otras hacía fallar la consulta entera — el usuario quedaba sin rutas en el token.
+ */
+async function permisoDelRol(sb: ReturnType<typeof adminSb>, role: string) {
+  const { data: fila, error } = await sb
+    .from('roles').select('allowed_paths,home_path').eq('id', role).single();
+  if (error || !fila) return permisoParaRol(role, null);
+  const { data: perm } = await sb.from('roles').select('permissions').eq('id', role).single();
+  return permisoParaRol(role, { ...fila, permissions: perm?.permissions } as FilaRol);
 }
