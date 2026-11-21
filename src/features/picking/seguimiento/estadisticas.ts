@@ -99,11 +99,14 @@ export function textoMinutos(min: number): string {
   return `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`;
 }
 
-/** «2,6 min» o «45 s»; «—» sin dato. */
+/**
+ * «1:30» (un minuto y medio) o «0:45», como un cronómetro; «—» sin dato. Era «1,5 min», que se
+ * lee como un minuto y cinco segundos.
+ */
 export function textoSegundos(seg: number): string {
   if (!(seg > 0)) return '—';
-  if (seg < 60) return `${Math.round(seg)} s`;
-  return `${(seg / 60).toLocaleString('es-CL', { maximumFractionDigits: 1 })} min`;
+  const total = Math.round(seg);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
 /** «Del 1 al 31 oct», «9 oct», «Del 28 sep al 3 oct». */

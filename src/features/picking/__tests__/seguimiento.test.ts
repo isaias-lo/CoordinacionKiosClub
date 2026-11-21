@@ -115,12 +115,22 @@ describe('estadísticas', () => {
     const t = totales([r(10, 20, 100, 120, 1000), r(30, 10, 300, 60, 3000)]);
     expect(t).toMatchObject({ ops: 40, sku: 400, unidades: 4000, minPorPedido: 12.5, segPorSku: 75, unidadesPorOp: 100 });
   });
+  it('el tiempo por SKU va en minutos:segundos', () => {
+    // «1,5 min» se leía como un minuto y cinco segundos.
+    expect(textoSegundos(90)).toBe('1:30');
+    expect(textoSegundos(464)).toBe('7:44');
+    expect(textoSegundos(39)).toBe('0:39');
+    expect(textoSegundos(59.6)).toBe('1:00');
+    expect(textoSegundos(605)).toBe('10:05');
+    expect(textoSegundos(0)).toBe('—');
+    expect(textoSegundos(Number.NaN)).toBe('—');
+  });
   it('formatea tiempos y rangos', () => {
     expect(textoMinutos(19.2)).toBe('19 min');
     expect(textoMinutos(65)).toBe('1 h 5 min');
     expect(textoMinutos(0)).toBe('—');
-    expect(textoSegundos(156)).toBe('2,6 min');
-    expect(textoSegundos(45)).toBe('45 s');
+    expect(textoSegundos(156)).toBe('2:36');
+    expect(textoSegundos(45)).toBe('0:45');
     expect(textoRango('2026-10-01', '2026-10-31')).toBe('Del 1 al 31 oct');
     expect(textoRango('2026-10-09', '2026-10-09')).toBe('9 oct');
   });
