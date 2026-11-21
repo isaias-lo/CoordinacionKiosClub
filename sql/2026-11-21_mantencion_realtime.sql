@@ -1,5 +1,8 @@
 -- Mantención · el tablero de Jesús se actualiza solo.
 --
+-- APLICADO en el proyecto vivo (epiwlmegimfftivqzzup) el 21/11/2026, de a una sentencia, y verificado
+-- con la consulta de control del final: salen las tres tablas.
+--
 -- `useCambiosMant` (src/features/mantencion/useCambiosMant.ts) escucha cambios por Supabase
 -- Realtime. Una tabla que NO está en la publicación `supabase_realtime` no da error al suscribirse:
 -- simplemente no llega nada, y el tablero se queda quieto hasta que alguien vuelve a la pestaña.
