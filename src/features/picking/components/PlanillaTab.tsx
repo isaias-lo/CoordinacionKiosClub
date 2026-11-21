@@ -950,11 +950,15 @@ function TablaPlanilla({ planilla, auditores, onCorregir, ahora }: {
           <tr style={{ background: '#F8FAFC', borderTop: '2px solid #CBD5E1' }}>
             <td />
             <td style={{ ...TH, padding: '7px 10px' }}>Total</td>
+            {/* Dos celdas por sección, como el encabezado: el total va bajo «Usuario». */}
             {SECCIONES.map(s => (
-              <td key={s} style={{ ...TD_SEC, fontWeight: 800, fontFamily: 'ui-monospace, monospace',
-                                   fontVariantNumeric: 'tabular-nums', paddingTop: 7, paddingBottom: 7 }}>
-                {planilla.totales[s]}
-              </td>
+              <Fragment key={s}>
+                <td style={{ ...TD_SEC, fontWeight: 800, fontFamily: 'ui-monospace, monospace',
+                             fontVariantNumeric: 'tabular-nums', paddingTop: 7, paddingBottom: 7 }}>
+                  {planilla.totales[s]}
+                </td>
+                <td />
+              </Fragment>
             ))}
           </tr>
         </tbody>
