@@ -9,7 +9,7 @@ import {
   Map, MapPin, Activity, Navigation as NavIcon,
   Warehouse, Monitor, Store, FileText, AlertTriangle,
   CheckSquare, Settings2, Power, ChevronDown, ChevronLeft, ChevronRight,
-  LogOut, Users, Search, ArrowLeftRight, Layers, Moon, Sun, Snowflake,
+  LogOut, Users, Search, ArrowLeftRight, Layers, Moon, Sun, Snowflake, Wrench,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { useSidebar } from './SidebarContext';
@@ -42,6 +42,7 @@ const ROUTE_ICONS: Record<string, React.ElementType> = {
   '/auditoria':               ClipboardCheck,
   '/auditoria-admin':         ClipboardCheck,
   '/picking':                 PackageCheck,
+  '/mantencion/tienda':       Wrench,
 };
 
 const GROUP_META: Record<string, { Icon: React.ElementType; color: string }> = {
@@ -51,6 +52,7 @@ const GROUP_META: Record<string, { Icon: React.ElementType; color: string }> = {
   'control-interno':{ Icon: Shield,        color: '#10B981' },
   auditoria:        { Icon: ClipboardCheck,color: '#9333EA' },
   abastecimiento:   { Icon: PackageCheck,  color: '#F59E0B' },
+  mantencion:       { Icon: Wrench,        color: '#0F766E' },
   otros:            { Icon: Layers,        color: '#6B7280' },
 };
 

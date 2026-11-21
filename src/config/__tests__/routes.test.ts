@@ -141,3 +141,27 @@ describe('puedeAbrir — la página de inicio siempre se puede abrir', () => {
     expect(puedeAbrir('asistente-despacho', '/admin/usuarios', [])).toBe(false);
   });
 });
+
+describe('Mantención — el supervisor de tienda tiene una sola página', () => {
+  const supervisor = ['/mantencion/tienda', '/perfil'];
+
+  it('abre su lista y la subpágina para crear una solicitud', () => {
+    expect(isPathAllowed(supervisor, '/mantencion/tienda')).toBe(true);
+    expect(isPathAllowed(supervisor, '/mantencion/tienda/nueva')).toBe(true);
+  });
+
+  it('no abre nada más de la app', () => {
+    expect(isPathAllowed(supervisor, '/mantencion')).toBe(false);
+    expect(isPathAllowed(supervisor, '/despacho')).toBe(false);
+    expect(isPathAllowed(supervisor, '/admin/usuarios')).toBe(false);
+  });
+
+  it('su inicio es su lista, sin bucles', () => {
+    expect(paginaInicial('supervisor-tienda', supervisor, '/mantencion/tienda')).toBe('/mantencion/tienda');
+  });
+
+  it('la ruta queda registrada para el panel de permisos', () => {
+    expect(ALL_MODULE_PATHS).toContain('/mantencion/tienda');
+    expect(cleanAllowedPaths(supervisor)).toEqual(supervisor);
+  });
+});

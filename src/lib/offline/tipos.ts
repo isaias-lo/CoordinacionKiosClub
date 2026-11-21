@@ -11,7 +11,7 @@
  * pidió.
  */
 
-export type ModuloOffline = 'picking' | 'conductor' | 'recepcion';
+export type ModuloOffline = 'picking' | 'conductor' | 'recepcion' | 'mantencion';
 
 export interface ItemCola<P = unknown> {
   /** Clave del registro. Es también el `clientOpId` que viaja al servidor: ver abajo. */

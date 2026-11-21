@@ -35,7 +35,10 @@ export const SolicitudMantencionSchema = z.object({
   descripcion: z.string().trim()
     .min(1, 'Contá qué pasa')
     .max(2000, 'La descripción es demasiado larga'),
-  /** Rutas dentro del bucket privado, no URLs: las firmadas vencen. */
+  /**
+   * Las fotos como data URL: viajan dentro de la solicitud y las sube el servidor (ver
+   * `fotos.ts`). Acá solo se cuentan; tipo y peso los revisa `leerFotos`.
+   */
   fotos: z.array(z.string().trim().min(1))
     .min(MIN_FOTOS, 'Agregá al menos una foto')
     .max(MAX_FOTOS, `Máximo ${MAX_FOTOS} fotos`),
