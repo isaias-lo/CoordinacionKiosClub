@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { puedeAbrir, SYSTEM_ROLE_PATHS, paginaInicial } from '@/config/routes';
+import { permisoDe } from '@/lib/permisoUsuario';
 
 // La lógica vive en `config/routes` (pura y con tests): garantiza que la página devuelta sea una
 // que el rol PUEDA abrir. Antes devolvía `SYSTEM_ROLE_HOME[role]` a ciegas y eso podía dejar a
@@ -93,9 +94,12 @@ export async function middleware(request: NextRequest) {
     return redirigir(`/login?next=${encodeURIComponent(destino)}`);
   }
 
-  const role       = (user.user_metadata?.role          as string   | undefined) ?? 'auditor';
-  const metaPaths  = user.user_metadata?.allowed_paths  as string[] | undefined;
-  const metaHome   = user.user_metadata?.home_path      as string   | undefined;
+  // De `app_metadata`, que solo escribe el servidor. `user_metadata` lo escribe el propio usuario
+  // desde el navegador: leído de ahí, cualquiera se daba `role: 'admin'` (ver lib/permisoUsuario.ts).
+  const permiso    = permisoDe(user);
+  const role       = permiso.role ?? 'auditor';
+  const metaPaths  = permiso.allowed_paths;
+  const metaHome   = permiso.home_path;
 
   // /login se abre aunque haya sesión. Antes mandaba de vuelta al inicio de quien estuviera
   // dentro, y en una handheld compartida eso era el "rebote": no había forma de llegar al

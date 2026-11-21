@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { cerrarSesion } from '@/lib/cerrarSesion';
+import { permisoDe } from '@/lib/permisoUsuario';
 
 export type UserRole = 'auditor' | 'admin-auditoria' | 'despachador' | 'admin' | 'supervisor-picking' | 'asistente-despacho' | 'coordinador-flota' | 'supervisor' | 'conductor' | (string & {});
 
@@ -38,19 +39,16 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
-// Builds profile from JWT metadata — no DB call, no RLS issues.
+// Arma el perfil desde el JWT — sin ir a la base. El permiso sale de `app_metadata` (lo escribe
+// solo el servidor); de `user_metadata` sale únicamente el nombre. Ver lib/permisoUsuario.ts.
 function profileFromUser(user: User): Profile {
-  const meta = user.user_metadata ?? {};
-  const role = ((meta.role as string) ?? 'auditor') as UserRole;
-  const allowedPaths = role === 'admin'
-    ? ['*']
-    : (meta.allowed_paths as string[] | undefined) ?? [];
-  const permissions = role === 'admin'
-    ? {}
-    : ((meta.permissions as Record<string, 'edit' | 'read'>) ?? {});
+  const permiso = permisoDe(user);
+  const role = (permiso.role ?? 'auditor') as UserRole;
+  const allowedPaths = role === 'admin' ? ['*'] : permiso.allowed_paths ?? [];
+  const permissions  = role === 'admin' ? {}    : permiso.permissions ?? {};
   return {
     id: user.id,
-    full_name: (meta.full_name as string) ?? user.email ?? null,
+    full_name: (user.user_metadata?.full_name as string) ?? user.email ?? null,
     role,
     allowedPaths,
     permissions,
@@ -77,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // [P9] Refrescar la sesión al volver a la pestaña.
     //
-    // Los permisos se leen del JWT (`user_metadata`), que es una FOTO tomada al iniciar sesión.
+    // Los permisos se leen del JWT (`app_metadata`), que es una FOTO tomada al iniciar sesión.
     // Si un admin cambia los permisos del rol, el servidor ya re-estampa el metadata (ver PATCH
     // /api/admin/roles), pero la sesión abierta sigue con el token viejo y la persona no ve el
     // acceso nuevo hasta cerrar y volver a entrar. `refreshSession` trae el metadata actualizado

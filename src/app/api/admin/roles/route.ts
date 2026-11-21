@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyAdmin } from '@/lib/apiAuth';
 import { parseBody, CreateRoleSchema, UpdateRoleSchema } from '@/lib/schemas';
+import { permisoDe } from '@/lib/permisoUsuario';
 
 const URL_  = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SRK   = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -64,7 +65,7 @@ export async function PATCH(request: NextRequest) {
   // [P9] PROPAGAR el cambio a quienes YA tienen el rol.
   //
   // El permiso efectivo de cada persona no se lee de la tabla `roles`: se guarda como una COPIA en
-  // su `user_metadata` (y de ahí lo toma el JWT que lee AuthProvider). Esa copia se estampaba solo
+  // su `app_metadata` (y de ahí lo toma el JWT que lee AuthProvider). Esa copia se estampaba solo
   // al crear el usuario o al cambiarle el rol, así que editar el rol actualizaba la tabla pero
   // dejaba a todos sus usuarios con el permiso VIEJO — el síntoma reportado: "cambié el rol y no
   // ven lo que les di acceso". Acá se re-estampa a cada uno.
@@ -82,8 +83,8 @@ export async function PATCH(request: NextRequest) {
         const { data, error: listErr } = await sb.auth.admin.listUsers({ page, perPage: 200 });
         if (listErr || !data?.users?.length) break;
         for (const u of data.users) {
-          if ((u.user_metadata?.role as string) === body.id) {
-            conElRol.push({ id: u.id, meta: { ...(u.user_metadata ?? {}) } });
+          if (permisoDe(u).role === body.id) {
+            conElRol.push({ id: u.id, meta: { ...(u.app_metadata ?? {}) } });
           }
         }
         if (data.users.length < 200) break;
@@ -96,7 +97,7 @@ export async function PATCH(request: NextRequest) {
         if (updates.home_path !== undefined) meta.home_path = rol?.home_path ?? '/perfil';
         if (updates.permissions !== undefined && rol?.permissions !== undefined)
           meta.permissions = rol.permissions;
-        const { error: upErr } = await sb.auth.admin.updateUserById(u.id, { user_metadata: meta });
+        const { error: upErr } = await sb.auth.admin.updateUserById(u.id, { app_metadata: meta });
         if (upErr) { fallidos.push(u.id); console.error('[roles PATCH] re-estampar', u.id, upErr.message); }
         else actualizados++;
       }
