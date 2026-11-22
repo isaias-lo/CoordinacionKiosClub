@@ -4,10 +4,11 @@
 // Diseño: /mnt/project-files/disenos/picking/Estadisticas.dc.html. Los datos salen de Odoo igual
 // que antes (StatsTab); esta vista solo los presenta.
 
-import { Fragment, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { PickerStatRow } from '../picking-types';
 import {
   rangoDe, periodoDe, totales, unidadesPorOp, miles, textoMinutos, textoSegundos, textoRango, type Periodo,
+  diaLocal, mismoDia,
 } from './estadisticas';
 import { compararPeriodos, resumen, type Direccion, type Tendencia } from './tendencia';
 import { textoCuentasFuera } from './filtroPickers';
@@ -32,7 +33,7 @@ const COLUMNAS: { key: Orden; label: string; hint: string; celda: (r: PickerStat
   { key: 'units', label: 'UNIDADES', hint: 'Unidades movidas', celda: r => miles(r.units) },
   { key: 'porOp', label: 'PROM. / OP.', hint: 'Unidades promedio por operación', celda: r => miles(unidadesPorOp(r)) },
   { key: 'avgMinutesPerOp', label: 'T. PROM. / PEDIDO', hint: 'Tiempo promedio por pedido completo', celda: r => textoMinutos(r.avgMinutesPerOp) },
-  { key: 'avgSecondsPerLine', label: 'T. PROM. / SKU', hint: 'Tiempo promedio entre pistolazos', celda: r => textoSegundos(r.avgSecondsPerLine) },
+  { key: 'avgSecondsPerLine', label: 'T. PROM. / SKU', hint: 'Tiempo promedio entre pistolazos, en minutos:segundos (1:30 es un minuto y medio)', celda: r => textoSegundos(r.avgSecondsPerLine) },
   { key: 'totalMinutes', label: 'HORAS',
     hint: 'Horas de RELOJ: cada tanda se cuenta una vez y los lapsos que se pisan se unen. Donde dice «planilla», la hoja del bono cuenta otro número porque los suma en vez de unirlos.',
     celda: r => textoHoras(r.totalMinutes) },
@@ -46,7 +47,7 @@ const COLUMNAS: { key: Orden; label: string; hint: string; celda: (r: PickerStat
 
 interface Props {
   rows: PickerStatRow[];
-  /** El período inmediatamente anterior, del mismo largo. `null` = sin tendencia que mostrar. */
+  /** El período anterior, del mismo largo (ver `periodoAnterior`). `null` = sin tendencia que mostrar. */
   rowsPrevio: PickerStatRow[] | null;
   canonicalNames: Record<string, string>;
   desde: string;
@@ -80,6 +81,22 @@ interface Props {
   porEspecialidad?: Record<string, PickerStatRow[]>;
 }
 
+/**
+ * La fecha de hoy, que se vuelve a leer cuando cambia el día. Era `useMemo(() => new Date(), [])`:
+ * con la pantalla abierta de un día para otro, «Hoy», «Esta semana» y «Este mes» seguían
+ * calculándose con el día en que se abrió.
+ */
+function useHoy(): Date {
+  const [ahora, setAhora] = useState(() => new Date());
+  useEffect(() => {
+    const revisar = () => setAhora(antes => (mismoDia(antes, new Date()) ? antes : new Date()));
+    const reloj = window.setInterval(revisar, 60_000);
+    document.addEventListener('visibilitychange', revisar);
+    return () => { window.clearInterval(reloj); document.removeEventListener('visibilitychange', revisar); };
+  }, []);
+  return ahora;
+}
+
 export function VistaEstadisticas({
   rows: rowsTodas, rowsPrevio, canonicalNames, desde, hasta, onPeriodo, onActualizar, onImprimir, cargando, hayDatos, actualizado, error, sinOdoo,
   sinMedir, truncado, unidadesDudosas, fueraDeLista, onAbrirConfig, porEspecialidad,
@@ -87,7 +104,9 @@ export function VistaEstadisticas({
   /** Qué especialidad se está mirando. `todas` junta el trabajo de cada persona en una fila,
    *  que es lo que se veía siempre. */
   const [esp, setEsp] = useState<Especialidad | 'todas'>('todas');
-  const ahora = useMemo(() => new Date(), []);
+  const ahora = useHoy();
+  /** El tope de «Elegir»: un día que todavía no pasa no tiene nada que medir. */
+  const hoy = diaLocal(ahora);
   const periodo = periodoDe(desde, hasta, ahora);
   const [eligiendo, setEligiendo] = useState(false);
   const [d1, setD1] = useState(desde);
@@ -197,10 +216,10 @@ export function VistaEstadisticas({
         {eligiendo && (
           <div className="pk-hrow">
             <label className="pk-sub" htmlFor="stats-desde">Desde</label>
-            <span className="pk-field" style={{ width: 170 }}><input id="stats-desde" type="date" value={d1} max={d2} onChange={e => setD1(e.target.value)} /></span>
+            <span className="pk-field" style={{ width: 170 }}><input id="stats-desde" type="date" value={d1} max={d2 && d2 < hoy ? d2 : hoy} onChange={e => setD1(e.target.value)} /></span>
             <label className="pk-sub" htmlFor="stats-hasta">hasta</label>
-            <span className="pk-field" style={{ width: 170 }}><input id="stats-hasta" type="date" value={d2} min={d1} onChange={e => setD2(e.target.value)} /></span>
-            <button type="button" className="pk-btn pri" disabled={!d1 || !d2 || d1 > d2}
+            <span className="pk-field" style={{ width: 170 }}><input id="stats-hasta" type="date" value={d2} min={d1} max={hoy} onChange={e => setD2(e.target.value)} /></span>
+            <button type="button" className="pk-btn pri" disabled={!d1 || !d2 || d1 > d2 || d2 > hoy}
               onClick={() => { setEligiendo(false); onPeriodo(d1, d2); }}>Ver estas fechas</button>
             <button type="button" className="pk-btn" onClick={() => setEligiendo(false)}>Cancelar</button>
           </div>
@@ -301,7 +320,8 @@ export function VistaEstadisticas({
                 si usó dos pistolas, la fila es la suma de las dos.</span></div>
               {COLUMNAS.map(c => <div key={c.key}><b>{c.label}</b><span>{c.hint}</span></div>)}
               <div><b>VS. PERÍODO ANTERIOR</b><span>Unidades por hora comparadas con el período
-                anterior, del mismo largo. Menos de 5% de diferencia se considera igual.</span></div>
+                anterior, del mismo largo; si es de menos de una semana, los mismos días de la semana
+                pasada. Menos de 5% de diferencia se considera igual.</span></div>
               {/* Sin esto, el «planilla 238,8» de una fila no se puede interpretar. */}
               <div><b>PLANILLA</b><span>Cuando aparece debajo de las horas o del ritmo, es el
                 número que da la hoja del bono de la jefatura. Difiere porque esa hoja SUMA los
@@ -333,7 +353,7 @@ export function VistaEstadisticas({
                     {encabezado('name', 'PICKER', 'Responsable en Odoo y nombre configurado', false)}
                     {COLUMNAS.map(c => <Fragment key={c.key}>{encabezado(c.key, c.label, c.hint)}</Fragment>)}
                     {porNombre && (
-                      <th className="r" title="Unidades por hora comparadas con el período anterior, del mismo largo. Menos de 5% de diferencia se considera igual.">
+                      <th className="r" title="Unidades por hora comparadas con el período anterior, del mismo largo (si es de menos de una semana, los mismos días de la semana pasada). Menos de 5% de diferencia se considera igual.">
                         VS. PERÍODO ANTERIOR
                       </th>
                     )}

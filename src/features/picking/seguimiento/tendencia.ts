@@ -122,10 +122,15 @@ export function resumen(filas: Tendencia[]): Record<Direccion, number> {
 }
 
 /**
- * El período inmediatamente anterior, del MISMO largo.
+ * El período anterior, del MISMO largo.
  *
  * Siete días contra los siete previos. Comparar contra un período de otro largo compararía
  * también el tamaño de la muestra, no solo el ritmo.
+ *
+ * Con menos de una semana se retrocede una semana ENTERA y no el largo del período: el mismo
+ * largo, pero también los mismos días. Retrocediendo solo el largo, «Hoy» un lunes se comparaba
+ * con un domingo sin picking —no salía tendencia— y «Esta semana» de lunes a sábado con el
+ * martes a domingo anterior.
  *
  * Las fechas son `YYYY-MM-DD` y los dos extremos entran. Se cuenta en UTC a propósito: son días
  * de calendario, no instantes, así que el huso no participa.
@@ -135,6 +140,7 @@ export function periodoAnterior(desde: string, hasta: string): { desde: string; 
   const h = Date.parse(hasta + 'T00:00:00Z');
   const UN_DIA = 86_400_000;
   const largo = Math.round((h - d) / UN_DIA) + 1;   // ambos extremos incluidos
+  const salto = largo < 7 ? 7 : largo;
   const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-  return { desde: iso(d - largo * UN_DIA), hasta: iso(d - UN_DIA) };
+  return { desde: iso(d - salto * UN_DIA), hasta: iso(h - salto * UN_DIA) };
 }

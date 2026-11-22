@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { filasActividad, pasaFiltros, opciones, aCsv, SIN_FILTROS } from '../seguimiento/actividad';
 import { contar, textoConteo, resumenHistorial, slotsPorClave, contenidoDe } from '../seguimiento/historial';
-import { rangoDe, periodoDe, totales, textoMinutos, textoSegundos, textoRango } from '../seguimiento/estadisticas';
+import { rangoDe, periodoDe, totales, textoMinutos, textoSegundos, textoRango, diaLocal, mismoDia } from '../seguimiento/estadisticas';
 import type { PalletSlot, PrintRecord, PickerStatRow } from '../picking-types';
 import type { PickingEvento } from '../picking-utils';
 
@@ -83,12 +83,31 @@ describe('estadísticas', () => {
   it('arma los períodos rápidos', () => {
     expect(rangoDe('hoy', jueves)).toEqual({ desde: '2026-10-08', hasta: '2026-10-08' });
     expect(rangoDe('semana', jueves)).toEqual({ desde: '2026-10-05', hasta: '2026-10-08' });
-    expect(rangoDe('mes', jueves)).toEqual({ desde: '2026-10-01', hasta: '2026-10-31' });
+    expect(rangoDe('mes', jueves)).toEqual({ desde: '2026-10-01', hasta: '2026-10-08' });
     expect(periodoDe('2026-10-05', '2026-10-08', jueves)).toBe('semana');
     expect(periodoDe('2026-09-01', '2026-10-08', jueves)).toBe('elegir');
   });
   it('la semana del domingo parte el lunes anterior', () => {
     expect(rangoDe('semana', new Date(2026, 9, 11)).desde).toBe('2026-10-05');
+  });
+  it('ningún período rápido pide días que todavía no pasan', () => {
+    // «Este mes» terminaba el 30: medía 21 días y el período anterior salía de 30.
+    const sabado = new Date(2026, 10, 21, 18, 0);
+    for (const p of ['hoy', 'semana', 'mes'] as const) expect(rangoDe(p, sabado).hasta).toBe('2026-11-21');
+    expect(rangoDe('mes', new Date(2026, 1, 28)).hasta).toBe('2026-02-28');
+  });
+  it('el último día del mes, «Este mes» es el mes completo', () => {
+    expect(rangoDe('mes', new Date(2026, 9, 31, 12, 0))).toEqual({ desde: '2026-10-01', hasta: '2026-10-31' });
+  });
+  it('«Hoy» cambia al cambiar el día, no al pasar las horas', () => {
+    expect(mismoDia(new Date(2026, 10, 21, 0, 1), new Date(2026, 10, 21, 23, 59))).toBe(true);
+    expect(mismoDia(new Date(2026, 10, 21, 23, 59), new Date(2026, 10, 22, 0, 1))).toBe(false);
+    expect(diaLocal(new Date(2026, 10, 21, 23, 59))).toBe('2026-11-21');
+  });
+  it('un período de ayer ya no se reconoce como «Hoy»', () => {
+    // Con el día en que se abrió la pantalla fijo, el chip seguía marcando «Hoy» sobre el día anterior.
+    const ayer = rangoDe('hoy', new Date(2026, 10, 20, 15, 0));
+    expect(periodoDe(ayer.desde, ayer.hasta, new Date(2026, 10, 21, 8, 0))).toBe('elegir');
   });
   it('promedia ponderando por operaciones y SKU', () => {
     const r = (ops: number, min: number, lineas: number, seg: number, units: number): PickerStatRow =>
@@ -96,12 +115,22 @@ describe('estadísticas', () => {
     const t = totales([r(10, 20, 100, 120, 1000), r(30, 10, 300, 60, 3000)]);
     expect(t).toMatchObject({ ops: 40, sku: 400, unidades: 4000, minPorPedido: 12.5, segPorSku: 75, unidadesPorOp: 100 });
   });
+  it('el tiempo por SKU va en minutos:segundos', () => {
+    // «1,5 min» se leía como un minuto y cinco segundos.
+    expect(textoSegundos(90)).toBe('1:30');
+    expect(textoSegundos(464)).toBe('7:44');
+    expect(textoSegundos(39)).toBe('0:39');
+    expect(textoSegundos(59.6)).toBe('1:00');
+    expect(textoSegundos(605)).toBe('10:05');
+    expect(textoSegundos(0)).toBe('—');
+    expect(textoSegundos(Number.NaN)).toBe('—');
+  });
   it('formatea tiempos y rangos', () => {
     expect(textoMinutos(19.2)).toBe('19 min');
     expect(textoMinutos(65)).toBe('1 h 5 min');
     expect(textoMinutos(0)).toBe('—');
-    expect(textoSegundos(156)).toBe('2,6 min');
-    expect(textoSegundos(45)).toBe('45 s');
+    expect(textoSegundos(156)).toBe('2:36');
+    expect(textoSegundos(45)).toBe('0:45');
     expect(textoRango('2026-10-01', '2026-10-31')).toBe('Del 1 al 31 oct');
     expect(textoRango('2026-10-09', '2026-10-09')).toBe('9 oct');
   });

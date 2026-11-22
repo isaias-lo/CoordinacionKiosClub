@@ -8,7 +8,22 @@ function iso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** Fechas (YYYY-MM-DD, hora local) de un período rápido. La semana parte el lunes. */
+/** El día de una fecha (YYYY-MM-DD, hora local). Es el tope de lo que se puede pedir. */
+export function diaLocal(d: Date): string {
+  return iso(d);
+}
+
+/** Si dos instantes caen el mismo día local. Con la pantalla abierta de un día para otro, es lo
+ *  que dice que «Hoy» ya no es el día en que se abrió. */
+export function mismoDia(a: Date, b: Date): boolean {
+  return iso(a) === iso(b);
+}
+
+/**
+ * Fechas (YYYY-MM-DD, hora local) de un período rápido. La semana parte el lunes y el mes el
+ * día 1, y los tres terminan HOY. El mes terminaba el día 30: pedía días que todavía no pasaron,
+ * y el período anterior —que se calcula del mismo largo— salía de 30 días contra los 21 medidos.
+ */
 export function rangoDe(periodo: Exclude<Periodo, 'elegir'>, ahora: Date): { desde: string; hasta: string } {
   const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
   if (periodo === 'hoy') return { desde: iso(hoy), hasta: iso(hoy) };
@@ -17,10 +32,7 @@ export function rangoDe(periodo: Exclude<Periodo, 'elegir'>, ahora: Date): { des
     lunes.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7));
     return { desde: iso(lunes), hasta: iso(hoy) };
   }
-  return {
-    desde: iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1)),
-    hasta: iso(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0)),
-  };
+  return { desde: iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1)), hasta: iso(hoy) };
 }
 
 /** Qué período rápido corresponde a unas fechas, o 'elegir' si ninguno. */
@@ -87,11 +99,14 @@ export function textoMinutos(min: number): string {
   return `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`;
 }
 
-/** «2,6 min» o «45 s»; «—» sin dato. */
+/**
+ * «1:30» (un minuto y medio) o «0:45», como un cronómetro; «—» sin dato. Era «1,5 min», que se
+ * lee como un minuto y cinco segundos.
+ */
 export function textoSegundos(seg: number): string {
   if (!(seg > 0)) return '—';
-  if (seg < 60) return `${Math.round(seg)} s`;
-  return `${(seg / 60).toLocaleString('es-CL', { maximumFractionDigits: 1 })} min`;
+  const total = Math.round(seg);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
 /** «Del 1 al 31 oct», «9 oct», «Del 28 sep al 3 oct». */

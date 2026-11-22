@@ -138,8 +138,10 @@ describe('planRegistro: lo que NO se escribe', () => {
     expect(p.avisos[0].detalle).toContain('Alguien Nuevo');
   });
 
-  it('dos pickers en la misma celda se dejan a mano', () => {
-    // No cabe una sola persona en una sola fila, y elegir una sería decidir a quién se le abona.
+  it('dos pickers en una celda que tiene UNA sola fila se dejan a mano', () => {
+    // Es un día armado antes del 21/11/2026, con tres filas fijas por tienda. Los dos no caben, y
+    // elegir uno sería decidir a quién se le abona. Desde el 21/11 el esqueleto ya arma las dos
+    // filas: ver «una celda con varias filas», más abajo.
     const p = planRegistro([
       mov({ seccion: 'Comida', picker: 'Cristian Morales', cuenta: 'Pickers 18', registros: 30 }),
       mov({ seccion: 'Comida', picker: 'Marcelo Vergara', cuenta: 'Pickers 7', registros: 54 }),
@@ -297,5 +299,162 @@ describe('planRegistro: la fila de Falabella Full', () => {
   it('una sección que de verdad no se conoce sigue avisando', () => {
     const plan = planRegistro([mov()], conCola('PANADERÍA'), NOMBRES);
     expect(plan.avisos.some(a => a.detalle.includes('desconocida'))).toBe(true);
+  });
+});
+
+describe('planRegistro: una celda con varias filas', () => {
+  // 62PLD, miércoles 18/11/2026. La Comida la hicieron dos cuentas; desde el 21/11/2026 el
+  // esqueleto le arma dos filas de COMIDA a esa tienda.
+  const NOMBRES_PLD = new Map([...NOMBRES, ['Sebasthian Cortez', 'SEBASTHIAN CORTEZ']]);
+
+  const pld = (): FilaHoja[] => [
+    { fila: 10, tienda: '62PLD', seccion: 'COMIDA', pistolero: '', usuario: '' },
+    { fila: 11, tienda: '',      seccion: 'COMIDA', pistolero: '', usuario: '' },
+    { fila: 12, tienda: '',      seccion: 'ASEO ',  pistolero: '', usuario: '' },
+    { fila: 13, tienda: '',      seccion: 'HOGAR',  pistolero: '', usuario: '' },
+  ];
+
+  const sebas = (p: Partial<MovimientoPlanilla> = {}) =>
+    mov({ cod: '62PLD', picker: 'Sebasthian Cortez', cuenta: 'Adquisiciones', registros: 40, ...p });
+  const marcelo = (p: Partial<MovimientoPlanilla> = {}) =>
+    mov({ cod: '62PLD', picker: 'Marcelo Vergara', cuenta: 'Pickers 7', registros: 20, ...p });
+
+  const MOVS = [
+    sebas({ seccion: 'Comida' }), marcelo({ seccion: 'Comida' }),
+    sebas({ seccion: 'Aseo' }), sebas({ seccion: 'Hogar' }),
+  ];
+
+  /** La hoja después de escribir lo que dice el plan. */
+  const aplicar = (filas: FilaHoja[], escrituras: { fila: number; columna: 'F' | 'S'; valor: string }[]) =>
+    filas.map(f => {
+      const g = { ...f };
+      for (const e of escrituras) {
+        if (e.fila !== f.fila) continue;
+        if (e.columna === 'F') g.pistolero = e.valor; else g.usuario = e.valor;
+      }
+      return g;
+    });
+
+  it('el caso del 18/11: cada uno queda en su fila de COMIDA', () => {
+    const p = planRegistro(MOVS, pld(), NOMBRES_PLD);
+    expect(p.escrituras).toEqual([
+      { fila: 10, columna: 'F', valor: 'SEBASTHIAN CORTEZ' },
+      { fila: 10, columna: 'S', valor: 'Adquisiciones' },
+      { fila: 11, columna: 'F', valor: 'MARCELO VERGARA' },
+      { fila: 11, columna: 'S', valor: 'Pickers 7' },
+      { fila: 12, columna: 'F', valor: 'SEBASTHIAN CORTEZ' },
+      { fila: 12, columna: 'S', valor: 'Adquisiciones' },
+      { fila: 13, columna: 'F', valor: 'SEBASTHIAN CORTEZ' },
+      { fila: 13, columna: 'S', valor: 'Adquisiciones' },
+    ]);
+    expect(p.avisos).toEqual([]);
+    expect(p.filasAEscribir).toBe(4);
+  });
+
+  it('la primera fila de la sección es para el que hizo más', () => {
+    const p = planRegistro([sebas({ registros: 5 }), marcelo({ registros: 90 })], pld(), NOMBRES_PLD);
+    expect(p.escrituras.find(e => e.fila === 10 && e.columna === 'F')?.valor).toBe('MARCELO VERGARA');
+  });
+
+  it('registrar dos veces no reescribe nada ni avisa', () => {
+    const primera = planRegistro(MOVS, pld(), NOMBRES_PLD);
+    const segunda = planRegistro(MOVS, aplicar(pld(), primera.escrituras), NOMBRES_PLD);
+    expect(segunda.escrituras).toEqual([]);
+    expect(segunda.avisos).toEqual([]);
+  });
+
+  it('si entre un registro y otro cambia quién hizo más, nadie se mueve de fila', () => {
+    // A media mañana Sebasthian iba adelante; al cierre, Marcelo. Las filas ya escritas se
+    // reconocen por lo que dicen, no por el orden de volumen.
+    const manana = planRegistro([sebas({ registros: 40 }), marcelo({ registros: 20 })], pld(), NOMBRES_PLD);
+    const hoja = aplicar(pld(), manana.escrituras);
+    const cierre = planRegistro([sebas({ registros: 40 }), marcelo({ registros: 95 })], hoja, NOMBRES_PLD);
+    expect(cierre.escrituras).toEqual([]);
+    expect(cierre.avisos).toEqual([]);
+  });
+
+  it('una fila que alguien completó a mano con uno de los dos se reconoce, y el otro va a la libre', () => {
+    const filas = pld();
+    filas[1] = { ...filas[1], pistolero: 'SEBASTHIAN CORTEZ', usuario: 'Adquisiciones' };
+    const p = planRegistro([sebas(), marcelo()], filas, NOMBRES_PLD);
+    expect(p.escrituras).toEqual([
+      { fila: 10, columna: 'F', valor: 'MARCELO VERGARA' },
+      { fila: 10, columna: 'S', valor: 'Pickers 7' },
+    ]);
+    expect(p.avisos).toEqual([]);
+  });
+
+  it('una fila a medio llenar se completa con el par que calza en lo que tiene', () => {
+    // La fila 11 tiene solo la cuenta de Marcelo: es suya, aunque él sea el de menos volumen.
+    const filas = pld();
+    filas[1] = { ...filas[1], usuario: 'Pickers 7' };
+    const p = planRegistro([sebas(), marcelo()], filas, NOMBRES_PLD);
+    expect(p.escrituras).toEqual([
+      { fila: 10, columna: 'F', valor: 'SEBASTHIAN CORTEZ' },
+      { fila: 10, columna: 'S', valor: 'Adquisiciones' },
+      { fila: 11, columna: 'F', valor: 'MARCELO VERGARA' },
+    ]);
+  });
+
+  it('una fila con alguien que no hizo la celda no se pisa, y se avisa a quién le faltó lugar', () => {
+    const filas = pld();
+    filas[0] = { ...filas[0], pistolero: 'OTRA PERSONA', usuario: 'Pickers 2' };
+    const p = planRegistro([sebas(), marcelo()], filas, NOMBRES_PLD);
+    // Sebasthian, el de más volumen, toma la única libre; Marcelo queda sin fila.
+    expect(p.escrituras.filter(e => e.columna === 'F'))
+      .toEqual([{ fila: 11, columna: 'F', valor: 'SEBASTHIAN CORTEZ' }]);
+    expect(p.avisos.map(a => a.tipo)).toEqual(['ya-escrita', 'sin-fila-libre']);
+    expect(p.avisos[1].detalle).toContain('Marcelo Vergara');
+  });
+
+  it('alguien sin nombre para esta planilla se avisa y su fila queda libre para escribirlo a mano', () => {
+    const p = planRegistro(
+      [sebas(), mov({ cod: '62PLD', picker: 'Alguien Nuevo', cuenta: 'Pickers 99', registros: 60 })],
+      pld(), NOMBRES_PLD);
+    expect(p.avisos.map(a => a.tipo)).toEqual(['sin-nombre-olas']);
+    // Aunque Alguien Nuevo hizo más, no puede escribirse: Sebasthian va a la primera libre y la
+    // otra queda vacía.
+    expect(p.escrituras).toEqual([
+      { fila: 10, columna: 'F', valor: 'SEBASTHIAN CORTEZ' },
+      { fila: 10, columna: 'S', valor: 'Adquisiciones' },
+    ]);
+  });
+
+  it('la misma persona con dos cuentas queda en dos filas, una por cuenta', () => {
+    const p = planRegistro(
+      [marcelo({ cuenta: 'Pickers 7', registros: 30 }), marcelo({ cuenta: 'Adquisiciones', registros: 10 })],
+      pld(), NOMBRES_PLD);
+    expect(p.escrituras.filter(e => e.columna === 'S').map(e => [e.fila, e.valor]))
+      .toEqual([[10, 'Pickers 7'], [11, 'Adquisiciones']]);
+  });
+
+  it('una línea agregada a mano, sin cuenta, no abre otra fila', () => {
+    // Se suma a la de esa persona, que sí tiene cuenta. Una celda de dos filas con un solo par
+    // deja la segunda vacía, como una tienda sin carga.
+    const p = planRegistro([sebas(), sebas({ cuenta: undefined, registros: 3 })], pld(), NOMBRES_PLD);
+    expect(p.escrituras).toEqual([
+      { fila: 10, columna: 'F', valor: 'SEBASTHIAN CORTEZ' },
+      { fila: 10, columna: 'S', valor: 'Adquisiciones' },
+    ]);
+    expect(p.avisos).toEqual([]);
+  });
+
+  it('tres pares y dos filas: la celda entera queda a mano, como antes', () => {
+    const p = planRegistro([
+      sebas(), marcelo(),
+      mov({ cod: '62PLD', picker: 'Cristian Morales', cuenta: 'Pickers 18', registros: 10 }),
+    ], pld(), NOMBRES_PLD);
+    expect(p.escrituras.some(e => e.fila === 10 || e.fila === 11)).toBe(false);
+    expect(p.avisos[0].tipo).toBe('pickers-distintos');
+    expect(p.avisos[0].detalle).toContain('2 filas');
+  });
+
+  it('las escrituras salen en orden de fila aunque se decidan en otro orden', () => {
+    // La fila 11 se reconoce primero —ya tiene algo— y la 10 se llena después, por libre.
+    const filas = pld();
+    filas[1] = { ...filas[1], usuario: 'Pickers 7' };
+    const p = planRegistro(MOVS, filas, NOMBRES_PLD);
+    const orden = p.escrituras.map(e => e.fila);
+    expect(orden).toEqual([...orden].sort((a, b) => a - b));
   });
 });
