@@ -132,6 +132,21 @@ export async function verifyAnyUser(request: NextRequest): Promise<{ id: string;
 }
 
 /**
+ * Id, rol y nombre de quien llama, resolviendo la sesión UNA vez. Para las rutas que necesitan
+ * autorizar por rol y además firmar lo que escriben (Mantención): llamar a `verifyAnyUser` y a
+ * `verifyActor` por separado verifica el token dos veces y, sin Bearer, puede ir dos veces a la red.
+ */
+export async function verifyPersona(request: NextRequest): Promise<{ id: string; role: string; name: string } | null> {
+  const payload = await resolvePayload(request);
+  if (!payload?.sub) return null;
+  const name = payload.user_metadata?.full_name?.trim()
+    || payload.user_metadata?.name?.trim()
+    || payload.email?.trim()
+    || payload.sub;
+  return { id: payload.sub, role: permisoDe(payload).role ?? '', name };
+}
+
+/**
  * Devuelve el contacto del usuario autenticado (id + email + nombre display), o null.
  * El email sale de la sesión/JWT en el server — nunca del body — para no permitir enviar
  * correos a direcciones arbitrarias (p. ej. la notificación de cambio de contraseña).

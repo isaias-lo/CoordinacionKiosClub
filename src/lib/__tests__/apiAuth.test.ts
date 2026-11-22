@@ -33,6 +33,7 @@ let verifyAuth:    (r: NextRequest) => Promise<boolean>;
 let verifyAdmin:   (r: NextRequest) => Promise<boolean>;
 let verifyAnyUser: (r: NextRequest) => Promise<{ id: string; role: string } | null>;
 let verifyActor:   (r: NextRequest) => Promise<{ id: string; name: string } | null>;
+let verifyPersona: (r: NextRequest) => Promise<{ id: string; role: string; name: string } | null>;
 
 beforeAll(async () => {
   // Must stub env BEFORE importing apiAuth — JWT_SECRET is read at module init
@@ -45,6 +46,7 @@ beforeAll(async () => {
   verifyAdmin   = mod.verifyAdmin;
   verifyAnyUser = mod.verifyAnyUser;
   verifyActor   = mod.verifyActor;
+  verifyPersona = mod.verifyPersona;
 });
 
 afterAll(() => {
@@ -171,5 +173,33 @@ describe('verifyActor', () => {
   it('returns null for expired token', async () => {
     const token = await signToken({ sub: 'u5', user_metadata: { full_name: 'X' } }, '-1s');
     expect(await verifyActor(makeReq(`Bearer ${token}`))).toBeNull();
+  });
+});
+
+// ─── verifyPersona (rol + nombre en una sola resolución) ─────────────────────────
+
+describe('verifyPersona', () => {
+  it('sin token, null', async () => {
+    expect(await verifyPersona(makeReq())).toBeNull();
+  });
+
+  it('el rol de app_metadata y el nombre de user_metadata', async () => {
+    const token = await signToken({
+      sub: 'u1', app_metadata: { role: 'supervisor-tienda' }, user_metadata: { full_name: 'Ingri' },
+    });
+    expect(await verifyPersona(makeReq(`Bearer ${token}`)))
+      .toEqual({ id: 'u1', role: 'supervisor-tienda', name: 'Ingri' });
+  });
+
+  it('el rol que alguien se puso en user_metadata NO cuenta', async () => {
+    const token = await signToken({ sub: 'u2', user_metadata: { role: 'admin', full_name: 'X' } });
+    expect((await verifyPersona(makeReq(`Bearer ${token}`)))?.role).toBe('');
+  });
+
+  it('sin nombre cae al email y luego al id', async () => {
+    const t1 = await signToken({ sub: 'u3', email: 'a@b.cl' });
+    expect((await verifyPersona(makeReq(`Bearer ${t1}`)))?.name).toBe('a@b.cl');
+    const t2 = await signToken({ sub: 'u4' });
+    expect((await verifyPersona(makeReq(`Bearer ${t2}`)))?.name).toBe('u4');
   });
 });

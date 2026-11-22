@@ -13,7 +13,10 @@ export interface CambioBitacora {
   resumen: string | null;
 }
 
-const ENTIDAD_LABEL: Record<string, string> = { tienda: 'Tienda', flota: 'Camión' };
+const ENTIDAD_LABEL: Record<string, string> = {
+  tienda: 'Tienda', flota: 'Camión',
+  mantencion_config: 'Mantención · Ajustes', mantencion_categoria: 'Mantención · Categoría',
+};
 const ACCION_ESTILO: Record<string, { label: string; bg: string; color: string }> = {
   crear:    { label: 'Creó',     bg: '#DCFCE7', color: '#15803D' },
   editar:   { label: 'Editó',    bg: '#DBEAFE', color: '#1D4ED8' },

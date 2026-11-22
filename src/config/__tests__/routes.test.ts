@@ -141,3 +141,50 @@ describe('puedeAbrir — la página de inicio siempre se puede abrir', () => {
     expect(puedeAbrir('asistente-despacho', '/admin/usuarios', [])).toBe(false);
   });
 });
+
+describe('Mantención — el supervisor de tienda tiene una sola página', () => {
+  const supervisor = ['/mantencion/tienda', '/perfil'];
+
+  it('abre su lista y la subpágina para crear una solicitud', () => {
+    expect(isPathAllowed(supervisor, '/mantencion/tienda')).toBe(true);
+    expect(isPathAllowed(supervisor, '/mantencion/tienda/nueva')).toBe(true);
+  });
+
+  it('no abre nada más de la app', () => {
+    expect(isPathAllowed(supervisor, '/mantencion')).toBe(false);
+    expect(isPathAllowed(supervisor, '/despacho')).toBe(false);
+    expect(isPathAllowed(supervisor, '/admin/usuarios')).toBe(false);
+  });
+
+  it('su inicio es su lista, sin bucles', () => {
+    expect(paginaInicial('supervisor-tienda', supervisor, '/mantencion/tienda')).toBe('/mantencion/tienda');
+  });
+
+  it('la ruta queda registrada para el panel de permisos', () => {
+    expect(ALL_MODULE_PATHS).toContain('/mantencion/tienda');
+    expect(cleanAllowedPaths(supervisor)).toEqual(supervisor);
+  });
+});
+
+describe('Mantención — el panel de Jesús', () => {
+  const encargado = ['/mantencion', '/perfil'];
+
+  it('abre el panel y el ingreso por WhatsApp', () => {
+    expect(isPathAllowed(encargado, '/mantencion')).toBe(true);
+    expect(isPathAllowed(encargado, '/mantencion/nueva')).toBe(true);
+  });
+
+  it('tener el panel no regala la pantalla de la tienda (es un permiso aparte)', () => {
+    expect(isPathAllowed(encargado, '/mantencion/tienda')).toBe(false);
+  });
+
+  it('el supervisor de tienda no abre el panel ni el ingreso por WhatsApp', () => {
+    const supervisor = ['/mantencion/tienda', '/perfil'];
+    expect(isPathAllowed(supervisor, '/mantencion')).toBe(false);
+    expect(isPathAllowed(supervisor, '/mantencion/nueva')).toBe(false);
+  });
+
+  it('su inicio es el panel', () => {
+    expect(paginaInicial('encargado-mantencion', encargado, '/mantencion')).toBe('/mantencion');
+  });
+});
