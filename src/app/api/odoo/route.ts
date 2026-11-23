@@ -702,6 +702,10 @@ export async function POST(req: NextRequest) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(desde) || !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) {
         return NextResponse.json({ ok: false, error: 'fechas inválidas' }, { status: 400 });
       }
+      // Días de CHILE. Con `desde + ' 00:00:00'` Odoo leía el día UTC: la consulta arrancaba a las
+      // 21:00 del día anterior, y esas horas armaban un «día» fantasma con pocos movimientos que
+      // el aviso podía mostrar como pendiente. Ver `rangoChileParaOdoo`.
+      const rango = rangoChileParaOdoo(desde, hasta);
 
       // El MISMO conjunto que mide Estadísticas y que usa la planilla del bono: lo define el
       // tipo de operación, no el texto del origen. Ver el comentario de `picking_stats_range`.
@@ -709,8 +713,8 @@ export async function POST(req: NextRequest) {
         service: 'object', method: 'execute_kw',
         args: [db, uid, apiKey, 'stock.picking', 'search_read', [[
           ['state', '=', 'done'],
-          ['date_done', '>=', desde + ' 00:00:00'],
-          ['date_done', '<=', hasta + ' 23:59:59'],
+          ['date_done', '>=', rango.desde],
+          ['date_done', '<',  rango.hasta],
           ['picking_type_id.sequence_code', '=', 'DT'],
           ['origin', 'not ilike', 'AUDITORIA'],
           ['batch_id', '!=', false],

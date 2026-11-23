@@ -80,6 +80,20 @@ export interface DiaPendiente {
 /** Por debajo de esto, el bloque está a medio llenar. Ver la cabecera para la medición. */
 export const UMBRAL_LLENO = 0.8;
 
+/** Cuántos días hacia atrás mira el aviso. El porqué está en `buscarPendientes` (PlanillaTab). */
+export const DIAS_AVISO = 12;
+
+/**
+ * La ventana del aviso, en días de Chile: desde hace `dias` días hasta hoy.
+ *
+ * Sale de `hoy`, que ya es el día local. Se calculaba con `toISOString()`, que da el día UTC: después
+ * de las 21:00 de Chile la ventana arrancaba un día más tarde.
+ */
+export function ventanaAviso(hoy: string, dias: number = DIAS_AVISO): { desde: string; hasta: string } {
+  const [y, m, d] = hoy.split('-').map(Number);
+  return { desde: new Date(Date.UTC(y, m - 1, d - dias)).toISOString().slice(0, 10), hasta: hoy };
+}
+
 /**
  * Los días que quedaron pendientes, del más reciente al más viejo.
  *

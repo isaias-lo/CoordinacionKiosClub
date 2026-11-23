@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  agruparPorDia, diasPendientes, detallePendiente, UMBRAL_LLENO,
+  agruparPorDia, diasPendientes, detallePendiente, ventanaAviso, DIAS_AVISO, UMBRAL_LLENO,
   type DiaConTrabajo, type DiaEnHoja,
 } from '../diasPendientes';
 
@@ -168,5 +168,23 @@ describe('agruparPorDia: el bug que mandó una fila por movimiento', () => {
 
   it('sin movimientos no rompe', () => {
     expect(agruparPorDia([])).toEqual([]);
+  });
+});
+
+describe('ventanaAviso — los días que mira el aviso', () => {
+  it('va de hace 12 días hasta hoy', () => {
+    expect(ventanaAviso('2026-11-22')).toEqual({ desde: '2026-11-10', hasta: '2026-11-22' });
+    expect(DIAS_AVISO).toBe(12);
+  });
+  it('sale del día local que recibe, sin importar la hora UTC', () => {
+    // A las 22:00 de Chile del 22/11 ya es 23/11 en UTC: con toISOString() la ventana se corría.
+    expect(ventanaAviso('2026-11-22').desde).toBe('2026-11-10');
+  });
+  it('cruza el cambio de mes y de año', () => {
+    expect(ventanaAviso('2026-12-05')).toEqual({ desde: '2026-11-23', hasta: '2026-12-05' });
+    expect(ventanaAviso('2027-01-03')).toEqual({ desde: '2026-12-22', hasta: '2027-01-03' });
+  });
+  it('acepta otro largo', () => {
+    expect(ventanaAviso('2026-11-22', 7)).toEqual({ desde: '2026-11-15', hasta: '2026-11-22' });
   });
 });
