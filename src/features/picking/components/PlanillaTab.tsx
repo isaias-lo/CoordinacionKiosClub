@@ -24,7 +24,7 @@ import { AUTO_REFRESH_MS } from '../picking-types';
 import { fechaISOLocal } from '@/features/despacho/shared/fechaLocal';
 import { refreshCalendario } from '@/features/despacho/utils/useCalendario';
 import { codsDelDia } from '../planilla/codsDelDia';
-import { diasPendientes, detallePendiente, type DiaPendiente } from '../planilla/diasPendientes';
+import { diasPendientes, detallePendiente, ventanaAviso, type DiaPendiente } from '../planilla/diasPendientes';
 import { agruparConsultasPorDia } from '@/features/despacho/shared/consultasPorDia';
 import { armarPlanilla, SECCIONES, porAsignacion, type CeldaPlanilla, type MovimientoPlanilla, type Planilla, type SeccionPlanilla } from '../planilla/armarPlanilla';
 import { avanceAsignacion, type AvanceAsignacion } from '../planilla/avanceAsignacion';
@@ -233,14 +233,14 @@ export function PlanillaTab({ cods: codsHoy, aperturas }: PlanillaTabProps) {
   // Son dos preguntas en paralelo: qué días TUVO trabajo (Odoo) y qué tiene la hoja de cada uno.
   // El cruce lo hace `diasPendientes`, que es puro y está testeado contra los días reales.
   const buscarPendientes = useCallback(async () => {
-    const desde = new Date(Date.now() - 12 * 86400000).toISOString().slice(0, 10);
+    const { desde, hasta } = ventanaAviso(hoy);
     try {
       // En dos pasos y no en paralelo a propósito: a la hoja se le pregunta por las fechas que
       // Odoo acaba de decir que tuvieron trabajo, no por un rango. Así se lee una sola vez y no
       // se pregunta por días que nunca existieron.
       const rOdoo = await fetch('/api/odoo', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'dias_con_trabajo', dateFrom: desde, dateTo: hoy }),
+        body: JSON.stringify({ action: 'dias_con_trabajo', dateFrom: desde, dateTo: hasta }),
       }).then(r => r.json()).catch(() => null);
 
       const conTrabajo = (rOdoo?.dias ?? []) as { fecha: string; movimientos: number; tiendas: number }[];
