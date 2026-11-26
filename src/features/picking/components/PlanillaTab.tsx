@@ -29,7 +29,9 @@ import { agruparConsultasPorDia } from '@/features/despacho/shared/consultasPorD
 import { armarPlanilla, SECCIONES, porAsignacion, type CeldaPlanilla, type MovimientoPlanilla, type Planilla, type SeccionPlanilla } from '../planilla/armarPlanilla';
 import { avanceAsignacion, type AvanceAsignacion } from '../planilla/avanceAsignacion';
 import { conCorrecciones, type FilaGuardada } from '../planilla/conCorrecciones';
-import { validarCorreccion, textoConfirmacion, type PedidoCorreccion } from '../planilla/correccionPicker';
+import { validarCorreccion, textoConfirmacion, type PedidoCorreccion, type SeccionCorreccion } from '../planilla/correccionPicker';
+import { extrasDesdeOdoo, extrasConCorrecciones, seccionDeCorreccion, DESTINOS_NO_TIENDA,
+         type ExtraPlanilla, type ExtrasDelDia } from '../planilla/extrasPlanilla';
 import { movimientosDesdeOdoo, type MovimientoOdoo } from '../planilla/desdeOdoo';
 import { auditoresPorCelda, claveCelda, seAuditoSolo, type AuditorCelda }
   from '../planilla/auditores';
@@ -192,7 +194,7 @@ export function PlanillaTab({ cods: codsHoy, aperturas }: PlanillaTabProps) {
             id: Number(r.id),
             ref: r.ref ? String(r.ref) : null,
             cod: String(r.cod ?? ''),
-            seccion: String(r.seccion ?? '') as SeccionPlanilla,
+            seccion: String(r.seccion ?? '') as SeccionCorreccion,
             registrosOdoo: r.registros_odoo == null ? null : Number(r.registros_odoo),
             pickerOdoo: r.picker_odoo == null ? null : String(r.picker_odoo),
             asignadoEn: r.asignado_en == null ? null : String(r.asignado_en),
@@ -300,6 +302,16 @@ export function PlanillaTab({ cods: codsHoy, aperturas }: PlanillaTabProps) {
     return [...conCorrecciones(conRef, guardados), ...sinRef];
   }, [crudos, nombres, diaPorTienda, guardados]);
 
+  // Agregados, Extra y Solicitudes: se ven acá y NO van a la hoja de olas, que se arma solo con
+  // `movimientos`. Una tienda es una del catálogo; si el catálogo no cargó, todo menos los destinos
+  // que se sabe que no son tiendas. Ver `extrasPlanilla.ts`.
+  const extras: ExtrasDelDia = useMemo(() => {
+    if (!crudos) return { porTienda: new Map(), fueraDelDia: [] };
+    const catalogo = new Set(Object.keys(fichas));
+    const esTienda = (cod: string) => (catalogo.size > 0 ? catalogo.has(cod) : !DESTINOS_NO_TIENDA.has(cod));
+    return extrasConCorrecciones(extrasDesdeOdoo(crudos, nombres, diaPorTienda, fecha, esTienda), guardados);
+  }, [crudos, nombres, diaPorTienda, fecha, fichas, guardados]);
+
   // Quién auditó cada celda. Se empareja por tienda, sección y FECHA DEL ORIGEN: una auditoría
   // se cierra cuando se cierra, y la del 17 puede quedar registrada el 18. Ver `auditores.ts`.
   const auditores = useMemo(
@@ -377,6 +389,15 @@ export function PlanillaTab({ cods: codsHoy, aperturas }: PlanillaTabProps) {
         pickerNuevo: '',
       });
     }, [fecha]);
+
+  const abrirCorreccionExtra = useCallback((x: ExtraPlanilla) => {
+    setError(null);
+    setCorrigiendo({
+      ref: x.ref, fecha, cod: x.cod, seccion: seccionDeCorreccion(x),
+      pickerActual: x.picker,
+      pickerNuevo: '',
+    });
+  }, [fecha]);
 
   const guardarCorreccion = useCallback(async () => {
     if (!corrigiendo) return;
@@ -728,7 +749,9 @@ export function PlanillaTab({ cods: codsHoy, aperturas }: PlanillaTabProps) {
             </div>
           )
           : vista === 'planilla'
-            ? <TablaPlanilla planilla={planilla} auditores={auditores} onCorregir={abrirCorreccion} ahora={ahora} />
+            ? <TablaPlanilla planilla={planilla} auditores={auditores} onCorregir={abrirCorreccion} ahora={ahora}
+                            extras={extras.porTienda} fueraDelDia={extras.fueraDelDia}
+                            onCorregirExtra={abrirCorreccionExtra} />
             : <TablaDetalle movimientos={delDia} onCorregir={abrirCorreccion} />}
       </div>
 
@@ -862,14 +885,21 @@ function BarraAvance({ a }: { a: AvanceAsignacion }) {
 }
 
 /** La matriz: una fila por tienda; una celda con varios movimientos los apila. */
-function TablaPlanilla({ planilla, auditores, onCorregir, ahora }: {
+function TablaPlanilla({ planilla, auditores, onCorregir, ahora, extras, fueraDelDia, onCorregirExtra }: {
   planilla: Planilla;
   /** `cod|seccion` → quién auditó esa celda. Ver `planilla/auditores.ts`. */
   auditores: ReadonlyMap<string, AuditorCelda[]>;
   onCorregir: (celda: CeldaPlanilla, cod: string, seccion: SeccionPlanilla) => void;
   /** El reloj compartido. `null` hasta el primer efecto: ver el comentario en `PlanillaTab`. */
   ahora: Date | null;
+  /** Agregados, Extra y Solicitudes por tienda: van en una franja bajo su fila. */
+  extras: ReadonlyMap<string, ExtraPlanilla[]>;
+  /** Trabajo del día para tiendas que hoy no despachan. */
+  fueraDelDia: ExtraPlanilla[];
+  onCorregirExtra: (x: ExtraPlanilla) => void;
 }) {
+  const totalExtras = planilla.filas.reduce(
+    (s, f) => s + (extras.get(f.cod) ?? []).reduce((t, x) => t + x.registros, 0), 0);
   return (
     // `pk-hoja` trae el resalte de la fila al pasar el mouse (marco.css). Los fondos de celda van
     // por clase y no en línea: un estilo en línea le gana a cualquier selector, así que en línea
@@ -911,7 +941,8 @@ function TablaPlanilla({ planilla, auditores, onCorregir, ahora }: {
           {planilla.filas.map((f, i) => {
             const c = COLOR_ZONA[f.zona];
             return (
-              <tr key={f.cod} className="fila" style={{ borderBottom: '1px solid #F1F5F9' }}>
+              <Fragment key={f.cod}>
+              <tr className="fila" style={{ borderBottom: '1px solid #F1F5F9' }}>
                 <td style={TD_NUM}>{i + 1}</td>
                 <td style={{ padding: '4px 10px', verticalAlign: 'top' }}>
                   <span style={{
@@ -945,6 +976,10 @@ function TablaPlanilla({ planilla, auditores, onCorregir, ahora }: {
                   );
                 })}
               </tr>
+              {(extras.get(f.cod)?.length ?? 0) > 0 && (
+                <FranjaExtras extras={extras.get(f.cod) ?? []} onCorregir={onCorregirExtra} ahora={ahora} />
+              )}
+              </Fragment>
             );
           })}
           <tr style={{ background: '#F8FAFC', borderTop: '2px solid #CBD5E1' }}>
@@ -960,6 +995,144 @@ function TablaPlanilla({ planilla, auditores, onCorregir, ahora }: {
                 <td />
               </Fragment>
             ))}
+          </tr>
+          {totalExtras > 0 && (
+            <tr>
+              <td />
+              <td />
+              <td className="extra" colSpan={SECCIONES.length * 2}
+                  style={{ padding: '6px 10px', borderLeft: '2px solid #5EEAD4' }}>
+                <span style={ETIQUETA_FRANJA}>Total Agregados, Extra y Solicitudes</span>
+                <span style={{ ...NUM_EXTRA, marginLeft: 10 }}>{totalExtras}</span>
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      {fueraDelDia.length > 0 && (
+        <BloqueFueraDelDia extras={fueraDelDia} onCorregir={onCorregirExtra} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * La franja bajo una tienda: sus Agregados, Extra y Solicitudes del día.
+ *
+ * Va en una fila propia y no en una columna más: la tabla ya necesita 1.180 px, y una columna
+ * de 250 la llevaba a unos 1.430, más que una pantalla de notebook común. La franja solo agrega
+ * alto, y solo en las tiendas que tienen algo (el 13/11/2026, 8 de 27).
+ */
+function FranjaExtras({ extras, onCorregir, ahora }: {
+  extras: ExtraPlanilla[];
+  onCorregir: (x: ExtraPlanilla) => void;
+  ahora: Date | null;
+}) {
+  return (
+    <tr className="fila" style={{ borderBottom: '1px solid #E2E8F0' }}>
+      <td className="extra" />
+      <td className="extra" />
+      <td className="extra" colSpan={SECCIONES.length * 2}
+          style={{ padding: '5px 10px', borderLeft: '2px solid #5EEAD4' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 22px', alignItems: 'baseline' }}>
+          <span style={ETIQUETA_FRANJA}>
+            Agregados, Extra y Solicitudes<span style={PILL_OLAS}>no va a olas</span>
+          </span>
+          {extras.map(x => <ItemExtra key={x.ref} x={x} onCorregir={onCorregir} ahora={ahora} />)}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+/** Un movimiento de la franja: productos, qué es, quién lo hizo y cuánto tardó. */
+function ItemExtra({ x, onCorregir, ahora }: {
+  x: ExtraPlanilla;
+  onCorregir: (x: ExtraPlanilla) => void;
+  ahora: Date | null;
+}) {
+  const r = ahora ? relojDe(x.asignadoEn, x.validadoEn, ahora) : null;
+  return (
+    <div style={{ display: 'inline-flex', gap: 7, alignItems: 'baseline' }} title={x.origin}>
+      <span style={NUM_EXTRA}>{x.registros}</span>
+      <span style={CHIP_EXTRA}>{x.etiqueta}</span>
+      <BotonPickerExtra x={x} onCorregir={onCorregir} />
+      <Contador r={r} />
+    </div>
+  );
+}
+
+/** El nombre, como botón para corregirlo. Igual que `CeldaPicker`, pero para un extra. */
+function BotonPickerExtra({ x, onCorregir }: { x: ExtraPlanilla; onCorregir: (x: ExtraPlanilla) => void }) {
+  const corregido = x.origen === 'corregido';
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column' }}>
+      <button type="button" className="pk-pick" onClick={() => onCorregir(x)}
+              title="Tocar para corregir quién hizo este movimiento"
+              style={{
+                font: 'inherit', cursor: 'pointer', textAlign: 'left',
+                padding: '1px 5px', marginLeft: -5, borderRadius: 5,
+                border: corregido ? '1px dashed #FCD34D' : '1px dashed transparent',
+                background: corregido ? '#FFFBEB' : 'transparent',
+                ...(x.picker ? { color: corregido ? '#92400E' : '#334155' } : ESTILO_SIN_ASIGNAR),
+                ...(corregido ? { fontWeight: 700 } : null),
+              }}>
+        {x.picker || '— sin asignar'}
+      </button>
+      {corregido && x.pickerOdoo && (
+        <span style={{ fontSize: 10.5, color: '#B45309' }}>Odoo decía: {x.pickerOdoo}</span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Lo que se pickeó hoy para tiendas que hoy no despachan: Extra, aperturas, adelantos. Antes se
+ * descartaba sin aviso (`movimientosDesdeOdoo` solo toma cada tienda en su día). Tampoco va a olas.
+ */
+function BloqueFueraDelDia({ extras, onCorregir }: {
+  extras: ExtraPlanilla[];
+  onCorregir: (x: ExtraPlanilla) => void;
+}) {
+  const total = extras.reduce((s, x) => s + x.registros, 0);
+  return (
+    <div style={{ borderTop: '2px solid #CBD5E1', padding: '12px 0 4px' }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', padding: '0 10px 8px' }}>
+        <span style={{ fontSize: 12.5, fontWeight: 800, color: '#0F172A' }}>Tiendas que hoy no despachan</span>
+        <span style={PILL_OLAS}>no va a olas</span>
+        <span style={{ fontSize: 11.5, color: '#64748B' }}>
+          Trabajo de hoy para tiendas que no están en el calendario: Extra, aperturas, adelantos.
+        </span>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead>
+          <tr style={{ background: '#F8FAFC' }}>
+            <th style={TH}>Tienda</th><th style={TH}>Qué es</th><th style={TH}>Usuario</th>
+            <th style={TH_DER}>Registros</th><th style={TH}>Inicio</th><th style={TH}>Validado</th>
+            <th style={TH_DER}>Duración</th>
+          </tr>
+        </thead>
+        <tbody>
+          {extras.map((x, i) => {
+            const nueva = i === 0 || extras[i - 1].cod !== x.cod;
+            return (
+              <tr key={x.ref} className="fila"
+                  style={{ borderBottom: '1px solid #F1F5F9', borderTop: nueva && i > 0 ? '1px solid #E2E8F0' : undefined }}>
+                <td style={{ ...TD, fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: '#1E40AF' }}>
+                  {nueva ? x.cod : ''}
+                </td>
+                <td style={TD}><span style={CHIP_EXTRA} title={x.origin}>{x.etiqueta}</span></td>
+                <td style={TD}><BotonPickerExtra x={x} onCorregir={onCorregir} /></td>
+                <td style={TD_DER}>{x.registros}</td>
+                <td style={{ ...TD, fontFamily: 'ui-monospace, monospace' }}>{horaChile(x.asignadoEn) || '—'}</td>
+                <td style={{ ...TD, fontFamily: 'ui-monospace, monospace' }}>{horaChile(x.validadoEn) || '—'}</td>
+                <td style={{ ...TD_DER, color: '#475569' }}>{formatearDuracion(duracionMinutos(x.asignadoEn, x.validadoEn))}</td>
+              </tr>
+            );
+          })}
+          <tr style={{ background: '#F8FAFC', borderTop: '2px solid #CBD5E1' }}>
+            <td style={{ ...TH, padding: '7px 10px' }}>Total</td><td /><td />
+            <td style={TD_DER}>{total}</td><td /><td /><td />
           </tr>
         </tbody>
       </table>
@@ -1263,6 +1436,17 @@ const ESTILO_SIN_ASIGNAR = { color: '#B45309', fontStyle: 'italic', fontWeight: 
 // Azul y no el naranja de «sin asignar»: el naranja es la alarma de trabajo que nadie tomó, y un
 // resto de un movimiento ya validado no es eso.
 const ESTILO_RESTO = { color: '#1E40AF', fontWeight: 600 } as const;
+// Agregados, Extra y Solicitudes: un verde azulado tenue, para que se lean como algo aparte de las
+// cuatro secciones sin competir con ellas. El fondo va por la clase `extra` (marco.css).
+const ETIQUETA_FRANJA = { fontSize: 10, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase',
+                          color: '#0F766E', whiteSpace: 'nowrap' } as const;
+const PILL_OLAS = { display: 'inline-block', marginLeft: 6, padding: '1px 6px', borderRadius: 999, fontSize: 9,
+                    fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase', color: '#0F766E',
+                    border: '1px solid #5EEAD4', background: '#fff' } as const;
+const CHIP_EXTRA = { fontSize: 11, fontWeight: 700, color: '#0F766E', background: '#F0FDFA',
+                     border: '1px solid #99F6E4', borderRadius: 4, padding: '0 5px', whiteSpace: 'nowrap' } as const;
+const NUM_EXTRA = { fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums', fontWeight: 700,
+                    color: '#0F172A' } as const;
 
 /** Escapa lo que va al HTML de impresión: los nombres y los códigos vienen de Odoo. */
 function esc(s: string | number): string {

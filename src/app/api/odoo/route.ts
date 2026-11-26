@@ -758,6 +758,9 @@ export async function POST(req: NextRequest) {
             toLocation: p.toLocation, partner: p.partner,
             // De qué movimiento quedó, si quedó de uno. Ver `backorders.ts`.
             backorderDe: p.backorderDe,
+            // Si pasó por una tanda. Los Agregados, Extra y Solicitudes se muestran solo con tanda,
+            // como en Estadísticas y el bono. Ver `extrasPlanilla.ts`.
+            enTanda: p.batch !== '',
             // El día que se pidió, no el `scheduled_date` crudo: es la clave con la que
             // `movimientosDesdeOdoo` decide si ese movimiento le corresponde a esa tienda.
             dia: fecha,

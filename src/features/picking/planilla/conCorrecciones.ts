@@ -24,7 +24,11 @@
 // fotografiarla. La excepción son las líneas que el coordinador agregó a mano (`ref` nulo), para
 // algo que se pickeó y no quedó en Odoo: esas aparecen siempre.
 
-import type { MovimientoPlanilla } from './armarPlanilla';
+import { SECCIONES, type MovimientoPlanilla, type SeccionPlanilla } from './armarPlanilla';
+import type { SeccionCorreccion } from './correccionPicker';
+
+const ES_SECCION = new Set<string>(SECCIONES);
+const esSeccionPlanilla = (s: string): s is SeccionPlanilla => ES_SECCION.has(s);
 
 /** De dónde salió el número que se muestra. */
 export type OrigenDato = 'vivo' | 'foto' | 'corregido' | 'manual';
@@ -35,7 +39,7 @@ export interface FilaGuardada {
   /** La referencia de Odoo, o `null` si el coordinador agregó la línea a mano. */
   ref: string | null;
   cod: string;
-  seccion: MovimientoPlanilla['seccion'];
+  seccion: SeccionCorreccion;
   /** La foto: lo que decía Odoo cuando el movimiento estaba asignado. No se toca. */
   registrosOdoo: number | null;
   pickerOdoo: string | null;
@@ -59,10 +63,12 @@ export function conCorrecciones(
   guardados: FilaGuardada[],
 ): MovimientoPlanilla[] {
   const porRef = new Map<string, FilaGuardada>();
-  const aMano: FilaGuardada[] = [];
+  // Una línea a mano es siempre de una sección de la hoja. Las filas con `seccion` Agregado o
+  // Solicitud son correcciones de `extrasPlanilla.ts` y siempre traen `ref`.
+  const aMano: Array<FilaGuardada & { seccion: SeccionPlanilla }> = [];
   for (const g of guardados) {
     if (g.ref) porRef.set(g.ref, g);
-    else aMano.push(g);
+    else if (esSeccionPlanilla(g.seccion)) aMano.push({ ...g, seccion: g.seccion });
   }
 
   const out: MovimientoPlanilla[] = vivos.map(v => {

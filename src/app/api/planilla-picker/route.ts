@@ -23,10 +23,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { verifyActor } from '@/lib/apiAuth';
-import { validarCorreccion, type PedidoCorreccion } from '@/features/picking/planilla/correccionPicker';
-import { SECCIONES, type SeccionPlanilla } from '@/features/picking/planilla/armarPlanilla';
+import {
+  validarCorreccion, SECCIONES_CORRECCION, type PedidoCorreccion, type SeccionCorreccion,
+} from '@/features/picking/planilla/correccionPicker';
 
-const ES_SECCION = new Set<string>(SECCIONES);
+// Las cuatro secciones de la hoja, más Agregado y Solicitud: los movimientos de
+// `extrasPlanilla.ts` que no tienen sección se corrigen con su tipo.
+const ES_SECCION = new Set<string>(SECCIONES_CORRECCION);
 
 /** POST — guarda la corrección de una celda. Una celda = un movimiento de Odoo. */
 export async function POST(request: NextRequest) {
@@ -49,7 +52,7 @@ export async function POST(request: NextRequest) {
     ref:          String(body.ref ?? '').trim(),
     fecha:        String(body.fecha ?? '').trim(),
     cod:          String(body.cod ?? '').trim().toUpperCase(),
-    seccion:      seccion as SeccionPlanilla,
+    seccion:      seccion as SeccionCorreccion,
     pickerActual: String(body.pickerActual ?? ''),
     pickerNuevo:  String(body.pickerNuevo ?? ''),
   };
@@ -97,7 +100,14 @@ export async function POST(request: NextRequest) {
 
   if (error) {
     console.error('[POST /api/planilla-picker] guardar', error);
-    return NextResponse.json({ error: 'No se pudo guardar la corrección' }, { status: 500 });
+    // 23514 = la base rechazó la sección. Pasa con un Agregado o una Solicitud mientras no se corra
+    // `sql/2026-11-22_planilla_movimientos_extras.sql`: decirlo es más útil que un error genérico.
+    const faltaSql = (error as { code?: string }).code === '23514' && !['Comida', 'Aseo', 'Hogar', 'Chocolates'].includes(pedido.seccion);
+    return NextResponse.json({
+      error: faltaSql
+        ? 'Para corregir Agregados y Solicitudes falta correr en Supabase el SQL sql/2026-11-22_planilla_movimientos_extras.sql'
+        : 'No se pudo guardar la corrección',
+    }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, fila: data });

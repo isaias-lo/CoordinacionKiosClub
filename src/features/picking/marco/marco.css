@@ -165,6 +165,8 @@ button.pk-sg:hover .acc{color:#2B4BC8}
 @keyframes pk-latir{0%,100%{opacity:1}50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.pk-latido{animation:none}}
 .pk-hoja td.banda{background:#FAFBFD}
+/* Agregados, Extra y Solicitudes: la franja bajo la tienda. Por clase, igual que .banda. */
+.pk-hoja td.extra{background:#F0FDFA}
 .pk-hoja .mov + .mov{margin-top:4px;padding-top:4px;border-top:1px dashed #E8EDF3}
 .pk-pick:hover{border-color:#94A3B8 !important;background:#F1F5F9}
 .pk-pick:focus-visible{outline:2px solid #2B4BC8;outline-offset:1px}

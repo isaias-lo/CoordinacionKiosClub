@@ -20,7 +20,14 @@
 // pasan de una persona a otra. Por eso el texto de confirmación dice las dos cosas —de quién sale
 // y a quién va— y no solo «¿confirmar?». El que aprueba tiene que poder ver qué está aprobando.
 
-import type { SeccionPlanilla } from './armarPlanilla';
+import { SECCIONES, type SeccionPlanilla } from './armarPlanilla';
+
+/**
+ * Con qué sección se guarda una corrección. Un Agregado o una Solicitud no tienen Comida, Aseo,
+ * Hogar ni Chocolates, y se guardan con su tipo. Ver `extrasPlanilla.ts` y el SQL del 22/11/2026.
+ */
+export type SeccionCorreccion = SeccionPlanilla | 'Agregado' | 'Solicitud';
+export const SECCIONES_CORRECCION: readonly SeccionCorreccion[] = [...SECCIONES, 'Agregado', 'Solicitud'];
 
 /** Lo que se quiere corregir en una celda. */
 export interface PedidoCorreccion {
@@ -28,7 +35,7 @@ export interface PedidoCorreccion {
   ref: string;
   fecha: string;
   cod: string;
-  seccion: SeccionPlanilla;
+  seccion: SeccionCorreccion;
   /** El nombre que se muestra hoy: el de Odoo traducido, o una corrección anterior. */
   pickerActual: string;
   /** La persona que de verdad lo hizo. */
