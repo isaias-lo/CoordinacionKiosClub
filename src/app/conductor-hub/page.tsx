@@ -327,12 +327,14 @@ export default function ConductorHubPage() {
 
   // [Fase 4] `fecha` ahora es un parámetro (default hoy) — lo usa el historial para volver a
   // cargar un día anterior reusando exactamente esta misma función y esta misma pantalla.
+  // Es el día en que el camión SALE (`salida=`), no el de armado: el Enrutador cierra los camiones
+  // el día antes, y buscando por armado el chofer no encontraba su ruta el día en que salía.
   const cargar = useCallback(async (pat: string, fecha: string = todayISO()) => {
     setLoading(true);
     setOffline(false);
     setVerFecha(fecha);
     try {
-      const res   = await fetch(`/api/rutas-despacho?fecha=${fecha}&patente=${encodeURIComponent(pat)}`);
+      const res   = await fetch(`/api/rutas-despacho?salida=${fecha}&patente=${encodeURIComponent(pat)}`);
       if (!res.ok) throw new Error('Error de servidor');
       const json  = await res.json() as { data: RutaData[] };
       const data  = json.data ?? [];
