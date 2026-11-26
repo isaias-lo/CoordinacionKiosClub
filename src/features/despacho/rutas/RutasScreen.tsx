@@ -307,6 +307,12 @@ export default function RutasScreen() {
    *  la cabecera: arrastrarla a otro día (la 2ª vuelta arma sobre el de hoy) sería inventar. */
   const despachoDe = (armado: string) =>
     (salidaManual && armado === fecha) ? salidaManual : fechaSalida(armado, tipoCargaActivo);
+  /** El de un manifiesto de CONGELADOS, mirando la pestaña que sea. `despachoDe` sigue la pestaña
+   *  abierta, y el manifiesto de congelados se guardaba con la regla del seco cuando no era la de
+   *  Congelados: todos los viernes de oct–nov 2026 (2, 16, 23 oct; 6, 13, 20 nov) quedaron saliendo
+   *  el sábado, que la flota interna no trabaja. /conductor-hub busca por ese día. */
+  const despachoCongDe = (armado: string) =>
+    (salidaManual && armado === fecha && modo === 'cong') ? salidaManual : fechaSalida(armado, 'congelados');
   const [manualText, setManualText] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [iaLoading] = useState(false); // (LLM parkeado; el botón "Asignar" usa clusters instantáneos)
@@ -2106,7 +2112,7 @@ export default function RutasScreen() {
     // 2) CONTROL DESPACHO CONG.: la patente sobre la fila que Bodega dejó vacía.
     const filasControl = buildControlCongeladosRows(
       ordered.map(t => ({ cod: t.c, cc: 0, cn: t.b + ((t as { ch?: number }).ch ?? 0), patente })),
-      { fechaArmado: fecha, fechaDespacho: despachoDe(fecha) },
+      { fechaArmado: fecha, fechaDespacho: despachoCongDe(fecha) },
       (cod: string) => tiendas[norm(cod)]?.region ?? '',
     );
     if (filasControl.length) {
@@ -3811,7 +3817,7 @@ export default function RutasScreen() {
         <ManifiestoPanel
           rutas={manifiestoCong}
           fecha={fecha}
-          fechaSalida={despachoDe(fecha)}
+          fechaSalida={despachoCongDe(fecha)}
           supervisor={supervisor}
           tiendas={tiendas as Record<string, TiendaInfo & { _parada?: boolean }>}
           isOpen={true}
