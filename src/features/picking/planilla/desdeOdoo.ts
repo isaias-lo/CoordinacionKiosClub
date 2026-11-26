@@ -47,6 +47,9 @@ export interface MovimientoOdoo {
   partner: string;
   /** La referencia del movimiento del que este quedó, si es un backorder. Ver `backorders.ts`. */
   backorderDe?: string | null;
+  /** Si pasó por una tanda (`batch_id`). Lo que no, no es trabajo de picking medible: ver
+   *  `extrasPlanilla.ts`. Opcional solo para no tocar los tests que no lo usan. */
+  enTanda?: boolean;
 }
 
 const ES_SECCION = new Set<string>(SECCIONES);
